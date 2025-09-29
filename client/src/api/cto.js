@@ -1,7 +1,9 @@
 import API from "./api";
 
 export const addCreditRequest = async (formData) => {
+  console.log(formData);
   const res = await API.post("/cto/credits", formData);
+
   return res.data;
 };
 
@@ -39,4 +41,16 @@ export const rollbackCreditCto = async (creditId) => {
     }
   );
   return res.data.credit;
+};
+
+export const fetchEmployeeCredits = async (employeeId) => {
+  console.log(employeeId);
+  const res = await API.get(`/cto/credits/${employeeId}/history`);
+  return res.data;
+};
+
+export const fetchEmployeeDetails = async (employeeId) => {
+  console.log(employeeId);
+  const res = await API.get(`/cto/employee/${employeeId}/details`);
+  return res.data;
 };

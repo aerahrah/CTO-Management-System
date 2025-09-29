@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { getEmployeeById } from "../../api/employee";
 import { useState } from "react";
-import { CardFull } from "../cardComponent";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
 

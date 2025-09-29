@@ -3,7 +3,7 @@ const Employee = require("../models/employeeModel");
 const mongoose = require("mongoose");
 const addCreditRequest = async (req, res) => {
   try {
-    const { employees, duration, memoNo } = req.body;
+    const { employees, duration, memoNo, dateApproved } = req.body;
     const userId = req.user.id;
 
     // ✅ Validate duration
@@ -38,6 +38,7 @@ const addCreditRequest = async (req, res) => {
       duration,
       memoNo,
       status: "CREDITED",
+      dateApproved: dateApproved ? new Date(dateApproved) : null, // ✅ Add this
       dateCredited: new Date(),
       creditedBy: userId,
       uploadedMemo: req.file?.path,

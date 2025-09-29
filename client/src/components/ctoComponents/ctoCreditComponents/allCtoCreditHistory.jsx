@@ -85,9 +85,6 @@ const AllCtoCreditHistory = () => {
                 Status
               </th>
               <th className="p-3 text-center border-b border-r border-gray-200">
-                Date Applied
-              </th>
-              <th className="p-3 text-center border-b border-r border-gray-200">
                 Date Approved
               </th>
               <th className="p-3 text-center border-b border-r border-gray-200">
@@ -141,9 +138,7 @@ const AllCtoCreditHistory = () => {
                   >
                     {credit.status}
                   </td>
-                  <td className="p-3 text-center border-b border-gray-200 border-r">
-                    {formatDate(credit.createdAt)}
-                  </td>
+
                   <td className="p-3 text-center border-b border-gray-200 border-r">
                     {formatDate(credit.dateApproved)}
                   </td>

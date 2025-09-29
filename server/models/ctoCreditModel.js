@@ -16,10 +16,10 @@ const ctoCreditSchema = new mongoose.Schema(
       enum: ["CREDITED", "ROLLEDBACK"],
       default: "CREDITED",
     },
-    dateCredited: Date,
+    dateCredited: { type: Date, default: Date.now },
     dateRolledBack: Date,
     creditedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
-    dateApproved: { type: Date },
+    dateApproved: { type: Date, required: true },
     uploadedMemo: { type: String },
     rolledBackBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     // approver: {
