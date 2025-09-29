@@ -23,10 +23,10 @@ const CtoPage = () => {
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`px-6 py-3 rounded-sm font-medium ${
+              className={`px-6 py-3 rounded-sm font-medium transition ${
                 activeTab === tab.key
                   ? "bg-neutral-800 text-white"
-                  : "bg-white border text-gray-700"
+                  : "bg-white border border-neutral-400 text-gray-700"
               }`}
             >
               {tab.label}

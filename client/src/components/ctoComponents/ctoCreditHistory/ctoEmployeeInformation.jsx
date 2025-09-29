@@ -89,22 +89,22 @@ const CtoEmployeeInformation = ({ selectedId }) => {
         </div>
       </div>
       {/* Tabs */}
-      <div className="flex">
+      <div className="flex gap-2">
         <button
-          className={`px-5 py-2.5 font-medium ${
+          className={`px-5 py-2.5 font-medium transition rounded-t-lg cursor-pointer ${
             activeTab === "credit"
-              ? " bg-neutral-800 rounded-t-md text-white"
-              : "text-gray-500"
+              ? " bg-neutral-800  text-white"
+              : "text-neutral-500 bg-neutral-100"
           }`}
           onClick={() => setActiveTab("credit")}
         >
           Credit CTO
         </button>
         <button
-          className={`px-5 py-2.5 font-medium ${
+          className={`px-5 py-2.5 font-medium transition  rounded-t-lg cursor-pointer  ${
             activeTab === "application"
-              ? " bg-neutral-800 rounded-t-md text-white"
-              : "text-gray-500"
+              ? " bg-neutral-800 text-white"
+              : "text-neutral-500 bg-neutral-100"
           }`}
           onClick={() => setActiveTab("application")}
         >

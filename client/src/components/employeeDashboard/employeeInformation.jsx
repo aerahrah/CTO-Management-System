@@ -24,7 +24,7 @@ const EmployeeInformation = ({ selectedId }) => {
   const emp = employee?.data;
 
   return (
-    <div className="p-2 bg-white space-y-8">
+    <div className="p-2 bg-white space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between border-b pb-5">
         <div className="flex items-center gap-4">
@@ -47,7 +47,7 @@ const EmployeeInformation = ({ selectedId }) => {
       </div>
 
       {/* Info Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-104 overflow-y-auto">
+      <div className="grid grid-cols-1 md:grid-cols-2 py-1 gap-6 h-104 overflow-y-auto">
         {/* Basic Info */}
         <Section title="Basic Information">
           <InfoRow label="Employee ID" value={emp?.employeeId} />
@@ -103,18 +103,18 @@ const EmployeeInformation = ({ selectedId }) => {
 /* Components */
 const Section = ({ title, children }) => (
   <div className="bg-neutral-50/80 rounded-xl p-5 shadow-sm border border-gray-100">
-    <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+    <h2 className="text-sm font-semibold text-neutral-600 uppercase tracking-wide mb-2">
       {title}
     </h2>
-    <hr className="my-2 border-gray-200" />
+    <hr className="my-2 border-neutral-200" />
     <div className="space-y-2.5">{children}</div>
   </div>
 );
 
 const InfoRow = ({ label, value }) => (
   <div className="flex justify-between text-sm">
-    <span className="text-gray-500">{label}</span>
-    <span className="font-medium text-gray-800 truncate max-w-[55%] text-right">
+    <span className="text-neutral-500">{label}</span>
+    <span className="font-medium text-neutral-800 truncate max-w-[55%] text-right">
       {value || "-"}
     </span>
   </div>
