@@ -153,7 +153,7 @@ const CtoCreditHistory = () => {
       <div className="flex justify-end mt-4">
         <button
           onClick={() => setIsOpen(true)}
-          className="px-4 py-2 border rounded-md text-sm font-medium hover:bg-gray-100 transition"
+          className="px-4 py-2 text-neutral-800 border-1 border-neutral-800 rounded-sm text-sm font-medium hover:bg-neutral-800 hover:text-neutral-100 transition active:scale-96 cursor-pointer"
         >
           View More →
         </button>

@@ -231,7 +231,7 @@ const AddCtoCreditForm = ({ onSubmit }) => {
         {/* Submit */}
         <button
           type="submit"
-          className="w-full px-4 py-2 bg-blue-600 text-white font-medium rounded-md hover:bg-blue-700 active:scale-95 transition"
+          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition cursor-pointer"
         >
           Submit Credit Request
         </button>

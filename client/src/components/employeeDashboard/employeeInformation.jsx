@@ -21,86 +21,120 @@ const EmployeeInformation = ({ selectedId }) => {
   if (isLoading) {
     return <div className="p-4">Loading employee...</div>;
   }
+  const emp = employee?.data;
+
   return (
-    <>
-      <menu>
-        <ul className="flex gap-2">
-          <li>Edit Profile</li>
-          <li>Edit Profile</li>
-          <li>Edit Profile</li>
-          <li>Edit Profile</li>
-        </ul>
-      </menu>
-      <h1 className="text-2xl font-semibold">
-        {employee?.data?.firstName} {employee?.data?.lastName}
-      </h1>
-      <div className="mt-6 border-1 border-neudival-300 p-6">
-        <div>
-          <div className="flex gap-4">
-            <div>
-              <div className="flex gap-4">
-                <p className="flex justify-between min-w-28">
-                  First Name <span>:</span>
-                </p>
-                <p>{employee?.data?.firstName}</p>
-              </div>
-              <div className="flex gap-4">
-                <p className="flex justify-between min-w-28">
-                  Middle Name <span>:</span>
-                </p>
-                <p>{employee?.data?.lastName}</p>
-              </div>
-              <div className="flex gap-4">
-                <p className="flex justify-between min-w-28">
-                  Last Name <span>:</span>
-                </p>
-                <p>{employee?.data?.lastName}</p>
-              </div>
-            </div>
-            <div>
-              <div className="flex gap-4">
-                <p className="flex justify-between min-w-28">
-                  Employee Id <span>:</span>
-                </p>
-                <p>{employee?.data?.employeeId}</p>
-              </div>
-            </div>
+    <div className="p-2 bg-white space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b pb-5">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-full bg-neutral-800 text-white flex items-center  justify-center font-bold text-lg shadow ">
+            {emp?.firstName?.[0]}
+            {emp?.lastName?.[0]}
           </div>
           <div>
-            <div className="flex gap-4">
-              <p className="flex justify-between min-w-28">
-                Email <span>:</span>
-              </p>
-              <p>{employee?.data?.email}</p>
-            </div>
-            <div className="flex gap-4">
-              <p className="flex justify-between min-w-28">
-                Mobile Number <span>:</span>
-              </p>
-              <p>{employee?.data?.phone}</p>
-            </div>
-            <div className="flex gap-4">
-              <p className="flex justify-between min-w-28">
-                Status <span>:</span>
-              </p>
-              <p>{employee?.data?.status}</p>
-            </div>
+            <h1 className="text-2xl font-bold text-gray-800">
+              {emp?.firstName} {emp?.lastName}
+            </h1>
+            <p className="text-sm text-gray-500">
+              {emp?.position} • {emp?.department}
+            </p>
           </div>
         </div>
-        <h1></h1>
-        <button>Download Employees List</button>
-        <input
-          className="w-full border-1 rounded-sm p-2.5 border-neudival-300 focus:outline-none focus:border-neudival-500"
-          name="Search Employee"
-          placeholder="Username"
-        />
+        <button className=" bg-neutral-800 px-6 py-2.5 text-white rounded-sm hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96">
+          Edit Profile
+        </button>
       </div>
 
-      <div>
-        <h1>Basic Information</h1>
-        <ul></ul>
+      {/* Info Sections */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-104 overflow-y-auto">
+        {/* Basic Info */}
+        <Section title="Basic Information">
+          <InfoRow label="Employee ID" value={emp?.employeeId} />
+          <InfoRow label="Username" value={emp?.username} />
+          <InfoRow label="Role" value={emp?.role} />
+          <InfoRow
+            label="Date Hired"
+            value={new Date(emp?.dateHired).toLocaleDateString()}
+          />
+          <InfoRow
+            label="Status"
+            value={<StatusBadge status={emp?.status} />}
+          />
+        </Section>
+
+        {/* Contact Info + Emergency */}
+        <Section title="Contact Information">
+          <InfoRow label="Email" value={emp?.email} />
+          <InfoRow label="Mobile Number" value={emp?.phone} />
+
+          <InfoRow label="Emergency Name" value={emp?.emergencyContact?.name} />
+          <InfoRow
+            label="Emergency Phone"
+            value={emp?.emergencyContact?.phone}
+          />
+          <InfoRow
+            label="Emergency Relation"
+            value={emp?.emergencyContact?.relation}
+          />
+        </Section>
+
+        {/* Leave Balances */}
+        <Section title="Leave Balances">
+          <InfoRow
+            label="Vacation Leave (hrs)"
+            value={emp?.balances?.vlHours}
+          />
+          <InfoRow label="Sick Leave (hrs)" value={emp?.balances?.slHours} />
+          <InfoRow label="CTO (hrs)" value={emp?.balances?.ctoHours} />
+        </Section>
+
+        {/* Address */}
+        <Section title="Address">
+          <InfoRow label="Street" value={emp?.address?.street} />
+          <InfoRow label="City" value={emp?.address?.city} />
+          <InfoRow label="Province" value={emp?.address?.province} />
+        </Section>
       </div>
-    </>
+    </div>
+  );
+};
+
+/* Components */
+const Section = ({ title, children }) => (
+  <div className="bg-neutral-50/80 rounded-xl p-5 shadow-sm border border-gray-100">
+    <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-2">
+      {title}
+    </h2>
+    <hr className="my-2 border-gray-200" />
+    <div className="space-y-2.5">{children}</div>
+  </div>
+);
+
+const InfoRow = ({ label, value }) => (
+  <div className="flex justify-between text-sm">
+    <span className="text-gray-500">{label}</span>
+    <span className="font-medium text-gray-800 truncate max-w-[55%] text-right">
+      {value || "-"}
+    </span>
+  </div>
+);
+
+const StatusBadge = ({ status }) => {
+  const colors = {
+    Active: "bg-green-100 text-green-700",
+    Inactive: "bg-gray-100 text-gray-600",
+    Resigned: "bg-yellow-100 text-yellow-700",
+    Terminated: "bg-red-100 text-red-700",
+  };
+  return (
+    <span
+      className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+        colors[status] || "bg-gray-100 text-gray-600"
+      }`}
+    >
+      {status}
+    </span>
   );
 };
 

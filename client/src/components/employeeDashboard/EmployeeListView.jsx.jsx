@@ -27,12 +27,12 @@ const EmployeeListView = ({ setSelectedId, maxHeightClass }) => {
       <div className="px-2">
         <h1 className="text-xl mb-2 font-semibold">Employees List</h1>
         <div className="text-sm w-full flex gap-2">
-          <button className="w-full rounded-sm mb-3 p-2.5 bg-neutral-800 text-neutral-100">
+          <button className="w-full rounded-sm mb-3 p-2.5 bg-neutral-800 text-neutral-100 hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96">
             Download Employees List
           </button>
           <button
             onClick={() => setIsOpen(true)}
-            className="w-48 rounded-sm mb-3 p-2.5 bg-neutral-800 text-neutral-100"
+            className="w-48 rounded-sm mb-3 p-2.5 bg-neutral-800 text-neutral-100 hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96"
           >
             Add Employee
           </button>

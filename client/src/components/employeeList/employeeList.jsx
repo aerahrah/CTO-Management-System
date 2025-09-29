@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
 import { useEffect, useState, useMemo } from "react";
+import { Search } from "lucide-react";
 
 const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
   const {
@@ -15,33 +16,20 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
 
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState("asc");
-  const [departmentFilter, setDepartmentFilter] = useState("all");
 
-  // ✅ Set default only if no selectedId
   useEffect(() => {
     if (employees?.data?.length > 0 && !selectedId) {
       setSelectedId(employees.data[0]._id);
     }
   }, [employees, selectedId, setSelectedId]);
 
-  // Get unique departments
-  const departments = useMemo(() => {
-    if (!employees?.data) return [];
-    const unique = new Set(employees.data.map((emp) => emp.department));
-    return ["all", ...unique];
-  }, [employees]);
-
-  // Filter + sort
   const filteredEmployees = useMemo(() => {
     if (!employees?.data) return [];
 
     return employees.data
       .filter((emp) => {
         const fullName = `${emp.firstName} ${emp.lastName}`.toLowerCase();
-        const matchesSearch = fullName.includes(search.toLowerCase());
-        const matchesDept =
-          departmentFilter === "all" || emp.department === departmentFilter;
-        return matchesSearch && matchesDept;
+        return fullName.includes(search.toLowerCase());
       })
       .sort((a, b) => {
         const nameA = `${a.firstName} ${a.lastName}`.toLowerCase();
@@ -50,37 +38,34 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
           ? nameA.localeCompare(nameB)
           : nameB.localeCompare(nameA);
       });
-  }, [employees, search, sortOrder, departmentFilter]);
+  }, [employees, search, sortOrder]);
 
   if (isLoading) return <div>Loading employees...</div>;
   if (isError) return <div>Failed to load employees.</div>;
 
   return (
-    <div>
+    <div className="flex flex-col ">
       {/* Controls */}
       <div className="flex items-center gap-2 mb-4 px-2">
-        <input
-          type="text"
-          placeholder="Search employee..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="border p-2 rounded-md w-full"
-        />
-        {/* <select
-          value={departmentFilter}
-          onChange={(e) => setDepartmentFilter(e.target.value)}
-          className="border p-2 rounded-md w-32"
-        >
-          {departments.map((dept) => (
-            <option key={dept} value={dept}>
-              {dept === "all" ? "All Departments" : dept}
-            </option>
-          ))}
-        </select> */}
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search employee..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 pr-3 py-2 w-full border border-gray-300 rounded-lg 
+                       bg-gray-50 focus:bg-white focus:ring-1 focus:ring-neutral-400 
+                       focus:border-neutral-400 outline-none text-sm"
+          />
+        </div>
+
         <select
           value={sortOrder}
           onChange={(e) => setSortOrder(e.target.value)}
-          className="border p-2 rounded-md"
+          className="border border-gray-300 rounded-lg px-2 py-2 text-sm 
+                     bg-gray-50 focus:bg-white focus:ring-1 focus:ring-neutral-400 
+                       focus:border-neutral-400 outline-none text-sm"
         >
           <option value="asc">A–Z</option>
           <option value="desc">Z–A</option>
@@ -89,22 +74,44 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
 
       {/* Employee List */}
       <ul
-        className={`flex flex-col gap-2 overflow-y-auto p-2 ${maxHeightClass}`}
+        className={`flex flex-col py-1 gap-2 overflow-y-auto px-2 ${maxHeightClass}`}
       >
-        {filteredEmployees.map((item) => (
-          <li
-            className={`bg-white shadow-md p-3.5 rounded-sm cursor-pointer hover:bg-gray-100 ${
-              selectedId === item._id ? "border border-blue-400" : ""
-            }`}
-            onClick={() => setSelectedId(item._id)}
-            key={item._id}
-          >
-            {item.firstName} {item.lastName}{" "}
-            <span className="text-sm text-gray-500">({item.department})</span>
-          </li>
-        ))}
+        {filteredEmployees.map((item) => {
+          const initials = `${item.firstName[0]}${item.lastName[0]}`;
+          return (
+            <li
+              key={item._id}
+              onClick={() => setSelectedId(item._id)}
+              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer
+                         transition-colors shadow-sm hover:bg-neutral-50
+                         ${
+                           selectedId === item._id
+                             ? "bg-blue-50 border-neutral-400"
+                             : "bg-white border-neutral-200/80"
+                         }`}
+            >
+              <div
+                className="h-9 w-9 flex items-center justify-center rounded-full 
+                              bg-neutral-200/80 text-neutral-700 font-semibold text-sm"
+              >
+                {initials}
+              </div>
+              <div className="flex flex-col">
+                <span className="font-medium text-neutral-800 text-sm">
+                  {item.firstName} {item.lastName}
+                </span>
+                <span className="text-xs text-neutral-500">
+                  {item.department}
+                </span>
+              </div>
+            </li>
+          );
+        })}
+
         {filteredEmployees.length === 0 && (
-          <li className="text-gray-500 italic">No employees found</li>
+          <li className="text-gray-500 italic text-center py-4 text-sm">
+            No employees found
+          </li>
         )}
       </ul>
     </div>
