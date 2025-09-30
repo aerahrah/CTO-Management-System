@@ -42,17 +42,18 @@ const CtoEmployeeInformation = ({ selectedId }) => {
   const employee = employeeData?.employee;
   const credits = creditData?.creditRequests || [];
 
-  // ✅ Calculate totals
-  const totalEarned = credits.reduce((sum, c) => {
-    const dur = c.duration;
-    if (!dur) return sum;
-    const hours = typeof dur.hours === "number" ? dur.hours : 0;
-    const minutes = typeof dur.minutes === "number" ? dur.minutes : 0;
-    const total = hours + minutes / 60;
-    return sum + total;
-  }, 0);
+  const totalEarned = credits
+    .filter((c) => c.status === "CREDITED")
+    .reduce((sum, c) => {
+      const dur = c.duration;
+      if (!dur) return sum;
+      const hours = typeof dur.hours === "number" ? dur.hours : 0;
+      const minutes = typeof dur.minutes === "number" ? dur.minutes : 0;
+      const total = hours + minutes / 60;
+      return sum + total;
+    }, 0);
 
-  const totalUsed = 0; // placeholder until Application CTO data is available
+  const totalUsed = 0;
   const balance = totalEarned - totalUsed;
 
   return (

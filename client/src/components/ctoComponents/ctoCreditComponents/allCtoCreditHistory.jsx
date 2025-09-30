@@ -157,7 +157,7 @@ const AllCtoCreditHistory = () => {
                     <button
                       onClick={() => handleRollback(credit._id)}
                       disabled={credit.status !== "CREDITED" || isProcessing}
-                      className={`px-3 py-1 text-sm rounded transition ${
+                      className={`px-3 py-1 text-sm rounded transition cursor-pointer ${
                         credit.status === "CREDITED"
                           ? "bg-neutral-700 text-white hover:bg-neutral-900"
                           : "bg-gray-300 text-gray-500 cursor-not-allowed"
@@ -183,27 +183,18 @@ const AllCtoCreditHistory = () => {
         isOpen={isConfirmRollback}
         onClose={() => setIsConfirmRollback(false)}
         title="Confirm Rollback"
+        action={{
+          label: "Confirm Rollback",
+          onClick: confirmRollback,
+          show: true,
+          variant: "delete",
+        }}
       >
         <div className="w-100">
           <p className="text-l py-2">
             Are you sure you want to rollback this credited CTO? This will
             remove the credits from the employee balances.
           </p>
-
-          <div className="flex gap-4">
-            <button
-              onClick={() => setIsConfirmRollback(false)}
-              className="px-4 py-2 mt-4 w-full bg-gray-200 rounded hover:bg-gray-300"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmRollback}
-              className="px-4 py-2 mt-4 w-full bg-red-600 text-red-50 rounded hover:bg-red-700"
-            >
-              Confirm Rollback
-            </button>
-          </div>
         </div>
       </Modal>
     </div>

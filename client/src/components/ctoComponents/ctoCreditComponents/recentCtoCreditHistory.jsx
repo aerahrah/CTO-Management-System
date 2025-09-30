@@ -88,7 +88,7 @@ const CtoCreditHistory = () => {
                   Status
                 </th>
                 <th className="p-3 text-center border-b border-gray-200">
-                  Actions
+                  Action
                 </th>
               </tr>
             </thead>
@@ -127,9 +127,9 @@ const CtoCreditHistory = () => {
                       <button
                         onClick={() => handleRollback(credit._id)}
                         disabled={credit.status !== "CREDITED"}
-                        className={`px-3 py-1 text-sm rounded transition ${
+                        className={`px-3 py-1 text-sm rounded transition cursor-pointer ${
                           credit.status === "CREDITED"
-                            ? "bg-neutral-700 text-white hover:bg-neutral-900"
+                            ? "bg-neutral-700 text-white hover:bg-neutral-800"
                             : "bg-gray-300 text-gray-500 cursor-not-allowed"
                         }`}
                       >
@@ -163,6 +163,13 @@ const CtoCreditHistory = () => {
       <Modal
         isOpen={isConfirmRollback}
         onClose={() => setIsConfirmRollback(false)}
+        action={{
+          label: "Confirm Rollback",
+          onClick: confirmRollback,
+          show: true,
+          variant: "delete",
+        }}
+        closeLabel="Cancel"
         title="Confirm Rollback"
       >
         <div className="w-100">
@@ -170,21 +177,6 @@ const CtoCreditHistory = () => {
             Are you sure you want to rollback this credited CTO? This will
             remove the credits from the employee balances.
           </p>
-
-          <div className="flex gap-4">
-            <button
-              onClick={() => setIsConfirmRollback(false)}
-              className="px-4 py-2 mt-4 w-full bg-gray-200 rounded hover:bg-gray-300"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={confirmRollback}
-              className="px-4 py-2 mt-4 w-full bg-red-600 text-red-50 rounded hover:bg-red-700"
-            >
-              Confirm Rollback
-            </button>
-          </div>
         </div>
       </Modal>
 
@@ -195,12 +187,6 @@ const CtoCreditHistory = () => {
         title="View All Credit Request History"
       >
         <AllCtoCreditHistory />
-        <button
-          onClick={() => setIsOpen(false)}
-          className="px-4 py-2 mt-4 w-36 bg-gray-200 rounded hover:bg-gray-300"
-        >
-          Close
-        </button>
       </Modal>
     </>
   );

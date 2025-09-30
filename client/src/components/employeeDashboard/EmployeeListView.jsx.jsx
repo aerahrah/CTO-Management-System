@@ -45,6 +45,15 @@ const EmployeeListView = ({ setSelectedId, maxHeightClass }) => {
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
         title="Add Employee"
+        action={{
+          label: isSaving ? "Saving..." : "Save",
+          onClick: () => {
+            const form = document.getElementById("employeeForm");
+            if (form) form.requestSubmit();
+          },
+          show: true,
+          variant: "save",
+        }}
       >
         <AddEmployeeForm
           onCancel={() => setIsOpen(false)}

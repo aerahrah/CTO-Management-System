@@ -62,6 +62,7 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
 
   return (
     <form
+      id="employeeForm"
       onSubmit={handleSubmit(onSubmit)}
       className="grid p-6 grid-cols-1 lg:grid-cols-2 gap-8 h-120 overflow-y-auto"
     >
@@ -203,26 +204,6 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
       </div>
 
       {/* Actions */}
-      <div className="lg:col-span-2 flex justify-end gap-3 mt-6">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          disabled={isSaving}
-          className={`px-4 py-2 rounded text-white ${
-            isSaving
-              ? "bg-blue-400 cursor-not-allowed"
-              : "bg-blue-600 hover:bg-blue-700"
-          }`}
-        >
-          {isSaving ? "Saving..." : "Save"}
-        </button>
-      </div>
     </form>
   );
 };
