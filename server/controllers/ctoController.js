@@ -1,5 +1,6 @@
 // controllers/ctoCredit.controller.js
 const ctoCreditService = require("../services/ctoCredit.service");
+const { applyCtoService } = require("../services/ctoCredit.service");
 
 const addCreditRequest = async (req, res) => {
   try {
@@ -91,6 +92,33 @@ const getEmployeeCredits = async (req, res) => {
   }
 };
 
+const applyCto = async (req, res) => {
+  try {
+    const { requestedHours, reason, approvers } = req.body;
+
+    // ✅ Use the logged-in user's ID
+    const employeeId = req.user.id;
+
+    const application = await applyCtoService({
+      employeeId,
+      requestedHours,
+      reason,
+      approvers,
+    });
+
+    res.status(201).json({
+      message: "CTO application submitted successfully",
+      application,
+    });
+  } catch (error) {
+    console.error("Error applying CTO:", error);
+    const status = error.status || 500;
+    res
+      .status(status)
+      .json({ error: error.message || "Server error while applying CTO" });
+  }
+};
+
 // const addCreditRequestWithApprover = async (req, res) => {
 //   try {
 //     const { employees, hours, memoNo, approver } = req.body;
@@ -159,4 +187,5 @@ module.exports = {
   getAllCreditRequests,
   getEmployeeDetails,
   getEmployeeCredits,
+  applyCto,
 };
