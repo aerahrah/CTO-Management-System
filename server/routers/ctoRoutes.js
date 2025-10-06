@@ -14,6 +14,7 @@ const {
 
 const {
   addCtoApplicationRequest,
+  getMyCtoApplicationsRequest,
 } = require("../controllers/ctoApplicationController.js");
 
 const {
@@ -77,11 +78,19 @@ router.get(
 );
 
 router.post(
-  "/credits/apply",
+  "/applications/apply",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
   addCtoApplicationRequest
 );
+
+router.get(
+  "/applications/my-application",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  getMyCtoApplicationsRequest
+);
+
 // router.get(
 //   "/employees/:id",
 //   authenticateToken,

@@ -15,6 +15,11 @@ const approvalStepSchema = new mongoose.Schema(
     },
     reviewedAt: { type: Date },
     remarks: { type: String, trim: true },
+    ctoApplication: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CtoApplication",
+      required: true,
+    },
   },
   { timestamps: true }
 );
