@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const {
-  addCreditRequest,
+  addCtoCreditRequest,
   rollbackCreditedRequest,
   getRecentCreditRequests,
   getAllCreditRequests,
@@ -10,7 +10,11 @@ const {
   // approveOrRejectCredit,
   // cancelCreditRequest,
   // getEmployeeById,
-} = require("../controllers/ctoController.js");
+} = require("../controllers/ctoCreditController.js");
+
+const {
+  addCtoApplicationRequest,
+} = require("../controllers/ctoApplicationController.js");
 
 const {
   authenticateToken,
@@ -21,7 +25,7 @@ router.post(
   "/credits",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  addCreditRequest
+  addCtoCreditRequest
 );
 
 // router.patch(
@@ -70,6 +74,13 @@ router.get(
   authenticateToken,
   authorizeRoles("admin", "hr"),
   getEmployeeDetails
+);
+
+router.post(
+  "/credits/apply",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  addCtoApplicationRequest
 );
 // router.get(
 //   "/employees/:id",

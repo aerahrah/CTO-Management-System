@@ -1,12 +1,11 @@
 const mongoose = require("mongoose");
-const approvalStepSchema = require("./approvalStepModel");
 
 const ctoApplicationSchema = new mongoose.Schema(
   {
     employee: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Employee",
-      required: true, // Who applied
+      required: true,
     },
     requestedHours: {
       type: Number,
@@ -14,23 +13,26 @@ const ctoApplicationSchema = new mongoose.Schema(
     },
     reason: {
       type: String,
+      required: true,
       trim: true,
     },
-    // File upload info
-    attachment: {
-      fileName: { type: String },
-      fileUrl: { type: String },
-      fileType: { type: String },
-      uploadedAt: { type: Date, default: Date.now },
-    },
+    approvals: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ApprovalStep", // ✅ properly reference the model name
+        required: true,
+      },
+    ],
     overallStatus: {
       type: String,
       enum: ["PENDING", "APPROVED", "DENIED"],
       default: "PENDING",
     },
-    approvals: {
-      type: [approvalStepSchema],
-      required: true,
+    attachment: {
+      fileName: { type: String },
+      fileUrl: { type: String },
+      fileType: { type: String },
+      uploadedAt: { type: Date, default: Date.now },
     },
   },
   { timestamps: true }

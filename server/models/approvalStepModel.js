@@ -16,7 +16,7 @@ const approvalStepSchema = new mongoose.Schema(
     reviewedAt: { type: Date },
     remarks: { type: String, trim: true },
   },
-  { _id: false }
+  { timestamps: true }
 );
 
-module.exports = approvalStepSchema;
+module.exports = mongoose.model("ApprovalStep", approvalStepSchema);

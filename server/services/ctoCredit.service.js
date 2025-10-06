@@ -1,8 +1,6 @@
 // services/ctoCredit.service.js
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
-const CtoApplication = require("../models/ctoApplicationModel");
-const ApprovalStep = require("../models/approvalStepModel");
 const mongoose = require("mongoose");
 
 async function addCredit({
@@ -106,55 +104,6 @@ async function getEmployeeCredits(employeeId) {
     .lean();
 }
 
-const applyCtoService = async ({
-  employeeId,
-  requestedHours,
-  reason,
-  approvers,
-}) => {
-  // 1️⃣ Validate input
-  if (!requestedHours || !approvers || approvers.length === 0) {
-    const err = new Error(
-      "Requested hours and at least one approver are required"
-    );
-    err.status = 400;
-    throw err;
-  }
-
-  // 2️⃣ Verify employee exists
-  const employee = await Employee.findById(employeeId);
-  if (!employee) {
-    const err = new Error("Employee not found");
-    err.status = 404;
-    throw err;
-  }
-
-  // 3️⃣ Create approval steps
-  const approvalStepDocs = await Promise.all(
-    approvers.map(async (approverId, index) => {
-      return await ApprovalStep.create({
-        level: index + 1,
-        approver: approverId,
-        status: "PENDING",
-      });
-    })
-  );
-
-  // 4️⃣ Create CTO application
-  const newCtoApplication = new CtoApplication({
-    employee: employeeId,
-    requestedHours,
-    reason,
-    approvals: approvalStepDocs.map((step) => step._id),
-    overallStatus: "PENDING",
-    // attachment: { ... } // For future file upload
-  });
-
-  await newCtoApplication.save();
-
-  return newCtoApplication;
-};
-
 // async function createCreditRequest({
 //   employees,
 //   hours,
@@ -236,5 +185,4 @@ module.exports = {
   getAllCredits,
   getEmployeeDetails,
   getEmployeeCredits,
-  applyCtoService,
 };
