@@ -5,18 +5,21 @@ const employeeSchema = new mongoose.Schema(
   {
     employeeId: { type: String, unique: true },
 
-    // login fields
     username: { type: String, required: true, unique: true },
     password: { type: String, required: true },
 
-    // role-based access
     role: {
       type: String,
       enum: ["employee", "supervisor", "hr", "admin"],
       default: "employee",
     },
 
-    // personal & job details
+    provincialOffice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ProvincialOffice",
+      required: true,
+    },
+
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
     email: { type: String, lowercase: true },
@@ -30,14 +33,12 @@ const employeeSchema = new mongoose.Schema(
       default: "Active",
     },
 
-    // leave balances
     balances: {
       vlHours: { type: Number, default: 0 },
       slHours: { type: Number, default: 0 },
       ctoHours: { type: Number, default: 0 },
     },
 
-    // address & emergency contact
     address: {
       street: { type: String, trim: true },
       city: { type: String, trim: true },
