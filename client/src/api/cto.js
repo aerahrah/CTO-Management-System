@@ -54,3 +54,31 @@ export const fetchEmployeeDetails = async (employeeId) => {
   const res = await API.get(`/cto/employee/${employeeId}/details`);
   return res.data;
 };
+
+export const fetchProvincialOffices = async () => {
+  console.log();
+  const res = await API.get("/settings/provincial-office");
+
+  return res.data;
+};
+
+export const fetchApproverSettings = async (provincialOfficeId) => {
+  console.log(provincialOfficeId);
+  const res = await API.get(`/cto/settings/${provincialOfficeId}`);
+  console.log(res.data);
+  return res.data;
+};
+
+export const upsertApproverSetting = async (payload) => {
+  console.log(payload);
+  const res = await API.post("/cto/settings", payload);
+
+  return res.data;
+};
+
+export const addApplicationRequest = async (formData) => {
+  console.log(formData);
+  const res = await API.post("/cto/applications/apply", formData);
+
+  return res.data;
+};

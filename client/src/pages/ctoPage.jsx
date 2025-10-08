@@ -1,5 +1,6 @@
 import { useState } from "react";
 import CtoCredits from "../components/ctoComponents/ctoCredits";
+import CtoApplication from "../components/ctoComponents/ctoApplication";
 import { CardFull, CardMd } from "../components/cardComponent";
 import CtoEmployeeListView from "../components/ctoComponents/ctoCreditHistory/ctoEmployeeListView";
 import CtoEmployeeInformation from "../components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
@@ -38,7 +39,7 @@ const CtoPage = () => {
         <div className=" rounded-lg">
           {activeTab === "dashboard" && <p>📊 Dashboard content here</p>}
           {activeTab === "credit" && <CtoCredits />}
-          {activeTab === "apply" && <p>📝 Apply CTO Leave form here</p>}
+          {activeTab === "apply" && <CtoApplication />}
           {activeTab === "approvals" && <p>✅ Pending Approvals list here</p>}
           {activeTab === "records" && (
             <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
