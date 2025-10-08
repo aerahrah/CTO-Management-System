@@ -10,12 +10,16 @@ exports.getApproversByProvincialOffice = async (req, res) => {
       );
 
     if (!approverSetting) {
-      return res.status(404).json({
+      return res.json({
+        show: false,
         message: "No approver setting found for this provincial office.",
       });
     }
 
-    res.json(approverSetting);
+    res.json({
+      show: true,
+      data: approverSetting,
+    });
   } catch (error) {
     console.error("Error fetching approver settings:", error);
     res.status(500).json({ message: "Server error" });

@@ -7,6 +7,8 @@ import EmployeesPage from "./pages/employeePage";
 import AdminPage from "./pages/adminPage";
 import SettingsPage from "./pages/settingsPage";
 import CtoPage from "./pages/ctoPage";
+import CtoSettings from "./components/generalSettingsComponents/ctoSettings";
+// import OfficeLocationSettings from "./generalSettingsComponents/officeLocationSettings"; // 👈 new import
 
 function App() {
   return (
@@ -18,8 +20,9 @@ function App() {
         <Route path="admin" element={<AdminPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="cto" element={<CtoPage />} />
+        <Route path="cto-settings" element={<CtoSettings />} />
+        {/* <Route path="office-locations" element={<OfficeLocationSettings />} /> */}
       </Route>
-
       <Route path="*" element={<div>404 - Page Not Found</div>} />
     </Routes>
   );
