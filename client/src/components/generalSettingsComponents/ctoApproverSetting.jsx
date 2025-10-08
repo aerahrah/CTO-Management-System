@@ -72,9 +72,28 @@ const ApproverSettings = ({ selectedOffice }) => {
 
   if (!selectedOffice) {
     return (
-      <p className="text-gray-500 italic">
-        Please select a provincial office to configure approvers.
-      </p>
+      <div className="flex flex-col items-center justify-center h-[80%] bg-gray-50 border border-dashed border-gray-300 rounded-lg p-6 text-center">
+        <svg
+          className="w-12 h-12 text-gray-400 mb-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          viewBox="0 0 28 28"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 8v4l3 3m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        <p className="text-gray-600 text-lg font-medium mb-2">
+          No provincial office selected
+        </p>
+        <p className="text-gray-400 text-md italic">
+          Please select a provincial office from the list to configure
+          approvers.
+        </p>
+      </div>
     );
   }
 
@@ -101,10 +120,10 @@ const ApproverSettings = ({ selectedOffice }) => {
   }));
 
   return (
-    <div className="bg-white o">
+    <div className="bg-white p-2">
       <div className="mb-6 border-b pb-3 flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-800">
+          <h2 className="text-2xl font-bold text-gray-800">
             Approver Settings
           </h2>
           <p className="text-gray-600 mt-1">
@@ -116,7 +135,7 @@ const ApproverSettings = ({ selectedOffice }) => {
         </div>
         <button
           onClick={() => setIsEditing((prev) => !prev)}
-          className="flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded-lg"
+          className=" bg-neutral-800 flex items-center gap-2 px-6 py-2.5 text-white rounded-sm hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96"
         >
           <Edit2 size={16} /> {isEditing ? "Cancel" : "Edit"}
         </button>
@@ -178,7 +197,7 @@ const ApproverSettings = ({ selectedOffice }) => {
           <button
             onClick={handleSave}
             disabled={mutation.isPending}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg transition font-medium"
+            className=" bg-neutral-800 px-6 py-2.5 text-white rounded-sm hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96 w-full"
           >
             {mutation.isPending ? "Saving..." : "Save Approvers"}
           </button>
