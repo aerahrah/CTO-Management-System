@@ -82,3 +82,9 @@ export const addApplicationRequest = async (formData) => {
 
   return res.data;
 };
+
+export const fetchMyCtoApplications = async () => {
+  const { data } = await API.get(`cto/applications/my-application`);
+  console.log(data);
+  return data;
+};

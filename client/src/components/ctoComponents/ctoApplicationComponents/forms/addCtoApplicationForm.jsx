@@ -44,14 +44,14 @@ const AddCtoApplicationForm = () => {
     mutationFn: addApplicationRequest,
     onSuccess: () => {
       alert("CTO application submitted successfully!");
-      setFormData({
+      setFormData((prev) => ({
         requestedHours: "",
         requestedMinutes: "",
         reason: "",
-        approver1: "",
-        approver2: "",
-        approver3: "",
-      });
+        approver1: prev.approver1,
+        approver2: prev.approver2,
+        approver3: prev.approver3,
+      }));
       queryClient.invalidateQueries(["myCtoApplications"]);
     },
     onError: (err) => {
@@ -166,7 +166,7 @@ const AddCtoApplicationForm = () => {
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition"
+          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition "
         >
           {mutation.isPending ? "Submitting..." : "Submit CTO Application"}
         </button>

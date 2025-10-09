@@ -6,9 +6,9 @@ const addCtoApplicationService = async ({
   userId,
   requestedHours,
   reason,
-  level1Approver,
-  level2Approver,
-  level3Approver,
+  approver1,
+  approver2,
+  approver3,
 }) => {
   if (!requestedHours) {
     const err = new Error("Requested hours are required.");
@@ -16,13 +16,13 @@ const addCtoApplicationService = async ({
     throw err;
   }
 
-  if (!level1Approver || !level2Approver || !level3Approver) {
+  if (!approver1 || !approver2 || !approver3) {
     const err = new Error("All 3 approvers (Level 1, 2, and 3) are required.");
     err.status = 400;
     throw err;
   }
 
-  const approvers = [level1Approver, level2Approver, level3Approver];
+  const approvers = [approver1, approver2, approver3];
 
   for (const approverId of approvers) {
     const approver = await Employee.findById(approverId);
@@ -74,6 +74,7 @@ const getMyCtoApplicationsService = async (userId) => {
   }
 
   const applications = await CtoApplication.find({ employee: userId })
+    .select("requestedHours reason overallStatus approvals employee createdAt")
     .populate({
       path: "approvals",
       populate: { path: "approver", select: "firstName lastName position" },

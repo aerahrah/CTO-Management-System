@@ -5,22 +5,17 @@ const {
 
 const addCtoApplicationRequest = async (req, res) => {
   try {
-    const {
-      requestedHours,
-      reason,
-      level1Approver,
-      level2Approver,
-      level3Approver,
-    } = req.body;
+    const { requestedHours, reason, approver1, approver2, approver3 } =
+      req.body;
     const userId = req.user.id;
 
     const application = await addCtoApplicationService({
       userId,
       requestedHours,
       reason,
-      level1Approver,
-      level2Approver,
-      level3Approver,
+      approver1,
+      approver2,
+      approver3,
     });
 
     res.status(201).json({
