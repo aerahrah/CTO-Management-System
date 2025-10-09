@@ -36,7 +36,7 @@ const ProvincialOfficesList = ({
         Provincial Offices
       </h2>
 
-      <ul className={`flex flex-col gap-3 max-h-128 overflow-y-auto`}>
+      <ul className={`flex flex-col gap-3 h-120 overflow-y-auto`}>
         {offices.length > 0 ? (
           offices.map((office) => (
             <li

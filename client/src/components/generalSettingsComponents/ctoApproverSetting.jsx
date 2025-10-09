@@ -133,6 +133,7 @@ const ApproverSettings = ({ selectedOffice }) => {
             </span>
           </p>
         </div>
+
         <button
           onClick={() => setIsEditing((prev) => !prev)}
           className=" bg-neutral-800 flex items-center gap-2 px-6 py-2.5 text-white rounded-sm hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96"
@@ -148,6 +149,14 @@ const ApproverSettings = ({ selectedOffice }) => {
         </p>
       )}
       <div className="space-y-5">
+        <p className="text-gray-500 text-sm mt-2 italic">
+          This section allows you to set or update the approvers for CTO
+          (Compensatory Time Off) applications in this provincial office. Each
+          level corresponds to the sequence of approval — Level 1 is the initial
+          approver, followed by Level 2 and Level 3. <br />
+          Click the <strong>Edit</strong> button to modify the approvers, then
+          click <strong>Save Approvers</strong> once done.
+        </p>
         {[1, 2, 3].map((level) => {
           const selectedValue =
             employeeOptions.find(
@@ -170,6 +179,7 @@ const ApproverSettings = ({ selectedOffice }) => {
                       [`level${level}Approver`]: selected ? selected.value : "",
                     }))
                   }
+                  menuPlacement="auto"
                   isClearable
                   placeholder="Select approver..."
                   classNames={{

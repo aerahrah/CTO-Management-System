@@ -113,15 +113,19 @@ const CtoCreditHistory = () => {
                       {credit.memoNo}
                     </td>
                     <td
-                      className={`p-3 font-semibold text-center border-b border-gray-200 border-r ${
-                        credit.status === "CREDITED"
-                          ? "text-green-600"
-                          : credit.status === "ROLLEDBACK"
-                          ? "text-red-600"
-                          : "text-gray-500"
-                      }`}
+                      className={`p-3 font-semibold text-center border-b border-gray-200 border-r `}
                     >
-                      {credit.status}
+                      <p
+                        className={` ${
+                          credit.status === "CREDITED"
+                            ? "rounded-full  text-green-600"
+                            : credit.status === "ROLLEDBACK"
+                            ? "rounded-full text-red-600"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {credit.status}
+                      </p>
                     </td>
                     <td className="p-3 text-center border-b border-gray-200">
                       <button

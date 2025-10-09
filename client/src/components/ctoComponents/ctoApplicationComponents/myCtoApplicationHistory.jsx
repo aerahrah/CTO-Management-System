@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchMyCtoApplications } from "../../../api/cto";
 import Modal from "../../modal";
+import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 
 const MyCtoApplications = () => {
   const { data, isLoading, isError, error } = useQuery({
@@ -54,7 +55,7 @@ const MyCtoApplications = () => {
   };
 
   return (
-    <div className="">
+    <div>
       <h2 className="text-xl font-bold mb-6 flex items-center gap-2 border-b pb-2">
         📋 My CTO Applications
       </h2>
@@ -103,7 +104,11 @@ const MyCtoApplications = () => {
                     </span>
                   </td>
                   <td className="p-3 border-b border-r border-gray-200 text-sm text-gray-500">
-                    {new Date(app.createdAt).toLocaleString()}
+                    {new Date(app.createdAt).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
                   </td>
                   <td className="p-3 text-center border-b border-gray-200">
                     <button
@@ -120,38 +125,13 @@ const MyCtoApplications = () => {
         </div>
       </div>
 
-      {/* Modal */}
       {selectedApp && (
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           title="CTO Application Details"
         >
-          <div className="space-y-3">
-            <p>
-              <span className="font-semibold">Reason:</span>{" "}
-              {selectedApp.reason || "N/A"}
-            </p>
-            <p>
-              <span className="font-semibold">Requested Hours:</span>{" "}
-              {selectedApp.requestedHours}
-            </p>
-            <p>
-              <span className="font-semibold">Status:</span>{" "}
-              {selectedApp.overallStatus}
-            </p>
-            <p className="font-semibold">Approvals:</p>
-            <ul className="list-disc pl-6 text-sm text-gray-700">
-              {selectedApp.approvals.map((a) => (
-                <li key={a._id}>
-                  {a.approver?.firstName} {a.approver?.lastName} — {a.status}
-                </li>
-              ))}
-            </ul>
-            <p className="text-sm text-gray-500">
-              Submitted: {new Date(selectedApp.createdAt).toLocaleString()}
-            </p>
-          </div>
+          <CtoApplicationDetails app={selectedApp} />
         </Modal>
       )}
     </div>
