@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchApproverSettings } from "../../../../api/cto";
-import { addApplicationRequest } from "../../../../api/cto";
+import {
+  fetchApproverSettings,
+  addApplicationRequest,
+} from "../../../../api/cto";
 import { useAuth } from "../../../../store/authStore";
 
 const AddCtoApplicationForm = () => {
@@ -26,7 +28,6 @@ const AddCtoApplicationForm = () => {
     enabled: !!admin?.provincialOffice,
   });
 
-  console.log(approverResponse);
   // ✅ Populate approvers automatically when data is fetched
   useEffect(() => {
     if (approverResponse?.data) {
@@ -79,9 +80,6 @@ const AddCtoApplicationForm = () => {
     console.log("Submitting CTO request:", payload);
     mutation.mutate(payload);
   };
-
-  if (isApproverLoading) return <div>Loading approvers...</div>;
-  if (isApproverError) return <div>Failed to load approvers.</div>;
 
   const approverNames = [
     approverResponse?.data?.level1Approver,
@@ -143,30 +141,37 @@ const AddCtoApplicationForm = () => {
             Approval Routing
           </h3>
 
-          {approverNames.map((approver, idx) => (
-            <div key={idx} className="flex flex-col">
-              <label className="text-xs font-semibold text-gray-600 mb-1">
-                Approver {idx + 1}
-              </label>
-              <input
-                type="text"
-                value={
-                  approver
-                    ? `${approver.firstName} ${approver.lastName} (${approver.position})`
-                    : "Not assigned"
-                }
-                readOnly
-                className="w-full px-4 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700 outline-0"
-              />
-            </div>
-          ))}
+          {/* Conditional Approver Loading/Error States */}
+          {isApproverLoading ? (
+            <div className="text-gray-500 italic">Loading approvers...</div>
+          ) : isApproverError ? (
+            <div className="text-red-500 italic">Failed to load approvers.</div>
+          ) : (
+            approverNames.map((approver, idx) => (
+              <div key={idx} className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-600 mb-1">
+                  Approver {idx + 1}
+                </label>
+                <input
+                  type="text"
+                  value={
+                    approver
+                      ? `${approver.firstName} ${approver.lastName} (${approver.position})`
+                      : "Not assigned"
+                  }
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-200 bg-gray-50 rounded-lg text-gray-700 outline-0"
+                />
+              </div>
+            ))
+          )}
         </div>
 
         {/* Submit */}
         <button
           type="submit"
           disabled={mutation.isPending}
-          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition "
+          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition"
         >
           {mutation.isPending ? "Submitting..." : "Submit CTO Application"}
         </button>
