@@ -4,6 +4,7 @@ import CtoApplication from "../components/ctoComponents/ctoApplication";
 import { CardFull, CardMd } from "../components/cardComponent";
 import CtoEmployeeListView from "../components/ctoComponents/ctoCreditHistory/ctoEmployeeListView";
 import CtoEmployeeInformation from "../components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
+import CtoApplicationApprovals from "../components/ctoComponents/ctoApplicationApprovals";
 const CtoPage = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedId, setSelectedId] = useState();
@@ -40,7 +41,7 @@ const CtoPage = () => {
           {activeTab === "dashboard" && <p>📊 Dashboard content here</p>}
           {activeTab === "credit" && <CtoCredits />}
           {activeTab === "apply" && <CtoApplication />}
-          {activeTab === "approvals" && <p>✅ Pending Approvals list here</p>}
+          {activeTab === "approvals" && <CtoApplicationApprovals />}
           {activeTab === "records" && (
             <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
               <CardMd>

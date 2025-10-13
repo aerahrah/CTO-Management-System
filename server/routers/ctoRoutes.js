@@ -95,7 +95,7 @@ router.get(
 );
 
 router.get(
-  "/applications/approver/my-approvals",
+  "/applications/approvers/my-approvals",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
   getCtoApplicationsForApprover

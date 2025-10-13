@@ -32,11 +32,11 @@ const ProvincialOfficesList = ({
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-xl font-semibold mb-3 text-gray-700 border-b pb-2">
+      <h2 className="text-xl font-semibold mb-3 px-2 text-gray-700 border-b pb-2">
         Provincial Offices
       </h2>
 
-      <ul className={`flex flex-col gap-3 h-120 overflow-y-auto`}>
+      <ul className={`flex flex-col p-2 gap-3 h-120 overflow-y-auto`}>
         {offices.length > 0 ? (
           offices.map((office) => (
             <li
