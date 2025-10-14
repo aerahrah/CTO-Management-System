@@ -75,7 +75,7 @@ const CtoApplicationDetails = ({ application }) => {
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
             <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
               <BadgeCheck className="h-4 w-4 text-gray-500" />
-              Application Status
+              Overall Application Status
             </div>
             <p
               className={`text-base font-semibold ${

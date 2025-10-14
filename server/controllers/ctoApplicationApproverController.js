@@ -1,5 +1,6 @@
 const {
   getCtoApplicationsForApproverService,
+  approveCtoApplicationService,
 } = require("../services/ctoApplicationApprover.service");
 
 const getCtoApplicationsForApprover = async (req, res, next) => {
@@ -13,6 +14,20 @@ const getCtoApplicationsForApprover = async (req, res, next) => {
   }
 };
 
+const approveCtoApplication = async (req, res, next) => {
+  try {
+    const approverId = req.user.id;
+    const { applicationId } = req.params;
+    const data = await approveCtoApplicationService({
+      approverId,
+      applicationId,
+    });
+    res.json({ success: true, data });
+  } catch (err) {
+    next(err);
+  }
+};
 module.exports = {
   getCtoApplicationsForApprover,
+  approveCtoApplication,
 };

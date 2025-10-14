@@ -71,10 +71,10 @@ const CtoApplicationDetails = ({ app }) => {
                 <div className="flex items-center gap-3">
                   <div
                     className={`h-8 w-8 flex items-center justify-center rounded-full border ${getStatusStyles(
-                      a.step
+                      a.status
                     )}`}
                   >
-                    <StatusIcon status={a.step} />
+                    <StatusIcon status={a.status} />
                   </div>
                   <div>
                     <p className="font-medium text-gray-900">

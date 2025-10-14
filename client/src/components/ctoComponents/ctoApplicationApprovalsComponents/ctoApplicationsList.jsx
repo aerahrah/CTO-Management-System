@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Search } from "lucide-react";
 import { StatusBadge } from "../../statusUtils";
-
+import { useAuth } from "../../../store/authStore";
 const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState("asc");
+  const { admin } = useAuth();
 
   useEffect(() => {
     if (applications?.length > 0 && !selectedId) {
@@ -117,7 +118,13 @@ const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
 
                 {/* Status Tag */}
 
-                <StatusBadge status={app.overallStatus} />
+                <StatusBadge
+                  status={
+                    app.approvals?.find(
+                      (step) => step.approver?._id === admin?.id
+                    )?.status || app.overallStatus
+                  }
+                />
               </li>
             );
           })
