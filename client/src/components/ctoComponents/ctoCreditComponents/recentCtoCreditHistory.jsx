@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchRecentCreditRequest, rollbackCreditCto } from "../../../api/cto";
 import { useState } from "react";
+import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import AllCtoCreditHistory from "./allCtoCreditHistory";
 
@@ -115,17 +116,7 @@ const CtoCreditHistory = () => {
                     <td
                       className={`p-3 font-semibold text-center border-b border-gray-200 border-r `}
                     >
-                      <p
-                        className={` ${
-                          credit.status === "CREDITED"
-                            ? "rounded-full  text-green-600"
-                            : credit.status === "ROLLEDBACK"
-                            ? "rounded-full text-red-600"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        {credit.status}
-                      </p>
+                      <StatusBadge status={credit.status} />
                     </td>
                     <td className="p-3 text-center border-b border-gray-200">
                       <button

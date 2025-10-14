@@ -1,14 +1,6 @@
 import React from "react";
-import {
-  Clock,
-  FileText,
-  User,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  BadgeCheck,
-  Calendar,
-} from "lucide-react";
+import { Clock, FileText, User, BadgeCheck, Calendar } from "lucide-react";
+import { getStatusStyles, StatusIcon, StatusBadge } from "../../statusUtils";
 
 const CtoApplicationDetails = ({ application }) => {
   if (!application) {
@@ -19,30 +11,10 @@ const CtoApplicationDetails = ({ application }) => {
     );
   }
 
-  const getStatusStyles = (status) => {
-    switch (status) {
-      case "APPROVED":
-        return "text-green-700 bg-green-50 border-green-200";
-      case "REJECTED":
-        return "text-red-700 bg-red-50 border-red-200";
-      default:
-        return "text-yellow-700 bg-yellow-50 border-yellow-200";
-    }
-  };
-
-  const StatusIcon = ({ status }) => {
-    if (status === "APPROVED")
-      return <CheckCircle className="h-4 w-4 text-green-600" />;
-    if (status === "REJECTED")
-      return <XCircle className="h-4 w-4 text-red-600" />;
-    return <AlertCircle className="h-4 w-4 text-yellow-600" />;
-  };
-
   const initials = `${application.employee?.firstName?.[0] || ""}${
     application.employee?.lastName?.[0] || ""
   }`;
 
-  // Format date (optional: you can localize)
   const formattedDate = application.createdAt
     ? new Date(application.createdAt).toLocaleString("en-US", {
         dateStyle: "medium",
@@ -74,7 +46,7 @@ const CtoApplicationDetails = ({ application }) => {
       </div>
 
       <div className="h-136 pr-2 overflow-y-auto">
-        <div className=" flex items-center gap-4 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-sm">
+        <div className="flex items-center gap-4 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 text-blue-700 font-semibold text-lg">
             {initials || "?"}
           </div>
@@ -88,8 +60,8 @@ const CtoApplicationDetails = ({ application }) => {
           </div>
         </div>
 
-        {/* Quick Summary Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 ">
+        {/* Quick Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
             <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
               <Clock className="h-4 w-4 text-gray-500" />
@@ -119,19 +91,19 @@ const CtoApplicationDetails = ({ application }) => {
         </div>
 
         {/* Reason */}
-        <div className="space-y-2 bg-gray-50 p-3 rounded-lg  mb-6">
+        <div className="space-y-2 bg-gray-50 p-3 rounded-lg mb-6">
           <div className="flex items-center gap-2 text-gray-700 font-medium">
             <FileText className="h-4 w-4 text-gray-500" />
             Reason
           </div>
-          <p className=" text-gray-700 text-sm leading-relaxed bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <p className="text-gray-700 text-sm leading-relaxed bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
             {application.reason || "No reason provided."}
           </p>
         </div>
 
         {/* Approval Steps */}
         <div className="space-y-3 bg-gray-50 rounded-lg p-3">
-          <h3 className="text-gray-700 font-medium mb-2">Approval Steps</h3>
+          <h3 className="text-gray-700 font-medium mb-2">Approval Progress</h3>
 
           <div className="flex flex-col gap-3">
             {application.approvals?.length > 0 ? (
@@ -140,7 +112,7 @@ const CtoApplicationDetails = ({ application }) => {
                   key={step._id || index}
                   className="border border-gray-200 bg-white rounded-lg p-3 flex justify-between items-center hover:shadow-sm transition"
                 >
-                  <div className="flex items-start gap-3">
+                  <div className="flex items-center gap-3">
                     <div
                       className={`h-8 w-8 flex items-center justify-center rounded-full border ${getStatusStyles(
                         step.status
@@ -159,13 +131,7 @@ const CtoApplicationDetails = ({ application }) => {
                     </div>
                   </div>
 
-                  <span
-                    className={`text-xs font-semibold px-2 py-1 rounded-md border ${getStatusStyles(
-                      step.status
-                    )}`}
-                  >
-                    {step.status}
-                  </span>
+                  <StatusBadge showIcon={false} status={step.status} />
                 </div>
               ))
             ) : (

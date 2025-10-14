@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { StatusBadge } from "../../statusUtils";
 import { fetchMyCtoApplications } from "../../../api/cto";
 import Modal from "../../modal";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
@@ -91,17 +92,7 @@ const MyCtoApplications = () => {
                     {app.requestedHours}
                   </td>
                   <td className="p-3 border-b border-r border-gray-200 text-center font-semibold">
-                    <span
-                      className={`px-3 py-1 rounded-full text-sm font-medium ${
-                        app.overallStatus === "APPROVED"
-                          ? "bg-green-100 text-green-700"
-                          : app.overallStatus === "DENIED"
-                          ? "bg-red-100 text-red-700"
-                          : "bg-yellow-100 text-yellow-700"
-                      }`}
-                    >
-                      {app.overallStatus}
-                    </span>
+                    <StatusBadge status={app.overallStatus} />
                   </td>
                   <td className="p-3 border-b border-r border-gray-200 text-sm text-gray-500">
                     {new Date(app.createdAt).toLocaleDateString("en-US", {

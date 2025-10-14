@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Search } from "lucide-react";
+import { StatusBadge } from "../../statusUtils";
 
 const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
   const [search, setSearch] = useState("");
@@ -115,11 +116,8 @@ const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
                 </div>
 
                 {/* Status Tag */}
-                <span
-                  className={`text-xs font-semibold px-2 py-1 rounded-md border ${statusColor}`}
-                >
-                  {app.overallStatus}
-                </span>
+
+                <StatusBadge status={app.overallStatus} />
               </li>
             );
           })

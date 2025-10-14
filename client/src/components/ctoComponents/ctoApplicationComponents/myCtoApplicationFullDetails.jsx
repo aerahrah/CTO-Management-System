@@ -1,4 +1,7 @@
 // src/components/cto/CtoApplicationDetails.jsx
+
+import { StatusBadge, StatusIcon, getStatusStyles } from "../../statusUtils";
+
 const CtoApplicationDetails = ({ app }) => {
   if (!app) return null;
 
@@ -36,18 +39,11 @@ const CtoApplicationDetails = ({ app }) => {
           </div>
 
           <div>
-            <p className="text-gray-500 font-medium">Overall Status</p>
-            <span
-              className={`inline-block mt-1 px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${
-                app.overallStatus === "APPROVED"
-                  ? "bg-green-100 text-green-700"
-                  : app.overallStatus === "DENIED"
-                  ? "bg-red-100 text-red-700"
-                  : "bg-yellow-100 text-yellow-700"
-              }`}
-            >
-              {app.overallStatus}
-            </span>
+            <p className="text-gray-500 font-medium mb-1">Overall Status</p>
+            <StatusBadge
+              className=" tracking-wide"
+              status={app.overallStatus}
+            />
           </div>
 
           <div>
@@ -72,24 +68,25 @@ const CtoApplicationDetails = ({ app }) => {
                 key={a._id}
                 className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
               >
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {a.approver?.firstName} {a.approver?.lastName}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {a.approver?.position || "N/A"}
-                  </p>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`h-8 w-8 flex items-center justify-center rounded-full border ${getStatusStyles(
+                      a.step
+                    )}`}
+                  >
+                    <StatusIcon status={a.step} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      {a.approver?.firstName} {a.approver?.lastName}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {a.approver?.position || "N/A"}
+                    </p>
+                  </div>
                 </div>
-                <span
-                  className={`mt-2 sm:mt-0 inline-block px-3 py-1 rounded-full text-xs font-semibold tracking-wide ${
-                    a.status === "APPROVED"
-                      ? "bg-green-100 text-green-700"
-                      : a.status === "DENIED"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-yellow-100 text-yellow-700"
-                  }`}
-                >
-                  {a.status}
+                <span className="mt-2 sm:mt-0 inline-block px-3 py-1 rounded-full text-xs font-semibold tracking-wide">
+                  <StatusBadge showIcon={false} status={a.status} />
                 </span>
               </li>
             ))}
