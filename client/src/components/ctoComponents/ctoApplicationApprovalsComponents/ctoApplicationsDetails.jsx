@@ -1,8 +1,42 @@
 import React from "react";
-import { Clock, FileText, User, BadgeCheck, Calendar } from "lucide-react";
+import { Clock, FileText, BadgeCheck, Calendar, Check } from "lucide-react";
 import { getStatusStyles, StatusIcon, StatusBadge } from "../../statusUtils";
+import { useAuth } from "../../../store/authStore";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { approveApplicationRequest } from "../../../api/cto";
 
-const CtoApplicationDetails = ({ application }) => {
+const CtoApplicationDetails = ({ application, onSelect }) => {
+  const { admin } = useAuth();
+  const queryClient = useQueryClient();
+
+  console.log(application?._id);
+  // ✅ React Query Mutation
+  const mutation = useMutation({
+    mutationFn: (applicationId) => approveApplicationRequest(applicationId),
+    onSuccess: async () => {
+      await Promise.all([
+        // queryClient.invalidateQueries(["ctoApplications"]),
+        queryClient.invalidateQueries(["ctoApplicationsApprovals"]),
+      ]);
+
+      // ⬇️ Optional: Refetch and update the selected application
+      const updatedData = queryClient.getQueryData([
+        "ctoApplicationsApprovals",
+      ]);
+      if (updatedData?.data) {
+        const updatedApp = updatedData.data.find(
+          (app) => app._id === application._id
+        );
+        if (updatedApp) {
+          onSelect(updatedApp);
+        }
+      }
+    },
+    onError: (error) => {
+      alert(error.message || "Failed to approve application.");
+    },
+  });
+
   if (!application) {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 text-sm italic border rounded-xl bg-gray-50 shadow-inner h-[80vh]">
@@ -22,8 +56,15 @@ const CtoApplicationDetails = ({ application }) => {
       })
     : "Unknown date";
 
+  // ✅ Find the current approver's step
+  const currentStep = application.approvals?.find(
+    (step) => step.approvals?._id === admin?._id
+  );
+
+  const canApprove = currentStep?.status === "PENDING";
+
   return (
-    <div className="border-gray-200 ">
+    <div className="border-gray-200">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 pb-3 border-b border-gray-100 gap-2">
         <div>
@@ -36,16 +77,45 @@ const CtoApplicationDetails = ({ application }) => {
           </div>
         </div>
 
-        <span
-          className={`px-3 py-1 text-sm font-medium rounded-full border self-start md:self-auto ${getStatusStyles(
-            application.overallStatus
-          )}`}
-        >
-          {application.overallStatus}
-        </span>
+        <div className="flex items-center gap-3">
+          <StatusBadge status={application.overallStatus} size="md" />
+
+          {canApprove ? (
+            <button
+              disabled={mutation.isLoading}
+              onClick={() => mutation.mutate(application._id)}
+              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm
+      ${
+        mutation.isPending
+          ? "bg-green-400 text-white cursor-not-allowed"
+          : "bg-green-600 hover:bg-green-700 text-white"
+      }`}
+            >
+              {mutation.isPending ? (
+                <>
+                  <span>Approving...</span>
+                </>
+              ) : (
+                <>
+                  <span>Approve</span>
+                </>
+              )}
+            </button>
+          ) : (
+            <button
+              disabled
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-gray-300 text-gray-600 cursor-not-allowed"
+            >
+              <Check className="h-4 w-4" />
+              <span>Already Approved</span>
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* Main content below */}
       <div className="h-136 pr-2 overflow-y-auto">
+        {/* Applicant Info */}
         <div className="flex items-center gap-4 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 text-blue-700 font-semibold text-lg">
             {initials || "?"}
@@ -60,7 +130,7 @@ const CtoApplicationDetails = ({ application }) => {
           </div>
         </div>
 
-        {/* Quick Summary */}
+        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
             <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
@@ -77,16 +147,7 @@ const CtoApplicationDetails = ({ application }) => {
               <BadgeCheck className="h-4 w-4 text-gray-500" />
               Overall Application Status
             </div>
-            <p
-              className={`text-base font-semibold ${
-                {
-                  APPROVED: "text-green-700",
-                  REJECTED: "text-red-700",
-                }[application.overallStatus] || "text-yellow-700"
-              }`}
-            >
-              {application.overallStatus}
-            </p>
+            <StatusBadge status={application.overallStatus} size="md" />
           </div>
         </div>
 
@@ -104,7 +165,6 @@ const CtoApplicationDetails = ({ application }) => {
         {/* Approval Steps */}
         <div className="space-y-3 bg-gray-50 rounded-lg p-3">
           <h3 className="text-gray-700 font-medium mb-2">Approval Progress</h3>
-
           <div className="flex flex-col gap-3">
             {application.approvals?.length > 0 ? (
               application.approvals.map((step, index) => (
@@ -130,7 +190,6 @@ const CtoApplicationDetails = ({ application }) => {
                       </p>
                     </div>
                   </div>
-
                   <StatusBadge showIcon={false} status={step.status} />
                 </div>
               ))

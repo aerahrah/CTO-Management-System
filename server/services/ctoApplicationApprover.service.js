@@ -23,7 +23,27 @@ const getCtoApplicationsForApproverService = async (approverId) => {
 
   const ctoApplications = approvalSteps
     .map((step) => step.ctoApplication)
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((app) => {
+      if (!app.approvals || app.approvals.length === 0) return false;
+
+      const steps = app.approvals;
+      const userStepIndex = steps.findIndex(
+        (s) => s.approver?._id?.toString() === approverId.toString()
+      );
+      if (userStepIndex === -1) return false;
+
+      const userStep = steps[userStepIndex];
+      const pendingStep = steps.find((s) => s.status === "PENDING");
+
+      if (userStepIndex === 0) return true;
+
+      const isTheirTurn =
+        pendingStep?.approver?._id?.toString() === approverId.toString();
+      const alreadyActed = ["APPROVED", "REJECTED"].includes(userStep.status);
+
+      return isTheirTurn || alreadyActed;
+    });
 
   return ctoApplications;
 };

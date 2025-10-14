@@ -27,7 +27,10 @@ const CtoApplicationApprovals = () => {
         />
       </CardMd>
       <CardFull>
-        <CtoApplicationDetails application={selectedApp} />
+        <CtoApplicationDetails
+          application={selectedApp}
+          onSelect={setSelectedApp}
+        />
       </CardFull>
     </div>
   );
