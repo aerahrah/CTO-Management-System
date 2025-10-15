@@ -18,7 +18,7 @@ const CtoPage = () => {
   ];
 
   return (
-    <div className="pt-26 w-full bg-neutral-200 flex gap-4 p-6">
+    <div className="w-full bg-neutral-200 flex gap-4 p-6">
       <div className="min-h-136 w-full">
         <div className="flex gap-4 mb-6">
           {tabs.map((tab) => (
