@@ -3,6 +3,7 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { useAuth } from "../store/authStore";
 import Sidebar from "../components/sidebar";
 import { LogOut, ChevronDown } from "lucide-react";
+import { RoleBadge } from "../components/statusUtils";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -91,9 +92,7 @@ const Dashboard = () => {
                     <p className="font-semibold text-gray-800">
                       {admin?.username || "Admin"}
                     </p>{" "}
-                    <p className="font-semibold text-gray-800 rounded-full bg-blue-100 p-1 px-2 capitalize">
-                      {admin?.role || "Admin"}
-                    </p>
+                    <RoleBadge role={admin?.role} />
                   </div>
                 </div>
 

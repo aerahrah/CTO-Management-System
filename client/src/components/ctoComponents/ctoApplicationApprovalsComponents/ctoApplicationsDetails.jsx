@@ -78,8 +78,6 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
         </div>
 
         <div className="flex items-center gap-3">
-          <StatusBadge status={application.overallStatus} size="md" />
-
           {canApprove ? (
             <button
               disabled={mutation.isLoading}

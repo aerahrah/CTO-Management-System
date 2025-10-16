@@ -4,11 +4,13 @@ import {
   XCircle,
   AlertCircle,
   RotateCcw,
-  ArrowUpCircle,
-  UserCheck,
-  UserX,
   UserMinus,
+  UserX,
   UserCircle,
+  ShieldCheck,
+  Briefcase,
+  Users,
+  UserCog,
 } from "lucide-react";
 
 /**
@@ -79,6 +81,65 @@ export const StatusBadge = ({
     >
       {showIcon && <StatusIcon status={status} className="h-3.5 w-3.5" />}
       {status}
+    </span>
+  );
+};
+
+/**
+ * Returns Tailwind CSS classes based on user role.
+ */
+export const getRoleStyles = (role) => {
+  switch (role?.toUpperCase()) {
+    case "ADMIN":
+      return "text-indigo-700 bg-indigo-50 border-indigo-200";
+    case "SUPERVISOR":
+      return "text-blue-700 bg-blue-50 border-blue-200";
+    case "HR":
+      return "text-pink-700 bg-pink-50 border-pink-200";
+    case "EMPLOYEE":
+      return "text-emerald-700 bg-emerald-50 border-emerald-200";
+    default:
+      return "text-gray-700 bg-gray-100 border-gray-200";
+  }
+};
+
+/**
+ * Returns a corresponding icon based on user role.
+ */
+export const RoleIcon = ({ role, className = "h-4 w-4" }) => {
+  const r = role?.toUpperCase();
+  if (r === "ADMIN")
+    return <ShieldCheck className={`${className} text-indigo-600`} />;
+  if (r === "SUPERVISOR")
+    return <UserCog className={`${className} text-blue-600`} />;
+  if (r === "HR") return <Briefcase className={`${className} text-pink-600`} />;
+  if (r === "EMPLOYEE")
+    return <Users className={`${className} text-emerald-600`} />;
+  return <UserCircle className={`${className} text-gray-500`} />;
+};
+
+/**
+ * Renders a role badge with icon + label.
+ */
+export const RoleBadge = ({
+  showIcon = true,
+  role,
+  size = "sm",
+  className = "",
+}) => {
+  const sizes = {
+    sm: "text-xs px-2 py-1",
+    md: "text-sm px-3 py-1.5",
+  };
+
+  return (
+    <span
+      className={`inline-flex capitalize items-center gap-1 font-medium rounded-full border ${getRoleStyles(
+        role
+      )} ${sizes[size]} ${className}`}
+    >
+      {showIcon && <RoleIcon role={role} className="h-3.5 w-3.5" />}
+      {role}
     </span>
   );
 };

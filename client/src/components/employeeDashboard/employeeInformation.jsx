@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getEmployeeById } from "../../api/employee";
 import { useState } from "react";
-import { StatusBadge } from "../statusUtils";
+import { StatusBadge, RoleBadge } from "../statusUtils";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
 
@@ -53,7 +53,7 @@ const EmployeeInformation = ({ selectedId }) => {
         <Section title="Basic Information">
           <InfoRow label="Employee ID" value={emp?.employeeId} />
           <InfoRow label="Username" value={emp?.username} />
-          <InfoRow label="Role" value={emp?.role} />
+          <InfoRow label="Role" value={<RoleBadge role={emp?.role} />} />
           <InfoRow
             label="Date Hired"
             value={new Date(emp?.dateHired).toLocaleDateString()}
