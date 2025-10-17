@@ -109,7 +109,69 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
     .populate("employee", "firstName lastName position");
 };
 
+const rejectCtoApplicationService = async ({
+  approverId,
+  applicationId,
+  remarks,
+}) => {
+  const application = await CtoApplication.findById(applicationId).populate(
+    "approvals"
+  );
+
+  if (!application) {
+    const err = new Error("CTO Application not found.");
+    err.status = 404;
+    throw err;
+  }
+
+  // Find the approver’s step
+  const currentStep = application.approvals.find(
+    (s) => s.approver.toString() === approverId
+  );
+
+  if (!currentStep) {
+    const err = new Error("You are not authorized to reject this application.");
+    err.status = 403;
+    throw err;
+  }
+
+  // Make sure previous steps are already approved
+  const previousLevels = application.approvals.filter(
+    (s) => s.level < currentStep.level
+  );
+  const unapprovedPrevious = previousLevels.find(
+    (s) => s.status !== "APPROVED"
+  );
+
+  if (unapprovedPrevious) {
+    const err = new Error(
+      `Level ${unapprovedPrevious.level} must approve first.`
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  // Update current approver’s status
+  await ApprovalStep.findByIdAndUpdate(currentStep._id, {
+    status: "REJECTED",
+    remarks: remarks || "No remarks provided",
+  });
+
+  // Set the entire application as REJECTED immediately
+  application.overallStatus = "REJECTED";
+  await application.save();
+
+  // Return updated record
+  return await CtoApplication.findById(applicationId)
+    .populate({
+      path: "approvals",
+      populate: { path: "approver", select: "firstName lastName position" },
+    })
+    .populate("employee", "firstName lastName position");
+};
+
 module.exports = {
   getCtoApplicationsForApproverService,
   approveCtoApplicationService,
+  rejectCtoApplicationService,
 };

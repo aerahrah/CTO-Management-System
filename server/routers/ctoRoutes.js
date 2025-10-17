@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   getCtoApplicationsForApprover,
   approveCtoApplication,
+  rejectCtoApplication,
 } = require("../controllers/ctoApplicationApproverController.js");
 const {
   addCtoCreditRequest,
@@ -109,6 +110,12 @@ router.post(
   approveCtoApplication
 );
 
+router.put(
+  "/applications/approver/:applicationI/reject",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  rejectCtoApplication
+);
 // router.get(
 //   "/employees/:id",
 //   authenticateToken,

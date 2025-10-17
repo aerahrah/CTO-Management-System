@@ -1,6 +1,7 @@
 const {
   getCtoApplicationsForApproverService,
   approveCtoApplicationService,
+  rejectCtoApplicationService,
 } = require("../services/ctoApplicationApprover.service");
 
 const getCtoApplicationsForApprover = async (req, res, next) => {
@@ -27,7 +28,30 @@ const approveCtoApplication = async (req, res, next) => {
     next(err);
   }
 };
+
+const rejectCtoApplication = async (req, res, next) => {
+  try {
+    const { id: applicationId } = req.params;
+    const approverId = req.user.id;
+    const { remarks } = req.body;
+
+    const result = await rejectCtoApplicationService({
+      approverId,
+      applicationId,
+      remarks,
+    });
+
+    res.status(200).json({
+      message: "CTO Application has been rejected successfully.",
+      data: result,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   getCtoApplicationsForApprover,
   approveCtoApplication,
+  rejectCtoApplication,
 };
