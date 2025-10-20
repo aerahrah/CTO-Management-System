@@ -17,7 +17,7 @@ const employeeSchema = new mongoose.Schema(
     provincialOffice: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProvincialOffice",
-      required: true,
+      required: false,
     },
 
     firstName: { type: String, required: true, trim: true },

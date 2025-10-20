@@ -1,5 +1,6 @@
 const ApprovalStep = require("../models/approvalStepModel");
 const CtoApplication = require("../models/ctoApplicationModel");
+const Employee = require("../models/employeeModel");
 
 const getCtoApplicationsForApproverService = async (approverId) => {
   if (!approverId) {
@@ -96,9 +97,20 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
   });
 
   const allApproved = updatedSteps.every((s) => s.status === "APPROVED");
+
   if (allApproved) {
     application.overallStatus = "APPROVED";
     await application.save();
+
+    const employee = await Employee.findById(application.employee);
+    if (employee) {
+      const newBalance = Math.max(
+        0,
+        employee.balances.ctoHours - application.requestedHours
+      );
+      employee.balances.ctoHours = newBalance;
+      await employee.save();
+    }
   }
 
   return await CtoApplication.findById(applicationId)
