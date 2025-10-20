@@ -1,40 +1,38 @@
-import React from "react";
-import { Clock, FileText, BadgeCheck, Calendar, Check } from "lucide-react";
+import React, { useState } from "react";
+import { Clock, FileText, BadgeCheck, Calendar, Check, X } from "lucide-react";
 import { getStatusStyles, StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { approveApplicationRequest } from "../../../api/cto";
+import {
+  approveApplicationRequest,
+  rejectApplicationRequest,
+} from "../../../api/cto";
 
 const CtoApplicationDetails = ({ application, onSelect }) => {
   const { admin } = useAuth();
   const queryClient = useQueryClient();
+  const [remarks, setRemarks] = useState("");
 
-  console.log(application?._id);
-  // ✅ React Query Mutation
-  const mutation = useMutation({
+  // ✅ Approve Mutation
+  const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: async () => {
-      await Promise.all([
-        // queryClient.invalidateQueries(["ctoApplications"]),
-        queryClient.invalidateQueries(["ctoApplicationsApprovals"]),
-      ]);
+      await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+    },
+    onError: (error) =>
+      alert(error.message || "Failed to approve application."),
+  });
 
-      // ⬇️ Optional: Refetch and update the selected application
-      const updatedData = queryClient.getQueryData([
-        "ctoApplicationsApprovals",
-      ]);
-      if (updatedData?.data) {
-        const updatedApp = updatedData.data.find(
-          (app) => app._id === application._id
-        );
-        if (updatedApp) {
-          onSelect(updatedApp);
-        }
-      }
+  // ❌ Reject Mutation
+  const rejectMutation = useMutation({
+    mutationFn: ({ applicationId, remarks }) =>
+      rejectApplicationRequest(applicationId, remarks),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+      setRemarks("");
+      alert("Application rejected successfully.");
     },
-    onError: (error) => {
-      alert(error.message || "Failed to approve application.");
-    },
+    onError: (error) => alert(error.message || "Failed to reject application."),
   });
 
   if (!application) {
@@ -48,7 +46,6 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
   const initials = `${application.employee?.firstName?.[0] || ""}${
     application.employee?.lastName?.[0] || ""
   }`;
-
   const formattedDate = application.createdAt
     ? new Date(application.createdAt).toLocaleString("en-US", {
         dateStyle: "medium",
@@ -56,12 +53,11 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
       })
     : "Unknown date";
 
-  // ✅ Find the current approver's step
   const currentStep = application.approvals?.find(
-    (step) => step.approvals?._id === admin?._id
+    (step) => step.approver?._id === admin?.id
   );
 
-  const canApprove = currentStep?.status === "PENDING";
+  const canApproveOrReject = currentStep?.status === "PENDING";
 
   return (
     <div className="border-gray-200">
@@ -78,34 +74,47 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
         </div>
 
         <div className="flex items-center gap-3">
-          {canApprove ? (
-            <button
-              disabled={mutation.isLoading}
-              onClick={() => mutation.mutate(application._id)}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm
-      ${
-        mutation.isPending
-          ? "bg-green-400 text-white cursor-not-allowed"
-          : "bg-green-600 hover:bg-green-700 text-white"
-      }`}
-            >
-              {mutation.isPending ? (
-                <>
-                  <span>Approving...</span>
-                </>
-              ) : (
-                <>
-                  <span>Approve</span>
-                </>
-              )}
-            </button>
+          {canApproveOrReject ? (
+            <>
+              {/* ✅ Approve Button */}
+              <button
+                disabled={approveMutation.isPending}
+                onClick={() => approveMutation.mutate(application._id)}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm ${
+                  approveMutation.isPending
+                    ? "bg-green-400 text-white cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700 text-white"
+                }`}
+              >
+                {approveMutation.isPending ? "Approving..." : "Approve"}
+              </button>
+
+              {/* ❌ Reject Button */}
+              <button
+                disabled={rejectMutation.isPending}
+                onClick={() => {
+                  const reason = prompt("Enter remarks for rejection:") || "";
+                  rejectMutation.mutate({
+                    applicationId: application._id,
+                    remarks: reason,
+                  });
+                }}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm ${
+                  rejectMutation.isPending
+                    ? "bg-red-400 text-white cursor-not-allowed"
+                    : "bg-red-600 hover:bg-red-700 text-white"
+                }`}
+              >
+                {rejectMutation.isPending ? "Rejecting..." : "Reject"}
+              </button>
+            </>
           ) : (
             <button
               disabled
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-gray-300 text-gray-600 cursor-not-allowed"
             >
               <Check className="h-4 w-4" />
-              <span>Already Approved</span>
+              <span>Already Processed</span>
             </button>
           )}
         </div>

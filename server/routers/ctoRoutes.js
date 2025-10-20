@@ -111,7 +111,7 @@ router.post(
 );
 
 router.put(
-  "/applications/approver/:applicationI/reject",
+  "/applications/approver/:applicationId/reject",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
   rejectCtoApplication

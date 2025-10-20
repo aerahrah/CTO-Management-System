@@ -92,6 +92,15 @@ export const approveApplicationRequest = async (applicationId) => {
   return res.data;
 };
 
+export const rejectApplicationRequest = async (applicationId) => {
+  console.log(applicationId);
+  const res = await API.put(
+    `/cto/applications/approver/${applicationId}/reject`
+  );
+
+  return res.data;
+};
+
 export const fetchMyCtoApplications = async () => {
   const { data } = await API.get(`cto/applications/my-application`);
   console.log(data);
