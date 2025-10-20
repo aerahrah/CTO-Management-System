@@ -92,10 +92,12 @@ export const approveApplicationRequest = async (applicationId) => {
   return res.data;
 };
 
-export const rejectApplicationRequest = async (applicationId) => {
+export const rejectApplicationRequest = async (applicationId, remarks) => {
   console.log(applicationId);
+  console.log(remarks);
   const res = await API.put(
-    `/cto/applications/approver/${applicationId}/reject`
+    `/cto/applications/approver/${applicationId}/reject`,
+    { remarks }
   );
 
   return res.data;

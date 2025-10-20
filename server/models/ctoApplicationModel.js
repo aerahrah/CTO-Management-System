@@ -19,13 +19,13 @@ const ctoApplicationSchema = new mongoose.Schema(
     approvals: [
       {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "ApprovalStep", // ✅ properly reference the model name
+        ref: "ApprovalStep",
         required: true,
       },
     ],
     overallStatus: {
       type: String,
-      enum: ["PENDING", "APPROVED", "DENIED"],
+      enum: ["PENDING", "APPROVED", "REJECTED"],
       default: "PENDING",
     },
     attachment: {

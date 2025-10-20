@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Clock, FileText, BadgeCheck, Calendar, Check, X } from "lucide-react";
+import { Clock, FileText, BadgeCheck, Calendar, Check } from "lucide-react";
 import { getStatusStyles, StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import Modal from "../../modal";
 import {
   approveApplicationRequest,
   rejectApplicationRequest,
@@ -11,13 +12,19 @@ import {
 const CtoApplicationDetails = ({ application, onSelect }) => {
   const { admin } = useAuth();
   const queryClient = useQueryClient();
+  const [isProcessed, setIsProcessed] = useState(false);
   const [remarks, setRemarks] = useState("");
+  const [modalType, setModalType] = useState(null); // "approve" or "reject"
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // ✅ Approve Mutation
   const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: async () => {
       await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+      setIsProcessed(true); // 👈 instantly mark processed
+      setIsModalOpen(false);
+      alert("Application approved successfully.");
     },
     onError: (error) =>
       alert(error.message || "Failed to approve application."),
@@ -30,6 +37,8 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
     onSuccess: async () => {
       await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
       setRemarks("");
+      setIsProcessed(true); // 👈 instantly mark processed
+      setIsModalOpen(false);
       alert("Application rejected successfully.");
     },
     onError: (error) => alert(error.message || "Failed to reject application."),
@@ -46,6 +55,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
   const initials = `${application.employee?.firstName?.[0] || ""}${
     application.employee?.lastName?.[0] || ""
   }`;
+
   const formattedDate = application.createdAt
     ? new Date(application.createdAt).toLocaleString("en-US", {
         dateStyle: "medium",
@@ -57,8 +67,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
     (step) => step.approver?._id === admin?.id
   );
 
-  const canApproveOrReject = currentStep?.status === "PENDING";
-
+  const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
   return (
     <div className="border-gray-200">
       {/* Header */}
@@ -79,7 +88,10 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
               {/* ✅ Approve Button */}
               <button
                 disabled={approveMutation.isPending}
-                onClick={() => approveMutation.mutate(application._id)}
+                onClick={() => {
+                  setModalType("approve");
+                  setIsModalOpen(true);
+                }}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm ${
                   approveMutation.isPending
                     ? "bg-green-400 text-white cursor-not-allowed"
@@ -93,11 +105,8 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
               <button
                 disabled={rejectMutation.isPending}
                 onClick={() => {
-                  const reason = prompt("Enter remarks for rejection:") || "";
-                  rejectMutation.mutate({
-                    applicationId: application._id,
-                    remarks: reason,
-                  });
+                  setModalType("reject");
+                  setIsModalOpen(true);
                 }}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm ${
                   rejectMutation.isPending
@@ -208,6 +217,56 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
           </div>
         </div>
       </div>
+
+      {/* 🟢 Modal for Confirm Approve/Reject */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={
+          modalType === "approve"
+            ? "Confirm Approval"
+            : "Reject Application Confirmation"
+        }
+        closeLabel="Cancel"
+        action={{
+          show: true,
+          label: modalType === "approve" ? "Approve" : "Reject",
+          variant: modalType === "approve" ? "success" : "cancel",
+          onClick: () => {
+            if (modalType === "approve") {
+              approveMutation.mutate(application._id);
+            } else {
+              if (!remarks.trim()) {
+                alert("Please enter remarks before rejecting.");
+                return;
+              }
+              rejectMutation.mutate({
+                applicationId: application._id,
+                remarks,
+              });
+            }
+          },
+        }}
+      >
+        {modalType === "approve" ? (
+          <p className="text-gray-600">
+            Are you sure you want to <b>approve</b> this application?
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <p className="text-gray-600">
+              Please provide your remarks for rejecting this application:
+            </p>
+            <textarea
+              value={remarks}
+              onChange={(e) => setRemarks(e.target.value)}
+              placeholder="Enter remarks..."
+              className="w-full p-3 border border-gray-300 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-red-400"
+              rows={4}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
