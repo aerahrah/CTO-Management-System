@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StatusBadge, RoleBadge } from "../statusUtils";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
+import { CustomButton } from "../customButton";
 
 const EmployeeInformation = ({ selectedId }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -17,11 +18,11 @@ const EmployeeInformation = ({ selectedId }) => {
     enabled: !!selectedId,
     staleTime: Infinity,
   });
-  console.log(isLoading);
-  console.log(employee);
+
   if (isLoading) {
     return <div className="p-4">Loading employee...</div>;
   }
+
   const emp = employee?.data;
 
   return (
@@ -29,7 +30,7 @@ const EmployeeInformation = ({ selectedId }) => {
       {/* Header */}
       <div className="flex items-center justify-between border-b pb-5">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-full bg-neutral-800 text-white flex items-center  justify-center font-bold text-lg shadow ">
+          <div className="w-14 h-14 rounded-full bg-neutral-800 text-white flex items-center justify-center font-bold text-lg shadow">
             {emp?.firstName?.[0]}
             {emp?.lastName?.[0]}
           </div>
@@ -42,9 +43,13 @@ const EmployeeInformation = ({ selectedId }) => {
             </p>
           </div>
         </div>
-        <button className=" bg-neutral-800 px-6 py-2.5 text-white rounded-sm hover:bg-neutral-800/90 text-sm font-medium shadow-sm transition hover:cursor-pointer active:scale-96">
-          Edit Profile
-        </button>
+
+        <CustomButton
+          label="Edit Profile"
+          variant="primary"
+          className="px-6 py-2.5"
+          onClick={() => setIsOpen(true)}
+        />
       </div>
 
       {/* Info Sections */}
@@ -68,7 +73,6 @@ const EmployeeInformation = ({ selectedId }) => {
         <Section title="Contact Information">
           <InfoRow label="Email" value={emp?.email} />
           <InfoRow label="Mobile Number" value={emp?.phone} />
-
           <InfoRow label="Emergency Name" value={emp?.emergencyContact?.name} />
           <InfoRow
             label="Emergency Phone"
@@ -97,6 +101,23 @@ const EmployeeInformation = ({ selectedId }) => {
           <InfoRow label="Province" value={emp?.address?.province} />
         </Section>
       </div>
+
+      <Modal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        title="Edit Employee Profile"
+        action={{
+          label: "Save Changes",
+          onClick: () => {
+            const form = document.getElementById("employeeForm");
+            if (form) form.requestSubmit();
+          },
+          show: true,
+          variant: "save",
+        }}
+      >
+        <AddEmployeeForm onCancel={() => setIsOpen(false)} />
+      </Modal>
     </div>
   );
 };

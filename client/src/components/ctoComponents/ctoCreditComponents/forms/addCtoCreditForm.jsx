@@ -4,6 +4,7 @@ import Select from "react-select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../../../../api/employee";
 import { addCreditRequest } from "../../../../api/cto";
+import { CustomButton } from "../../../customButton";
 
 const AddCtoCreditForm = ({ onSubmit }) => {
   const queryClient = useQueryClient();
@@ -20,7 +21,6 @@ const AddCtoCreditForm = ({ onSubmit }) => {
     memoNo: "",
     memoFile: null,
     dateApproved: "",
-    // approver: null,
   });
 
   const addCreditMutation = useMutation({
@@ -76,7 +76,6 @@ const AddCtoCreditForm = ({ onSubmit }) => {
       },
       memoNo: formData.memoNo,
       dateApproved: formData.dateApproved,
-      // approver: formData.approver,
     };
 
     console.log("Submitting:", payload);
@@ -132,7 +131,7 @@ const AddCtoCreditForm = ({ onSubmit }) => {
           />
         </div>
 
-        {/* Duration (Hours & Minutes) */}
+        {/* Duration */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Credit Duration
@@ -160,7 +159,7 @@ const AddCtoCreditForm = ({ onSubmit }) => {
           </div>
         </div>
 
-        {/* Memo No. */}
+        {/* Memo Number */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Memo Number
@@ -228,13 +227,18 @@ const AddCtoCreditForm = ({ onSubmit }) => {
           </div>
         </div>
 
-        {/* Submit */}
-        <button
+        {/* ✅ Submit Button */}
+        <CustomButton
           type="submit"
-          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition cursor-pointer"
-        >
-          Submit Credit Request
-        </button>
+          label={
+            addCreditMutation.isPending
+              ? "Submitting..."
+              : "Submit Credit Request"
+          }
+          variant="primary"
+          className="w-full py-2"
+          disabled={addCreditMutation.isPending}
+        />
       </form>
     </>
   );

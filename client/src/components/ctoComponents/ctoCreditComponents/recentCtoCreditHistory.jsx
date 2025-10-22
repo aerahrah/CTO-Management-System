@@ -4,6 +4,7 @@ import { useState } from "react";
 import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import AllCtoCreditHistory from "./allCtoCreditHistory";
+import { CustomButton, TableActionButton } from "../../customButton";
 
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
@@ -38,6 +39,12 @@ const CtoCreditHistory = () => {
     setIsConfirmRollback(false);
   };
 
+  const formatDuration = (duration) => {
+    if (!duration) return "-";
+    const { hours = 0, minutes = 0 } = duration;
+    return `${hours}h ${minutes}m`;
+  };
+
   if (isLoading || isProcessing) {
     return (
       <div className="bg-white p-6 rounded-md shadow-lg">
@@ -59,12 +66,6 @@ const CtoCreditHistory = () => {
       </div>
     );
   }
-
-  const formatDuration = (duration) => {
-    if (!duration) return "-";
-    const { hours = 0, minutes = 0 } = duration;
-    return `${hours}h ${minutes}m`;
-  };
 
   return (
     <>
@@ -113,23 +114,16 @@ const CtoCreditHistory = () => {
                     <td className="p-3 border-b border-gray-200 border-r">
                       {credit.memoNo}
                     </td>
-                    <td
-                      className={`p-3 font-semibold text-center border-b border-gray-200 border-r `}
-                    >
+                    <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
                       <StatusBadge status={credit.status} />
                     </td>
                     <td className="p-3 text-center border-b border-gray-200">
-                      <button
+                      <TableActionButton
+                        label={isProcessing ? "Processing..." : "Rollback"}
                         onClick={() => handleRollback(credit._id)}
-                        disabled={credit.status !== "CREDITED"}
-                        className={`px-3 py-1 text-sm rounded transition cursor-pointer ${
-                          credit.status === "CREDITED"
-                            ? "bg-neutral-700 text-white hover:bg-neutral-800"
-                            : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        }`}
-                      >
-                        Rollback
-                      </button>
+                        disabled={credit.status !== "CREDITED" || isProcessing}
+                        variant="neutral"
+                      />
                     </td>
                   </tr>
                 ))
@@ -146,12 +140,11 @@ const CtoCreditHistory = () => {
       </div>
 
       <div className="flex justify-end mt-4">
-        <button
+        <CustomButton
+          label="View More →"
           onClick={() => setIsOpen(true)}
-          className="px-4 py-2 text-neutral-800 border-1 border-neutral-800 rounded-sm text-sm font-medium hover:bg-neutral-800 hover:text-neutral-100 transition active:scale-96 cursor-pointer"
-        >
-          View More →
-        </button>
+          variant="neutral"
+        />
       </div>
 
       {/* Confirm Rollback Modal */}

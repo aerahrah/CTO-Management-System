@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Modal from "../../modal";
+import { CustomButton, TableActionButton } from "../../customButton";
 
 const CreditCtoTable = ({ credits }) => {
   const creditedRecords = credits.filter((c) => c.status === "CREDITED");
@@ -64,12 +65,12 @@ const CreditCtoTable = ({ credits }) => {
                     {formatDuration(c.duration)}
                   </td>
                   <td className="p-3 border-b text-center border-r border-gray-200 text-gray-700">
-                    <button
-                      className="bg-neutral-700 text-white px-3 py-1 rounded-sm hover:bg-neutral-800 cursor-pointer transition-colors"
+                    <TableActionButton
+                      label="View Memo"
+                      variant="default" // 👈 uses the neutral style
+                      size="sm"
                       onClick={() => setIsModalOpen(true)}
-                    >
-                      View Memo
-                    </button>
+                    />
                   </td>
                 </tr>
               ))
@@ -86,14 +87,17 @@ const CreditCtoTable = ({ credits }) => {
           </tbody>
         </table>
       </div>
+
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Confirm Rollback"
+        title="Memo File"
         isDisplay={false}
       >
-        <div className="w-100">
-          <p className="text-l py-2">memo file</p>
+        <div className="w-full py-3">
+          <p className="text-base text-gray-700">
+            Memo file preview or info here.
+          </p>
         </div>
       </Modal>
     </div>

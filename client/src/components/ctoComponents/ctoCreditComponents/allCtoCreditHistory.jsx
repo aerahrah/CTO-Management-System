@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchAllCreditRequests, rollbackCreditCto } from "../../../api/cto";
 import { useState } from "react";
 import Modal from "../../modal";
+import { CustomButton, TableActionButton } from "../../customButton";
 
 const AllCtoCreditHistory = () => {
   const queryClient = useQueryClient();
@@ -154,17 +155,12 @@ const AllCtoCreditHistory = () => {
                       : "-"}
                   </td>
                   <td className="p-3 text-center border-b border-gray-200">
-                    <button
+                    <TableActionButton
+                      label={isProcessing ? "Processing..." : "Rollback"}
                       onClick={() => handleRollback(credit._id)}
+                      variant="neutral"
                       disabled={credit.status !== "CREDITED" || isProcessing}
-                      className={`px-3 py-1 text-sm rounded transition cursor-pointer ${
-                        credit.status === "CREDITED"
-                          ? "bg-neutral-700 text-white hover:bg-neutral-900"
-                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      }`}
-                    >
-                      {isProcessing ? "Processing..." : "Rollback"}
-                    </button>
+                    />
                   </td>
                 </tr>
               ))

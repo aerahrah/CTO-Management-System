@@ -4,6 +4,7 @@ import { StatusBadge } from "../../statusUtils";
 import { fetchMyCtoApplications } from "../../../api/cto";
 import Modal from "../../modal";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
+import { CustomButton, TableActionButton } from "../../customButton";
 
 const MyCtoApplications = () => {
   const { data, isLoading, isError, error } = useQuery({
@@ -102,12 +103,11 @@ const MyCtoApplications = () => {
                     })}
                   </td>
                   <td className="p-3 text-center border-b border-gray-200">
-                    <button
+                    <TableActionButton
+                      label="View Details"
                       onClick={() => openModal(app)}
-                      className="bg-neutral-700 text-white px-3 py-1.5 rounded-sm hover:bg-neutral-800 cursor-pointer transition-colors whitespace-nowrap"
-                    >
-                      View Details
-                    </button>
+                      variant="neutral"
+                    />
                   </td>
                 </tr>
               ))}

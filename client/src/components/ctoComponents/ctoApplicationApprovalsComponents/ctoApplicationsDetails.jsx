@@ -8,13 +8,14 @@ import {
   approveApplicationRequest,
   rejectApplicationRequest,
 } from "../../../api/cto";
+import { CustomButton } from "../../customButton";
 
 const CtoApplicationDetails = ({ application, onSelect }) => {
   const { admin } = useAuth();
   const queryClient = useQueryClient();
   const [isProcessed, setIsProcessed] = useState(false);
   const [remarks, setRemarks] = useState("");
-  const [modalType, setModalType] = useState(null); // "approve" or "reject"
+  const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // ✅ Approve Mutation
@@ -22,7 +23,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: async () => {
       await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
-      setIsProcessed(true); // 👈 instantly mark processed
+      setIsProcessed(true);
       setIsModalOpen(false);
       alert("Application approved successfully.");
     },
@@ -37,7 +38,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
     onSuccess: async () => {
       await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
       setRemarks("");
-      setIsProcessed(true); // 👈 instantly mark processed
+      setIsProcessed(true);
       setIsModalOpen(false);
       alert("Application rejected successfully.");
     },
@@ -68,6 +69,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
   );
 
   const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
+
   return (
     <div className="border-gray-200">
       {/* Header */}
@@ -86,45 +88,35 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
           {canApproveOrReject ? (
             <>
               {/* ✅ Approve Button */}
-              <button
-                disabled={approveMutation.isPending}
+              <CustomButton
+                label={approveMutation.isPending ? "Approving..." : "Approve"}
                 onClick={() => {
                   setModalType("approve");
                   setIsModalOpen(true);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm ${
-                  approveMutation.isPending
-                    ? "bg-green-400 text-white cursor-not-allowed"
-                    : "bg-green-600 hover:bg-green-700 text-white"
-                }`}
-              >
-                {approveMutation.isPending ? "Approving..." : "Approve"}
-              </button>
+                className="w-28"
+                disabled={approveMutation.isPending}
+                variant="success"
+              />
 
-              {/* ❌ Reject Button */}
-              <button
-                disabled={rejectMutation.isPending}
+              <CustomButton
+                label={rejectMutation.isPending ? "Rejecting..." : "Reject"}
                 onClick={() => {
                   setModalType("reject");
                   setIsModalOpen(true);
                 }}
-                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all shadow-sm ${
-                  rejectMutation.isPending
-                    ? "bg-red-400 text-white cursor-not-allowed"
-                    : "bg-red-600 hover:bg-red-700 text-white"
-                }`}
-              >
-                {rejectMutation.isPending ? "Rejecting..." : "Reject"}
-              </button>
+                className="w-28"
+                disabled={rejectMutation.isPending}
+                variant="danger"
+              />
             </>
           ) : (
-            <button
+            <CustomButton
+              label="Already Processed"
               disabled
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-gray-300 text-gray-600 cursor-not-allowed"
-            >
-              <Check className="h-4 w-4" />
-              <span>Already Processed</span>
-            </button>
+              icon={<Check className="h-4 w-4" />}
+              variant="disabled"
+            />
           )}
         </div>
       </div>
