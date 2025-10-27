@@ -87,7 +87,48 @@ const signInEmployeeService = async (username, password) => {
   return { token, payload };
 };
 
+const updateEmployeeService = async (id, updateData) => {
+  const employee = await Employee.findById(id);
+  if (!employee) {
+    throw new Error(`Employee with ID ${id} not found`);
+  }
+
+  // ❌ Prevent changing employeeId
+  if (updateData.employeeId && updateData.employeeId !== employee.employeeId) {
+    throw new Error("Employee ID cannot be changed");
+  }
+
+  // ✅ Check for unique username or email only
+  if (updateData.email || updateData.username) {
+    const conflict = await Employee.findOne({
+      $and: [
+        { _id: { $ne: id } }, // exclude current employee
+        {
+          $or: [{ email: updateData.email }, { username: updateData.username }],
+        },
+      ],
+    });
+
+    if (conflict) {
+      throw new Error("Email or username already in use");
+    }
+  }
+
+  // ✅ Dynamically update allowed fields only
+  Object.keys(updateData).forEach((key) => {
+    if (key !== "employeeId") {
+      // Skip employeeId
+      employee[key] = updateData[key];
+    }
+  });
+
+  await employee.save();
+
+  return employee;
+};
+
 module.exports = {
+  updateEmployeeService,
   createEmployeeService,
   getEmployeesService,
   getEmployeeByIdService,

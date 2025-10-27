@@ -5,6 +5,7 @@ import {
   addApplicationRequest,
 } from "../../../../api/cto";
 import { useAuth } from "../../../../store/authStore";
+import { CustomButton } from "../../../customButton";
 
 const AddCtoApplicationForm = () => {
   const queryClient = useQueryClient();
@@ -28,7 +29,7 @@ const AddCtoApplicationForm = () => {
     enabled: !!admin?.provincialOffice,
   });
 
-  // ✅ Populate approvers automatically when data is fetched
+  // ✅ Populate approvers automatically
   useEffect(() => {
     if (approverResponse?.data) {
       const a = approverResponse.data;
@@ -141,7 +142,6 @@ const AddCtoApplicationForm = () => {
             Approval Routing
           </h3>
 
-          {/* Conditional Approver Loading/Error States */}
           {isApproverLoading ? (
             <div className="text-gray-500 italic">Loading approvers...</div>
           ) : isApproverError ? (
@@ -167,14 +167,15 @@ const AddCtoApplicationForm = () => {
           )}
         </div>
 
-        {/* Submit */}
-        <button
+        <CustomButton
           type="submit"
+          className="w-full py-2"
+          label={
+            mutation.isPending ? "Submitting..." : "Submit CTO Application"
+          }
+          variant="save"
           disabled={mutation.isPending}
-          className="w-full px-4 py-2 bg-neutral-800 text-white font-medium rounded-md hover:bg-neutral-700 active:scale-96 transition"
-        >
-          {mutation.isPending ? "Submitting..." : "Submit CTO Application"}
-        </button>
+        />
       </form>
     </div>
   );

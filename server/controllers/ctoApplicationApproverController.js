@@ -31,7 +31,7 @@ const approveCtoApplication = async (req, res, next) => {
 
 const rejectCtoApplication = async (req, res, next) => {
   try {
-    const { id: applicationId } = req.params;
+    const { applicationId } = req.params;
     const approverId = req.user.id;
     const { remarks } = req.body;
 

@@ -5,6 +5,7 @@ const {
   getEmployees,
   getEmployeeById,
   signInEmployee,
+  updateEmployee,
 } = require("../controllers/employeeController");
 
 const {
@@ -19,6 +20,7 @@ router.post(
   createEmployee
 );
 router.get("/", authenticateToken, authorizeRoles("admin", "hr"), getEmployees);
+
 router.get(
   "/:id",
   authenticateToken,
@@ -26,6 +28,12 @@ router.get(
   getEmployeeById
 );
 
+router.get(
+  "/:id",
+  authenticateToken,
+  authorizeRoles("admin", "hr"),
+  updateEmployee
+);
 router.post("/login", signInEmployee);
 
 module.exports = router;

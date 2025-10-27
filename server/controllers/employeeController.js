@@ -3,6 +3,7 @@ const {
   getEmployeesService,
   getEmployeeByIdService,
   signInEmployeeService,
+  updateEmployeeService,
 } = require("../services/employeeService");
 
 const createEmployee = async (req, res) => {
@@ -62,7 +63,23 @@ const signInEmployee = async (req, res) => {
   }
 };
 
+const updateEmployee = async (req, res) => {
+  try {
+    const employee = await updateEmployeeService(req.params.id, req.body);
+
+    res.status(200).json({
+      success: true,
+      message: "Employee updated successfully",
+      data: employee,
+    });
+  } catch (err) {
+    console.error("Error updating employee:", err.message);
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
+  updateEmployee,
   createEmployee,
   getEmployees,
   getEmployeeById,
