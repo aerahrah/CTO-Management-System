@@ -20,3 +20,8 @@ export const loginEmployee = async (credentials) => {
   const res = await API.post("/employee/login", credentials);
   return res.data;
 };
+
+export const fetchProvincialOffices = async () => {
+  const res = await API.get("/settings/provincial-office");
+  return res.data;
+};

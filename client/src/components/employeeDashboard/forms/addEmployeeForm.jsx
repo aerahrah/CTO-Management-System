@@ -1,9 +1,9 @@
 import React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
+import ProvincialOfficeSelect from "./selectProvincialOffice";
 
-// ✅ Validation Schema
 const schema = yup.object().shape({
   username: yup
     .string()
@@ -22,6 +22,7 @@ const schema = yup.object().shape({
   position: yup.string().required("Position is required"),
   department: yup.string().nullable(),
   status: yup.string().oneOf(["Active", "Inactive", "Resigned", "Terminated"]),
+  provincialOffice: yup.string().required("Provincial Office is required"),
   address: yup.object().shape({
     street: yup.string().required("Street is required"),
     city: yup.string().required("City is required"),
@@ -41,6 +42,7 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
   } = useForm({
     resolver: yupResolver(schema),
@@ -55,6 +57,7 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
       position: "",
       department: "",
       status: "Active",
+      provincialOffice: "",
       address: { street: "", city: "", province: "" },
       emergencyContact: { name: "", phone: "", relation: "" },
     },
@@ -64,95 +67,92 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
     <form
       id="employeeForm"
       onSubmit={handleSubmit(onSubmit)}
-      className="grid p-6 grid-cols-1 lg:grid-cols-2 gap-8 h-120 overflow-y-auto"
+      className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8 
+                 max-h-[70vh] overflow-y-auto bg-white rounded-lg shadow-sm"
     >
-      {/* Personal Details */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Personal Details</h3>
+      {/* === PERSONAL DETAILS === */}
+      <section>
+        <h3 className="text-lg font-semibold mb-4 text-gray-700">
+          Personal Details
+        </h3>
         <div className="space-y-4">
           <InputField
             label="Username"
-            placeholder="Enter username"
             required
             {...register("username")}
             error={errors.username}
           />
-          <InputField
-            label="First Name"
-            placeholder="Enter first name"
-            required
-            {...register("firstName")}
-            error={errors.firstName}
-          />
-          <InputField
-            label="Last Name"
-            placeholder="Enter last name"
-            required
-            {...register("lastName")}
-            error={errors.lastName}
-          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <InputField
+              label="First Name"
+              required
+              {...register("firstName")}
+              error={errors.firstName}
+            />
+            <InputField
+              label="Last Name"
+              required
+              {...register("lastName")}
+              error={errors.lastName}
+            />
+          </div>
           <InputField
             label="Email"
             type="email"
-            placeholder="Enter email"
             required
             {...register("email")}
             error={errors.email}
           />
           <InputField
             label="Phone"
-            placeholder="Enter phone number"
             required
             {...register("phone")}
             error={errors.phone}
           />
         </div>
-      </div>
+      </section>
 
-      {/* Job Details */}
-      <div>
-        <h3 className="text-lg font-semibold mb-4">Job Details</h3>
+      {/* === JOB DETAILS === */}
+      <section>
+        <h3 className="text-lg font-semibold mb-4 text-gray-700">
+          Job Details
+        </h3>
         <div className="space-y-4">
           <SelectField
             label="Role"
             {...register("role")}
-            required
             options={["employee", "supervisor", "hr", "admin"]}
-            placeholder="Select role"
+            required
+            error={errors.role}
           />
           <InputField
             label="Position"
-            placeholder="Enter position"
-            {...register("position")}
             required
+            {...register("position")}
             error={errors.position}
           />
           <InputField
             label="Department"
-            placeholder="Enter department"
             {...register("department")}
-            required
             error={errors.department}
           />
           <SelectField
             label="Status"
             {...register("status")}
             options={["Active", "Inactive", "Resigned", "Terminated"]}
-            placeholder="Select status"
             required
             error={errors.status}
           />
         </div>
-      </div>
+      </section>
 
-      {/* Address */}
-      <div className="lg:col-span-2">
-        <h3 className="text-lg font-semibold mb-4">Address</h3>
+      {/* === ADDRESS === */}
+      <section className="lg:col-span-2">
+        <h3 className="text-lg font-semibold mb-4 text-gray-700">Address</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="md:col-span-3">
             <InputField
               label="Street"
-              placeholder="Enter street"
               {...register("address.street")}
               required
               error={errors?.address?.street}
@@ -160,63 +160,73 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
           </div>
           <InputField
             label="City"
-            placeholder="Enter city"
             {...register("address.city")}
             required
             error={errors?.address?.city}
           />
           <InputField
             label="Province"
-            placeholder="Enter province"
             {...register("address.province")}
             required
             error={errors?.address?.province}
           />
         </div>
-      </div>
+      </section>
 
-      {/* Emergency Contact */}
-      <div className="lg:col-span-2">
-        <h3 className="text-lg font-semibold mb-4">Emergency Contact</h3>
+      {/* === PROVINCIAL OFFICE === */}
+      <section className="lg:col-span-2">
+        <Controller
+          name="provincialOffice"
+          control={control}
+          render={({ field }) => (
+            <ProvincialOfficeSelect
+              value={field.value}
+              onChange={field.onChange}
+              error={errors?.provincialOffice}
+            />
+          )}
+        />
+      </section>
+
+      {/* === EMERGENCY CONTACT === */}
+      <section className="lg:col-span-2">
+        <h3 className="text-lg font-semibold mb-4 text-gray-700">
+          Emergency Contact
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <InputField
             label="Name"
-            placeholder="Enter contact name"
             {...register("emergencyContact.name")}
             required
             error={errors?.emergencyContact?.name}
           />
           <InputField
             label="Phone"
-            placeholder="Enter contact phone"
             {...register("emergencyContact.phone")}
             required
             error={errors?.emergencyContact?.phone}
           />
           <InputField
             label="Relation"
-            placeholder="Enter relation"
             {...register("emergencyContact.relation")}
             required
             error={errors?.emergencyContact?.relation}
           />
         </div>
-      </div>
-
-      {/* Actions */}
+      </section>
     </form>
   );
 };
 
+/* === INPUT FIELD === */
 const InputField = ({ label, error, required, ...props }) => (
   <div>
-    <label className="block text-sm font-medium mb-1">
+    <label className="block text-sm font-medium mb-1 text-gray-700">
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     <input
       {...props}
-      className="w-full border p-2 rounded"
-      placeholder={props.placeholder || `Enter ${label}`}
+      className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-2 rounded"
     />
     {error && <p className="text-red-500 text-sm mt-1">{error.message}</p>}
   </div>
@@ -224,13 +234,12 @@ const InputField = ({ label, error, required, ...props }) => (
 
 const SelectField = ({ label, options, error, required, ...props }) => (
   <div>
-    <label className="block text-sm font-medium mb-1">
+    <label className="block text-sm font-medium mb-1 text-gray-700">
       {label} {required && <span className="text-red-500">*</span>}
     </label>
     <select
       {...props}
-      className="w-full border p-2 rounded"
-      placeholder={props.placeholder || `Select ${label}`}
+      className="w-full border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 p-2 rounded"
     >
       {options.map((opt) => (
         <option key={opt} value={opt}>

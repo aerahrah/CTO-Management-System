@@ -28,7 +28,7 @@ router.get(
   getEmployeeById
 );
 
-router.get(
+router.put(
   "/:id",
   authenticateToken,
   authorizeRoles("admin", "hr"),
