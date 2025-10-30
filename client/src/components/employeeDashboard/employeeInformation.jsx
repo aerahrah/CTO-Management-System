@@ -8,6 +8,7 @@ import { CustomButton } from "../customButton";
 
 const EmployeeInformation = ({ selectedId }) => {
   const [isOpen, setIsOpen] = useState(false);
+
   const {
     data: employee,
     isLoading,
@@ -21,6 +22,10 @@ const EmployeeInformation = ({ selectedId }) => {
 
   if (isLoading) {
     return <div className="p-4">Loading employee...</div>;
+  }
+
+  if (isError) {
+    return <div className="p-4 text-red-600">Failed to load employee.</div>;
   }
 
   const emp = employee?.data;
@@ -54,14 +59,17 @@ const EmployeeInformation = ({ selectedId }) => {
 
       {/* Info Sections */}
       <div className="grid grid-cols-1 md:grid-cols-2 py-1 gap-6 h-104 overflow-y-auto">
-        {/* Basic Info */}
         <Section title="Basic Information">
           <InfoRow label="Employee ID" value={emp?.employeeId} />
           <InfoRow label="Username" value={emp?.username} />
           <InfoRow label="Role" value={<RoleBadge role={emp?.role} />} />
           <InfoRow
             label="Date Hired"
-            value={new Date(emp?.dateHired).toLocaleDateString()}
+            value={
+              emp?.dateHired
+                ? new Date(emp?.dateHired).toLocaleDateString()
+                : "-"
+            }
           />
           <InfoRow
             label="Status"
@@ -69,7 +77,6 @@ const EmployeeInformation = ({ selectedId }) => {
           />
         </Section>
 
-        {/* Contact Info + Emergency */}
         <Section title="Contact Information">
           <InfoRow label="Email" value={emp?.email} />
           <InfoRow label="Mobile Number" value={emp?.phone} />
@@ -84,7 +91,6 @@ const EmployeeInformation = ({ selectedId }) => {
           />
         </Section>
 
-        {/* Leave Balances */}
         <Section title="Leave Balances">
           <InfoRow
             label="Vacation Leave (hrs)"
@@ -94,7 +100,6 @@ const EmployeeInformation = ({ selectedId }) => {
           <InfoRow label="CTO (hrs)" value={emp?.balances?.ctoHours} />
         </Section>
 
-        {/* Address */}
         <Section title="Address">
           <InfoRow label="Street" value={emp?.address?.street} />
           <InfoRow label="City" value={emp?.address?.city} />
@@ -102,6 +107,7 @@ const EmployeeInformation = ({ selectedId }) => {
         </Section>
       </div>
 
+      {/* ✅ Prefilled Edit Form Modal */}
       <Modal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
@@ -116,7 +122,17 @@ const EmployeeInformation = ({ selectedId }) => {
           variant: "save",
         }}
       >
-        <AddEmployeeForm onCancel={() => setIsOpen(false)} />
+        {emp && (
+          <AddEmployeeForm
+            mode="edit"
+            employee={emp} // ✅ prefill the form here
+            onCancel={() => setIsOpen(false)}
+            onSubmit={(formData) => {
+              console.log("Updated Employee Data:", formData);
+              setIsOpen(false);
+            }}
+          />
+        )}
       </Modal>
     </div>
   );

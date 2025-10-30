@@ -38,12 +38,18 @@ const schema = yup.object().shape({
   }),
 });
 
-const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
+const AddEmployeeForm = ({
+  onCancel,
+  onSubmit,
+  isSaving = false,
+  employee,
+}) => {
   const {
     register,
     handleSubmit,
     control,
     formState: { errors },
+    reset,
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
@@ -62,6 +68,21 @@ const AddEmployeeForm = ({ onCancel, onSubmit, isSaving = false }) => {
       emergencyContact: { name: "", phone: "", relation: "" },
     },
   });
+
+  // 🔹 Prefill form when editing an existing employee
+  React.useEffect(() => {
+    if (employee) {
+      reset({
+        ...employee,
+        address: employee.address || { street: "", city: "", province: "" },
+        emergencyContact: employee.emergencyContact || {
+          name: "",
+          phone: "",
+          relation: "",
+        },
+      });
+    }
+  }, [employee, reset]);
 
   return (
     <form
