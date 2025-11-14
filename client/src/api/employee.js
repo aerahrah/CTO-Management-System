@@ -25,3 +25,9 @@ export const fetchProvincialOffices = async () => {
   const res = await API.get("/settings/provincial-office");
   return res.data;
 };
+
+export const updateEmployeeById = async (id, updateData) => {
+  console.log(id, updateData);
+  const res = await API.put(`/employee/${id}`, updateData);
+  return res.data;
+};

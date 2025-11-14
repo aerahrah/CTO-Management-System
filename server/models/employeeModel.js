@@ -6,7 +6,12 @@ const employeeSchema = new mongoose.Schema(
     employeeId: { type: String, unique: true },
 
     username: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    password: {
+      type: String,
+      required: function () {
+        return this.isNew;
+      },
+    },
 
     role: {
       type: String,

@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { getEmployeeById } from "../../api/employee";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { getEmployeeById, updateEmployeeById } from "../../api/employee";
 import { useState } from "react";
 import { StatusBadge, RoleBadge } from "../statusUtils";
 import Modal from "../modal";
@@ -8,6 +8,7 @@ import { CustomButton } from "../customButton";
 
 const EmployeeInformation = ({ selectedId }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const {
     data: employee,
@@ -18,6 +19,18 @@ const EmployeeInformation = ({ selectedId }) => {
     queryFn: () => getEmployeeById(selectedId),
     enabled: !!selectedId,
     staleTime: Infinity,
+  });
+
+  const updateEmployeeMutation = useMutation({
+    mutationFn: ({ id, data }) => updateEmployeeById(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries(["employee", selectedId]);
+      setIsOpen(false);
+    },
+    onError: (error) => {
+      console.error("UPDATE ERROR:", error.response?.data || error);
+      alert(error.response?.data?.message || "Update failed");
+    },
   });
 
   if (isLoading) {
@@ -125,11 +138,17 @@ const EmployeeInformation = ({ selectedId }) => {
         {emp && (
           <AddEmployeeForm
             mode="edit"
-            employee={emp} // ✅ prefill the form here
+            employee={emp}
             onCancel={() => setIsOpen(false)}
             onSubmit={(formData) => {
-              console.log("Updated Employee Data:", formData);
-              setIsOpen(false);
+              const { employeeId, ...cleanData } = formData;
+
+              console.log("Data being sent to backend:", cleanData);
+
+              updateEmployeeMutation.mutate({
+                id: selectedId,
+                data: cleanData,
+              });
             }}
           />
         )}
