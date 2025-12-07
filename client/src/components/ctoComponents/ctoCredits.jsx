@@ -7,7 +7,7 @@ const CtoCredits = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
       <CardFull>
         <AddCtoCreditForm onSubmit={handleFormSubmit} />
       </CardFull>

@@ -112,7 +112,9 @@ const Dashboard = () => {
 
         {/* Main Outlet */}
         <main className="pt-20  transition-all duration-300">
-          <Outlet />
+          <div className="w-[100%] bg-neutral-200 flex gap-4 p-5">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>
