@@ -1,6 +1,6 @@
 import AddCtoCreditForm from "./ctoCreditComponents/forms/addCtoCreditForm";
 import CtoCreditHistory from "./ctoCreditComponents/recentCtoCreditHistory";
-import { CardFull } from "../cardComponent";
+import { CardFull, CardLg } from "../cardComponent";
 const CtoCredits = () => {
   const handleFormSubmit = (data) => {
     console.log("Credit CTO submitted:", data);
@@ -8,9 +8,9 @@ const CtoCredits = () => {
 
   return (
     <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
-      <CardFull>
+      <CardLg>
         <AddCtoCreditForm onSubmit={handleFormSubmit} />
-      </CardFull>
+      </CardLg>
       <CardFull>
         <CtoCreditHistory />
       </CardFull>

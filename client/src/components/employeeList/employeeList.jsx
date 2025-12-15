@@ -2,8 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
 import { useEffect, useState, useMemo } from "react";
 import { Search } from "lucide-react";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+import ErrorMessage from "../errorComponent";
 
-const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
+const EmployeeList = ({
+  selectedId,
+  setSelectedId,
+  maxHeightClass,
+  setIsEmployeeLoading,
+}) => {
   const {
     data: employees,
     isLoading,
@@ -23,6 +31,12 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
     }
   }, [employees, selectedId, setSelectedId]);
 
+  useEffect(() => {
+    if (setIsEmployeeLoading) {
+      setIsEmployeeLoading(isLoading);
+    }
+  }, [isLoading, setIsEmployeeLoading]);
+
   const filteredEmployees = useMemo(() => {
     if (!employees?.data) return [];
 
@@ -40,11 +54,10 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
       });
   }, [employees, search, sortOrder]);
 
-  if (isLoading) return <div>Loading employees...</div>;
-  if (isError) return <div>Failed to load employees.</div>;
+  if (isError) return <ErrorMessage message="Failed to load employees" />;
 
   return (
-    <div className="flex flex-col ">
+    <div className="flex flex-col">
       {/* Controls */}
       <div className="flex items-center gap-2 mb-4 px-2">
         <div className="relative flex-1">
@@ -65,7 +78,7 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
           onChange={(e) => setSortOrder(e.target.value)}
           className="border border-gray-300 rounded-lg px-2 py-2 text-sm 
                      bg-gray-50 focus:bg-white focus:ring-1 focus:ring-neutral-400 
-                       focus:border-neutral-400 outline-none text-sm"
+                     focus:border-neutral-400 outline-none text-sm"
         >
           <option value="asc">A–Z</option>
           <option value="desc">Z–A</option>
@@ -76,39 +89,58 @@ const EmployeeList = ({ selectedId, setSelectedId, maxHeightClass }) => {
       <ul
         className={`flex flex-col py-1 gap-2 overflow-y-auto px-2 ${maxHeightClass}`}
       >
-        {filteredEmployees.map((item) => {
-          const initials = `${item.firstName[0]}${item.lastName[0]}`;
-          return (
-            <li
-              key={item._id}
-              onClick={() => setSelectedId(item._id)}
-              className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer
-                         transition-colors shadow-sm hover:bg-neutral-50
-                         ${
-                           selectedId === item._id
-                             ? "bg-blue-50 border-neutral-400"
-                             : "bg-white border-neutral-200/80"
-                         }`}
-            >
-              <div
-                className="h-9 w-9 flex items-center justify-center rounded-full 
-                              bg-neutral-200/80 text-neutral-700 font-semibold text-sm"
+        {isLoading
+          ? Array.from({ length: 6 }).map((_, i) => (
+              <li
+                key={i}
+                className="flex items-center gap-3 px-3 py-1.5 rounded-lg border shadow-sm bg-white border-neutral-200/80"
               >
-                {initials}
-              </div>
-              <div className="flex flex-col">
-                <span className="font-medium text-neutral-800 text-sm">
-                  {item.firstName} {item.lastName}
-                </span>
-                <span className="text-xs text-neutral-500">
-                  {item.department}
-                </span>
-              </div>
-            </li>
-          );
-        })}
+                {/* Avatar skeleton */}
+                <div className="h-9 w-9 rounded-full flex items-center justify-center">
+                  <Skeleton circle height={36} width={36} />
+                </div>
 
-        {filteredEmployees.length === 0 && (
+                {/* Name & department skeleton */}
+                <div className="flex flex-col flex-1 gap-0.25">
+                  <Skeleton width="60%" height={14} />
+                  <Skeleton width="40%" height={12} />
+                </div>
+              </li>
+            ))
+          : filteredEmployees.map((item) => {
+              const initials = `${item.firstName[0]}${item.lastName[0]}`;
+              console.log(item);
+              return (
+                <li
+                  key={item._id}
+                  onClick={() => setSelectedId(item._id)}
+                  className={`flex items-center gap-3 p-3  rounded-lg border cursor-pointer
+                             transition-colors shadow-sm hover:bg-neutral-50
+                             ${
+                               selectedId === item._id
+                                 ? "bg-neutral-100 border-neutral-400/70"
+                                 : "bg-white border-neutral-200/80"
+                             }`}
+                >
+                  <div
+                    className="h-9 w-9 flex items-center justify-center rounded-full 
+                                  bg-neutral-200/80 text-neutral-700 font-semibold text-sm"
+                  >
+                    {initials}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-neutral-800 text-sm">
+                      {item.firstName} {item.lastName}
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      {item.department}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+
+        {filteredEmployees.length === 0 && !isLoading && (
           <li className="text-gray-500 italic text-center py-4 text-sm">
             No employees found
           </li>

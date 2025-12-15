@@ -2,7 +2,15 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Search } from "lucide-react";
 import { StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
-const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+
+const CtoApplicationsList = ({
+  applications,
+  selectedId,
+  onSelect,
+  isLoading,
+}) => {
   const [search, setSearch] = useState("");
   const [sortOrder, setSortOrder] = useState("asc");
   const { admin } = useAuth();
@@ -37,12 +45,12 @@ const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
 
   return (
     <div className="">
-      {/* Header */}
-      <div className="px-2 pb-2 text-xl font-semibold text-gray-700">
+      {/* Header - always visible */}
+      <div className="px-2 pb-2 text-xl font-bold text-gray-800">
         CTO Applications List
       </div>
 
-      {/* Controls */}
+      {/* Controls - always visible */}
       <div className="flex items-center gap-2 pb-4 px-2 bg-white">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
@@ -70,40 +78,46 @@ const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
       </div>
 
       {/* Application List */}
-      <ul className="flex flex-col gap-2 overflow-y-auto px-2 max-h-132 overflow-y-auto">
-        {filteredApps.length > 0 ? (
+      <ul className="flex flex-col gap-2 overflow-y-auto px-2 max-h-132">
+        {isLoading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-3 px-2 p-0.5 rounded-lg border bg-white shadow-sm bg-white border-neutral-200/80"
+            >
+              <div className="h-9 w-9 flex items-center justify-center rounded-full bg-neutral-200/80">
+                <Skeleton circle height={36} width={36} />
+              </div>
+              <div className="flex flex-col flex-1 gap-[-.25rem]">
+                <Skeleton width="60%" height={14} />
+                <Skeleton width="40%" height={12} />
+                <Skeleton width="30%" height={12} />
+              </div>
+              <div className="w-20">
+                <Skeleton width="100%" height={20} />
+              </div>
+            </li>
+          ))
+        ) : filteredApps.length > 0 ? (
           filteredApps.map((app) => {
             const initials = `${app.employee?.firstName?.[0] || ""}${
               app.employee?.lastName?.[0] || ""
             }`;
-            const statusColor =
-              app.overallStatus === "APPROVED"
-                ? "text-green-600 bg-green-50 border-green-100"
-                : app.overallStatus === "REJECTED"
-                ? "text-red-600 bg-red-50 border-red-100"
-                : "text-yellow-600 bg-yellow-50 border-yellow-100";
-
             return (
               <li
                 key={app._id}
                 onClick={() => onSelect(app)}
                 className={`flex items-center gap-3 p-2 rounded-lg border cursor-pointer 
-                            transition-colors shadow-sm hover:bg-neutral-50
-                            ${
-                              selectedId === app._id
-                                ? "bg-blue-50 border-neutral-400"
-                                : "bg-white border-neutral-200/80"
-                            }`}
+                              transition-colors shadow-sm hover:bg-neutral-50
+                              ${
+                                selectedId === app._id
+                                  ? "bg-blue-50 border-neutral-400"
+                                  : "bg-white border-neutral-200/80"
+                              }`}
               >
-                {/* Avatar / Initials */}
-                <div
-                  className="h-9 w-9 flex items-center justify-center rounded-full 
-                                bg-neutral-200/80 text-neutral-700 font-semibold text-sm"
-                >
+                <div className="h-9 w-9 flex items-center justify-center rounded-full bg-neutral-200/80 text-neutral-700 font-semibold text-sm">
                   {initials}
                 </div>
-
-                {/* Info */}
                 <div className="flex flex-col flex-1">
                   <span className="font-medium text-neutral-800 text-sm">
                     {app.employee?.firstName} {app.employee?.lastName}
@@ -115,9 +129,6 @@ const CtoApplicationsList = ({ applications, selectedId, onSelect }) => {
                     Requested: {app.requestedHours} hrs
                   </span>
                 </div>
-
-                {/* Status Tag */}
-
                 <StatusBadge
                   status={
                     app.approvals?.find(

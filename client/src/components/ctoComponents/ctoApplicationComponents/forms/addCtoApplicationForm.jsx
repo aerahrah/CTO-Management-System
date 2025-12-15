@@ -6,6 +6,9 @@ import {
 } from "../../../../api/cto";
 import { useAuth } from "../../../../store/authStore";
 import { CustomButton } from "../../../customButton";
+import { Clock } from "lucide-react";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
 const AddCtoApplicationForm = () => {
   const queryClient = useQueryClient();
@@ -29,7 +32,7 @@ const AddCtoApplicationForm = () => {
     enabled: !!admin?.provincialOffice,
   });
 
-  // ✅ Populate approvers automatically
+  // Populate approvers automatically
   useEffect(() => {
     if (approverResponse?.data) {
       const a = approverResponse.data;
@@ -77,8 +80,6 @@ const AddCtoApplicationForm = () => {
       approver2: formData.approver2,
       approver3: formData.approver3,
     };
-
-    console.log("Submitting CTO request:", payload);
     mutation.mutate(payload);
   };
 
@@ -90,8 +91,12 @@ const AddCtoApplicationForm = () => {
 
   return (
     <div className="max-w-xl mx-auto">
-      <h2 className="text-xl font-bold mb-6 border-b pb-2">🕒 Apply for CTO</h2>
-
+      <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
+        <span className="flex items-center justify-center w-8 h-8  bg-violet-600 rounded-full">
+          <Clock className="w-5 h-5 text-white" />
+        </span>
+        <span className="text-xl font-bold text-gray-800">Apply for CTO</span>
+      </h2>
       <form className="space-y-5" onSubmit={handleSubmit}>
         {/* Requested Duration */}
         <div>
@@ -143,7 +148,15 @@ const AddCtoApplicationForm = () => {
           </h3>
 
           {isApproverLoading ? (
-            <div className="text-gray-500 italic">Loading approvers...</div>
+            // Skeleton placeholders
+            [...Array(3)].map((_, idx) => (
+              <div key={idx} className="flex flex-col">
+                <label className="text-xs font-semibold text-gray-600 mb-1">
+                  Approver {idx + 1}
+                </label>
+                <Skeleton height={38} width="100%" borderRadius={6} />
+              </div>
+            ))
           ) : isApproverError ? (
             <div className="text-red-500 italic">Failed to load approvers.</div>
           ) : (

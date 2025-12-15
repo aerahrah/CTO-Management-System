@@ -5,6 +5,9 @@ import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import AllCtoCreditHistory from "./allCtoCreditHistory";
 import { CustomButton, TableActionButton } from "../../customButton";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+import { Clipboard } from "lucide-react";
 
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
@@ -45,48 +48,31 @@ const CtoCreditHistory = () => {
     return `${hours}h ${minutes}m`;
   };
 
-  if (isLoading || isProcessing) {
-    return (
-      <div className="bg-white p-6 rounded-md shadow-lg">
-        <h2 className="text-xl font-semibold mb-6 border-b pb-2">
-          📜 Recent Credit History
-        </h2>
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="bg-white p-6 rounded-md shadow-lg">
-        <h2 className="text-xl font-semibold mb-6 border-b pb-2">
-          📜 Recent Credit History
-        </h2>
-        <p className="text-red-500">Error fetching recent history</p>
-      </div>
-    );
-  }
-
   return (
     <>
-      <h2 className="text-xl font-bold mb-6 flex items-center gap-2 border-b pb-2">
-        📜 Recent Credit History
+      <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
+        <span className="flex items-center justify-center w-8 h-8  bg-violet-600 rounded-full">
+          <Clipboard className="w-5 h-5 text-white" />
+        </span>
+        <span className="text-xl font-bold text-gray-800">
+          Recent Credit History
+        </span>
       </h2>
       <div className="overflow-x-auto">
         <div className="max-h-104 overflow-y-auto">
-          <table className="w-full text-sm rounded-lg shadow-sm">
-            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
+          <table className="w-full table-fixed text-sm rounded-lg shadow-sm">
+            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700  text-left sticky top-0 z-10">
               <tr>
-                <th className="p-3 border-b border-r border-gray-200">
+                <th className="p-3 w-36  border-b border-r border-gray-200">
                   Employees
                 </th>
-                <th className="p-3 text-center border-b border-r border-gray-200">
+                <th className="p-3  text-center border-b border-r border-gray-200">
                   Duration
                 </th>
                 <th className="p-3 border-b border-r border-gray-200">
                   Memo No.
                 </th>
-                <th className="p-3 text-center border-b border-r border-gray-200">
+                <th className="p-3  text-center border-b border-r border-gray-200">
                   Status
                 </th>
                 <th className="p-3 text-center border-b border-gray-200">
@@ -95,7 +81,31 @@ const CtoCreditHistory = () => {
               </tr>
             </thead>
             <tbody>
-              {credits.length > 0 ? (
+              {isLoading || isProcessing ? (
+                // Skeleton Rows
+                [...Array(8)].map((_, i) => (
+                  <tr
+                    key={i}
+                    className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
+                  >
+                    <td className="p-3 w-36 border-b border-r border-gray-200">
+                      <Skeleton width={80} height={20} />
+                    </td>
+                    <td className="p-3 text-center border-b border-r border-gray-200">
+                      <Skeleton width={80} height={20} />
+                    </td>
+                    <td className="p-3 border-b border-r border-gray-200">
+                      <Skeleton width={40} height={20} />
+                    </td>
+                    <td className="p-3 text-center border-b border-r border-gray-200">
+                      <Skeleton width={90} height={20} />
+                    </td>
+                    <td className="p-3 text-center border-b border-gray-200">
+                      <Skeleton width={80} height={24} />
+                    </td>
+                  </tr>
+                ))
+              ) : credits.length > 0 ? (
                 credits.map((credit, index) => (
                   <tr
                     key={credit._id}

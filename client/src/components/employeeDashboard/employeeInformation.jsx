@@ -5,6 +5,8 @@ import { StatusBadge, RoleBadge } from "../statusUtils";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
 import { CustomButton } from "../customButton";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
 const EmployeeInformation = ({ selectedId }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -33,15 +35,13 @@ const EmployeeInformation = ({ selectedId }) => {
     },
   });
 
-  if (isLoading) {
-    return <div className="p-4">Loading employee...</div>;
-  }
+  // Show skeleton first before data is loaded
 
-  if (isError) {
+  if (isError)
     return <div className="p-4 text-red-600">Failed to load employee.</div>;
-  }
 
   const emp = employee?.data;
+  if (!emp) return <EmployeeSkeleton />;
 
   return (
     <div className="p-2 bg-white space-y-6">
@@ -54,10 +54,10 @@ const EmployeeInformation = ({ selectedId }) => {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-800">
-              {emp?.firstName} {emp?.lastName}
+              {`${emp?.firstName} ${emp?.lastName}`}
             </h1>
             <p className="text-sm text-gray-500">
-              {emp?.position} • {emp?.department}
+              {`${emp?.position} • ${emp?.department}`}
             </p>
           </div>
         </div>
@@ -120,7 +120,7 @@ const EmployeeInformation = ({ selectedId }) => {
         </Section>
       </div>
 
-      {/* ✅ Prefilled Edit Form Modal */}
+      {/* Prefilled Edit Form Modal */}
       <Modal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
@@ -142,9 +142,6 @@ const EmployeeInformation = ({ selectedId }) => {
             onCancel={() => setIsOpen(false)}
             onSubmit={(formData) => {
               const { employeeId, ...cleanData } = formData;
-
-              console.log("Data being sent to backend:", cleanData);
-
               updateEmployeeMutation.mutate({
                 id: selectedId,
                 data: cleanData,
@@ -156,6 +153,41 @@ const EmployeeInformation = ({ selectedId }) => {
     </div>
   );
 };
+
+/* Skeleton Component */
+const EmployeeSkeleton = () => (
+  <div className="p-2 bg-white space-y-6 animate-pulse">
+    {/* Header Skeleton */}
+    <div className="flex items-center justify-between border-b pb-5">
+      <div className="flex items-center gap-4">
+        <Skeleton circle height={56} width={56} />
+        <div>
+          <Skeleton width={140} height={24} className="mb-1" />
+          <Skeleton width={120} height={16} />
+        </div>
+      </div>
+      <Skeleton width={100} height={32} />
+    </div>
+
+    {/* Sections Skeleton */}
+    <div className="grid grid-cols-1 md:grid-cols-2 py-1 gap-6 h-104 overflow-y-auto">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div
+          key={i}
+          className="bg-neutral-50/80 rounded-xl p-5 shadow-sm border border-gray-100 space-y-2"
+        >
+          <Skeleton width={150} height={20} className="mb-2" />
+          {Array.from({ length: 4 }).map((_, j) => (
+            <div key={j} className="flex justify-between text-sm">
+              <Skeleton width={130} height={20} />
+              <Skeleton width={80} height={20} />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  </div>
+);
 
 /* Components */
 const Section = ({ title, children }) => (

@@ -10,6 +10,16 @@ export const CardFull = ({ height = "142", children, className = "" }) => {
   );
 };
 
+export const CardLg = ({ height = "142", children, className = "" }) => {
+  return (
+    <div
+      className={`bg-white ${height} p-4 rounded-md shadow-md w-180 ${className}`}
+    >
+      {children || <p className="text-gray-400 text-center">Card Medium</p>}
+    </div>
+  );
+};
+
 export const CardMd = ({ height = "142", children, className = "" }) => {
   return (
     <div

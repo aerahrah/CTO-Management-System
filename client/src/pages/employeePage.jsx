@@ -9,6 +9,7 @@ const EmployeePage = () => {
       <CardMd>
         <EmployeeListView
           setSelectedId={setSelectedId}
+          selectedId={selectedId}
           maxHeightClass="max-h-96"
         />
       </CardMd>

@@ -9,8 +9,75 @@ import {
   rejectApplicationRequest,
 } from "../../../api/cto";
 import { CustomButton } from "../../customButton";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
-const CtoApplicationDetails = ({ application, onSelect }) => {
+// Skeleton Component
+const CtoApplicationDetailsSkeleton = () => {
+  return (
+    <div className="border-gray-200 p-4 space-y-4">
+      {/* Header skeleton */}
+      <div className="flex flex-col md:flex-row md:justify-between gap-2 mb-4">
+        <div className="space-y-2">
+          <Skeleton width={240} height={24} />
+          <Skeleton width={180} height={16} />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton width={100} height={36} />
+          <Skeleton width={100} height={36} />
+        </div>
+      </div>
+
+      <div className="h-136 pr-2 overflow-y-auto">
+        <div className="flex items-center gap-4 mb-6 bg-gray-50 p-4 rounded-lg">
+          <Skeleton circle width={48} height={48} />
+          <div className="flex-1 space-y-1">
+            <Skeleton width={120} height={14} />
+            <Skeleton width={80} height={12} />
+          </div>
+        </div>
+
+        {/* Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+            <Skeleton width={100} height={14} />
+            <Skeleton width={60} height={18} className="mt-2" />
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+            <Skeleton width={140} height={14} />
+            <Skeleton width={60} height={18} className="mt-2" />
+          </div>
+        </div>
+
+        {/* Reason */}
+        <div className="bg-gray-50 p-3 rounded-lg mb-6">
+          <Skeleton width={80} height={14} />
+          <Skeleton width="100%" height={60} className="mt-2" />
+        </div>
+
+        {/* Approval Steps */}
+        <div className="bg-gray-50 p-3 rounded-lg space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 bg-white p-3 rounded-lg"
+            >
+              <Skeleton circle width={32} height={32} />
+              <div className="flex-1 space-y-1">
+                <Skeleton width={120} height={12} />
+                <Skeleton width={80} height={10} />
+              </div>
+              <Skeleton width={60} height={20} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Main Component
+const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
   const { admin } = useAuth();
   const queryClient = useQueryClient();
   const [isProcessed, setIsProcessed] = useState(false);
@@ -18,7 +85,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // ✅ Approve Mutation
+  // Approve Mutation
   const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: async () => {
@@ -31,7 +98,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
       alert(error.message || "Failed to approve application."),
   });
 
-  // ❌ Reject Mutation
+  // Reject Mutation
   const rejectMutation = useMutation({
     mutationFn: ({ applicationId, remarks }) =>
       rejectApplicationRequest(applicationId, remarks),
@@ -45,18 +112,14 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
     onError: (error) => alert(error.message || "Failed to reject application."),
   });
 
-  if (!application) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-gray-400 text-sm italic border rounded-xl bg-gray-50 shadow-inner h-[80vh]">
-        Select an application to view details
-      </div>
-    );
+  // Show skeleton when loading or no application
+  if (isLoading || !application) {
+    return <CtoApplicationDetailsSkeleton />;
   }
 
   const initials = `${application.employee?.firstName?.[0] || ""}${
     application.employee?.lastName?.[0] || ""
   }`;
-
   const formattedDate = application.createdAt
     ? new Date(application.createdAt).toLocaleString("en-US", {
         dateStyle: "medium",
@@ -75,7 +138,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 pb-3 border-b border-gray-100 gap-2">
         <div>
-          <h2 className="text-xl font-semibold text-gray-700">
+          <h2 className="text-xl font-bold text-gray-800">
             CTO Application Details
           </h2>
           <div className="flex items-center gap-2 text-gray-500 text-sm mt-1">
@@ -83,29 +146,26 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
             <span>Submitted at: {formattedDate}</span>
           </div>
         </div>
-
         <div className="flex items-center gap-3">
           {canApproveOrReject ? (
             <>
-              {/* ✅ Approve Button */}
               <CustomButton
                 label={approveMutation.isPending ? "Approving..." : "Approve"}
                 onClick={() => {
                   setModalType("approve");
                   setIsModalOpen(true);
                 }}
-                className="w-28"
+                className="w-32"
                 disabled={approveMutation.isPending}
                 variant="success"
               />
-
               <CustomButton
                 label={rejectMutation.isPending ? "Rejecting..." : "Reject"}
                 onClick={() => {
                   setModalType("reject");
                   setIsModalOpen(true);
                 }}
-                className="w-28"
+                className="w-32"
                 disabled={rejectMutation.isPending}
                 variant="danger"
               />
@@ -121,7 +181,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
         </div>
       </div>
 
-      {/* Main content below */}
+      {/* Main Content */}
       <div className="h-136 pr-2 overflow-y-auto">
         {/* Applicant Info */}
         <div className="flex items-center gap-4 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-sm">
@@ -149,7 +209,6 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
               {application.requestedHours} hrs
             </p>
           </div>
-
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
             <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
               <BadgeCheck className="h-4 w-4 text-gray-500" />
@@ -210,7 +269,7 @@ const CtoApplicationDetails = ({ application, onSelect }) => {
         </div>
       </div>
 
-      {/* 🟢 Modal for Confirm Approve/Reject */}
+      {/* Modal for Approve/Reject */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

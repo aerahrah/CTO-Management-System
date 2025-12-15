@@ -1,19 +1,15 @@
 import { useState } from "react";
-import { Upload } from "lucide-react";
+import { Upload, Plus } from "lucide-react";
 import Select from "react-select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../../../../api/employee";
 import { addCreditRequest } from "../../../../api/cto";
 import { CustomButton } from "../../../customButton";
 
-const AddCtoCreditForm = ({ onSubmit }) => {
+const AddCtoCreditForm = () => {
   const queryClient = useQueryClient();
 
-  const { data: employeesData, isLoading } = useQuery({
-    queryKey: ["employees"],
-    queryFn: getEmployees,
-    staleTime: Infinity,
-  });
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     employees: [],
@@ -21,6 +17,14 @@ const AddCtoCreditForm = ({ onSubmit }) => {
     memoNo: "",
     memoFile: null,
     dateApproved: "",
+  });
+
+  // Fetch employees only when menu opens
+  const { data: employeesData, isLoading } = useQuery({
+    queryKey: ["employees"],
+    queryFn: getEmployees,
+    staleTime: Infinity,
+    enabled: menuOpen, // on-demand
   });
 
   const addCreditMutation = useMutation({
@@ -82,18 +86,21 @@ const AddCtoCreditForm = ({ onSubmit }) => {
     addCreditMutation.mutate(payload);
   };
 
-  if (isLoading) return <div>Loading employees...</div>;
-
-  const employeeOptions = employeesData.data.map((emp) => ({
-    value: emp._id,
-    label: `${emp.firstName} ${emp.lastName}`,
-  }));
+  const employeeOptions =
+    employeesData?.data?.map((emp) => ({
+      value: emp._id,
+      label: `${emp.firstName} ${emp.lastName}`,
+    })) || [];
 
   return (
-    <>
-      <h2 className="text-xl font-bold mb-6 flex items-center gap-2 border-b pb-2">
-        ➕ Credit CTO
+    <div className="max-w-xl mx-auto">
+      <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
+        <span className="flex items-center justify-center w-8 h-8  bg-violet-600 rounded-full">
+          <Plus className="w-5 h-5 text-white" />
+        </span>
+        <span className="text-xl font-bold text-gray-800">Credit CTO</span>
       </h2>
+
       <form className="space-y-5" onSubmit={handleSubmit}>
         {/* Employees */}
         <div>
@@ -107,7 +114,9 @@ const AddCtoCreditForm = ({ onSubmit }) => {
             )}
             isMulti
             onChange={handleEmployeeChange}
-            classNamePrefix="react-select"
+            onMenuOpen={() => setMenuOpen(true)}
+            onMenuClose={() => setMenuOpen(false)}
+            isLoading={isLoading}
             placeholder="Search employees..."
             classNames={{
               control: ({ isFocused }) =>
@@ -180,7 +189,6 @@ const AddCtoCreditForm = ({ onSubmit }) => {
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Upload Memo (PDF)
             </label>
-
             <div className="flex items-center justify-between border rounded-lg bg-gray-50 px-4 py-2 hover:bg-gray-100 transition">
               <label className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden">
                 <Upload className="h-5 w-5 text-gray-600" />
@@ -215,19 +223,17 @@ const AddCtoCreditForm = ({ onSubmit }) => {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Date Approved
             </label>
-            <div>
-              <input
-                type="date"
-                name="dateApproved"
-                value={formData.dateApproved}
-                onChange={handleChange}
-                className="w-34 px-3 py-2 border rounded-md focus:ring-2 text-sm focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
+            <input
+              type="date"
+              name="dateApproved"
+              value={formData.dateApproved}
+              onChange={handleChange}
+              className="w-34 px-3 py-2 border rounded-md focus:ring-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+            />
           </div>
         </div>
 
-        {/* ✅ Submit Button */}
+        {/* Submit Button */}
         <CustomButton
           type="submit"
           label={
@@ -240,7 +246,7 @@ const AddCtoCreditForm = ({ onSubmit }) => {
           disabled={addCreditMutation.isPending}
         />
       </form>
-    </>
+    </div>
   );
 };
 

@@ -6,7 +6,7 @@ import EmployeeList from "../employeeList/employeeList";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
 
-const EmployeeListView = ({ setSelectedId, maxHeightClass }) => {
+const EmployeeListView = ({ selectedId, setSelectedId, maxHeightClass }) => {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
 
@@ -44,7 +44,11 @@ const EmployeeListView = ({ setSelectedId, maxHeightClass }) => {
         </div>
       </div>
 
-      <EmployeeList setSelectedId={setSelectedId} maxHeightClass="max-h-96" />
+      <EmployeeList
+        setSelectedId={setSelectedId}
+        selectedId={selectedId}
+        maxHeightClass="max-h-96"
+      />
 
       <Modal
         isOpen={isOpen}
