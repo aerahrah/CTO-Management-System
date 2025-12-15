@@ -12,6 +12,7 @@ import CtoRecords from "./components/ctoComponents/ctoRecords";
 import CtoApplication from "./components/ctoComponents/ctoApplication";
 import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationApprovals";
 import CtoCredits from "./components/ctoComponents/ctoCredits";
+import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 // import OfficeLocationSettings from "./generalSettingsComponents/officeLocationSettings"; // 👈 new import
 
 function App() {
@@ -31,6 +32,7 @@ function App() {
         <Route path="cto/apply" element={<CtoApplication />} />
         <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
         <Route path="cto/records" element={<CtoRecords />} />
+        <Route path="cto/dashboard" element={<CtoDashboard />} />
       </Route>
       <Route path="*" element={<div>404 - Page Not Found</div>} />
     </Routes>
