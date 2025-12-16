@@ -11,10 +11,19 @@ const ctoApplicationSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    inclusiveDates: {
+      type: [Date],
+      required: true,
+    },
     reason: {
       type: String,
       required: true,
       trim: true,
+    },
+    memo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CtoCredit",
+      required: true,
     },
     approvals: [
       {

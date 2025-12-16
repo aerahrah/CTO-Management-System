@@ -116,3 +116,9 @@ export const fetchMyCtoApplicationsApprovals = async () => {
   console.log(data);
   return data;
 };
+
+export const fetchMyCtoMemos = async () => {
+  const { data } = await API.get(`employee/memos/me`);
+  console.log(data);
+  return data;
+};

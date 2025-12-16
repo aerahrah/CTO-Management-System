@@ -1,6 +1,8 @@
 const CtoApplication = require("../models/ctoApplicationModel");
 const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
+const CtoCredit = require("../models/ctoCreditModel");
+
 const addCtoApplicationService = async ({
   userId,
   requestedHours,
@@ -8,9 +10,14 @@ const addCtoApplicationService = async ({
   approver1,
   approver2,
   approver3,
+  memoId,
+  inclusiveDates,
 }) => {
-  if (!requestedHours) {
-    const err = new Error("Requested hours are required.");
+  // Validations
+  if (!requestedHours || !reason || !memoId || !inclusiveDates?.length) {
+    const err = new Error(
+      "Requested hours, reason, memo, and inclusive dates are required."
+    );
     err.status = 400;
     throw err;
   }
@@ -21,17 +28,24 @@ const addCtoApplicationService = async ({
     throw err;
   }
 
-  // 🟡 Check if the employee has enough CTO hours before creating the request
+  // Employee check & balance
   const employee = await Employee.findById(userId);
   if (!employee) {
     const err = new Error("Employee not found.");
     err.status = 404;
     throw err;
   }
-
   if (employee.balances.ctoHours < requestedHours) {
     const err = new Error("Insufficient CTO hours balance.");
     err.status = 400;
+    throw err;
+  }
+
+  // Check memo existence
+  const memo = await CtoCredit.findById(memoId);
+  if (!memo) {
+    const err = new Error("Selected CTO memo does not exist.");
+    err.status = 404;
     throw err;
   }
 
@@ -46,17 +60,19 @@ const addCtoApplicationService = async ({
     }
   }
 
-  // ✅ Create CTO application
+  // Create CTO application
   const newCtoApplication = new CtoApplication({
     employee: userId,
     requestedHours,
     reason,
+    memo: memoId,
+    inclusiveDates,
     overallStatus: "PENDING",
   });
 
   await newCtoApplication.save();
 
-  // ✅ Create approval steps
+  // Create approval steps
   const approvalSteps = await Promise.all(
     approvers.map(async (approverId, index) => {
       return await ApprovalStep.create({
@@ -71,13 +87,14 @@ const addCtoApplicationService = async ({
   newCtoApplication.approvals = approvalSteps.map((step) => step._id);
   await newCtoApplication.save();
 
-  // ✅ Populate and return
+  // Populate for return
   const populatedApp = await CtoApplication.findById(newCtoApplication._id)
     .populate({
       path: "approvals",
       populate: { path: "approver", select: "firstName lastName position" },
     })
-    .populate("employee", "firstName lastName");
+    .populate("employee", "firstName lastName position")
+    .populate("memo", "memoNo uploadedMemo totalHours");
 
   return populatedApp;
 };
@@ -90,13 +107,16 @@ const getMyCtoApplicationsService = async (userId) => {
   }
 
   const applications = await CtoApplication.find({ employee: userId })
-    .select("requestedHours reason overallStatus approvals employee createdAt")
+    .select(
+      "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
+    )
     .populate({
       path: "approvals",
       populate: { path: "approver", select: "firstName lastName position" },
     })
     .populate("employee", "firstName lastName position")
-    .sort({ createdAt: -1 }); // newest first
+    .populate("memo", "memoNo uploadedMemo totalHours")
+    .sort({ createdAt: -1 });
 
   return applications;
 };

@@ -129,22 +129,24 @@ const updateEmployeeService = async (id, updateData) => {
 };
 
 const getEmployeeCtoMemos = async (employeeId) => {
-  console.log(employeeId);
   const memos = await CtoCredit.find({ "employees.employee": employeeId })
-    .populate("employees.employee", "firstName lastName") // optional
+    .populate("employees.employee", "firstName lastName")
     .exec();
 
+  // Convert uploadedMemo to browser-friendly URL
   const formatted = memos.map((memo) => {
+    const fileName = memo.uploadedMemo.split(/[/\\]/).pop(); // handles both / and \
     const empData = memo.employees.find(
       (e) => e.employee._id.toString() === employeeId
     );
+
     return {
       memoNo: memo.memoNo,
       dateApproved: memo.dateApproved,
       totalHours: memo.totalHours,
       appliedHours: empData?.appliedHours || 0,
       remainingHours: memo.totalHours - (empData?.appliedHours || 0),
-      uploadedMemo: memo.uploadedMemo,
+      uploadedMemo: `/uploads/cto_memos/${fileName}`, // browser-friendly URL
       status: memo.status,
     };
   });

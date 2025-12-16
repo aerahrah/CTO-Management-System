@@ -5,8 +5,15 @@ const {
 
 const addCtoApplicationRequest = async (req, res) => {
   try {
-    const { requestedHours, reason, approver1, approver2, approver3 } =
-      req.body;
+    const {
+      requestedHours,
+      reason,
+      approver1,
+      approver2,
+      approver3,
+      memoId,
+      inclusiveDates,
+    } = req.body;
     const userId = req.user.id;
 
     const application = await addCtoApplicationService({
@@ -16,6 +23,8 @@ const addCtoApplicationRequest = async (req, res) => {
       approver1,
       approver2,
       approver3,
+      memoId,
+      inclusiveDates,
     });
 
     res.status(201).json({
