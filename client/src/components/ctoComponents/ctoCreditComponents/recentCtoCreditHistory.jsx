@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchRecentCreditRequest, rollbackCreditCto } from "../../../api/cto";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import AllCtoCreditHistory from "./allCtoCreditHistory";
@@ -47,6 +47,20 @@ const CtoCreditHistory = () => {
     const { hours = 0, minutes = 0 } = duration;
     return `${hours}h ${minutes}m`;
   };
+
+  useEffect(() => {
+    if (credits.length > 0) {
+      credits.forEach((credit) => {
+        console.log(`MemoNo: ${credit.memoNo}`);
+        console.log("Employees Array:", credit.employees);
+        credit.employees.forEach((e) => {
+          console.log("Employee:", e.employee?.firstName); // This will show populated employee object
+          console.log("Applied Hours:", e.appliedHours);
+        });
+        console.log("----------");
+      });
+    }
+  }, [credits]);
 
   return (
     <>
@@ -115,7 +129,10 @@ const CtoCreditHistory = () => {
                   >
                     <td className="p-3 font-medium text-gray-800 border-b border-gray-200 border-r">
                       {credit.employees
-                        .map((e) => `${e.firstName} ${e.lastName}`)
+                        .map(
+                          (e) =>
+                            `${e.employee?.firstName} ${e.employee?.lastName}`
+                        )
                         .join(", ")}
                     </td>
                     <td className="p-3 text-center border-b border-gray-200 border-r">

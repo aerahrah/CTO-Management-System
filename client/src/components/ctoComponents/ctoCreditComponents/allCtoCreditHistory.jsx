@@ -114,7 +114,10 @@ const AllCtoCreditHistory = () => {
                 >
                   <td className="p-3 font-medium text-gray-800 border-b border-gray-200 border-r">
                     {credit.employees
-                      .map((e) => `${e.firstName} ${e.lastName}`)
+                      .map(
+                        (e) =>
+                          `${e.employee?.firstName} ${e.employee?.lastName}`
+                      )
                       .join(", ")}
                   </td>
                   <td className="p-3 border-b border-gray-200 border-r">

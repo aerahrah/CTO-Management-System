@@ -4,6 +4,7 @@ const {
   getEmployeeByIdService,
   signInEmployeeService,
   updateEmployeeService,
+  getEmployeeCtoMemos,
 } = require("../services/employeeService");
 
 const createEmployee = async (req, res) => {
@@ -78,10 +79,37 @@ const updateEmployee = async (req, res) => {
   }
 };
 
+/**
+ * Controller to fetch all CTO memos for the authenticated employee
+ */
+const getEmployeeCtoMemosById = async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const memos = await getEmployeeCtoMemos(employeeId);
+    res.status(200).json({ memos });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch CTO memos" });
+  }
+};
+
+const getMyCtoMemos = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const memos = await getEmployeeCtoMemos(employeeId);
+    res.status(200).json({ memos });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Failed to fetch your CTO memos" });
+  }
+};
+
 module.exports = {
   updateEmployee,
   createEmployee,
   getEmployees,
   getEmployeeById,
   signInEmployee,
+  getEmployeeCtoMemosById,
+  getMyCtoMemos,
 };

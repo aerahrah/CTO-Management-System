@@ -2,6 +2,7 @@ const Employee = require("../models/employeeModel");
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
+const CtoCredit = require("../models/ctoCreditModel");
 
 // Create employee with temporary password
 const createEmployeeService = async (employeeData) => {
@@ -127,10 +128,35 @@ const updateEmployeeService = async (id, updateData) => {
   return employee;
 };
 
+const getEmployeeCtoMemos = async (employeeId) => {
+  console.log(employeeId);
+  const memos = await CtoCredit.find({ "employees.employee": employeeId })
+    .populate("employees.employee", "firstName lastName") // optional
+    .exec();
+
+  const formatted = memos.map((memo) => {
+    const empData = memo.employees.find(
+      (e) => e.employee._id.toString() === employeeId
+    );
+    return {
+      memoNo: memo.memoNo,
+      dateApproved: memo.dateApproved,
+      totalHours: memo.totalHours,
+      appliedHours: empData?.appliedHours || 0,
+      remainingHours: memo.totalHours - (empData?.appliedHours || 0),
+      uploadedMemo: memo.uploadedMemo,
+      status: memo.status,
+    };
+  });
+
+  return formatted;
+};
+
 module.exports = {
   updateEmployeeService,
   createEmployeeService,
   getEmployeesService,
   getEmployeeByIdService,
   signInEmployeeService,
+  getEmployeeCtoMemos,
 };

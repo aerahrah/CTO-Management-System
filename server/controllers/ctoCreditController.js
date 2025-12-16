@@ -20,8 +20,8 @@ const addCtoCreditRequest = async (req, res) => {
       const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
       const newPath = path.join(path.dirname(filePath), newFileName);
 
-      fs.renameSync(filePath, newPath); // rename the uploaded file
-      filePath = newPath; // update the path to store in DB
+      fs.renameSync(filePath, newPath);
+      filePath = newPath;
     }
 
     const employeesArray = JSON.parse(employees);
@@ -37,7 +37,7 @@ const addCtoCreditRequest = async (req, res) => {
     });
 
     res.status(201).json({
-      message: "CTO credit request created and credited",
+      message: "CTO credit request created",
       creditRequest,
     });
   } catch (error) {
@@ -64,6 +64,7 @@ const rollbackCreditedRequest = async (req, res) => {
 const getRecentCreditRequests = async (req, res) => {
   try {
     const credits = await ctoCreditService.getRecentCredits();
+    console.log(credits);
     res.json({ message: "Showing recent 10 credit requests", credits });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -97,15 +98,32 @@ const getEmployeeDetails = async (req, res) => {
 const getEmployeeCredits = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    const creditRequests = await ctoCreditService.getEmployeeCredits(
-      employeeId
-    );
+    const credits = await ctoCreditService.getEmployeeCredits(employeeId);
+
+    // Format each credit for the employee
+    const formattedCredits = credits.map((credit) => {
+      const empData = credit.employees.find(
+        (e) => e.employee._id.toString() === employeeId
+      );
+
+      return {
+        memoNo: credit.memoNo,
+        dateApproved: credit.dateApproved,
+        uploadedMemo: credit.uploadedMemo,
+        duration: credit.duration,
+        appliedHours: empData?.appliedHours || 0,
+        remainingHours:
+          credit.duration.hours +
+          credit.duration.minutes / 60 -
+          (empData?.appliedHours || 0),
+        status: credit.status,
+      };
+    });
 
     res.json({
       message: "Employee credits fetched successfully",
       employeeId,
-      creditRequests,
-      totalCredits: creditRequests.length,
+      credits: formattedCredits,
     });
   } catch (error) {
     res.status(400).json({ message: error.message });

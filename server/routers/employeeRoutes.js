@@ -6,6 +6,8 @@ const {
   getEmployeeById,
   signInEmployee,
   updateEmployee,
+  getEmployeeCtoMemosById,
+  getMyCtoMemos,
 } = require("../controllers/employeeController");
 
 const {
@@ -34,6 +36,21 @@ router.put(
   authorizeRoles("admin", "hr"),
   updateEmployee
 );
+
+router.get(
+  "/memos/me",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "employee"),
+  getMyCtoMemos
+);
+
+router.get(
+  "/memos/:id",
+  authenticateToken,
+  authorizeRoles("admin", "hr"),
+  getEmployeeCtoMemosById
+);
+
 router.post("/login", signInEmployee);
 
 module.exports = router;

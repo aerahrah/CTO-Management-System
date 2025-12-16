@@ -3,52 +3,48 @@ const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
 const mongoose = require("mongoose");
 
-async function addCredit({
+const addCredit = async ({
   employees,
   duration,
   memoNo,
   dateApproved,
   userId,
   filePath,
-}) {
-  if (
-    !duration ||
-    typeof duration.hours !== "number" ||
-    typeof duration.minutes !== "number"
-  ) {
-    throw new Error("Invalid duration format");
-  }
-  if (duration.minutes < 0 || duration.minutes >= 60) {
-    throw new Error("Minutes must be between 0 and 59");
-  }
-
-  const existingEmployees = await Employee.find({ _id: { $in: employees } });
-  if (existingEmployees.length !== employees.length) {
-    throw new Error(
-      "Some employee IDs are invalid or not found in the database"
-    );
-  }
-
+}) => {
   const totalHours = duration.hours + duration.minutes / 60;
 
-  const creditRequest = await CtoCredit.create({
-    employees,
-    duration,
+  // Build employees array with appliedHours 0
+  const employeeObjs = employees.map((id) => ({
+    employee: id,
+    appliedHours: 0,
+  }));
+
+  const credit = await CtoCredit.create({
     memoNo,
-    status: "CREDITED",
-    dateApproved: dateApproved ? new Date(dateApproved) : null,
-    dateCredited: new Date(),
-    creditedBy: userId,
+    dateApproved,
     uploadedMemo: filePath,
+    duration,
+    totalHours,
+    employees: employeeObjs,
+    creditedBy: userId,
   });
 
-  await Employee.updateMany(
-    { _id: { $in: employees } },
-    { $inc: { "balances.ctoHours": totalHours } }
-  );
+  return credit;
+};
 
-  return creditRequest;
-}
+// const rollbackCredit = async ({ creditId, userId }) => {
+//   const credit = await CtoCredit.findById(creditId);
+//   if (!credit) throw new Error("Credit not found");
+
+//   credit.status = "ROLLEDBACK";
+//   credit.dateRolledBack = new Date();
+//   credit.rolledBackBy = userId;
+//   await credit.save();
+
+//   // Optionally, update applied hours on employees here
+
+//   return credit;
+// };
 
 async function rollbackCredit({ creditId, userId }) {
   const credit = await CtoCredit.findById(creditId);
@@ -74,14 +70,14 @@ async function rollbackCredit({ creditId, userId }) {
 
 async function getRecentCredits() {
   return CtoCredit.find()
-    .populate("employees", "firstName lastName position")
+    .populate("employees.employee", "firstName lastName position")
     .sort({ createdAt: -1 })
     .limit(10);
 }
 
 async function getAllCredits() {
   return CtoCredit.find()
-    .populate("employees", "firstName lastName position")
+    .populate("employees.employee", "firstName lastName")
     .populate("rolledBackBy", "firstName lastName position role")
     .populate("creditedBy", "firstName lastName position role")
     .sort({ createdAt: -1 });
@@ -93,16 +89,26 @@ async function getEmployeeDetails(employeeId) {
     .lean();
 }
 
-async function getEmployeeCredits(employeeId) {
-  if (!mongoose.Types.ObjectId.isValid(employeeId)) {
-    throw new Error("Invalid employee ID");
-  }
+const getEmployeeCredits = async (employeeId) => {
+  const credits = await CtoCredit.find({ "employees.employee": employeeId })
+    .populate("employees.employee", "firstName lastName")
+    .exec();
 
-  return CtoCredit.find({ employees: employeeId })
-    .populate("creditedBy", "firstName lastName position")
-    .populate("rolledBackBy", "firstName lastName position")
-    .lean();
-}
+  return credits.map((credit) => {
+    const empData = credit.employees.find(
+      (e) => e.employee._id.toString() === employeeId.toString()
+    );
+    return {
+      memoNo: credit.memoNo,
+      dateApproved: credit.dateApproved,
+      totalHours: credit.totalHours,
+      appliedHours: empData?.appliedHours || 0,
+      remainingHours: credit.totalHours - (empData?.appliedHours || 0),
+      uploadedMemo: credit.uploadedMemo,
+      status: credit.status,
+    };
+  });
+};
 
 // async function createCreditRequest({
 //   employees,
