@@ -1,7 +1,9 @@
 import API from "./api";
 
 export const addCreditRequest = async (formData) => {
-  console.log(formData);
+  formData.forEach((value, key) => {
+    console.log(key, value);
+  });
   const res = await API.post("/cto/credits", formData);
 
   return res.data;

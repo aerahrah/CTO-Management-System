@@ -1,18 +1,39 @@
 // controllers/ctoCredit.controller.js
 const ctoCreditService = require("../services/ctoCredit.service");
 
+const fs = require("fs");
+const path = require("path");
+
 const addCtoCreditRequest = async (req, res) => {
   try {
     const { employees, duration, memoNo, dateApproved } = req.body;
     const userId = req.user.id;
 
+    let filePath = req.file?.path;
+
+    if (filePath) {
+      const extension = path.extname(req.file.originalname);
+      const cleanMemoNo = memoNo
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9_]/g, "");
+      const cleanDate = dateApproved.replace(/-/g, "");
+      const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
+      const newPath = path.join(path.dirname(filePath), newFileName);
+
+      fs.renameSync(filePath, newPath); // rename the uploaded file
+      filePath = newPath; // update the path to store in DB
+    }
+
+    const employeesArray = JSON.parse(employees);
+    const durationObj = JSON.parse(duration);
+
     const creditRequest = await ctoCreditService.addCredit({
-      employees,
-      duration,
+      employees: employeesArray,
+      duration: durationObj,
       memoNo,
       dateApproved,
       userId,
-      filePath: req.file?.path,
+      filePath,
     });
 
     res.status(201).json({

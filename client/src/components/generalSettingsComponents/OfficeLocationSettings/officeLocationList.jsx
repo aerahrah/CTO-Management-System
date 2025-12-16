@@ -107,7 +107,7 @@ const OfficeLocationList = ({
   const openAddModal = () => setModalOpen(true);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col pb-4">
       {/* Header */}
       <div className="border-b pb-3 mb-3 flex items-center justify-between">
         <h2 className="text-xl font-semibold px-2 text-gray-700">

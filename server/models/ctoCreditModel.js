@@ -20,7 +20,7 @@ const ctoCreditSchema = new mongoose.Schema(
     dateRolledBack: Date,
     creditedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     dateApproved: { type: Date, required: true },
-    uploadedMemo: { type: String },
+    uploadedMemo: { type: String, required: true },
     rolledBackBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     // approver: {
     //   type: mongoose.Schema.Types.ObjectId,

@@ -72,15 +72,18 @@ const AddCtoCreditForm = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    const payload = {
-      employees: formData.employees,
-      duration: {
+    const payload = new FormData();
+    payload.append("memoFile", formData.memoFile); // PDF file
+    payload.append("memoNo", formData.memoNo);
+    payload.append("dateApproved", formData.dateApproved);
+    payload.append("employees", JSON.stringify(formData.employees));
+    payload.append(
+      "duration",
+      JSON.stringify({
         hours: Number(formData.duration.hours) || 0,
         minutes: Number(formData.duration.minutes) || 0,
-      },
-      memoNo: formData.memoNo,
-      dateApproved: formData.dateApproved,
-    };
+      })
+    );
 
     console.log("Submitting:", payload);
     addCreditMutation.mutate(payload);

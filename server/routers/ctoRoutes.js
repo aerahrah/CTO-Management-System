@@ -17,6 +17,8 @@ const {
   // getEmployeeById,
 } = require("../controllers/ctoCreditController.js");
 
+const uploadCtoMemo = require("../middlewares/uploadCtoMemo.middleware.js");
+
 const {
   addCtoApplicationRequest,
   getMyCtoApplicationsRequest,
@@ -31,6 +33,7 @@ router.post(
   "/credits",
   authenticateToken,
   authorizeRoles("admin", "hr"),
+  uploadCtoMemo,
   addCtoCreditRequest
 );
 
