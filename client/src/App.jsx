@@ -13,6 +13,7 @@ import CtoApplication from "./components/ctoComponents/ctoApplication";
 import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationApprovals";
 import CtoCredits from "./components/ctoComponents/ctoCredits";
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
+import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
 // import OfficeLocationSettings from "./generalSettingsComponents/officeLocationSettings"; // 👈 new import
 
 function App() {
@@ -26,7 +27,10 @@ function App() {
         <Route path="settings" element={<SettingsPage />} />
         <Route path="cto" element={<CtoPage />} />
         <Route path="cto-settings" element={<CtoSettings />} />
-        {/* <Route path="office-locations" element={<OfficeLocationSettings />} /> */}
+        <Route
+          path="office-locations"
+          element={<OfficeLocationSettingsPage />}
+        />
         {/* <Route path="/cto/dashboard" element={<CtoDashboard />} /> */}
         <Route path="cto/credit" element={<CtoCredits />} />
         <Route path="cto/apply" element={<CtoApplication />} />

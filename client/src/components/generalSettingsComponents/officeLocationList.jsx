@@ -4,7 +4,7 @@ import { fetchProvincialOffices } from "../../api/cto";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
-const ProvincialOfficesList = ({
+const OfficeLocationList = ({
   selectedOffice,
   setSelectedOffice,
   maxHeightClass,
@@ -66,4 +66,4 @@ const ProvincialOfficesList = ({
   );
 };
 
-export default ProvincialOfficesList;
+export default OfficeLocationList;

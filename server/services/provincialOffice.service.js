@@ -9,13 +9,9 @@ const getProvincialOfficeByIdService = async (id) => {
 };
 
 const createProvincialOfficeService = async (data) => {
-  const { name, code, province, region } = data;
+  const { name, province, region } = data;
 
-  const existing = await ProvincialOffice.findOne({ code });
-  if (existing)
-    throw new Error("A provincial office with this code already exists.");
-
-  const newOffice = new ProvincialOffice({ name, code, province, region });
+  const newOffice = new ProvincialOffice({ name, province, region });
   return await newOffice.save();
 };
 

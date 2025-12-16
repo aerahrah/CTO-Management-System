@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import ProvincialOfficesList from "././provincialOfficeList";
+import OfficeLocationList from "./officeLocationList";
 import ApproverSettings from "./ctoApproverSetting";
 import { CardFull, CardMd } from "../cardComponent";
 const CtoSettings = () => {
@@ -8,7 +8,7 @@ const CtoSettings = () => {
   return (
     <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
       <CardMd>
-        <ProvincialOfficesList
+        <OfficeLocationList
           selectedOffice={selectedOffice}
           setSelectedOffice={setSelectedOffice}
         />
