@@ -133,7 +133,7 @@ const getEmployeeCtoMemos = async (employeeId) => {
     .populate("employees.employee", "firstName lastName")
     .exec();
 
-  // Convert uploadedMemo to browser-friendly URL
+  // Convert uploadedMemo to browser-friendly URL and include _id
   const formatted = memos.map((memo) => {
     const fileName = memo.uploadedMemo.split(/[/\\]/).pop(); // handles both / and \
     const empData = memo.employees.find(
@@ -141,6 +141,7 @@ const getEmployeeCtoMemos = async (employeeId) => {
     );
 
     return {
+      id: memo._id, // <-- add this
       memoNo: memo.memoNo,
       dateApproved: memo.dateApproved,
       totalHours: memo.totalHours,

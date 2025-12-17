@@ -24,7 +24,7 @@ const Modal = ({
 
   return (
     <Transition appear show={isOpen} as={Fragment}>
-      <Dialog as="div" className="relative z-50" onClose={onClose}>
+      <Dialog as="div" className="relative  z-50" onClose={onClose}>
         {/* Overlay */}
         <Transition.Child
           as={Fragment}
@@ -49,7 +49,7 @@ const Modal = ({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <Dialog.Panel className="bg-white rounded-lg shadow-lg p-6 max-w-[80%] relative">
+            <Dialog.Panel className="bg-white rounded-lg shadow-lg  p-6 max-w-[80%] relative">
               {title && (
                 <Dialog.Title className="text-2xl font-semibold mb-4">
                   {title}
@@ -65,6 +65,7 @@ const Modal = ({
                 >
                   {closeLabel || "Close"}
                 </button>
+
                 {action.show && (
                   <button
                     onClick={action.onClick}

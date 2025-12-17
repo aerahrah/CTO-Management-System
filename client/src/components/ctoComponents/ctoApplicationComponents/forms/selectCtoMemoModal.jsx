@@ -40,13 +40,15 @@ const SelectCtoMemoModal = ({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-neutral-100 rounded-md">
             {sortedMemos.map((memo, index) => {
-              const isSelectable = index === nextSelectableIndex;
+              const remainingHours = memo.totalHours - (memo.appliedHours || 0);
+              const isLocked = remainingHours <= 0;
+              const isSelectable = index === nextSelectableIndex && !isLocked;
 
               return (
                 <div
-                  key={memo._id}
+                  key={memo.id}
                   className={`bg-white border border-gray-300 rounded-md shadow-sm hover:shadow-lg transition-shadow duration-100 flex flex-col ${
-                    !isSelectable ? "opacity-50" : ""
+                    !isSelectable || isLocked ? "opacity-50" : ""
                   }`}
                 >
                   {/* PDF Preview */}
@@ -76,10 +78,18 @@ const SelectCtoMemoModal = ({
                       <p className="text-gray-500 text-xs md:text-sm">
                         Total Hours: {memo.totalHours}
                       </p>
+                      <p className="text-gray-500 text-xs md:text-sm">
+                        Applied Hours: {memo.appliedHours || 0}
+                      </p>
                       {memo.dateApproved && (
                         <p className="text-gray-500 text-xs md:text-sm">
                           Date Approved:{" "}
                           {new Date(memo.dateApproved).toLocaleDateString()}
+                        </p>
+                      )}
+                      {isLocked && (
+                        <p className="text-red-500 text-xs md:text-sm mt-1">
+                          No remaining hours
                         </p>
                       )}
                     </div>
@@ -91,28 +101,31 @@ const SelectCtoMemoModal = ({
                         target="_blank"
                         rel="noopener noreferrer"
                         className={`w-full flex items-center gap-1 px-3 py-1 text-xs md:text-sm font-medium border border-gray-400 rounded transition-colors ${
-                          !isSelectable
-                            ? "cursor-not-allowed"
+                          !isSelectable || isLocked
+                            ? "cursor-not-allowed pointer-events-none opacity-50"
                             : "hover:bg-gray-100"
                         }`}
                       >
                         <Eye size={20} />
-                        <p>View</p>
+                        View
                       </a>
 
                       <button
                         type="button"
                         onClick={() => {
                           if (isSelectable) {
+                            console.log(memo);
                             onSelect(memo); // parent updates selected memos
                           } else {
                             window.alert(
-                              "You must select the oldest memo first!"
+                              isLocked
+                                ? "This memo has no remaining hours!"
+                                : "You must select the oldest memo first!"
                             );
                           }
                         }}
                         className={`px-3 py-1 max-w-[100%] w-full text-xs md:text-sm font-medium bg-neutral-900 cursor-pointer text-white rounded transition-colors ${
-                          !isSelectable
+                          !isSelectable || isLocked
                             ? "opacity-50 cursor-not-allowed"
                             : "hover:bg-neutral-900/90"
                         }`}

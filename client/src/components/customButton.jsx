@@ -7,7 +7,7 @@ const mainVariants = {
   success: "bg-green-600 text-white hover:bg-green-700",
   danger: "bg-red-600 text-white hover:bg-red-700",
   warning: "bg-yellow-500 text-white hover:bg-yellow-600",
-  close: "bg-gray-400 text-white hover:bg-gray-500",
+  close: "bg-gray-200 text-neutral-800 hover:bg-gray-300 outline-0 border-0",
   outline:
     "border border-neutral-700 text-neutral-700 hover:bg-neutral-700 hover:text-white",
   disabled: "bg-gray-300 text-gray-500 cursor-not-allowed",
@@ -27,7 +27,7 @@ export const CustomButton = ({
   className = "",
 }) => {
   const baseStyle =
-    "px-3 py-2.5 text-sm font-medium rounded-sm transition active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer";
+    "px-3 py-2.5 text-sm font-medium rounded-sm transition active:scale-95 focus:outline-none cursor-pointer";
   const appliedStyle = disabled
     ? mainVariants.disabled
     : mainVariants[variant] || mainVariants.primary;

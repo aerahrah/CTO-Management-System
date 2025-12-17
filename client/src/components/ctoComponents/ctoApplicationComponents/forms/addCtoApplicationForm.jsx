@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchApproverSettings,
@@ -7,29 +13,31 @@ import {
 } from "../../../../api/cto";
 import { useAuth } from "../../../../store/authStore";
 import { CustomButton } from "../../../customButton";
-import { Clock } from "lucide-react";
+import { Clock, ChevronDown, ChevronUp } from "lucide-react";
 import Skeleton from "react-loading-skeleton";
-import SelectCtoMemoModal from "./selectCtoMemoModal";
 import "react-loading-skeleton/dist/skeleton.css";
+import SelectCtoMemoModal from "./selectCtoMemoModal";
 
-const AddCtoApplicationForm = () => {
+const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   const queryClient = useQueryClient();
   const { admin } = useAuth();
-
+  const [showRouting, setShowRouting] = useState(false);
   const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
   const [selectedMemos, setSelectedMemos] = useState([]);
+  const [maxRequestedHours, setMaxRequestedHours] = useState(null);
+  const dateInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
     requestedHours: "",
     reason: "",
-    memoId: [],
+    memos: [],
     inclusiveDates: [],
     approver1: "",
     approver2: "",
     approver3: "",
   });
-  const dateInputRef = useRef(null);
-  /* ---------------- APPROVER SETTINGS ---------------- */
+
+  // Fetch approver settings
   const {
     data: approverResponse,
     isLoading: isApproverLoading,
@@ -52,26 +60,30 @@ const AddCtoApplicationForm = () => {
     }
   }, [approverResponse]);
 
-  /* ---------------- CTO MEMOS ---------------- */
+  // Fetch CTO memos
   const { data: memoResponse, isLoading: memoLoading } = useQuery({
     queryKey: ["myCtoMemos"],
     queryFn: fetchMyCtoMemos,
   });
 
-  /* ---------------- SUBMIT ---------------- */
+  // Mutation to submit CTO application
   const mutation = useMutation({
     mutationFn: addApplicationRequest,
     onSuccess: () => {
       alert("CTO application submitted successfully!");
-      queryClient.invalidateQueries(["myCtoApplications"]);
-      setFormData((prev) => ({
-        ...prev,
+      queryClient.invalidateQueries(["ctoApplications"]);
+      setFormData({
         requestedHours: "",
         reason: "",
-        memoId: [],
+        memos: [],
         inclusiveDates: [],
-      }));
+        approver1: formData.approver1,
+        approver2: formData.approver2,
+        approver3: formData.approver3,
+      });
       setSelectedMemos([]);
+      setMaxRequestedHours(null);
+      onClose?.();
     },
     onError: (err) => {
       console.error(err);
@@ -79,15 +91,51 @@ const AddCtoApplicationForm = () => {
     },
   });
 
+  // Expose submit function to parent
+  useImperativeHandle(ref, () => ({
+    submit: () => handleSubmit(),
+  }));
+
+  /* ---------------- Handlers ---------------- */
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "requestedHours") {
+      let val = Number(value);
+      if (maxRequestedHours !== null && val > maxRequestedHours)
+        val = maxRequestedHours;
+
+      // Distribute appliedHours across memos
+      let remaining = val;
+      const updatedMemos = selectedMemos.map((m) => {
+        const take = Math.min(m.totalHours, remaining);
+        remaining -= take;
+        return { ...m, appliedHours: take };
+      });
+
+      setSelectedMemos(updatedMemos);
+
+      // Update formData.memos appliedHours
+      const updatedFormMemos = formData.memos.map((fm) => {
+        const matched = updatedMemos.find((m) => m.memoId === fm.memoId);
+        return { ...fm, appliedHours: matched?.appliedHours || 0 };
+      });
+
+      setFormData((prev) => ({
+        ...prev,
+        requestedHours: val,
+        memos: updatedFormMemos,
+      }));
+
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleDateAdd = (e) => {
     const value = e.target.value;
     if (!value) return;
-
     setFormData((prev) => ({
       ...prev,
       inclusiveDates: prev.inclusiveDates.includes(value)
@@ -103,12 +151,33 @@ const AddCtoApplicationForm = () => {
     }));
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleRemoveMemo = (memoId) => {
+    const updatedMemos = selectedMemos.filter((m) => m.memoId !== memoId);
+    setSelectedMemos(updatedMemos);
+    setFormData((prev) => ({
+      ...prev,
+      memos: prev.memos.filter((m) => m.memoId !== memoId),
+    }));
+
+    const cumulativeMax = updatedMemos.reduce(
+      (acc, m) => acc + m.totalHours,
+      0
+    );
+    setMaxRequestedHours(cumulativeMax);
+
+    if (formData.requestedHours > cumulativeMax) {
+      setFormData((prev) => ({
+        ...prev,
+        requestedHours: cumulativeMax,
+      }));
+    }
+  };
+
+  const handleSubmit = () => {
     mutation.mutate({
       requestedHours: Number(formData.requestedHours),
       reason: formData.reason,
-      memoId: formData.memoId,
+      memos: formData.memos,
       inclusiveDates: formData.inclusiveDates,
       approver1: formData.approver1,
       approver2: formData.approver2,
@@ -132,11 +201,10 @@ const AddCtoApplicationForm = () => {
         <span className="text-xl font-bold text-gray-800">Apply for CTO</span>
       </h2>
 
-      <form className="space-y-5" onSubmit={handleSubmit}>
+      <div className="space-y-5 overflow-y-auto pr-2 h-122">
         {/* CTO Memo */}
         <div>
           <label className="block text-sm font-medium mb-1">CTO Memo</label>
-
           {memoLoading ? (
             <Skeleton height={38} />
           ) : (
@@ -146,89 +214,77 @@ const AddCtoApplicationForm = () => {
                 onClick={() => setIsMemoModalOpen(true)}
                 className="w-full px-3 py-2 border rounded-md text-left hover:bg-gray-50 flex flex-col items-start gap-1 max-h-40 overflow-y-auto"
               >
-                {/* Always show the "Click to select memos" as the first line */}
                 <span className="text-gray-400 text-sm">
                   Click to select memos
                 </span>
-
                 {selectedMemos.length > 0 &&
-                  selectedMemos.map((m, index) => (
-                    <div
-                      key={m._id}
-                      className="w-full flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
-                    >
-                      <span className="text-sm">
-                        {m.memoNo} (Hours: {m.totalHours})
-                      </span>
-                      {index === selectedMemos.length - 1 && (
-                        <button
-                          type="button"
-                          className="text-xs text-red-500 ml-2"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const updatedMemos = [...selectedMemos];
-                            const removed = updatedMemos.pop();
-                            setSelectedMemos(updatedMemos);
-                            setFormData((prev) => ({
-                              ...prev,
-                              memoId: prev.memoId.filter(
-                                (id) => id !== removed._id
-                              ),
-                            }));
-                          }}
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                  selectedMemos.map((m, index) => {
+                    const isLast = index === selectedMemos.length - 1;
+                    return (
+                      <div
+                        key={m.memoId}
+                        className="w-full flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
+                      >
+                        <span className="text-sm">
+                          {m.memoNo} (Applied / Total: {m.appliedHours || 0} /{" "}
+                          {m.totalHours})
+                        </span>
+                        {isLast && (
+                          <div
+                            type="button"
+                            className="text-xs text-red-500 ml-2 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveMemo(m.memoId);
+                            }}
+                          >
+                            Remove
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
               </button>
             </div>
           )}
         </div>
+
         {/* Inclusive Dates */}
         <div>
           <label className="block text-sm font-medium mb-2">
             Inclusive Dates
           </label>
-
           <div className="relative">
             <button
               type="button"
               onClick={() => dateInputRef.current?.showPicker?.()}
               className="w-full px-3 py-2 border rounded-md text-left hover:bg-gray-50 flex flex-col items-start gap-1 max-h-40 overflow-y-auto focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
-              {/* Always show "Click to add date" */}
               <span className="text-gray-400 text-sm">Click to add date</span>
-
-              {formData.inclusiveDates.length > 0 &&
-                formData.inclusiveDates.map((date) => (
-                  <div
-                    key={date}
-                    className="w-full flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
+              {formData.inclusiveDates.map((date) => (
+                <div
+                  key={date}
+                  className="w-full flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
+                >
+                  <span className="text-sm">{date}</span>
+                  <button
+                    type="button"
+                    className="text-xs text-red-500 ml-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDateRemove(date);
+                    }}
                   >
-                    <span className="text-sm">{date}</span>
-                    {/* Remove button now shown for all dates */}
-                    <button
-                      type="button"
-                      className="text-xs text-red-500 ml-2"
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent button from triggering date picker
-                        handleDateRemove(date);
-                      }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                    Remove
+                  </button>
+                </div>
+              ))}
             </button>
-
-            {/* Hidden date input for triggering picker */}
             <input
               type="date"
               ref={dateInputRef}
               onChange={handleDateAdd}
-              className="absolute top-0 left-0 opacity-0 pointer-events-none" // Fix position
+              className="absolute top-0 left-0 opacity-0 pointer-events-none"
             />
           </div>
         </div>
@@ -244,9 +300,14 @@ const AddCtoApplicationForm = () => {
             value={formData.requestedHours}
             onChange={handleChange}
             min="1"
-            required
+            max={maxRequestedHours || undefined}
             className="w-full px-3 py-2 border rounded-md"
           />
+          {maxRequestedHours && (
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum allowed: {maxRequestedHours} hours
+            </p>
+          )}
         </div>
 
         {/* Reason */}
@@ -257,63 +318,108 @@ const AddCtoApplicationForm = () => {
             value={formData.reason}
             onChange={handleChange}
             rows="3"
-            required
             className="w-full px-3 py-2 border rounded-md"
           />
         </div>
 
         {/* Approval Routing */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-medium text-gray-700 border-b pb-1">
-            Approval Routing
-          </h3>
-
-          {isApproverLoading ? (
-            [...Array(3)].map((_, idx) => <Skeleton key={idx} height={38} />)
-          ) : isApproverError ? (
-            <p className="text-red-500 italic">Failed to load approvers.</p>
+        <button
+          type="button"
+          onClick={() => setShowRouting((prev) => !prev)}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-colors m-0"
+        >
+          {showRouting ? "Hide Approval Routing" : "View Approval Routing"}
+          {showRouting ? (
+            <ChevronUp size={16} className="ml-1" />
           ) : (
-            approverNames.map((approver, idx) => (
-              <input
-                key={idx}
-                readOnly
-                className="w-full px-4 py-2 border bg-gray-50 rounded"
-                value={
-                  approver
-                    ? `${approver.firstName} ${approver.lastName} (${approver.position})`
-                    : "Not assigned"
-                }
-              />
-            ))
+            <ChevronDown size={16} className="ml-1" />
           )}
+        </button>
+
+        <div
+          className={`transition-all duration-300 ease-in-out overflow-hidden ${
+            showRouting ? "max-h-[600px] opacity-100 mt-4" : "max-h-0 opacity-0"
+          }`}
+        >
+          <div className="border border-gray-200 rounded-xl bg-gray-50 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-gray-800 border-b pb-2">
+              Approval Routing
+            </h3>
+            {isApproverLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, idx) => (
+                  <Skeleton key={idx} height={36} />
+                ))}
+              </div>
+            ) : isApproverError ? (
+              <p className="text-sm text-red-500 italic">
+                Failed to load approvers.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {approverNames.map((approver, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 px-3 py-2 bg-white border rounded-lg transition hover:shadow-sm"
+                  >
+                    <div className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                      {idx + 1}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800">
+                        {approver
+                          ? `${approver.firstName} ${approver.lastName}`
+                          : "Not Assigned"}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {approver?.position || "—"}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        <CustomButton
-          type="submit"
-          className="w-full py-2"
-          label={
-            mutation.isPending ? "Submitting..." : "Submit CTO Application"
-          }
-          variant="save"
-          disabled={mutation.isPending}
-        />
-      </form>
+        {/* Memo Selection Modal */}
+        <SelectCtoMemoModal
+          isOpen={isMemoModalOpen}
+          onClose={() => setIsMemoModalOpen(false)}
+          memos={memoResponse?.memos || []}
+          selectedMemos={selectedMemos}
+          onSelect={(memo) => {
+            if (selectedMemos.some((m) => m.memoId === memo.id)) return;
 
-      <SelectCtoMemoModal
-        isOpen={isMemoModalOpen}
-        onClose={() => setIsMemoModalOpen(false)}
-        memos={memoResponse?.memos || []}
-        selectedMemos={selectedMemos}
-        onSelect={(memo) => {
-          setSelectedMemos((prev) => [...prev, memo]);
-          setFormData((prev) => ({
-            ...prev,
-            memoId: [...prev.memoId, memo._id],
-          }));
-        }}
-      />
+            const newEntry = {
+              memoId: memo.id,
+              uploadedMemo: memo.uploadedMemo,
+              memoNo: memo.memoNo,
+              totalHours: memo.totalHours,
+              appliedHours: 0,
+            };
+
+            const updatedMemos = [...selectedMemos, newEntry];
+            setSelectedMemos(updatedMemos);
+
+            setFormData((prev) => ({
+              ...prev,
+              memos: [
+                ...prev.memos,
+                { memoId: memo.id, uploadedMemo: memo.uploadedMemo },
+              ],
+            }));
+
+            const cumulativeMax = updatedMemos.reduce(
+              (acc, m) => acc + m.totalHours,
+              0
+            );
+            setMaxRequestedHours(cumulativeMax);
+          }}
+        />
+      </div>
     </div>
   );
-};
+});
 
 export default AddCtoApplicationForm;

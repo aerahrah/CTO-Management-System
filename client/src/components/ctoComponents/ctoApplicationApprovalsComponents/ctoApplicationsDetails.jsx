@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Clock, FileText, BadgeCheck, Calendar, Check } from "lucide-react";
+import {
+  Clock,
+  FileText,
+  BadgeCheck,
+  Calendar,
+  Check,
+  BookOpen,
+} from "lucide-react";
 import { getStatusStyles, StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -12,7 +19,6 @@ import { CustomButton } from "../../customButton";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
-// Skeleton Component
 const CtoApplicationDetailsSkeleton = () => {
   return (
     <div className="border-gray-200 p-4 space-y-4">
@@ -76,7 +82,6 @@ const CtoApplicationDetailsSkeleton = () => {
   );
 };
 
-// Main Component
 const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
   const { admin } = useAuth();
   const queryClient = useQueryClient();
@@ -84,8 +89,8 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
   const [remarks, setRemarks] = useState("");
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
 
-  // Approve Mutation
   const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: async () => {
@@ -98,7 +103,6 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
       alert(error.message || "Failed to approve application."),
   });
 
-  // Reject Mutation
   const rejectMutation = useMutation({
     mutationFn: ({ applicationId, remarks }) =>
       rejectApplicationRequest(applicationId, remarks),
@@ -112,10 +116,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
     onError: (error) => alert(error.message || "Failed to reject application."),
   });
 
-  // Show skeleton when loading or no application
-  if (isLoading || !application) {
-    return <CtoApplicationDetailsSkeleton />;
-  }
+  if (isLoading || !application) return <CtoApplicationDetailsSkeleton />;
 
   const initials = `${application.employee?.firstName?.[0] || ""}${
     application.employee?.lastName?.[0] || ""
@@ -127,11 +128,15 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
       })
     : "Unknown date";
 
+  const formatInclusiveDates = (dates) =>
+    dates?.map((d) => new Date(d).toLocaleDateString("en-US")).join(", ");
+
   const currentStep = application.approvals?.find(
     (step) => step.approver?._id === admin?.id
   );
-
   const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
+
+  const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
 
   return (
     <div className="border-gray-200">
@@ -199,20 +204,26 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100 flex flex-col gap-1">
             <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
-              <Clock className="h-4 w-4 text-gray-500" />
-              Requested Hours
+              <Clock className="h-4 w-4 text-gray-500" /> Requested Hours
             </div>
             <p className="text-gray-800 font-semibold text-lg">
               {application.requestedHours} hrs
             </p>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100 flex flex-col gap-1">
             <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
-              <BadgeCheck className="h-4 w-4 text-gray-500" />
-              Overall Application Status
+              <Calendar className="h-4 w-4 text-gray-500" /> Inclusive Dates
+            </div>
+            <p className="text-gray-800 text-md font-semibold">
+              {formatInclusiveDates(application.inclusiveDates) || "N/A"}
+            </p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-4 border border-gray-100 flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-gray-700 font-medium mb-1">
+              <BadgeCheck className="h-4 w-4 text-gray-500" /> Overall Status
             </div>
             <StatusBadge status={application.overallStatus} size="md" />
           </div>
@@ -221,12 +232,31 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
         {/* Reason */}
         <div className="space-y-2 bg-gray-50 p-3 rounded-lg mb-6">
           <div className="flex items-center gap-2 text-gray-700 font-medium">
-            <FileText className="h-4 w-4 text-gray-500" />
-            Reason
+            <FileText className="h-4 w-4 text-gray-500" /> Reason
           </div>
-          <p className="text-gray-700 text-sm leading-relaxed bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <textarea
+            readOnly
+            className="text-gray-700 text-sm w-full leading-relaxed bg-white border border-gray-200 rounded-lg p-4 shadow-sm outline-0"
+          >
             {application.reason || "No reason provided."}
-          </p>
+          </textarea>
+        </div>
+
+        {/* Memos */}
+        <div className="space-y-2 bg-gray-50 p-3 rounded-lg mb-6">
+          <div className="flex items-center gap-2 text-gray-700 font-medium ">
+            <BookOpen className="h-4 w-4 text-gray-500" /> Memos
+          </div>
+          {application.memo?.length > 0 ? (
+            <button
+              className="text-blue-600 underline text-sm mt-1"
+              onClick={() => openMemoModal(application.memo)}
+            >
+              View Memos ({application.memo.length})
+            </button>
+          ) : (
+            <span className="text-gray-400 text-sm mt-1">No memos</span>
+          )}
         </div>
 
         {/* Approval Steps */}
@@ -317,6 +347,68 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
             />
           </div>
         )}
+      </Modal>
+
+      {/* Memo Modal */}
+      <Modal
+        isOpen={memoModal.isOpen}
+        onClose={() => setMemoModal({ isOpen: false, memos: [] })}
+        title="Memos Used in CTO Application"
+        closeLabel="Close"
+      >
+        <div className="max-h-[500px] overflow-y-auto relative">
+          {memoModal.memos.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-10">
+              No memos available
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-neutral-100 rounded-md">
+              {memoModal.memos.map((memo, i) => (
+                <div
+                  key={i}
+                  className="bg-white border border-gray-300 rounded-md shadow-sm hover:shadow-md transition-shadow flex flex-col"
+                >
+                  {memo.uploadedMemo?.endsWith(".pdf") ? (
+                    <iframe
+                      src={`http://localhost:3000${memo.uploadedMemo}`}
+                      title={memo.memoId?.memoNo || `Memo ${i + 1}`}
+                      className="w-full h-40 border-b border-gray-200 rounded-t-md"
+                    />
+                  ) : (
+                    <div className="w-full h-40 flex items-center justify-center bg-gray-50 border-b border-gray-200 rounded-t-md">
+                      <p className="text-gray-400 text-sm">
+                        No Preview Available
+                      </p>
+                    </div>
+                  )}
+                  <div className="p-4 flex-1 flex flex-col justify-between">
+                    <div className="mb-3">
+                      <div className="flex gap-1 font-semibold">
+                        <p>Memo: </p>
+                        <p className="text-gray-900 text-sm md:text-base">
+                          {memo.memoId?.memoNo || "—"}
+                        </p>
+                      </div>
+                      <p className="text-gray-500 text-xs md:text-sm">
+                        Hours: {memo.memoId?.totalHours || "—"}
+                      </p>
+                    </div>
+                    <div className="flex justify-between gap-2 mt-auto">
+                      <a
+                        href={`http://localhost:3000${memo?.uploadedMemo}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center gap-1 px-3 py-1 text-xs md:text-sm font-medium border border-gray-400 rounded hover:bg-gray-100 transition-colors justify-center"
+                      >
+                        View
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

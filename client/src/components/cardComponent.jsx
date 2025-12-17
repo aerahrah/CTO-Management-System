@@ -1,6 +1,6 @@
 import React from "react";
 
-export const CardFull = ({ height = "142", children, className = "" }) => {
+export const CardFull = ({ height = "120", children, className = "" }) => {
   return (
     <div
       className={`bg-white ${height} p-4  rounded-md shadow-md w-full ${className}`}

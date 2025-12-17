@@ -10,13 +10,13 @@ const addCtoApplicationService = async ({
   approver1,
   approver2,
   approver3,
-  memoId,
+  memos, // array of { memoId, uploadedMemo, appliedHours }
   inclusiveDates,
 }) => {
   // Validations
-  if (!requestedHours || !reason || !memoId || !inclusiveDates?.length) {
+  if (!requestedHours || !reason || !memos?.length || !inclusiveDates?.length) {
     const err = new Error(
-      "Requested hours, reason, memo, and inclusive dates are required."
+      "Requested hours, reason, memos, and inclusive dates are required."
     );
     err.status = 400;
     throw err;
@@ -41,12 +41,40 @@ const addCtoApplicationService = async ({
     throw err;
   }
 
-  // Check memo existence
-  const memo = await CtoCredit.findById(memoId);
-  if (!memo) {
-    const err = new Error("Selected CTO memo does not exist.");
-    err.status = 404;
-    throw err;
+  // Validate memos and reserve applied hours
+  const memoEntries = [];
+  for (const memoEntry of memos) {
+    const { memoId, uploadedMemo, appliedHours: hoursToApply } = memoEntry;
+
+    if (!memoId || !uploadedMemo || !hoursToApply) {
+      const err = new Error(
+        "Each memo must have memoId, uploadedMemo, and appliedHours."
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    const memo = await CtoCredit.findById(memoId);
+    if (!memo) {
+      const err = new Error(`CTO memo not found: ${memoId}`);
+      err.status = 404;
+      throw err;
+    }
+
+    const remainingHours = memo.totalHours - (memo.appliedHours || 0);
+    if (hoursToApply > remainingHours) {
+      const err = new Error(
+        `Cannot apply ${hoursToApply} hours. Remaining hours for memo ${memo.memoNo} is ${remainingHours}.`
+      );
+      err.status = 400;
+      throw err;
+    }
+
+    // Temporarily reserve applied hours
+    memo.appliedHours = (memo.appliedHours || 0) + hoursToApply;
+    await memo.save();
+
+    memoEntries.push({ memoId, uploadedMemo, appliedHours: hoursToApply });
   }
 
   // Validate approvers
@@ -65,7 +93,7 @@ const addCtoApplicationService = async ({
     employee: userId,
     requestedHours,
     reason,
-    memo: memoId,
+    memo: memoEntries, // store array of { memoId, uploadedMemo, appliedHours }
     inclusiveDates,
     overallStatus: "PENDING",
   });
@@ -94,7 +122,7 @@ const addCtoApplicationService = async ({
       populate: { path: "approver", select: "firstName lastName position" },
     })
     .populate("employee", "firstName lastName position")
-    .populate("memo", "memoNo uploadedMemo totalHours");
+    .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours");
 
   return populatedApp;
 };
@@ -115,7 +143,7 @@ const getMyCtoApplicationsService = async (userId) => {
       populate: { path: "approver", select: "firstName lastName position" },
     })
     .populate("employee", "firstName lastName position")
-    .populate("memo", "memoNo uploadedMemo totalHours")
+    .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours") // include appliedHours
     .sort({ createdAt: -1 });
 
   return applications;

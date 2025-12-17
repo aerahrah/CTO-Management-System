@@ -20,11 +20,19 @@ const ctoApplicationSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
-    memo: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "CtoCredit",
-      required: true,
-    },
+    memo: [
+      {
+        memoId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "CtoCredit",
+          required: true,
+        },
+        uploadedMemo: {
+          type: String, // the uploaded file name or URL
+          required: true,
+        },
+      },
+    ],
     approvals: [
       {
         type: mongoose.Schema.Types.ObjectId,

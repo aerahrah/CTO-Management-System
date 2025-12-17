@@ -11,9 +11,10 @@ const addCtoApplicationRequest = async (req, res) => {
       approver1,
       approver2,
       approver3,
-      memoId,
+      memos, // array of objects: [{ memoId, uploadedMemo }]
       inclusiveDates,
     } = req.body;
+
     const userId = req.user.id;
 
     const application = await addCtoApplicationService({
@@ -23,7 +24,7 @@ const addCtoApplicationRequest = async (req, res) => {
       approver1,
       approver2,
       approver3,
-      memoId,
+      memos,
       inclusiveDates,
     });
 
@@ -34,9 +35,9 @@ const addCtoApplicationRequest = async (req, res) => {
   } catch (error) {
     console.error("Error applying CTO:", error);
     const status = error.status || 500;
-    res
-      .status(status)
-      .json({ error: error.message || "Server error while applying CTO" });
+    res.status(status).json({
+      error: error.message || "Server error while applying CTO",
+    });
   }
 };
 
