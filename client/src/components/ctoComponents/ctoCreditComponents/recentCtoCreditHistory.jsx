@@ -7,13 +7,14 @@ import AllCtoCreditHistory from "./allCtoCreditHistory";
 import { CustomButton, TableActionButton } from "../../customButton";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import { Clipboard } from "lucide-react";
+import { Clipboard, Eye } from "lucide-react";
 
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
   const [isConfirmRollback, setIsConfirmRollback] = useState(false);
   const [selectedCreditId, setSelectedCreditId] = useState(null);
+  const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
 
   const {
     data: credits = [],
@@ -50,22 +51,14 @@ const CtoCreditHistory = () => {
 
   useEffect(() => {
     if (credits.length > 0) {
-      credits.forEach((credit) => {
-        console.log(`MemoNo: ${credit.memoNo}`);
-        console.log("Employees Array:", credit.employees);
-        credit.employees.forEach((e) => {
-          console.log("Employee:", e.employee?.firstName); // This will show populated employee object
-          console.log("Applied Hours:", e.appliedHours);
-        });
-        console.log("----------");
-      });
+      console.log("Fetched credits:", credits);
     }
   }, [credits]);
 
   return (
     <>
       <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
-        <span className="flex items-center justify-center w-8 h-8  bg-violet-600 rounded-full">
+        <span className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-full">
           <Clipboard className="w-5 h-5 text-white" />
         </span>
         <span className="text-xl font-bold text-gray-800">
@@ -75,18 +68,18 @@ const CtoCreditHistory = () => {
       <div className="overflow-x-auto">
         <div className="max-h-104 overflow-y-auto">
           <table className="w-full table-fixed text-sm rounded-lg shadow-sm">
-            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700  text-left sticky top-0 z-10">
+            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
               <tr>
-                <th className="p-3 w-36  border-b border-r border-gray-200">
+                <th className="p-3 w-36 border-b border-r border-gray-200">
                   Employees
                 </th>
-                <th className="p-3  text-center border-b border-r border-gray-200">
+                <th className="p-3 text-center border-b border-r border-gray-200">
                   Duration
                 </th>
                 <th className="p-3 border-b border-r border-gray-200">
                   Memo No.
                 </th>
-                <th className="p-3  text-center border-b border-r border-gray-200">
+                <th className="p-3 text-center border-b border-r border-gray-200">
                   Status
                 </th>
                 <th className="p-3 text-center border-b border-gray-200">
@@ -96,7 +89,6 @@ const CtoCreditHistory = () => {
             </thead>
             <tbody>
               {isLoading || isProcessing ? (
-                // Skeleton Rows
                 [...Array(8)].map((_, i) => (
                   <tr
                     key={i}
@@ -138,9 +130,18 @@ const CtoCreditHistory = () => {
                     <td className="p-3 text-center border-b border-gray-200 border-r">
                       {formatDuration(credit.duration)}
                     </td>
-                    <td className="p-3 border-b border-gray-200 border-r">
-                      {credit.memoNo}
+
+                    {/* Memo Button */}
+                    <td className="p-3 border-b border-gray-200 border-r text-center">
+                      <TableActionButton
+                        label="View Memo"
+                        onClick={() =>
+                          setMemoModal({ isOpen: true, memo: credit })
+                        }
+                        variant="neutral"
+                      />
                     </td>
+
                     <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
                       <StatusBadge status={credit.status} />
                     </td>
@@ -187,12 +188,53 @@ const CtoCreditHistory = () => {
         closeLabel="Cancel"
         title="Confirm Rollback"
       >
-        <div className="w-100">
-          <p className="text-l py-2">
-            Are you sure you want to rollback this credited CTO? This will
-            remove the credits from the employee balances.
-          </p>
-        </div>
+        <p className="text-l py-2">
+          Are you sure you want to rollback this credited CTO? This will remove
+          the credits from the employee balances.
+        </p>
+      </Modal>
+
+      {/* Memo Modal */}
+      <Modal
+        isOpen={memoModal.isOpen}
+        onClose={() => setMemoModal({ isOpen: false, memo: null })}
+        title={`Memo: ${memoModal.memo?.memoNo || ""}`}
+        action={{
+          label: "Open in new Tab",
+          variant: "save",
+          show: true,
+          onClick: () => {
+            if (memoModal.memo?.uploadedMemo) {
+              const url = `http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+                /\\/g,
+                "/"
+              )}`;
+              window.open(url, "_blank", "noopener,noreferrer");
+            }
+          }, // <-- call form submit here
+        }}
+        closeLabel="Close"
+      >
+        {memoModal.memo?.uploadedMemo ? (
+          memoModal.memo.uploadedMemo.endsWith(".pdf") ? (
+            <div className="flex flex-col gap-2 w-100">
+              <iframe
+                src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+                  /\\/g,
+                  "/"
+                )}`}
+                title={memoModal.memo.memoNo}
+                className="w-full h-96 border"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-96 bg-gray-100 border">
+              <p>No preview available</p>
+            </div>
+          )
+        ) : (
+          <p className="text-gray-500">No uploaded memo found.</p>
+        )}
       </Modal>
 
       {/* View All History Modal */}

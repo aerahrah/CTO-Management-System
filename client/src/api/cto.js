@@ -48,6 +48,7 @@ export const rollbackCreditCto = async (creditId) => {
 export const fetchEmployeeCredits = async (employeeId) => {
   console.log(employeeId);
   const res = await API.get(`/cto/credits/${employeeId}/history`);
+  console.log(res.data);
   return res.data;
 };
 

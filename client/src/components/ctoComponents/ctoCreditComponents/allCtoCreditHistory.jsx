@@ -8,6 +8,7 @@ const AllCtoCreditHistory = () => {
   const queryClient = useQueryClient();
   const [isConfirmRollback, setIsConfirmRollback] = useState(false);
   const [selectedCreditId, setSelectedCreditId] = useState(null);
+  const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
 
   const {
     data: credits = [],
@@ -48,21 +49,9 @@ const AllCtoCreditHistory = () => {
     return `${h}h ${m}m`;
   };
 
-  if (isLoading) {
-    return (
-      <div className="bg-white p-6">
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="bg-white p-6">
-        <p className="text-red-500">Error fetching credit requests</p>
-      </div>
-    );
-  }
+  if (isLoading) return <p className="text-gray-500 p-4">Loading...</p>;
+  if (isError)
+    return <p className="text-red-500 p-4">Error fetching credit requests</p>;
 
   return (
     <div className="bg-white h-128 overflow-y-auto">
@@ -128,9 +117,18 @@ const AllCtoCreditHistory = () => {
                   <td className="p-3 text-center border-b border-gray-200 border-r">
                     {formatDuration(credit.duration)}
                   </td>
-                  <td className="p-3 border-b border-gray-200 border-r">
-                    {credit.memoNo}
+
+                  {/* Memo Button */}
+                  <td className="p-3 border-b border-gray-200 border-r text-center">
+                    <TableActionButton
+                      label="View Memo"
+                      onClick={() =>
+                        setMemoModal({ isOpen: true, memo: credit })
+                      }
+                      variant="neutral"
+                    />
                   </td>
+
                   <td
                     className={`p-3 font-semibold text-center border-b border-gray-200 border-r ${
                       credit.status === "CREDITED"
@@ -169,7 +167,7 @@ const AllCtoCreditHistory = () => {
               ))
             ) : (
               <tr>
-                <td colSpan="11" className="p-3 text-center text-gray-500">
+                <td colSpan="10" className="p-3 text-center text-gray-500">
                   No credit requests found
                 </td>
               </tr>
@@ -178,6 +176,7 @@ const AllCtoCreditHistory = () => {
         </table>
       </div>
 
+      {/* Rollback Confirm Modal */}
       <Modal
         isOpen={isConfirmRollback}
         onClose={() => setIsConfirmRollback(false)}
@@ -189,12 +188,50 @@ const AllCtoCreditHistory = () => {
           variant: "delete",
         }}
       >
-        <div className="w-100">
-          <p className="text-l py-2">
-            Are you sure you want to rollback this credited CTO? This will
-            remove the credits from the employee balances.
-          </p>
-        </div>
+        <p className="text-l py-2">
+          Are you sure you want to rollback this credited CTO? This will remove
+          the credits from the employee balances.
+        </p>
+      </Modal>
+
+      {/* Memo Modal */}
+      <Modal
+        isOpen={memoModal.isOpen}
+        onClose={() => setMemoModal({ isOpen: false, memo: null })}
+        title={`Memo: ${memoModal.memo?.memoNo || ""}`}
+        action={{
+          label: "Open in New Tab",
+          variant: "save",
+          show: true,
+          onClick: () => {
+            if (memoModal.memo?.uploadedMemo) {
+              const url = `http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+                /\\/g,
+                "/"
+              )}`;
+              window.open(url, "_blank", "noopener,noreferrer");
+            }
+          },
+        }}
+      >
+        {memoModal.memo?.uploadedMemo ? (
+          memoModal.memo.uploadedMemo.endsWith(".pdf") ? (
+            <iframe
+              src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+                /\\/g,
+                "/"
+              )}`}
+              title={memoModal.memo.memoNo}
+              className="w-100 h-96 border"
+            />
+          ) : (
+            <div className="flex items-center justify-center h-96 bg-gray-100 border">
+              <p>No preview available</p>
+            </div>
+          )
+        ) : (
+          <p className="text-gray-500">No uploaded memo found.</p>
+        )}
       </Modal>
     </div>
   );
