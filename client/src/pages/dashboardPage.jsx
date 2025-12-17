@@ -42,14 +42,14 @@ const Dashboard = () => {
   return (
     <div className="flex min-h-screen bg-neutral-200 w-full">
       {/* Sidebar */}
-      <div className="w-72">
+      <div>
         <Sidebar admin={admin} />
       </div>
 
       {/* Main Content */}
       <div className="flex-1 relative">
         {/* Top Navbar */}
-        <nav className="fixed z-20 flex justify-end items-center bg-white backdrop-blur-lg shadow-md w-[calc(100%-18rem)] h-20 px-10  border-b border-gray-300">
+        <nav className="sticky z-20 top-0 flex justify-end items-center bg-white backdrop-blur-lg shadow-md w-full h-20 px-10  border-b border-gray-300">
           <div className="relative " ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((prev) => !prev)}
@@ -111,7 +111,7 @@ const Dashboard = () => {
         </nav>
 
         {/* Main Outlet */}
-        <main className="pt-20  transition-all duration-300">
+        <main className=" transition-all duration-300">
           <div className="w-[100%] bg-neutral-200 flex gap-4 p-5">
             <Outlet />
           </div>

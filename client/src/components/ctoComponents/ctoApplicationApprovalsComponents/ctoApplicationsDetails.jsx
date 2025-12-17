@@ -162,7 +162,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
                 }}
                 className="w-32"
                 disabled={approveMutation.isPending}
-                variant="success"
+                variant="primary"
               />
               <CustomButton
                 label={rejectMutation.isPending ? "Rejecting..." : "Reject"}
@@ -312,7 +312,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
         action={{
           show: true,
           label: modalType === "approve" ? "Approve" : "Reject",
-          variant: modalType === "approve" ? "success" : "cancel",
+          variant: modalType === "approve" ? "save" : "cancel",
           onClick: () => {
             if (modalType === "approve") {
               approveMutation.mutate(application._id);
@@ -330,11 +330,11 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
         }}
       >
         {modalType === "approve" ? (
-          <p className="text-gray-600">
+          <p className="text-gray-600 py-4">
             Are you sure you want to <b>approve</b> this application?
           </p>
         ) : (
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 py-4">
             <p className="text-gray-600">
               Please provide your remarks for rejecting this application:
             </p>
