@@ -22,6 +22,7 @@ const uploadCtoMemo = require("../middlewares/uploadCtoMemo.middleware.js");
 const {
   addCtoApplicationRequest,
   getMyCtoApplicationsRequest,
+  getCtoApplicationsByEmployeeRequest,
 } = require("../controllers/ctoApplicationController.js");
 
 const {
@@ -97,6 +98,13 @@ router.get(
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
   getMyCtoApplicationsRequest
+);
+
+router.get(
+  "/applications/employee/:employeeId",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  getCtoApplicationsByEmployeeRequest
 );
 
 router.get(

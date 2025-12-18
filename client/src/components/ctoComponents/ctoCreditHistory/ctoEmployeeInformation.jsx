@@ -1,7 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo, useEffect } from "react";
-import { fetchEmployeeCredits, fetchEmployeeDetails } from "../../../api/cto";
+import { useState, useEffect } from "react";
+import {
+  fetchEmployeeCredits,
+  fetchEmployeeDetails,
+  fetchEmployeeApplications,
+} from "../../../api/cto";
 import CreditCtoTable from "./ctoEmployeeCreditTable";
+import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
@@ -75,31 +80,42 @@ const CtoEmployeeInformation = ({
     enabled: !!selectedId,
   });
 
+  // Fetch applications
+  const {
+    data: applicationData,
+    isLoading: isApplicationLoading,
+    isError: isApplicationError,
+  } = useQuery({
+    queryKey: ["employeeApplications", selectedId],
+    queryFn: () => fetchEmployeeApplications(selectedId),
+    enabled: !!selectedId,
+  });
+
   useEffect(() => {
-    if (creditData) {
-      console.log("Employee Credits:", creditData);
-    }
-  }, [creditData]);
+    if (creditData) console.log("Employee Credits:", creditData);
+    if (applicationData) console.log("Employee Applications:", applicationData);
+  }, [creditData, applicationData]);
 
   if (!selectedId || isEmployeeLoadingFromEmployeeList) {
     return <EmployeeInfoSkeleton />;
   }
 
-  if (isEmployeeLoading || isCreditLoading) return <EmployeeInfoSkeleton />;
+  if (isEmployeeLoading || isCreditLoading || isApplicationLoading)
+    return <EmployeeInfoSkeleton />;
 
-  if (isEmployeeError || isCreditError)
+  if (isEmployeeError || isCreditError || isApplicationError)
     return (
       <div className="p-4 text-red-500 text-center">Error fetching data.</div>
     );
 
   const employee = employeeData?.employee;
   const credits = creditData?.credits || [];
+  const applications = applicationData?.applications || [];
 
   const totalEarned = credits
     .filter((c) => c.status === "CREDITED")
     .reduce((sum, c) => {
       const dur = c.duration;
-
       if (!dur) return sum;
       const hours = typeof dur.hours === "number" ? dur.hours : 0;
       const minutes = typeof dur.minutes === "number" ? dur.minutes : 0;
@@ -127,19 +143,29 @@ const CtoEmployeeInformation = ({
 
         {/* Summary */}
         <div className="grid grid-cols-3 gap-3 items-start">
-          <div className="p-2 bg-gray-50 rounded-lg border border-neutral-300 text-center">
-            <p className="text-xs text-gray-500">Overall Earned CTO</p>
-            <p className="text-sm font-semibold">
+          <div className="p-2 flex flex-col gap-2 bg-gray-100 rounded-lg border border-neutral-300 text-center">
+            <p className="text-xs font-semibold text-gray-500">
+              Overall Earned CTO
+            </p>
+            <p className="text-sm font-bold p-1 bg-white rounded-full border-1 border-neutral-300 border-dashed text-green-700">
               {totalEarned.toFixed(2)} hrs
             </p>
           </div>
-          <div className="p-2 bg-gray-50 rounded-lg border border-neutral-300 text-center">
-            <p className="text-xs text-gray-500">Overall Used CTO</p>
-            <p className="text-sm font-semibold">{totalUsed.toFixed(2)} hrs</p>
+          <div className="p-2 flex flex-col gap-2 bg-gray-100 rounded-lg border border-neutral-300 text-center">
+            <p className="text-xs font-semibold text-gray-500 ">
+              Overall Used CTO
+            </p>
+            <p className="text-sm font-bold p-1 bg-white rounded-full border-1 border-neutral-300 border-dashed text-red-700">
+              {totalUsed.toFixed(2)} hrs
+            </p>
           </div>
-          <div className="p-2 bg-gray-50 rounded-lg border border-neutral-300 text-center">
-            <p className="text-xs text-gray-500">Total Balance:</p>
-            <p className="text-sm font-semibold">{balance.toFixed(2)} hrs</p>
+          <div className="p-2 flex flex-col gap-2 bg-gray-100 rounded-lg border border-neutral-300 text-center">
+            <p className="text-xs font-semibold text-gray-500">
+              Total Balance:
+            </p>
+            <p className="text-sm font-bold p-1 bg-white rounded-full border-1 border-neutral-300 border-dashed text-green-700">
+              {balance.toFixed(2)} hrs
+            </p>
           </div>
         </div>
       </div>
@@ -170,11 +196,9 @@ const CtoEmployeeInformation = ({
 
       {/* Tab content */}
       {activeTab === "credit" ? (
-        <CreditCtoTable credits={creditData.credits} />
+        <CreditCtoTable credits={credits} />
       ) : (
-        <div className="p-4 text-gray-500 text-center">
-          Application CTO component will be here.
-        </div>
+        <ApplicationCtoTable applications={applications} />
       )}
     </div>
   );

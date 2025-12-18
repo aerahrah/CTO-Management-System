@@ -1,6 +1,7 @@
 const {
   addCtoApplicationService,
   getMyCtoApplicationsService,
+  getCtoApplicationsByEmployeeService,
 } = require("../services/ctoApplication.service");
 
 const addCtoApplicationRequest = async (req, res) => {
@@ -61,7 +62,28 @@ const getMyCtoApplicationsRequest = async (req, res) => {
   }
 };
 
+const getCtoApplicationsByEmployeeRequest = async (req, res) => {
+  try {
+    const { employeeId } = req.params; // get ID from URL
+
+    const applications = await getCtoApplicationsByEmployeeService(employeeId);
+
+    res.status(200).json({
+      message: "Fetched CTO applications successfully",
+      count: applications.length,
+      applications,
+    });
+  } catch (error) {
+    console.error("Error fetching CTO applications:", error);
+    const status = error.status || 500;
+    res.status(status).json({
+      error: error.message || "Server error while fetching CTO applications",
+    });
+  }
+};
+
 module.exports = {
   addCtoApplicationRequest,
   getMyCtoApplicationsRequest,
+  getCtoApplicationsByEmployeeRequest,
 };

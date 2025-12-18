@@ -2,6 +2,7 @@ const CtoApplication = require("../models/ctoApplicationModel");
 const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
+const mongoose = require("mongoose");
 
 const addCtoApplicationService = async ({
   userId,
@@ -149,4 +150,33 @@ const getMyCtoApplicationsService = async (userId) => {
   return applications;
 };
 
-module.exports = { addCtoApplicationService, getMyCtoApplicationsService };
+const getCtoApplicationsByEmployeeService = async (employeeId) => {
+  if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
+    const err = new Error("Invalid Employee ID");
+    err.status = 400;
+    throw err;
+  }
+
+  // Correct: use 'new' with ObjectId
+  const employeeObjectId = new mongoose.Types.ObjectId(employeeId);
+
+  const applications = await CtoApplication.find({ employee: employeeObjectId })
+    .select(
+      "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
+    )
+    .populate({
+      path: "approvals",
+      populate: { path: "approver", select: "firstName lastName position" },
+    })
+    .populate("employee", "firstName lastName position")
+    .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours")
+    .sort({ createdAt: -1 });
+
+  return applications;
+};
+
+module.exports = {
+  addCtoApplicationService,
+  getMyCtoApplicationsService,
+  getCtoApplicationsByEmployeeService,
+};
