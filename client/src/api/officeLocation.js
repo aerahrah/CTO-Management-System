@@ -12,6 +12,7 @@ export const fetchProvincialOfficeById = async (id) => {
 };
 
 export const createProvincialOffice = async (office) => {
+  console.log(office);
   const { data } = await API.post("/settings/provincial-office", office);
   return data;
 };

@@ -17,6 +17,7 @@ import { Clock, ChevronDown, ChevronUp } from "lucide-react";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import SelectCtoMemoModal from "./selectCtoMemoModal";
+import { toast } from "react-toastify";
 
 const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   const queryClient = useQueryClient();
@@ -70,7 +71,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   const mutation = useMutation({
     mutationFn: addApplicationRequest,
     onSuccess: () => {
-      alert("CTO application submitted successfully!");
+      toast.success("CTO application submitted successfully!");
       queryClient.invalidateQueries(["ctoApplications"]);
       setFormData({
         requestedHours: "",
@@ -87,7 +88,9 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     },
     onError: (err) => {
       console.error(err);
-      alert(err.response?.data?.error || "Failed to submit CTO application");
+      toast.error(
+        err.response?.data?.error || "Failed to submit CTO application"
+      );
     },
   });
 

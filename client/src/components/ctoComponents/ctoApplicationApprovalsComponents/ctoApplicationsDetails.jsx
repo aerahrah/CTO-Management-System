@@ -18,7 +18,7 @@ import {
 import { CustomButton } from "../../customButton";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-
+import { toast } from "react-toastify";
 const CtoApplicationDetailsSkeleton = () => {
   return (
     <div className="border-gray-200 p-4 space-y-4">
@@ -97,10 +97,10 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
       await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
       setIsProcessed(true);
       setIsModalOpen(false);
-      alert("Application approved successfully.");
+      toast.success("Application approved successfully.");
     },
     onError: (error) =>
-      alert(error.message || "Failed to approve application."),
+      toast.error(error.message || "Failed to approve application."),
   });
 
   const rejectMutation = useMutation({
@@ -111,9 +111,10 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
       setRemarks("");
       setIsProcessed(true);
       setIsModalOpen(false);
-      alert("Application rejected successfully.");
+      toast.success("Application rejected successfully.");
     },
-    onError: (error) => alert(error.message || "Failed to reject application."),
+    onError: (error) =>
+      toast.error(error.message || "Failed to reject application."),
   });
 
   if (isLoading || !application) return <CtoApplicationDetailsSkeleton />;
@@ -318,7 +319,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
               approveMutation.mutate(application._id);
             } else {
               if (!remarks.trim()) {
-                alert("Please enter remarks before rejecting.");
+                toast.error("Please enter remarks before rejecting.");
                 return;
               }
               rejectMutation.mutate({

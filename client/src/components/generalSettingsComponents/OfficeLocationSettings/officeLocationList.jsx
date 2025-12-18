@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+// OfficeLocationList.jsx
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -8,74 +9,10 @@ import {
   fetchAllProvincialOffices,
   createProvincialOffice,
 } from "../../../api/officeLocation";
+import { toast } from "react-toastify";
 
-// Office form
-const OfficeLocationForm = ({ onSubmit, office }) => {
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
-  const [province, setProvince] = useState("");
-  const [region, setRegion] = useState("");
+import OfficeLocationForm from "./officeLocationForm";
 
-  useEffect(() => {
-    if (office) {
-      setName(office.name || "");
-      setCode(office.code || "");
-      setProvince(office.province || "");
-      setRegion(office.region || "");
-    } else {
-      setName("");
-      setCode("");
-      setProvince("");
-      setRegion("");
-    }
-  }, [office]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!name.trim() || !code.trim())
-      return alert("Name and code are required.");
-    onSubmit({ name, code, province, region });
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4" id="office-form">
-      <div>
-        <label className="block text-sm font-medium mb-1">Office Name</label>
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="w-full border p-2 rounded"
-          placeholder="Enter office name"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium mb-1">Province</label>
-        <input
-          type="text"
-          value={province}
-          onChange={(e) => setProvince(e.target.value)}
-          className="w-full border p-2 rounded"
-          placeholder="Enter province"
-        />
-      </div>
-
-      <div>
-        <label className="block text-sm font-medium mb-1">Region</label>
-        <input
-          type="text"
-          value={region}
-          onChange={(e) => setRegion(e.target.value)}
-          className="w-full border p-2 rounded"
-          placeholder="Enter region"
-        />
-      </div>
-    </form>
-  );
-};
-
-// Main component
 const OfficeLocationList = ({
   selectedOffice,
   setSelectedOffice,
@@ -100,8 +37,9 @@ const OfficeLocationList = ({
     onSuccess: () => {
       queryClient.invalidateQueries(["provincialOffices"]);
       setModalOpen(false);
+      toast.success("Office added successfully!");
     },
-    onError: (err) => alert(err.response?.data?.message || err.message),
+    onError: (err) => toast.error(err.response?.data?.message || err.message),
   });
 
   const openAddModal = () => setModalOpen(true);

@@ -1,5 +1,6 @@
 import Modal from "../../../modal";
 import { Eye, AlertTriangle } from "lucide-react";
+import { toast } from "react-toastify";
 
 const SelectCtoMemoModal = ({
   isOpen,
@@ -117,7 +118,7 @@ const SelectCtoMemoModal = ({
                             console.log(memo);
                             onSelect(memo); // parent updates selected memos
                           } else {
-                            window.alert(
+                            toast.error(
                               isLocked
                                 ? "This memo has no remaining hours!"
                                 : "You must select the oldest memo first!"

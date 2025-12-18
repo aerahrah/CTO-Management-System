@@ -7,7 +7,7 @@ import AddEmployeeForm from "./forms/addEmployeeForm";
 import { CustomButton } from "../customButton";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-
+import { toast } from "react-toastify";
 const EmployeeInformation = ({ selectedId }) => {
   const [isOpen, setIsOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -31,7 +31,7 @@ const EmployeeInformation = ({ selectedId }) => {
     },
     onError: (error) => {
       console.error("UPDATE ERROR:", error.response?.data || error);
-      alert(error.response?.data?.message || "Update failed");
+      toast.error(error.response?.data?.message || "Update failed");
     },
   });
 

@@ -5,6 +5,7 @@ import { CustomButton } from "../customButton"; // ✅ using your custom button
 import EmployeeList from "../employeeList/employeeList";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
+import { toast } from "react-toastify";
 
 const EmployeeListView = ({ selectedId, setSelectedId, maxHeightClass }) => {
   const queryClient = useQueryClient();
@@ -19,7 +20,7 @@ const EmployeeListView = ({ selectedId, setSelectedId, maxHeightClass }) => {
     },
     onError: (err) => {
       console.error("Failed to add employee:", err);
-      alert("Failed to save employee. Please try again.");
+      toast.error("Failed to save employee. Please try again.");
     },
   });
 
@@ -32,7 +33,7 @@ const EmployeeListView = ({ selectedId, setSelectedId, maxHeightClass }) => {
             label="Download Employees List"
             variant="primary"
             className="w-full mb-3"
-            onClick={() => alert("Download feature coming soon!")}
+            onClick={() => toast.warning("Download feature coming soon!")}
           />
 
           <CustomButton

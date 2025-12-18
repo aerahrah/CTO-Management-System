@@ -1,6 +1,9 @@
 // App.jsx
 import React from "react";
 import { Routes, Route } from "react-router-dom";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
+
 import Login from "./pages/loginPage";
 import Dashboard from "./pages/dashboardPage";
 import EmployeesPage from "./pages/employeePage";
@@ -14,32 +17,47 @@ import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationAp
 import CtoCredits from "./components/ctoComponents/ctoCredits";
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
-// import OfficeLocationSettings from "./generalSettingsComponents/officeLocationSettings"; // 👈 new import
 
 function App() {
   return (
-    <Routes>
-      <Route path="/" element={<Login />} />
+    <>
+      <Routes>
+        <Route path="/" element={<Login />} />
 
-      <Route path="/dashboard" element={<Dashboard />}>
-        <Route path="employees" element={<EmployeesPage />} />
-        <Route path="admin" element={<AdminPage />} />
-        <Route path="settings" element={<SettingsPage />} />
-        <Route path="cto" element={<CtoPage />} />
-        <Route path="cto-settings" element={<CtoSettings />} />
-        <Route
-          path="office-locations"
-          element={<OfficeLocationSettingsPage />}
-        />
-        {/* <Route path="/cto/dashboard" element={<CtoDashboard />} /> */}
-        <Route path="cto/credit" element={<CtoCredits />} />
-        <Route path="cto/apply" element={<CtoApplication />} />
-        <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
-        <Route path="cto/records" element={<CtoRecords />} />
-        <Route path="cto/dashboard" element={<CtoDashboard />} />
-      </Route>
-      <Route path="*" element={<div>404 - Page Not Found</div>} />
-    </Routes>
+        <Route path="/dashboard" element={<Dashboard />}>
+          <Route path="employees" element={<EmployeesPage />} />
+          <Route path="admin" element={<AdminPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="cto" element={<CtoPage />} />
+          <Route path="cto-settings" element={<CtoSettings />} />
+          <Route
+            path="office-locations"
+            element={<OfficeLocationSettingsPage />}
+          />
+          <Route path="cto/credit" element={<CtoCredits />} />
+          <Route path="cto/apply" element={<CtoApplication />} />
+          <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
+          <Route path="cto/records" element={<CtoRecords />} />
+          <Route path="cto/dashboard" element={<CtoDashboard />} />
+        </Route>
+
+        <Route path="*" element={<div>404 - Page Not Found</div>} />
+      </Routes>
+
+      {/* Toastify container */}
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
+    </>
   );
 }
 

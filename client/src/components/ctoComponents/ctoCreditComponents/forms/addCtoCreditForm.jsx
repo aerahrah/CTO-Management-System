@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../../../../api/employee";
 import { addCreditRequest } from "../../../../api/cto";
 import { CustomButton } from "../../../customButton";
+import { toast } from "react-toastify";
 
 const AddCtoCreditForm = () => {
   const queryClient = useQueryClient();
@@ -30,7 +31,7 @@ const AddCtoCreditForm = () => {
   const addCreditMutation = useMutation({
     mutationFn: addCreditRequest,
     onSuccess: () => {
-      alert("Credit request submitted!");
+      toast.success("Credit request submitted successfully!");
       setFormData({
         employees: [],
         duration: { hours: "", minutes: "" },
@@ -42,7 +43,7 @@ const AddCtoCreditForm = () => {
     },
     onError: (err) => {
       console.error(err);
-      alert("Failed to submit credit request");
+      toast.error("Failed to submit credit request");
     },
   });
 
