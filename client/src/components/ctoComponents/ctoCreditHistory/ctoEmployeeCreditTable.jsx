@@ -1,10 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "../../modal";
-import { CustomButton, TableActionButton } from "../../customButton";
+import { TableActionButton } from "../../customButton";
 
 const CreditCtoTable = ({ credits }) => {
+  const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
+
+  // Filter only credited records
   const creditedRecords = credits.filter((c) => c.status === "CREDITED");
-  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Log the credits whenever they change
+  useEffect(() => {
+    console.log("Credits received in CreditCtoTable:", credits);
+    console.log("Filtered credited records:", creditedRecords);
+  }, [credits, creditedRecords]);
 
   const formatDuration = (duration) => {
     if (!duration) return "-";
@@ -67,9 +75,9 @@ const CreditCtoTable = ({ credits }) => {
                   <td className="p-3 border-b text-center border-r border-gray-200 text-gray-700">
                     <TableActionButton
                       label="View Memo"
-                      variant="default" // 👈 uses the neutral style
+                      variant="default"
                       size="sm"
-                      onClick={() => setIsModalOpen(true)}
+                      onClick={() => setMemoModal({ isOpen: true, memo: c })}
                     />
                   </td>
                 </tr>
@@ -88,17 +96,47 @@ const CreditCtoTable = ({ credits }) => {
         </table>
       </div>
 
+      {/* Memo Preview Modal */}
       <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Memo File"
-        isDisplay={false}
+        isOpen={memoModal.isOpen}
+        onClose={() => setMemoModal({ isOpen: false, memo: null })}
+        title={`Memo: ${memoModal.memo?.memoNo || ""}`}
+        action={{
+          label: "Open in new Tab",
+          variant: "save",
+          show: !!memoModal.memo?.uploadedMemo,
+          onClick: () => {
+            if (memoModal.memo?.uploadedMemo) {
+              const url = `http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+                /\\/g,
+                "/"
+              )}`;
+              window.open(url, "_blank", "noopener,noreferrer");
+            }
+          },
+        }}
+        closeLabel="Close"
       >
-        <div className="w-full py-3">
-          <p className="text-base text-gray-700">
-            Memo file preview or info here.
-          </p>
-        </div>
+        {memoModal.memo?.uploadedMemo ? (
+          memoModal.memo.uploadedMemo.endsWith(".pdf") ? (
+            <div className="flex flex-col gap-2 w-full">
+              <iframe
+                src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+                  /\\/g,
+                  "/"
+                )}`}
+                title={memoModal.memo.memoNo}
+                className="w-full h-96 border"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-96 bg-gray-100 border">
+              <p>No preview available</p>
+            </div>
+          )
+        ) : (
+          <p className="text-gray-500">No uploaded memo found.</p>
+        )}
       </Modal>
     </div>
   );

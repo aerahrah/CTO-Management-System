@@ -117,6 +117,7 @@ const getEmployeeCredits = async (req, res) => {
           credit.duration.minutes / 60 -
           (empData?.appliedHours || 0),
         status: credit.status,
+        creditedBy: credit.creditedBy,
       };
     });
 

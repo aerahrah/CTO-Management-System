@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { fetchEmployeeCredits, fetchEmployeeDetails } from "../../../api/cto";
 import CreditCtoTable from "./ctoEmployeeCreditTable";
 import Skeleton from "react-loading-skeleton";
@@ -75,6 +75,12 @@ const CtoEmployeeInformation = ({
     enabled: !!selectedId,
   });
 
+  useEffect(() => {
+    if (creditData) {
+      console.log("Employee Credits:", creditData);
+    }
+  }, [creditData]);
+
   if (!selectedId || isEmployeeLoadingFromEmployeeList) {
     return <EmployeeInfoSkeleton />;
   }
@@ -87,12 +93,13 @@ const CtoEmployeeInformation = ({
     );
 
   const employee = employeeData?.employee;
-  const credits = creditData?.creditRequests || [];
+  const credits = creditData?.credits || [];
 
   const totalEarned = credits
     .filter((c) => c.status === "CREDITED")
     .reduce((sum, c) => {
       const dur = c.duration;
+
       if (!dur) return sum;
       const hours = typeof dur.hours === "number" ? dur.hours : 0;
       const minutes = typeof dur.minutes === "number" ? dur.minutes : 0;
@@ -163,7 +170,7 @@ const CtoEmployeeInformation = ({
 
       {/* Tab content */}
       {activeTab === "credit" ? (
-        <CreditCtoTable credits={credits} />
+        <CreditCtoTable credits={creditData.credits} />
       ) : (
         <div className="p-4 text-gray-500 text-center">
           Application CTO component will be here.

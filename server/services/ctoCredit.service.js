@@ -90,24 +90,25 @@ async function getEmployeeDetails(employeeId) {
 }
 
 const getEmployeeCredits = async (employeeId) => {
-  const credits = await CtoCredit.find({ "employees.employee": employeeId })
-    .populate("employees.employee", "firstName lastName")
-    .exec();
+  try {
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
+      throw new Error("Invalid employee ID");
+    }
 
-  return credits.map((credit) => {
-    const empData = credit.employees.find(
-      (e) => e.employee._id.toString() === employeeId.toString()
-    );
-    return {
-      memoNo: credit.memoNo,
-      dateApproved: credit.dateApproved,
-      totalHours: credit.totalHours,
-      appliedHours: empData?.appliedHours || 0,
-      remainingHours: credit.totalHours - (empData?.appliedHours || 0),
-      uploadedMemo: credit.uploadedMemo,
-      status: credit.status,
-    };
-  });
+    const credits = await CtoCredit.find({ "employees.employee": employeeId })
+      .populate("employees.employee", "firstName lastName")
+      .populate("creditedBy", "firstName lastName")
+      .populate("creditedBy", "firstName lastName")
+      .lean()
+      .exec();
+
+    console.log("All credits fetched:", credits.creditedBy);
+
+    return credits;
+  } catch (error) {
+    console.error("Error fetching employee credits:", error.message);
+    throw new Error("Failed to fetch employee credits"); // generic error for security
+  }
 };
 
 // async function createCreditRequest({
