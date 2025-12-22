@@ -113,8 +113,10 @@ export const rejectApplicationRequest = async (applicationId, remarks) => {
   return res.data;
 };
 
-export const fetchMyCtoApplications = async () => {
-  const { data } = await API.get(`cto/applications/my-application`);
+export const fetchMyCtoApplications = async (params = {}) => {
+  const { data } = await API.get(`cto/applications/my-application`, {
+    params,
+  });
   console.log(data);
   return data;
 };

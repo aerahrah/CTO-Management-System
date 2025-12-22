@@ -127,56 +127,133 @@ const addCtoApplicationService = async ({
 
   return populatedApp;
 };
+const getCtoApplicationsService = async (
+  filters = {},
+  page = 1,
+  limit = 20
+) => {
+  page = Math.max(parseInt(page) || 1, 1);
+  limit = Math.min(parseInt(limit) || 20, 100); // max 100
 
-const getMyCtoApplicationsService = async (userId) => {
-  if (!userId) {
-    const err = new Error("User ID is required.");
-    err.status = 400;
-    throw err;
+  const query = {};
+
+  // Apply filters
+  if (filters.employeeId) query.employee = filters.employeeId;
+  if (filters.status) query.overallStatus = filters.status;
+  if (filters.from && filters.to) {
+    query.createdAt = {
+      $gte: new Date(filters.from),
+      $lte: new Date(filters.to),
+    };
+  }
+  if (filters.search) {
+    query["memo.memoId.memoNo"] = { $regex: filters.search, $options: "i" };
   }
 
-  const applications = await CtoApplication.find({ employee: userId })
-    .select(
-      "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
-    )
-    .populate({
-      path: "approvals",
-      populate: { path: "approver", select: "firstName lastName position" },
-    })
-    .populate("employee", "firstName lastName position")
-    .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours") // include appliedHours
-    .sort({ createdAt: -1 });
+  // ---- DEBUG LOGS ----
+  console.log("Filters received:", filters);
+  console.log("MongoDB query object:", query);
+  console.log("Page:", page, "Limit:", limit);
+  // --------------------
 
-  return applications;
+  const skip = (page - 1) * limit;
+
+  const [applications, total] = await Promise.all([
+    CtoApplication.find(query)
+      .select(
+        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
+      )
+      .populate({
+        path: "approvals",
+        populate: { path: "approver", select: "firstName lastName position" },
+      })
+      .populate("employee", "firstName lastName position")
+      .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    CtoApplication.countDocuments(query),
+  ]);
+
+  // ---- DEBUG LOGS ----
+  console.log("Applications returned:", applications.length);
+  console.log("Total matching applications:", total);
+  // --------------------
+
+  return {
+    data: applications,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
-const getCtoApplicationsByEmployeeService = async (employeeId) => {
+const getCtoApplicationsByEmployeeService = async (
+  employeeId,
+  page = 1,
+  limit = 20,
+  filters = {}
+) => {
   if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
     const err = new Error("Invalid Employee ID");
     err.status = 400;
     throw err;
   }
 
-  // Correct: use 'new' with ObjectId
   const employeeObjectId = new mongoose.Types.ObjectId(employeeId);
+  page = Math.max(parseInt(page) || 1, 1);
+  limit = Math.min(parseInt(limit) || 20, 100);
 
-  const applications = await CtoApplication.find({ employee: employeeObjectId })
-    .select(
-      "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
-    )
-    .populate({
-      path: "approvals",
-      populate: { path: "approver", select: "firstName lastName position" },
-    })
-    .populate("employee", "firstName lastName position")
-    .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours")
-    .sort({ createdAt: -1 });
+  const query = { employee: employeeObjectId };
 
-  return applications;
+  // Apply filters
+  if (filters.status) query.overallStatus = filters.status;
+  if (filters.from && filters.to) {
+    query.createdAt = { $gte: filters.from, $lte: filters.to };
+  }
+  if (filters.search) {
+    query["memo.memoId.memoNo"] = { $regex: filters.search, $options: "i" };
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [applications, total] = await Promise.all([
+    CtoApplication.find(query)
+      .select(
+        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
+      )
+      .populate({
+        path: "approvals",
+        populate: { path: "approver", select: "firstName lastName position" },
+      })
+      .populate("employee", "firstName lastName position")
+      .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+
+    CtoApplication.countDocuments(query),
+  ]);
+
+  return {
+    data: applications,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 };
 
 module.exports = {
   addCtoApplicationService,
-  getMyCtoApplicationsService,
+  getCtoApplicationsService,
   getCtoApplicationsByEmployeeService,
 };

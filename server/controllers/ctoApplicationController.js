@@ -1,6 +1,6 @@
 const {
   addCtoApplicationService,
-  getMyCtoApplicationsService,
+  getCtoApplicationsService,
   getCtoApplicationsByEmployeeService,
 } = require("../services/ctoApplication.service");
 
@@ -41,22 +41,23 @@ const addCtoApplicationRequest = async (req, res) => {
     });
   }
 };
-
-const getMyCtoApplicationsRequest = async (req, res) => {
+const getAllCtoApplicationsRequest = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const { page, limit, status, from, to, search, employeeId } = req.query;
 
-    const applications = await getMyCtoApplicationsService(userId);
+    const result = await getCtoApplicationsService(
+      { status, from, to, search, employeeId },
+      page,
+      limit
+    );
 
     res.status(200).json({
       message: "Fetched CTO applications successfully",
-      count: applications.length,
-      applications,
+      ...result,
     });
   } catch (error) {
     console.error("Error fetching CTO applications:", error);
-    const status = error.status || 500;
-    res.status(status).json({
+    res.status(error.status || 500).json({
       error: error.message || "Server error while fetching CTO applications",
     });
   }
@@ -64,19 +65,23 @@ const getMyCtoApplicationsRequest = async (req, res) => {
 
 const getCtoApplicationsByEmployeeRequest = async (req, res) => {
   try {
-    const { employeeId } = req.params; // get ID from URL
+    const { employeeId } = req.params;
+    const { page, limit, status, from, to, search } = req.query;
 
-    const applications = await getCtoApplicationsByEmployeeService(employeeId);
+    const result = await getCtoApplicationsByEmployeeService(
+      employeeId,
+      page,
+      limit,
+      { status, from, to, search }
+    );
 
     res.status(200).json({
       message: "Fetched CTO applications successfully",
-      count: applications.length,
-      applications,
+      ...result,
     });
   } catch (error) {
     console.error("Error fetching CTO applications:", error);
-    const status = error.status || 500;
-    res.status(status).json({
+    res.status(error.status || 500).json({
       error: error.message || "Server error while fetching CTO applications",
     });
   }
@@ -84,6 +89,6 @@ const getCtoApplicationsByEmployeeRequest = async (req, res) => {
 
 module.exports = {
   addCtoApplicationRequest,
-  getMyCtoApplicationsRequest,
+  getAllCtoApplicationsRequest,
   getCtoApplicationsByEmployeeRequest,
 };
