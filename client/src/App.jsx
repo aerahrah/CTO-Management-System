@@ -17,6 +17,7 @@ import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationAp
 import CtoCredits from "./components/ctoComponents/ctoCredits";
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
+import ProtectedRoute from "./components/protectedRoute";
 
 function App() {
   return (
@@ -34,7 +35,9 @@ function App() {
             path="office-locations"
             element={<OfficeLocationSettingsPage />}
           />
-          <Route path="cto/credit" element={<CtoCredits />} />
+          <Route element={<ProtectedRoute allowedRoles={["admin", "hr"]} />}>
+            <Route path="/dashboard/cto/credit" element={<CtoCredits />} />
+          </Route>
           <Route path="cto/apply" element={<CtoApplication />} />
           <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
           <Route path="cto/records" element={<CtoRecords />} />
