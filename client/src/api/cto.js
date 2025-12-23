@@ -52,9 +52,11 @@ export const fetchEmployeeCredits = async (employeeId) => {
   return res.data;
 };
 
-export const fetchEmployeeApplications = async (employeeId) => {
+export const fetchEmployeeApplications = async (employeeId, params = {}) => {
   console.log(employeeId);
-  const res = await API.get(`/cto/applications/employee/${employeeId}`);
+  const res = await API.get(`/cto/applications/employee/${employeeId}`, {
+    params,
+  });
   console.log(res.data);
   return res.data;
 };

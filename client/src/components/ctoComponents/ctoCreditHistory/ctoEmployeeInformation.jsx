@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import {
   fetchEmployeeCredits,
   fetchEmployeeDetails,
@@ -10,55 +10,71 @@ import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
-const EmployeeInfoSkeleton = () => {
-  return (
-    <div className="p-4 space-y-4">
-      {/* Header section */}
-      <div className="flex justify-between mb-4">
-        <div className="space-y-2">
-          <Skeleton width={180} height={24} />
-          <Skeleton width={140} height={14} />
-          <Skeleton width={160} height={14} />
-          <Skeleton width={200} height={14} />
-        </div>
-
-        {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3">
-          {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="p-2 bg-gray-50 rounded-lg border border-neutral-300 text-center"
-            >
-              <Skeleton width={120} height={12} />
-              <Skeleton width={60} height={18} className="mt-1" />
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        <Skeleton width={120} height={40} />
-        <Skeleton width={140} height={40} />
-      </div>
-
-      {/* Table skeleton */}
+/* =========================
+   MATCHING SKELETON
+========================= */
+const EmployeeInfoSkeleton = () => (
+  <div className="p-2 space-y-4">
+    {/* ================= EMPLOYEE HEADER ================= */}
+    <div className="bg-white border border-neutral-300 rounded-lg p-6 flex flex-col lg:flex-row justify-between gap-6">
+      {/* Employee info */}
       <div className="space-y-2">
-        {[...Array(7)].map((i) => (
+        <Skeleton width={220} height={26} />
+        <Skeleton width={260} height={14} />
+        <Skeleton width={240} height={14} />
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto">
+        {[...Array(3)].map((_, i) => (
+          <div
+            key={i}
+            className="rounded-xl border border-neutral-300 p-4 text-center bg-gray-50"
+          >
+            <Skeleton width={80} height={12} />
+            <Skeleton width={100} height={22} className="mt-2" />
+          </div>
+        ))}
+      </div>
+    </div>
+
+    {/* ================= TABS + TABLE ================= */}
+    <div className="bg-white border border-neutral-300 rounded-lg">
+      {/* Tabs */}
+      <div className="flex border-b border-neutral-300">
+        <div className="px-6 py-3">
+          <Skeleton width={90} height={16} />
+        </div>
+        <div className="px-6 py-3">
+          <Skeleton width={120} height={16} />
+        </div>
+      </div>
+
+      {/* Table rows */}
+      <div className="p-4 space-y-2">
+        {[...Array(6)].map((_, i) => (
           <Skeleton key={i} height={40} />
         ))}
       </div>
     </div>
-  );
-};
+  </div>
+);
 
+/* =========================
+   MAIN COMPONENT
+========================= */
 const CtoEmployeeInformation = ({
   selectedId,
   isEmployeeLoadingFromEmployeeList,
 }) => {
   const [activeTab, setActiveTab] = useState("credit");
 
-  // Fetch employee info
+  /* ===== APPLICATION TAB STATE ===== */
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [status, setStatus] = useState("");
+
+  /* ================= EMPLOYEE DETAILS ================= */
   const {
     data: employeeData,
     isLoading: isEmployeeLoading,
@@ -69,7 +85,7 @@ const CtoEmployeeInformation = ({
     enabled: !!selectedId,
   });
 
-  // Fetch credits
+  /* ================= CREDITS ================= */
   const {
     data: creditData,
     isLoading: isCreditLoading,
@@ -80,128 +96,171 @@ const CtoEmployeeInformation = ({
     enabled: !!selectedId,
   });
 
-  // Fetch applications
+  /* ================= APPLICATIONS ================= */
   const {
     data: applicationData,
     isLoading: isApplicationLoading,
     isError: isApplicationError,
   } = useQuery({
-    queryKey: ["employeeApplications", selectedId],
-    queryFn: () => fetchEmployeeApplications(selectedId),
-    enabled: !!selectedId,
+    queryKey: ["employeeApplications", selectedId, page, limit, status],
+    queryFn: () =>
+      fetchEmployeeApplications(selectedId, {
+        page,
+        limit,
+        status,
+      }),
+    keepPreviousData: true,
+    enabled: !!selectedId && activeTab === "application",
   });
 
-  useEffect(() => {
-    if (creditData) console.log("Employee Credits:", creditData);
-    if (applicationData) console.log("Employee Applications:", applicationData);
-  }, [creditData, applicationData]);
-
-  if (!selectedId || isEmployeeLoadingFromEmployeeList) {
-    return <EmployeeInfoSkeleton />;
-  }
-
-  if (isEmployeeLoading || isCreditLoading || isApplicationLoading)
-    return <EmployeeInfoSkeleton />;
-
-  if (isEmployeeError || isCreditError || isApplicationError)
-    return (
-      <div className="p-4 text-red-500 text-center">Error fetching data.</div>
-    );
-
+  /* ================= DATA ================= */
   const employee = employeeData?.employee;
   const credits = creditData?.credits || [];
-  const applications = applicationData?.applications || [];
 
+  const applications = useMemo(
+    () => applicationData?.data || [],
+    [applicationData]
+  );
+
+  const pagination = useMemo(
+    () => applicationData?.pagination || { page: 1, totalPages: 1 },
+    [applicationData]
+  );
+
+  /* ================= COMPUTATIONS ================= */
   const totalEarned = credits
     .filter((c) => c.status === "CREDITED")
     .reduce((sum, c) => {
-      const dur = c.duration;
-      if (!dur) return sum;
-      const hours = typeof dur.hours === "number" ? dur.hours : 0;
-      const minutes = typeof dur.minutes === "number" ? dur.minutes : 0;
-      const total = hours + minutes / 60;
-      return sum + total;
+      const h = c?.duration?.hours || 0;
+      const m = c?.duration?.minutes || 0;
+      return sum + h + m / 60;
     }, 0);
 
   const totalUsed = 0;
   const balance = totalEarned - totalUsed;
 
+  /* ================= PAGINATION ================= */
+  const handleNextPage = () => {
+    if (page < pagination.totalPages) setPage((p) => p + 1);
+  };
+
+  const handlePrevPage = () => {
+    if (page > 1) setPage((p) => p - 1);
+  };
+
+  /* ================= LOADING & ERROR ================= */
+  if (
+    !selectedId ||
+    isEmployeeLoadingFromEmployeeList ||
+    isEmployeeLoading ||
+    isCreditLoading
+  ) {
+    return <EmployeeInfoSkeleton />;
+  }
+
+  if (isEmployeeError || isCreditError || isApplicationError) {
+    return (
+      <div className="p-6 text-center text-red-600">
+        Failed to load employee data.
+      </div>
+    );
+  }
+
+  /* ================= RENDER ================= */
   return (
-    <div className="p-4">
-      {/* Employee Info */}
-      <div className="flex justify-between mb-4">
+    <div className="p-2 space-y-4">
+      {/* ================= EMPLOYEE HEADER ================= */}
+      <div className="bg-white border border-neutral-300 rounded-lg p-6 flex flex-col lg:flex-row justify-between gap-6">
         <div>
-          <h2 className="text-xl font-semibold">
+          <h2 className="text-2xl font-semibold text-gray-800">
             {employee.firstName} {employee.lastName}
           </h2>
-          <p className="text-sm text-gray-600">Position: {employee.position}</p>
-          <p className="text-sm text-gray-600">
-            Department: {employee.department}
+          <p className="text-sm text-gray-500 mt-1">
+            {employee.position} • {employee.department}
           </p>
-          <p className="text-sm text-gray-600">Email: {employee.email}</p>
+          <p className="text-sm text-gray-500">{employee.email}</p>
         </div>
 
-        {/* Summary */}
-        <div className="grid grid-cols-3 gap-3 items-start">
-          <div className="p-2 flex flex-col gap-2 bg-gray-100 rounded-lg border border-neutral-300 text-center">
-            <p className="text-xs font-semibold text-gray-500">
-              Overall Earned CTO
-            </p>
-            <p className="text-sm font-bold p-1 bg-white rounded-full border-1 border-neutral-300 border-dashed text-green-700">
-              {totalEarned.toFixed(2)} hrs
-            </p>
-          </div>
-          <div className="p-2 flex flex-col gap-2 bg-gray-100 rounded-lg border border-neutral-300 text-center">
-            <p className="text-xs font-semibold text-gray-500 ">
-              Overall Used CTO
-            </p>
-            <p className="text-sm font-bold p-1 bg-white rounded-full border-1 border-neutral-300 border-dashed text-red-700">
-              {totalUsed.toFixed(2)} hrs
-            </p>
-          </div>
-          <div className="p-2 flex flex-col gap-2 bg-gray-100 rounded-lg border border-neutral-300 text-center">
-            <p className="text-xs font-semibold text-gray-500">
-              Total Balance:
-            </p>
-            <p className="text-sm font-bold p-1 bg-white rounded-full border-1 border-neutral-300 border-dashed text-green-700">
-              {balance.toFixed(2)} hrs
-            </p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <SummaryCard label="Earned CTO" value={totalEarned} type="success" />
+          <SummaryCard label="Used CTO" value={totalUsed} type="danger" />
+          <SummaryCard label="Balance" value={balance} type="primary" />
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        <button
-          className={`px-5 py-2.5 font-medium transition rounded-t-lg cursor-pointer ${
-            activeTab === "credit"
-              ? "bg-neutral-800 text-white"
-              : "text-neutral-500 bg-neutral-100"
-          }`}
-          onClick={() => setActiveTab("credit")}
-        >
-          Credit CTO
-        </button>
-        <button
-          className={`px-5 py-2.5 font-medium transition rounded-t-lg cursor-pointer ${
-            activeTab === "application"
-              ? "bg-neutral-800 text-white"
-              : "text-neutral-500 bg-neutral-100"
-          }`}
-          onClick={() => setActiveTab("application")}
-        >
-          Application CTO
-        </button>
-      </div>
+      {/* ================= TABS ================= */}
+      <div className="bg-white border border-neutral-300 rounded-lg">
+        <div className="flex border-b border-neutral-300">
+          <TabButton
+            active={activeTab === "credit"}
+            onClick={() => setActiveTab("credit")}
+            label="Credit CTO"
+          />
+          <TabButton
+            active={activeTab === "application"}
+            onClick={() => setActiveTab("application")}
+            label="Application CTO"
+          />
+        </div>
 
-      {/* Tab content */}
-      {activeTab === "credit" ? (
-        <CreditCtoTable credits={credits} />
-      ) : (
-        <ApplicationCtoTable applications={applications} />
-      )}
+        <div className="p-4">
+          {activeTab === "credit" ? (
+            <CreditCtoTable credits={credits} />
+          ) : (
+            <ApplicationCtoTable
+              applications={applications}
+              status={status}
+              onStatusChange={(val) => {
+                setPage(1);
+                setStatus(val);
+              }}
+              onLimitChange={(val) => {
+                setPage(1);
+                setLimit(val);
+              }}
+              page={page}
+              limit={limit}
+              totalPages={pagination.totalPages}
+              onNextPage={handleNextPage}
+              onPrevPage={handlePrevPage}
+              isLoading={isApplicationLoading}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 };
+
+/* =========================
+   SMALL COMPONENTS
+========================= */
+const SummaryCard = ({ label, value, type }) => {
+  const colorMap = {
+    success: "text-green-700 bg-green-50 border-green-200",
+    danger: "text-red-700 bg-red-50 border-red-200",
+    primary: "text-blue-700 bg-blue-50 border-blue-200",
+  };
+
+  return (
+    <div className={`rounded-xl border p-4 text-center ${colorMap[type]}`}>
+      <p className="text-xs font-medium">{label}</p>
+      <p className="text-lg font-bold mt-1">{value.toFixed(2)} hrs</p>
+    </div>
+  );
+};
+
+const TabButton = ({ active, onClick, label }) => (
+  <button
+    onClick={onClick}
+    className={`px-6 py-3 text-sm font-medium transition border-b-2 ${
+      active
+        ? "border-neutral-900 text-neutral-900"
+        : "border-transparent text-neutral-500 hover:text-neutral-700"
+    }`}
+  >
+    {label}
+  </button>
+);
 
 export default CtoEmployeeInformation;

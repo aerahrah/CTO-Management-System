@@ -1,67 +1,156 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Modal from "../../modal";
 import { TableActionButton } from "../../customButton";
-import { StatusBadge } from "../../statusUtils"; // <-- import StatusBadge
+import { StatusBadge } from "../../statusUtils";
+import FilterSelect from "../../filterSelect";
+import Skeleton from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
 
-const ApplicationCtoTable = ({ applications }) => {
-  const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+/* =========================
+   CONSTANTS
+========================= */
+const statusOptions = ["All", "PENDING", "APPROVED", "REJECTED"];
+const pageSizeOptions = [20, 50, 100];
 
-  useEffect(() => {
-    console.log("Applications received in ApplicationCtoTable:", applications);
-  }, [applications]);
+/* =========================
+   COMPONENT
+========================= */
+const ApplicationCtoTable = ({
+  applications = [],
+  status,
+  onStatusChange,
+  search,
+  onSearchChange,
+  page,
+  limit,
+  onLimitChange,
+  onNextPage,
+  onPrevPage,
+  totalPages,
+  isLoading,
+}) => {
+  const [memoModal, setMemoModal] = useState({
+    isOpen: false,
+    memos: [],
+  });
 
-  //   const formatDuration = (duration) => {
-  //     if (!duration) return "-";
-  //     const { hours = 0, minutes = 0 } = duration;
-  //     return `${hours}h ${minutes}m`;
-  //   };
+  const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
 
-  const formatDuration = (duration) => {
-    if (!duration) return "-";
+  const closeMemoModal = () => setMemoModal({ isOpen: false, memos: [] });
 
-    return `${duration} hours`;
-  };
+  const formatDuration = (hours) => (!hours ? "-" : `${hours} hours`);
 
-  const openMemoModal = (memos) => {
-    setMemoModal({ isOpen: true, memos });
-  };
+  /* =========================
+     FILTER LOGIC
+  ========================== */
+  const filteredApps = applications.filter((app) => {
+    const matchesStatus =
+      !status || status === "All" ? true : app.overallStatus === status;
+
+    const matchesSearch = !search
+      ? true
+      : Array.isArray(app.memo) &&
+        app.memo.some((m) =>
+          m?.memoId?.memoNo?.toLowerCase().includes(search.toLowerCase())
+        );
+
+    return matchesStatus && matchesSearch;
+  });
 
   return (
     <div className="overflow-x-auto">
-      <div className="max-h-96 overflow-y-auto rounded-lg shadow-sm">
-        <table className="w-full table-fixed text-sm rounded-lg shadow-sm">
-          <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
+      {/* =========================
+          FILTERS
+      ========================= */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700 font-medium">Status:</span>
+          <FilterSelect
+            value={status || "All"}
+            options={statusOptions}
+            onChange={(val) => onStatusChange(val === "All" ? "" : val)}
+            width={36}
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700 font-medium">
+            Search Memo:
+          </span>
+          <input
+            type="text"
+            value={search || ""}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Memo No..."
+            className="border border-gray-300 rounded px-2 py-1 text-sm w-40"
+          />
+        </div>
+      </div>
+
+      {/* =========================
+          TABLE
+      ========================= */}
+      <div className="max-h-96 overflow-y-auto rounded-sm border border-neutral-300">
+        <table className="w-full text-sm table-fixed ">
+          <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 sticky top-0 outline-1 outline-neutral-300">
             <tr>
-              <th className="p-3 w-36 border-b border-r border-gray-200">
+              <th className="p-3 border-r border-b border-neutral-300">
                 Memo No.
               </th>
-              <th className="p-3 border-b border-r border-gray-200">
+              <th className="p-3 border-r border-b border-neutral-300">
                 Request Date
               </th>
-              <th className="p-3 border-b border-r border-gray-200">Status</th>
-              <th className="p-3 text-center border-b border-r border-gray-200">
+              <th className="p-3 border-r border-b border-neutral-300 text-center">
+                Status
+              </th>
+              <th className="p-3 border-r border-b border-neutral-300  text-center">
                 Requested Duration
               </th>
-              <th className="p-3 text-center border-b border-r border-gray-200">
+              <th className="p-3 border-b border-neutral-300 text-center">
                 Memo File
               </th>
             </tr>
           </thead>
+
           <tbody>
-            {applications.length > 0 ? (
-              applications.map((app, index) => (
+            {/* =========================
+                LOADING (TABLE ONLY)
+            ========================= */}
+            {isLoading ? (
+              [...Array(6)].map((_, i) => (
+                <tr key={i}>
+                  <td className="p-3 border-r border-b border-neutral-300">
+                    <Skeleton />
+                  </td>
+                  <td className="p-3 border-r border-b border-neutral-300">
+                    <Skeleton />
+                  </td>
+                  <td className="p-3 border-r border-b border-neutral-300 text-center">
+                    <Skeleton width={80} />
+                  </td>
+                  <td className="p-3 border-r border-b border-neutral-300  text-center">
+                    <Skeleton width={100} />
+                  </td>
+                  <td className="p-3 border-b border-neutral-300 text-center">
+                    <Skeleton width={90} />
+                  </td>
+                </tr>
+              ))
+            ) : filteredApps.length > 0 ? (
+              filteredApps.map((app, index) => (
                 <tr
                   key={app._id}
                   className={`transition-colors ${
                     index % 2 === 0 ? "bg-white" : "bg-gray-50"
                   } hover:bg-gray-100`}
                 >
-                  <td className="p-3 border-b border-r border-gray-200 font-medium text-gray-800">
-                    {app.memo?.length > 0
-                      ? app.memo.map((m) => m.memoId?.memoNo).join(", ")
+                  <td className="p-3 border-r border-b border-neutral-300 font-medium text-gray-700">
+                    {Array.isArray(app.memo) && app.memo.length > 0
+                      ? app.memo.map((m) => m?.memoId?.memoNo).join(", ")
                       : "-"}
                   </td>
-                  <td className="p-3 border-b border-r border-gray-200 text-gray-700">
+
+                  <td className="p-3 border-r border-b border-neutral-300">
                     {app.createdAt
                       ? new Date(app.createdAt).toLocaleDateString("en-US", {
                           year: "numeric",
@@ -70,18 +159,21 @@ const ApplicationCtoTable = ({ applications }) => {
                         })
                       : "-"}
                   </td>
-                  <td className="p-3 border-b border-r border-gray-200 text-center font-semibold">
+
+                  <td className="p-3 border-r border-b border-neutral-300 text-center">
                     <StatusBadge status={app.overallStatus} />
                   </td>
-                  <td className="p-3 text-center border-b border-r border-gray-200 font-semibold text-blue-700">
+
+                  <td className="p-3 border-r border-b border-neutral-300 text-center font-semibold text-blue-700">
                     {formatDuration(app.requestedHours)}
                   </td>
-                  <td className="p-3 border-b border-r border-gray-200 text-center">
-                    {app.memo?.length > 0 ? (
+
+                  <td className="p-3 border-b border-neutral-300 text-center">
+                    {Array.isArray(app.memo) && app.memo.length > 0 ? (
                       <TableActionButton
-                        label={`View Memos (${app.memo.length})`}
-                        onClick={() => openMemoModal(app.memo)}
+                        label={`View (${app.memo.length})`}
                         variant="secondary"
+                        onClick={() => openMemoModal(app.memo)}
                       />
                     ) : (
                       <span className="text-gray-400 text-sm">No memos</span>
@@ -91,10 +183,7 @@ const ApplicationCtoTable = ({ applications }) => {
               ))
             ) : (
               <tr>
-                <td
-                  colSpan="5"
-                  className="p-3 text-center text-gray-500 border-b border-gray-200"
-                >
+                <td colSpan={5} className="p-4 text-center text-gray-500">
                   No CTO applications found.
                 </td>
               </tr>
@@ -103,62 +192,99 @@ const ApplicationCtoTable = ({ applications }) => {
         </table>
       </div>
 
-      {/* Memo Modal */}
+      {/* =========================
+          PAGINATION
+      ========================= */}
+      <div className="flex justify-between items-center mt-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700">Rows per page:</span>
+          <FilterSelect
+            value={limit}
+            options={pageSizeOptions}
+            onChange={(val) => onLimitChange(Number(val))}
+            width={20}
+            openUp
+          />
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onPrevPage}
+            disabled={page <= 1 || isLoading}
+            className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-100"
+          >
+            Prev
+          </button>
+
+          <span className="text-sm text-gray-700">
+            Page {page} of {totalPages}
+          </span>
+
+          <button
+            onClick={onNextPage}
+            disabled={page >= totalPages || isLoading}
+            className="px-3 py-1 border rounded disabled:opacity-50 hover:bg-gray-100"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+
+      {/* =========================
+          MEMO MODAL
+      ========================= */}
       <Modal
         isOpen={memoModal.isOpen}
-        onClose={() => setMemoModal({ isOpen: false, memos: [] })}
+        onClose={closeMemoModal}
         title="Memos Used in CTO Application"
         closeLabel="Close"
       >
-        <div className="max-h-[500px] overflow-y-auto relative">
+        <div className="max-h-[500px] overflow-y-auto">
           {memoModal.memos.length === 0 ? (
             <p className="text-sm text-gray-500 text-center py-10">
               No memos available
             </p>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-neutral-100 rounded-md">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
               {memoModal.memos.map((memo, i) => (
                 <div
                   key={i}
-                  className="bg-white border border-gray-300 rounded-md shadow-sm hover:shadow-md transition-shadow flex flex-col"
+                  className="bg-white border border-gray-300 rounded-md shadow-sm flex flex-col"
                 >
                   {memo.uploadedMemo?.endsWith(".pdf") ? (
                     <iframe
                       src={`http://localhost:3000${memo.uploadedMemo}`}
                       title={memo.memoId?.memoNo || `Memo ${i}`}
-                      className="w-full h-40 border-b border-gray-200 rounded-t-md"
+                      className="w-full h-40 border-b"
                     />
                   ) : (
-                    <div className="w-full h-40 flex items-center justify-center bg-gray-50 border-b border-gray-200 rounded-t-md">
+                    <div className="h-40 flex items-center justify-center bg-gray-50 border-b">
                       <p className="text-gray-400 text-sm">
                         No Preview Available
                       </p>
                     </div>
                   )}
 
-                  <div className="p-4 flex-1 flex flex-col justify-between">
-                    <div className="mb-3">
-                      <div className="flex gap-1 font-semibold">
-                        <p>Memo: </p>
-                        <p className="text-gray-900 text-sm md:text-base">
-                          {memo.memoId?.memoNo || "—"}
-                        </p>
-                      </div>
-                      <p className="text-gray-500 text-xs md:text-sm">
-                        Hours: {memo.memoId?.totalHours || "—"}
-                      </p>
-                    </div>
+                  <div className="p-3 flex flex-col gap-2">
+                    <p className="font-semibold text-sm">
+                      Memo No:{" "}
+                      <span className="font-normal">
+                        {memo.memoId?.memoNo || "—"}
+                      </span>
+                    </p>
 
-                    <div className="flex justify-between gap-2 mt-auto">
-                      <a
-                        href={`http://localhost:3000${memo?.uploadedMemo}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center gap-1 px-3 py-1 text-xs md:text-sm font-medium border border-gray-400 rounded hover:bg-gray-100 transition-colors"
-                      >
-                        View
-                      </a>
-                    </div>
+                    <p className="text-xs text-gray-500">
+                      Total Hours: {memo.memoId?.totalHours || "—"}
+                    </p>
+
+                    <a
+                      href={`http://localhost:3000${memo.uploadedMemo}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 text-center text-sm px-3 py-1 border rounded hover:bg-gray-100"
+                    >
+                      View Memo
+                    </a>
                   </div>
                 </div>
               ))}
