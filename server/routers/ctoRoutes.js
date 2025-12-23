@@ -66,13 +66,6 @@ router.get(
 );
 
 router.get(
-  "/credits/recent",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  getRecentCreditRequests
-);
-
-router.get(
   "/credits/:employeeId/history",
   authenticateToken,
   authorizeRoles("admin", "hr"),

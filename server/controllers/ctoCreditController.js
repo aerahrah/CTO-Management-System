@@ -61,20 +61,24 @@ const rollbackCreditedRequest = async (req, res) => {
   }
 };
 
-const getRecentCreditRequests = async (req, res) => {
-  try {
-    const credits = await ctoCreditService.getRecentCredits();
-    console.log(credits);
-    res.json({ message: "Showing recent 10 credit requests", credits });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
 const getAllCreditRequests = async (req, res) => {
   try {
-    const credits = await ctoCreditService.getAllCredits();
-    res.json({ message: "Showing all credit requests", credits });
+    const { page, limit, search, status } = req.query;
+
+    const credits = await ctoCreditService.getAllCredits({
+      page,
+      limit,
+      search,
+      filters: { status },
+    });
+
+    res.json({
+      message: "Showing credit requests",
+      page: parseInt(page) || 1,
+      limit: parseInt(limit) || 20,
+      total: credits.totalCount,
+      credits: credits.items,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -195,7 +199,6 @@ const getEmployeeCredits = async (req, res) => {
 module.exports = {
   addCtoCreditRequest,
   rollbackCreditedRequest,
-  getRecentCreditRequests,
   getAllCreditRequests,
   getEmployeeDetails,
   getEmployeeCredits,

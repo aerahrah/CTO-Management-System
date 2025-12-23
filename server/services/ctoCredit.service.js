@@ -68,21 +68,58 @@ async function rollbackCredit({ creditId, userId }) {
   return credit;
 }
 
-async function getRecentCredits() {
-  return CtoCredit.find()
-    .populate("employees.employee", "firstName lastName position")
-    .sort({ createdAt: -1 })
-    .limit(10);
-}
+async function getAllCredits({
+  page = 1,
+  limit = 20,
+  search = "",
+  filters = {},
+}) {
+  page = parseInt(page);
+  limit = Math.min(Math.max(limit, 20), 100);
+  const skip = (page - 1) * limit;
 
-async function getAllCredits() {
-  return CtoCredit.find()
-    .populate("employees.employee", "firstName lastName")
+  const query = {};
+
+  if (filters.status) query.status = filters.status;
+
+  // If search is provided, find employees that match firstName or lastName
+  if (search) {
+    // Use $lookup style: find credits where at least one employee's name matches
+    const employees = await Employee.find({
+      $or: [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+      ],
+    }).select("_id");
+
+    const employeeIds = employees.map((e) => e._id);
+
+    // Match any CTO credit where at least one employee is in employeeIds
+    query["employees.employee"] = { $in: employeeIds };
+  }
+
+  const totalCount = await CtoCredit.countDocuments(query);
+
+  const items = await CtoCredit.find(query)
+    .populate("employees.employee", "firstName lastName position")
     .populate("rolledBackBy", "firstName lastName position role")
     .populate("creditedBy", "firstName lastName position role")
-    .sort({ createdAt: -1 });
-}
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit);
 
+  console.log(
+    "DEBUG: Query object for getAllCredits:",
+    JSON.stringify(query, null, 2)
+  );
+  console.log("DEBUG: Total matched credits:", totalCount);
+  console.log(
+    "DEBUG: Fetched items:",
+    items.map((i) => i._id)
+  );
+
+  return { totalCount, items };
+}
 async function getEmployeeDetails(employeeId) {
   return Employee.findById(employeeId)
     .select("firstName lastName position department email")
@@ -102,7 +139,7 @@ const getEmployeeCredits = async (employeeId) => {
       .lean()
       .exec();
 
-    console.log("All credits fetched:", credits.creditedBy);
+    console.log("All credits fetched:", credits);
 
     return credits;
   } catch (error) {
@@ -188,7 +225,6 @@ const getEmployeeCredits = async (employeeId) => {
 module.exports = {
   addCredit,
   rollbackCredit,
-  getRecentCredits,
   getAllCredits,
   getEmployeeDetails,
   getEmployeeCredits,

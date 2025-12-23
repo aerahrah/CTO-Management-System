@@ -9,19 +9,21 @@ export const addCreditRequest = async (formData) => {
   return res.data;
 };
 
-export const fetchAllCreditRequests = async () => {
+export const fetchAllCreditRequests = async (params = {}) => {
   const res = await API.get("/cto/credits/all", {
+    params,
     withCredentials: true,
   });
-  return res.data.credits;
+  console.log(res.data.credits);
+  return res.data;
 };
 
-export const fetchRecentCreditRequest = async () => {
-  const res = await API.get("/cto/credits/recent", {
-    withCredentials: true,
-  });
-  return res.data.credits;
-};
+// export const fetchRecentCreditRequest = async () => {
+//   const res = await API.get("/cto/credits/recent", {
+//     withCredentials: true,
+//   });
+//   return res.data.credits;
+// };
 
 export const cancelCreditRequest = async (creditId) => {
   const res = await API.patch(
