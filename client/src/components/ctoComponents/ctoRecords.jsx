@@ -17,7 +17,7 @@ const CtoRecords = () => {
       <CardFull>
         <CtoEmployeeInformation
           selectedId={selectedId}
-          isEmployeeLoading={isEmployeeLoading}
+          isEmployeeLoadingFromEmployeeList={isEmployeeLoading}
         />
       </CardFull>
     </div>

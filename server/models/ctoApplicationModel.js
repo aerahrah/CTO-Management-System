@@ -28,7 +28,7 @@ const ctoApplicationSchema = new mongoose.Schema(
           required: true,
         },
         uploadedMemo: {
-          type: String, // the uploaded file name or URL
+          type: String, 
           required: true,
         },
       },

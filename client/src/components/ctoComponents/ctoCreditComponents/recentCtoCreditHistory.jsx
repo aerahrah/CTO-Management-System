@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchAllCreditRequests, rollbackCreditCto } from "../../../api/cto";
 import { StatusBadge } from "../../statusUtils";
@@ -8,13 +8,14 @@ import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { Clipboard } from "lucide-react";
 import FilterSelect from "../../filterSelect";
+import AddCtoCreditForm from "./forms/addCtoCreditForm"; // ✅ ADDED
 
 const statusOptions = ["All", "CREDITED", "PENDING", "ROLLED_BACK"];
 const pageSizeOptions = [20, 50, 100];
 
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
-
+  const formRef = useRef(null);
   // Filters & pagination
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -25,6 +26,8 @@ const CtoCreditHistory = () => {
   const [isConfirmRollback, setIsConfirmRollback] = useState(false);
   const [selectedCreditId, setSelectedCreditId] = useState(null);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
+
+  const [isAddCtoOpen, setIsAddCtoOpen] = useState(false);
 
   // Debounce search input manually
   useEffect(() => {
@@ -106,6 +109,13 @@ const CtoCreditHistory = () => {
             Credit History
           </span>
         </h2>
+
+        <button
+          className="flex justify-end bg-blue-600 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform rounded-md p-2 px-6 text-neutral-50 shadow"
+          onClick={() => setIsAddCtoOpen(true)}
+        >
+          Credit CTO
+        </button>
       </div>
 
       {/* Filters */}
@@ -320,6 +330,25 @@ const CtoCreditHistory = () => {
         ) : (
           <p className="text-gray-500">No uploaded memo found.</p>
         )}
+      </Modal>
+
+      {/* ✅ ADD CREDIT CTO MODAL */}
+      <Modal
+        isOpen={isAddCtoOpen}
+        onClose={() => setIsAddCtoOpen(false)}
+        action={{
+          label: "Submit",
+          variant: "save",
+          show: true,
+          onClick: () => formRef.current?.submit(),
+        }}
+      >
+        <div className="w-120">
+          <AddCtoCreditForm
+            ref={formRef}
+            onClose={() => setIsAddCtoOpen(false)}
+          />
+        </div>
       </Modal>
     </div>
   );

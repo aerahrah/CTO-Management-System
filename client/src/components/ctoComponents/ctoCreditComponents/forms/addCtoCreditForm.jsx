@@ -1,15 +1,14 @@
-import { useState } from "react";
+import { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import { Upload, Plus } from "lucide-react";
 import Select from "react-select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../../../../api/employee";
 import { addCreditRequest } from "../../../../api/cto";
-import { CustomButton } from "../../../customButton";
 import { toast } from "react-toastify";
 
-const AddCtoCreditForm = () => {
+const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
   const queryClient = useQueryClient();
-
+  const formRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -25,7 +24,7 @@ const AddCtoCreditForm = () => {
     queryKey: ["employees"],
     queryFn: getEmployees,
     staleTime: Infinity,
-    enabled: menuOpen, // on-demand
+    enabled: menuOpen,
   });
 
   const addCreditMutation = useMutation({
@@ -40,6 +39,7 @@ const AddCtoCreditForm = () => {
         dateApproved: "",
       });
       queryClient.invalidateQueries(["ctoCredits"]);
+      if (onClose) onClose(); // automatically close after submission
     },
     onError: (err) => {
       console.error(err);
@@ -71,10 +71,10 @@ const AddCtoCreditForm = () => {
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
 
     const payload = new FormData();
-    payload.append("memoFile", formData.memoFile); // PDF file
+    payload.append("memoFile", formData.memoFile);
     payload.append("memoNo", formData.memoNo);
     payload.append("dateApproved", formData.dateApproved);
     payload.append("employees", JSON.stringify(formData.employees));
@@ -86,9 +86,13 @@ const AddCtoCreditForm = () => {
       })
     );
 
-    console.log("Submitting:", payload);
     addCreditMutation.mutate(payload);
   };
+
+  // Expose submit method to parent via ref
+  useImperativeHandle(ref, () => ({
+    submit: () => handleSubmit(),
+  }));
 
   const employeeOptions =
     employeesData?.data?.map((emp) => ({
@@ -99,13 +103,13 @@ const AddCtoCreditForm = () => {
   return (
     <div className="max-w-xl mx-auto">
       <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
-        <span className="flex items-center justify-center w-8 h-8  bg-violet-600 rounded-full">
+        <span className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-full">
           <Plus className="w-5 h-5 text-white" />
         </span>
         <span className="text-xl font-bold text-gray-800">Credit CTO</span>
       </h2>
 
-      <form className="space-y-5" onSubmit={handleSubmit}>
+      <form className="space-y-5" ref={formRef} onSubmit={handleSubmit}>
         {/* Employees */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -236,22 +240,9 @@ const AddCtoCreditForm = () => {
             />
           </div>
         </div>
-
-        {/* Submit Button */}
-        <CustomButton
-          type="submit"
-          label={
-            addCreditMutation.isPending
-              ? "Submitting..."
-              : "Submit Credit Request"
-          }
-          variant="primary"
-          className="w-full py-2"
-          disabled={addCreditMutation.isPending}
-        />
       </form>
     </div>
   );
-};
+});
 
 export default AddCtoCreditForm;
