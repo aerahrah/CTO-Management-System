@@ -6,6 +6,7 @@ const employeeRoutes = require("./routers/employeeRoutes");
 const ctoSettingRoutes = require("./routers/ctoSettingRoute");
 const provincialOfficeRoutes = require("./routers/provincialOfficeRoute");
 const ctoRoutes = require("./routers/ctoRoutes");
+const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const cors = require("cors");
 const path = require("path");
 
@@ -29,6 +30,7 @@ app.use(bodyParser.json());
 
 app.use("/employee", employeeRoutes);
 app.use("/cto", ctoRoutes);
+app.use("/cto", ctoDashboardRoutes);
 app.use("/cto/settings", ctoSettingRoutes);
 app.use("/settings/provincial-office", provincialOfficeRoutes);
 
