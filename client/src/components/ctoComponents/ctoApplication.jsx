@@ -3,7 +3,7 @@ import MyCtoApplications from "./ctoApplicationComponents/myCtoApplicationHistor
 import { CardFull, CardLg } from "../cardComponent";
 const CtoApplication = () => {
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-4 items-start">
+    <div className=" w-[100%] bg-neutral-200 flex gap-3 items-start">
       {/* <CardLg>
         <AddCtoApplicationForm />
       </CardLg> */}

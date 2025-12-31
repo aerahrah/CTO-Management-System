@@ -18,7 +18,7 @@ const CtoApplicationApprovals = () => {
   if (isError) return <ErrorMessage message={error.message} />;
 
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
+    <div className=" w-[100%] bg-neutral-200 flex gap-3 ">
       <CardMd>
         <CtoApplicationsList
           applications={data?.data || []}

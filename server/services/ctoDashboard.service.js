@@ -16,6 +16,7 @@ const ctoDashboardService = {
         balance: 0,
         used: 0,
         pending: 0,
+        approved: 0, // new
       };
     }
 
@@ -32,15 +33,12 @@ const ctoDashboardService = {
       employee: employeeId,
       overallStatus: "PENDING",
     });
-    const pendingHours = pendingApplications.reduce(
-      (sum, app) => sum + app.requestedHours,
-      0
-    );
 
     return {
       balance: employee.balances?.ctoHours || 0,
       used: usedHours,
-      pending: pendingHours,
+      pending: pendingApplications.length, // now returns count
+      approved: approvedApplications.length, // new
     };
   },
 
