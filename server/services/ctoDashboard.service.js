@@ -4,25 +4,30 @@ const CtoCredit = require("../models/ctoCreditModel");
 const ApprovalStep = require("../models/approvalStepModel");
 
 const ctoDashboardService = {
-  // Employee: personal summary
-  getEmployeeSummary: async (employeeId) => {
-    // Current CTO balance
+  // --- Personal CTO Summary (for reuse) ---
+  getPersonalCtoSummary: async (employeeId) => {
     const employee = await Employee.findById(employeeId).select(
       "balances ctoHours"
     );
 
-    // Used CTO hours (approved requests)
+    if (!employee) {
+      console.warn(`Employee not found: ${employeeId}`);
+      return {
+        balance: 0,
+        used: 0,
+        pending: 0,
+      };
+    }
+
     const approvedApplications = await CtoApplication.find({
       employee: employeeId,
       overallStatus: "APPROVED",
     });
-
     const usedHours = approvedApplications.reduce(
       (sum, app) => sum + app.requestedHours,
       0
     );
 
-    // Pending requests
     const pendingApplications = await CtoApplication.find({
       employee: employeeId,
       overallStatus: "PENDING",
@@ -33,22 +38,30 @@ const ctoDashboardService = {
     );
 
     return {
-      myCtoSummary: {
-        balance: employee.balances.ctoHours,
-        used: usedHours,
-        pending: pendingHours,
-      },
+      balance: employee.balances?.ctoHours || 0,
+      used: usedHours,
+      pending: pendingHours,
+    };
+  },
+
+  // --- Employee ---
+  getEmployeeSummary: async (employeeId) => {
+    const myCtoSummary = await ctoDashboardService.getPersonalCtoSummary(
+      employeeId
+    );
+
+    return {
+      myCtoSummary,
       quickActions: [{ name: "Apply for CTO", link: "/dashboard/cto/apply" }],
     };
   },
 
-  // Supervisor: personal + team summary
+  // --- Supervisor ---
   getSupervisorSummary: async (supervisorId) => {
-    const employeeSummary = await ctoDashboardService.getEmployeeSummary(
+    const myCtoSummary = await ctoDashboardService.getPersonalCtoSummary(
       supervisorId
     );
 
-    // Find team members (simple: same department, excluding supervisor)
     const supervisor = await Employee.findById(supervisorId).select(
       "department"
     );
@@ -57,12 +70,10 @@ const ctoDashboardService = {
       _id: { $ne: supervisorId },
     });
 
-    // Team pending approvals
     const teamPendingApplications = await CtoApplication.find({
       overallStatus: "PENDING",
     }).populate("approvals");
 
-    // Filter applications where supervisor is an approver
     const pendingForSupervisor = teamPendingApplications.filter((app) =>
       app.approvals.some(
         (step) =>
@@ -71,7 +82,6 @@ const ctoDashboardService = {
       )
     );
 
-    // Team CTO usage
     const teamCtoUsage = await Promise.all(
       teamMembers.map(async (member) => {
         const approvedApps = await CtoApplication.find({
@@ -92,40 +102,40 @@ const ctoDashboardService = {
     );
 
     return {
-      ...employeeSummary,
+      myCtoSummary,
       teamPendingApprovals: pendingForSupervisor.length,
       teamCtoUsage,
       quickLinks: [{ name: "Approvals", link: "/dashboard/cto/approvals" }],
     };
   },
 
-  // HR: personal + all employees overview
-  getHrSummary: async () => {
-    // Personal summary can be skipped or included
-    // All CTO requests
-    const allApplications = await CtoApplication.find()
-      .populate("employee")
-      .populate("memo");
+  // --- HR ---
+  getHrSummary: async (hrId) => {
+    const myCtoSummary = await ctoDashboardService.getPersonalCtoSummary(hrId);
 
-    // CTO hours distribution per department
-    const employees = await Employee.find();
-    const departmentDistribution = {};
-    for (let emp of employees) {
-      if (!departmentDistribution[emp.department])
-        departmentDistribution[emp.department] = 0;
-      departmentDistribution[emp.department] += emp.balances.ctoHours;
-    }
-
-    // Recently credited / rolled back
     const recentCredits = await CtoCredit.find()
       .sort({ createdAt: -1 })
       .limit(5)
       .populate("employees.employee");
 
+    const totalCreditedCount = await CtoCredit.countDocuments({
+      status: "CREDITED",
+    });
+
+    const totalRolledBackCount = await CtoCredit.countDocuments({
+      status: "ROLLEDBACK",
+    });
+
+    const totalPendingRequests = await CtoApplication.countDocuments({
+      overallStatus: "PENDING",
+    });
+
     return {
-      allApplications,
-      departmentDistribution,
+      myCtoSummary,
       recentCredits,
+      totalCreditedCount,
+      totalRolledBackCount,
+      totalPendingRequests,
       quickLinks: [
         { name: "CTO Records", link: "/dashboard/cto/records" },
         { name: "Manage Credits", link: "/dashboard/cto/credit" },
@@ -134,9 +144,12 @@ const ctoDashboardService = {
     };
   },
 
-  // Admin: system-wide stats
-  getAdminSummary: async () => {
-    // Total requests stats
+  // --- Admin (refactored) ---
+  getAdminSummary: async (adminId) => {
+    // Reuse HR summary
+    const hrData = await ctoDashboardService.getHrSummary(adminId);
+
+    // Add admin-specific data
     const totalRequests = await CtoApplication.countDocuments();
     const approvedRequests = await CtoApplication.countDocuments({
       overallStatus: "APPROVED",
@@ -145,48 +158,19 @@ const ctoDashboardService = {
       overallStatus: "REJECTED",
     });
 
-    // Total CTO hours credited / rolled back
     const credits = await CtoCredit.find();
     const totalCredited = credits.reduce((sum, c) => sum + c.totalHours, 0);
     const rolledBack = credits
       .filter((c) => c.status === "ROLLEDBACK")
       .reduce((sum, c) => sum + c.totalHours, 0);
 
-    // Top employees by CTO usage
-    const employees = await Employee.find();
-    const usageStats = await Promise.all(
-      employees.map(async (emp) => {
-        const approvedApps = await CtoApplication.find({
-          employee: emp._id,
-          overallStatus: "APPROVED",
-        });
-        const usedHours = approvedApps.reduce(
-          (sum, app) => sum + app.requestedHours,
-          0
-        );
-        return {
-          employeeId: emp._id,
-          name: `${emp.firstName} ${emp.lastName}`,
-          usedHours,
-        };
-      })
-    );
-    usageStats.sort((a, b) => b.usedHours - a.usedHours);
-    const topEmployees = usageStats.slice(0, 5);
-
     return {
+      ...hrData, // include all HR summary data
       totalRequests,
       approvedRequests,
       rejectedRequests,
       totalCredited,
       rolledBack,
-      topEmployees,
-      quickLinks: [
-        { name: "Manage Employees", link: "/dashboard/employees" },
-        { name: "CTO Records", link: "/dashboard/cto/records" },
-        { name: "Credits", link: "/dashboard/cto/credit" },
-        { name: "Settings", link: "/dashboard/settings" },
-      ],
     };
   },
 };

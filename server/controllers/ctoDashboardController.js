@@ -5,19 +5,19 @@ const ctoDashboardController = {
     try {
       const user = req.user; // assume JWT middleware sets req.user with role and _id
       let data;
-
+      console.log(user);
       switch (user.role) {
         case "employee":
-          data = await ctoDashboardService.getEmployeeSummary(user._id);
+          data = await ctoDashboardService.getEmployeeSummary(user.id);
           break;
         case "supervisor":
-          data = await ctoDashboardService.getSupervisorSummary(user._id);
+          data = await ctoDashboardService.getSupervisorSummary(user.id);
           break;
         case "hr":
-          data = await ctoDashboardService.getHrSummary();
+          data = await ctoDashboardService.getHrSummary(user.id);
           break;
         case "admin":
-          data = await ctoDashboardService.getAdminSummary();
+          data = await ctoDashboardService.getAdminSummary(user.id);
           break;
         default:
           return res.status(403).json({ message: "Role not allowed" });

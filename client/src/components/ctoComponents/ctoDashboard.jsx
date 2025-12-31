@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchDashboard } from "../../api/cto";
 import {
   LineChart,
   Line,
@@ -10,138 +12,162 @@ import {
   BarChart,
   Bar,
 } from "recharts";
-import { ArrowUp, ArrowDown } from "lucide-react";
+import {
+  Clock,
+  FileText,
+  TrendingUp,
+  Users,
+  ClipboardList,
+} from "lucide-react";
 
-// Simple KPI Card Component
-const KpiCard = ({ title, value, trend }) => (
-  <div className="bg-white shadow-sm rounded-lg p-5 flex flex-col items-center justify-center">
-    <h3 className="text-md font-medium text-gray-500">{title}</h3>
-    <div className="flex items-center mt-2">
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
-      {trend === "up" && <ArrowUp className="text-green-500 w-5 h-5 ml-1" />}
-      {trend === "down" && <ArrowDown className="text-red-500 w-5 h-5 ml-1" />}
+/* KPI Card */
+const KpiCard = ({ title, value, icon: Icon }) => (
+  <div className="bg-white rounded-lg shadow-sm p-5 flex items-center gap-4">
+    <div className="p-3 rounded-full bg-indigo-100 text-indigo-600">
+      <Icon size={22} />
+    </div>
+    <div>
+      <p className="text-sm text-gray-500">{title}</p>
+      <p className="text-2xl font-semibold text-gray-900">{value}</p>
     </div>
   </div>
 );
 
-const Dashboard = () => {
-  const [role, setRole] = useState("employee");
+const CtoDashboard = () => {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["ctoDashboard"],
+    queryFn: fetchDashboard,
+  });
 
-  const dashboards = {
-    employee: {
-      kpis: [
-        { title: "Tasks Assigned", value: 12, trend: "up" },
-        { title: "Pending Requests", value: 5, trend: "down" },
-        { title: "Completed Projects", value: 3, trend: "up" },
-      ],
-      lineChart: [
-        { day: "Mon", tasks: 3 },
-        { day: "Tue", tasks: 4 },
-        { day: "Wed", tasks: 2 },
-        { day: "Thu", tasks: 5 },
-        { day: "Fri", tasks: 3 },
-      ],
-      barChart: [
-        { project: "Project A", completed: 3 },
-        { project: "Project B", completed: 2 },
-        { project: "Project C", completed: 5 },
-      ],
-    },
-    hr: {
-      kpis: [
-        { title: "Employees", value: 120, trend: "up" },
-        { title: "Leave Requests", value: 15, trend: "down" },
-        { title: "Open Positions", value: 4, trend: "up" },
-      ],
-      lineChart: [
-        { day: "Mon", hires: 2 },
-        { day: "Tue", hires: 1 },
-        { day: "Wed", hires: 3 },
-        { day: "Thu", hires: 0 },
-        { day: "Fri", hires: 2 },
-      ],
-      barChart: [
-        { department: "IT", leaves: 5 },
-        { department: "HR", leaves: 2 },
-        { department: "Finance", leaves: 3 },
-      ],
-    },
-    admin: {
-      kpis: [
-        { title: "System Users", value: 50, trend: "up" },
-        { title: "Active Sessions", value: 23, trend: "up" },
-        { title: "System Alerts", value: 2, trend: "down" },
-      ],
-      lineChart: [
-        { day: "Mon", sessions: 5 },
-        { day: "Tue", sessions: 8 },
-        { day: "Wed", sessions: 6 },
-        { day: "Thu", sessions: 10 },
-        { day: "Fri", sessions: 7 },
-      ],
-      barChart: [
-        { module: "Users", count: 50 },
-        { module: "Reports", count: 20 },
-        { module: "Settings", count: 10 },
-      ],
-    },
-  };
+  if (isLoading) return <p className="p-6">Loading...</p>;
+  if (isError || !data) return <p className="p-6">Failed to load data</p>;
 
-  const data = dashboards[role];
+  const {
+    myCtoSummary,
+    teamPendingApprovals,
+    teamCtoUsage,
+    totalRequests,
+    approvedRequests,
+    rejectedRequests,
+    topEmployees,
+    quickActions,
+    quickLinks,
+    // HR-specific
+    totalCreditedCount,
+    totalRolledBackCount,
+    totalPendingRequests,
+  } = data;
+
+  // Charts
+  const ctoUsageTrend = myCtoSummary?.trend || [
+    { month: "Jan", hours: 0 },
+    { month: "Feb", hours: 0 },
+  ];
+  const ctoSummary = myCtoSummary
+    ? [
+        { name: "Used", hours: myCtoSummary.used },
+        { name: "Balance", hours: myCtoSummary.balance },
+        { name: "Pending", hours: myCtoSummary.pending },
+      ]
+    : [];
 
   return (
     <div className="min-h-screen bg-gray-100 w-full">
-      {/* Top Bar */}
-      <header className="bg-white shadow-sm py-4 px-6 flex flex-col md:flex-row md:items-center md:justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-2 md:mb-0 capitalize">
-          {role} Dashboard
-        </h1>
-        <div>
-          <label className="mr-3 font-medium text-gray-700">Role:</label>
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="p-2 rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          >
-            <option value="employee">Employee</option>
-            <option value="hr">HR</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
+      {/* Header */}
+      <header className="bg-white shadow-sm px-6 py-4">
+        <h1 className="text-2xl font-semibold text-gray-900">CTO Dashboard</h1>
+        <p className="text-sm text-gray-500 mt-1">CTO summary and overview</p>
       </header>
 
-      {/* KPI Cards */}
-      <main className="p-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-          {data.kpis.map((item, idx) => (
+      <main className="p-6 space-y-8">
+        {/* KPI Section */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {/* Personal CTO Summary */}
+          {myCtoSummary && (
+            <>
+              <KpiCard
+                title="CTO Balance (hrs)"
+                value={myCtoSummary.balance}
+                icon={Clock}
+              />
+              <KpiCard
+                title="Pending Requests"
+                value={myCtoSummary.pending}
+                icon={FileText}
+              />
+              <KpiCard
+                title="Total CTO Used (hrs)"
+                value={myCtoSummary.used}
+                icon={TrendingUp}
+              />
+            </>
+          )}
+
+          {/* Supervisor/Team KPIs */}
+          {teamPendingApprovals !== undefined && (
             <KpiCard
-              key={idx}
-              title={item.title}
-              value={item.value}
-              trend={item.trend}
+              title="Team Pending Approvals"
+              value={teamPendingApprovals}
+              icon={ClipboardList}
             />
-          ))}
+          )}
+
+          {/* Admin KPIs */}
+          {topEmployees && (
+            <KpiCard
+              title="Top Employee CTO Usage"
+              value={topEmployees[0]?.usedHours || 0}
+              icon={Users}
+            />
+          )}
+          {totalRequests !== undefined && (
+            <KpiCard
+              title="Total CTO Requests"
+              value={totalRequests}
+              icon={ClipboardList}
+            />
+          )}
+
+          {/* HR KPIs */}
+          {totalCreditedCount !== undefined && (
+            <KpiCard
+              title="Total Credited CTOs"
+              value={totalCreditedCount}
+              icon={TrendingUp}
+            />
+          )}
+          {totalRolledBackCount !== undefined && (
+            <KpiCard
+              title="Total Rolled Back CTOs"
+              value={totalRolledBackCount}
+              icon={FileText}
+            />
+          )}
+          {totalPendingRequests !== undefined && (
+            <KpiCard
+              title="Total Pending Requests"
+              value={totalPendingRequests}
+              icon={ClipboardList}
+            />
+          )}
         </div>
 
-        {/* Charts */}
+        {/* Charts Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Line Chart */}
-          <div className="bg-white shadow-sm rounded-lg p-5">
-            <h2 className="text-lg font-medium mb-4 text-gray-700">
-              Weekly Trend
+          {/* CTO Usage Trend */}
+          <div className="bg-white rounded-lg shadow-sm p-5">
+            <h2 className="text-lg font-medium text-gray-700 mb-4">
+              CTO Usage Trend
             </h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={data.lineChart}>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={ctoUsageTrend}>
                 <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" />
-                <XAxis
-                  dataKey={Object.keys(data.lineChart[0])[0]}
-                  stroke="#6b7280"
-                />
-                <YAxis stroke="#6b7280" />
+                <XAxis dataKey="month" />
+                <YAxis />
                 <Tooltip />
                 <Line
                   type="monotone"
-                  dataKey={Object.keys(data.lineChart[0])[1]}
+                  dataKey="hours"
                   stroke="#4f46e5"
                   strokeWidth={2}
                   dot={{ r: 4 }}
@@ -150,26 +176,59 @@ const Dashboard = () => {
             </ResponsiveContainer>
           </div>
 
-          {/* Bar Chart */}
-          <div className="bg-white shadow-sm rounded-lg p-5">
-            <h2 className="text-lg font-medium mb-4 text-gray-700">Overview</h2>
-            <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={data.barChart}>
+          {/* CTO Summary */}
+          <div className="bg-white rounded-lg shadow-sm p-5">
+            <h2 className="text-lg font-medium text-gray-700 mb-4">
+              CTO Summary
+            </h2>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={ctoSummary}>
                 <CartesianGrid stroke="#e5e7eb" strokeDasharray="4 4" />
-                <XAxis
-                  dataKey={Object.keys(data.barChart[0])[0]}
-                  stroke="#6b7280"
-                />
-                <YAxis stroke="#6b7280" />
+                <XAxis dataKey="name" />
+                <YAxis />
                 <Tooltip />
                 <Bar
-                  dataKey={Object.keys(data.barChart[0])[1]}
+                  dataKey="hours"
                   fill="#4f46e5"
-                  barSize={25}
+                  barSize={40}
                   radius={[4, 4, 0, 0]}
                 />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Quick Actions / Links */}
+        <div className="bg-white rounded-lg shadow-sm p-5">
+          <h2 className="text-lg font-medium text-gray-700 mb-4">
+            Quick Actions & Links
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {quickActions?.map((action, idx) => (
+              <button
+                key={idx}
+                onClick={() => (window.location.href = action.link)}
+                className="p-4 rounded-lg border border-gray-200 hover:bg-indigo-50 text-left flex items-center gap-2"
+              >
+                <FileText size={20} />
+                <div>
+                  <p className="font-medium text-gray-900">{action.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {action.description || ""}
+                  </p>
+                </div>
+              </button>
+            ))}
+            {quickLinks?.map((link, idx) => (
+              <button
+                key={idx}
+                onClick={() => (window.location.href = link.link)}
+                className="p-4 rounded-lg border border-gray-200 hover:bg-indigo-50 text-left flex items-center gap-2"
+              >
+                <ClipboardList size={20} />
+                <p className="font-medium text-gray-900">{link.name}</p>
+              </button>
+            ))}
           </div>
         </div>
       </main>
@@ -177,4 +236,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard;
+export default CtoDashboard;

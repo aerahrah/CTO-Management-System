@@ -136,3 +136,16 @@ export const fetchMyCtoMemos = async () => {
   console.log(data);
   return data;
 };
+
+export const fetchDashboard = async () => {
+  try {
+    const res = await API.get("/cto/dashboard", {
+      withCredentials: true,
+    });
+    console.log(res);
+    return res.data.data;
+  } catch (err) {
+    console.error("Error fetching dashboard:", err);
+    throw err;
+  }
+};
