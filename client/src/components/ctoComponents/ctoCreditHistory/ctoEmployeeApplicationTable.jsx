@@ -58,7 +58,7 @@ const ApplicationCtoTable = ({
   });
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto flex flex-col h-full">
       {/* =========================
           FILTERS
       ========================= */}
@@ -90,8 +90,8 @@ const ApplicationCtoTable = ({
       {/* =========================
           TABLE
       ========================= */}
-      <div className="max-h-96 overflow-y-auto rounded-sm border border-neutral-300">
-        <table className="w-full text-sm table-fixed ">
+      <div className="overflow-y-auto rounded-sm border border-neutral-300 h-full">
+        <table className="w-full h-full text-sm table-fixed ">
           <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 sticky top-0 outline-1 outline-neutral-300">
             <tr>
               <th className="p-3 border-r border-b border-neutral-300">
@@ -112,7 +112,7 @@ const ApplicationCtoTable = ({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className="h-full">
             {/* =========================
                 LOADING (TABLE ONLY)
             ========================= */}
@@ -182,8 +182,11 @@ const ApplicationCtoTable = ({
                 </tr>
               ))
             ) : (
-              <tr>
-                <td colSpan={5} className="p-4 text-center text-gray-500">
+              <tr className="h-full">
+                <td
+                  colSpan={5}
+                  className="p-4 h-full text-center text-gray-500"
+                >
                   No CTO applications found.
                 </td>
               </tr>
@@ -195,7 +198,7 @@ const ApplicationCtoTable = ({
       {/* =========================
           PAGINATION
       ========================= */}
-      <div className="flex justify-between items-center mt-3">
+      <div className="flex justify-between items-center mt-2">
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-700">Rows per page:</span>
           <FilterSelect

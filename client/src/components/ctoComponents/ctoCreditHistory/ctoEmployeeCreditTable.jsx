@@ -21,8 +21,8 @@ const CreditCtoTable = ({ credits }) => {
   };
 
   return (
-    <div className="overflow-x-auto">
-      <div className="max-h-96 overflow-y-auto rounded-lg shadow-sm">
+    <div className="overflow-x-auto flex flex-col h-full">
+      <div className="overflow-y-auto rounded-lg shadow-sm">
         <table className="w-full text-sm items-center">
           <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 sticky top-0 z-10">
             <tr>

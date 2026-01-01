@@ -26,7 +26,7 @@ const EmployeeListView = ({ selectedId, setSelectedId, maxHeightClass }) => {
 
   return (
     <>
-      <div className="px-2">
+      <div className="flex-none ">
         <h1 className="text-xl mb-2 font-semibold">Employees List</h1>
         <div className="text-sm w-full flex gap-2">
           <CustomButton
@@ -45,12 +45,7 @@ const EmployeeListView = ({ selectedId, setSelectedId, maxHeightClass }) => {
         </div>
       </div>
 
-      <EmployeeList
-        setSelectedId={setSelectedId}
-        selectedId={selectedId}
-        maxHeightClass="max-h-96"
-      />
-
+      <EmployeeList setSelectedId={setSelectedId} selectedId={selectedId} />
       <Modal
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}

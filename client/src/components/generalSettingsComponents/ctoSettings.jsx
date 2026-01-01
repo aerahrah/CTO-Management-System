@@ -6,8 +6,8 @@ const CtoSettings = () => {
   const [selectedOffice, setSelectedOffice] = useState(null);
 
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
-      <CardMd>
+    <div className=" w-[100%] bg-neutral-200 flex gap-3 h-[calc(100vh-4rem-1.5rem)]">
+      <CardMd className="sticky h-full top-20 flex flex-col">
         <OfficeLocationList
           selectedOffice={selectedOffice}
           setSelectedOffice={setSelectedOffice}

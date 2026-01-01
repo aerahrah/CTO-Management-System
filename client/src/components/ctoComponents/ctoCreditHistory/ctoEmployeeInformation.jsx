@@ -168,9 +168,9 @@ const CtoEmployeeInformation = ({
 
   /* ================= RENDER ================= */
   return (
-    <div className="p-2 space-y-4">
+    <div className="p-2 space-y-4 h-full flex flex-col">
       {/* ================= EMPLOYEE HEADER ================= */}
-      <div className="bg-white border border-neutral-300 rounded-lg p-6 flex flex-col lg:flex-row justify-between gap-6">
+      <div className="bg-white border-b border-neutral-300 pb-4 flex flex-col lg:flex-row justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-800">
             {employee.firstName} {employee.lastName}
@@ -181,7 +181,7 @@ const CtoEmployeeInformation = ({
           <p className="text-sm text-gray-500">{employee.email}</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <SummaryCard label="Earned CTO" value={totalEarned} type="success" />
           <SummaryCard label="Used CTO" value={totalUsed} type="danger" />
           <SummaryCard label="Balance" value={balance} type="primary" />
@@ -189,7 +189,7 @@ const CtoEmployeeInformation = ({
       </div>
 
       {/* ================= TABS ================= */}
-      <div className="bg-white border border-neutral-300 rounded-lg">
+      <div className="bg-white border border-neutral-300 rounded-lg flex-1 min-h-0 flex flex flex-col">
         <div className="flex border-b border-neutral-300">
           <TabButton
             active={activeTab === "credit"}
@@ -203,7 +203,7 @@ const CtoEmployeeInformation = ({
           />
         </div>
 
-        <div className="p-4">
+        <div className="p-3 flex-1 min-h-0">
           {activeTab === "credit" ? (
             <CreditCtoTable credits={credits} />
           ) : (

@@ -13,11 +13,7 @@ import { toast } from "react-toastify";
 
 import OfficeLocationForm from "./officeLocationForm";
 
-const OfficeLocationList = ({
-  selectedOffice,
-  setSelectedOffice,
-  maxHeightClass,
-}) => {
+const OfficeLocationList = ({ selectedOffice, setSelectedOffice }) => {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -60,9 +56,7 @@ const OfficeLocationList = ({
       </div>
 
       {/* List */}
-      <ul
-        className={`flex flex-col p-2 gap-3 ${maxHeightClass} overflow-y-auto`}
-      >
+      <ul className={`flex-1 min-h-0 flex flex-col p-2 gap-3  overflow-y-auto`}>
         {isLoading ? (
           Array.from({ length: 7 }).map((_, i) => (
             <li

@@ -140,7 +140,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
   const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
 
   return (
-    <div className="border-gray-200">
+    <div className="border-gray-200 flex flex-col h-full">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4 pb-3 border-b border-gray-100 gap-2">
         <div>
@@ -188,7 +188,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
       </div>
 
       {/* Main Content */}
-      <div className="h-136 pr-2 overflow-y-auto">
+      <div className="flex-1 min-h-0 pr-2 overflow-y-auto">
         {/* Applicant Info */}
         <div className="flex items-center gap-4 mb-6 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4 shadow-sm">
           <div className="flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 text-blue-700 font-semibold text-lg">

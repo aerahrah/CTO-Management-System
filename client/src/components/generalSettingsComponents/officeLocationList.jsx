@@ -26,7 +26,7 @@ const OfficeLocationList = ({
       </h2>
 
       {/* List */}
-      <ul className={`flex flex-col p-2 gap-3 h-120 overflow-y-auto`}>
+      <ul className={`flex-1 min-h-0 flex flex-col p-2 gap-3  overflow-y-auto`}>
         {isLoading ? (
           Array.from({ length: 7 }).map((_, i) => (
             <li

@@ -5,12 +5,11 @@ import { CardFull, CardMd } from "../components/cardComponent";
 const EmployeePage = () => {
   const [selectedId, setSelectedId] = useState();
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-4 ">
-      <CardMd>
+    <div className=" w-[100%] bg-neutral-200 flex gap-3 h-[calc(100vh-4rem-1.5rem)]">
+      <CardMd className="sticky h-full top-20 flex flex-col">
         <EmployeeListView
           setSelectedId={setSelectedId}
           selectedId={selectedId}
-          maxHeightClass="max-h-96"
         />
       </CardMd>
       <CardFull>

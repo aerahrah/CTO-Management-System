@@ -6,12 +6,7 @@ import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import ErrorMessage from "../errorComponent";
 
-const EmployeeList = ({
-  selectedId,
-  setSelectedId,
-  maxHeightClass,
-  setIsEmployeeLoading,
-}) => {
+const EmployeeList = ({ selectedId, setSelectedId, setIsEmployeeLoading }) => {
   const {
     data: employees,
     isLoading,
@@ -57,10 +52,10 @@ const EmployeeList = ({
   if (isError) return <ErrorMessage message="Failed to load employees" />;
 
   return (
-    <div className="flex flex-col">
+    <div class="flex flex-col flex-1 min-h-0">
       {/* Controls */}
-      <div className="flex items-center gap-2 mb-4 px-2">
-        <div className="relative flex-1">
+      <div className="flex items-center gap-2 mb-4 ">
+        <div class="relative flex-1">
           <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <input
             type="text"
@@ -86,9 +81,7 @@ const EmployeeList = ({
       </div>
 
       {/* Employee List */}
-      <ul
-        className={`flex flex-col py-1 gap-2 overflow-y-auto px-2 ${maxHeightClass}`}
-      >
+      <ul className={`flex flex-col py-1 gap-2 overflow-y-auto `}>
         {isLoading
           ? Array.from({ length: 6 }).map((_, i) => (
               <li

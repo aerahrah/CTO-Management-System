@@ -44,7 +44,7 @@ const CtoApplicationsList = ({
   }, [applications, search, sortOrder]);
 
   return (
-    <div className="">
+    <div class="flex flex-col flex-1 min-h-0">
       {/* Header - always visible */}
       <div className="px-2 pb-2 text-xl font-bold text-gray-800">
         CTO Applications List
@@ -78,7 +78,7 @@ const CtoApplicationsList = ({
       </div>
 
       {/* Application List */}
-      <ul className="flex flex-col gap-2 overflow-y-auto px-2 max-h-132">
+      <ul className={`flex flex-col py-1 gap-2 overflow-y-auto `}>
         {isLoading ? (
           Array.from({ length: 6 }).map((_, i) => (
             <li

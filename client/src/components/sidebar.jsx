@@ -22,16 +22,14 @@ const Sidebar = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { admin } = useAuth();
+  const role = admin?.role;
 
-  const role = admin?.role; // admin | hr | supervisor | employee
-  console.log(role);
   const [activeItem, setActiveItem] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
   const [hoveredItem, setHoveredItem] = useState(null);
   const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
 
   /* ===================== MENU CONFIG ===================== */
-
   const menuItems = [
     {
       name: "Employee Management",
@@ -48,7 +46,7 @@ const Sidebar = () => {
           name: "Dashboard",
           path: "/dashboard/cto/dashboard",
           icon: <CalendarCheck size={16} />,
-          roles: ["admin", "hr", "supervisor"],
+          roles: ["admin", "hr", "supervisor", "employee"],
         },
         {
           name: "Credit CTO",
@@ -98,7 +96,6 @@ const Sidebar = () => {
   ];
 
   /* ===================== FILTER BY ROLE ===================== */
-
   const filteredMenuItems = menuItems
     .filter((item) => !item.roles || item.roles.includes(role))
     .map((item) => ({
@@ -109,33 +106,21 @@ const Sidebar = () => {
     }));
 
   /* ===================== DATA FETCH ===================== */
-
   const { mutateAsync } = useMutation({
     mutationFn: getEmployees,
-    onSuccess: (data) => {
-      queryClient.setQueryData(["employees"], data);
-    },
+    onSuccess: (data) => queryClient.setQueryData(["employees"], data),
   });
 
   /* ===================== HANDLERS ===================== */
-
   const handleMainClick = async (item) => {
     if (item.roles && !item.roles.includes(role)) return;
-
     setActiveItem(item.name);
-
-    if (item.name === "Employee Management") {
-      await mutateAsync();
-    }
-
-    if (item.path) {
-      navigate(item.path);
-    }
+    if (item.name === "Employee Management") await mutateAsync();
+    if (item.path) navigate(item.path);
   };
 
   const handleSubClick = (sub) => {
     if (sub.roles && !sub.roles.includes(role)) return;
-
     setActiveItem(sub.name);
     navigate(sub.path);
   };
@@ -148,25 +133,19 @@ const Sidebar = () => {
     }
   };
 
-  const handleMouseLeave = () => {
-    setHoveredItem(null);
-  };
+  const handleMouseLeave = () => setHoveredItem(null);
 
   /* ===================== RENDER ===================== */
-
   return (
     <aside
-      className={`sticky top-0 h-screen bg-white border-r border-neutral-300
-        transition-all duration-300 ease-in-out overflow-visible
-        ${collapsed ? "w-20" : "w-72"}
-      `}
+      className={`bg-white h-screen sticky top-0 border-r border-gray-200 flex flex-col transition-all duration-300 
+        ${collapsed ? "w-16" : "w-64"}`}
     >
       {/* HEADER */}
-      <div className="flex items-center h-20 justify-between px-4 border-b border-neutral-300">
+      <div className="flex items-center h-16 justify-between px-4 border-b border-neutral-300">
         {!collapsed && (
-          <img src="/logo_dict.png" alt="Logo" className="w-32 select-none" />
+          <img src="/logo_dict.png" alt="Logo" className="w-24 select-none" />
         )}
-
         <button
           onClick={() => setCollapsed(!collapsed)}
           className="p-2 rounded-md hover:bg-neutral-200 transition"
@@ -203,7 +182,7 @@ const Sidebar = () => {
 
             {/* SUB ITEMS (EXPANDED) */}
             {!collapsed && item.subItems?.length > 0 && (
-              <div className="ml-6 mt-2 space-y-1 border-l border-neutral-200 pl-4">
+              <div className="ml-4 mt-2 space-y-1.5 border-l border-neutral-200 pl-4">
                 {item.subItems.map((sub) => (
                   <div
                     key={sub.name}
@@ -238,7 +217,6 @@ const Sidebar = () => {
                   className="z-50"
                 >
                   <div className="absolute -left-2 top-3 w-3 h-3 bg-white border-l border-t border-neutral-300 rotate-45" />
-
                   <div className="bg-white border border-neutral-300 shadow-xl rounded-lg w-52 py-2">
                     {item.subItems.map((sub) => (
                       <div

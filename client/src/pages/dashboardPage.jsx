@@ -40,23 +40,22 @@ const Dashboard = () => {
       .toUpperCase() || "A";
 
   return (
-    <div className="flex min-h-screen bg-neutral-200 w-full">
+    <div className="min-h-screen flex bg-neutral-200 w-full ">
       {/* Sidebar */}
-      <div>
-        <Sidebar admin={admin} />
-      </div>
+
+      <Sidebar admin={admin} />
 
       {/* Main Content */}
-      <div className="flex-1 relative">
+      <div className="flex-1 flex flex-col">
         {/* Top Navbar */}
-        <nav className="sticky z-20 top-0 flex justify-end items-center bg-white backdrop-blur-lg shadow-md w-full h-20 px-10  border-b border-gray-300">
+        <nav className="sticky z-20 top-0 flex justify-end items-center bg-white backdrop-blur-lg shadow-md w-full h-16 px-10  border-b border-gray-300">
           <div className="relative " ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-3 px-4 py-2 rounded-full transition-all duration-200 hover:bg-gray-100 group border-1 border-gray-200"
+              className="flex items-center gap-3 px-8 py-2 rounded-full transition-all duration-200 hover:bg-gray-100 group border-1 border-gray-200"
             >
               {/* Avatar */}
-              <div className="relative w-10 h-10 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-semibold ring-2 ring-blue-200 shadow-sm">
+              <div className="relative w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-semibold ring-2 ring-blue-200 shadow-sm">
                 {initials}
               </div>
 
@@ -111,10 +110,8 @@ const Dashboard = () => {
         </nav>
 
         {/* Main Outlet */}
-        <main className=" transition-all duration-300">
-          <div className="w-[100%] bg-neutral-200 p-3">
-            <Outlet />
-          </div>
+        <main className=" transition-all duration-300 flex-1 p-3">
+          <Outlet />
         </main>
       </div>
     </div>
