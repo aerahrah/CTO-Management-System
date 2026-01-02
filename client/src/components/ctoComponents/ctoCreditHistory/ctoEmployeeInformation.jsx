@@ -15,16 +15,13 @@ import "react-loading-skeleton/dist/skeleton.css";
 ========================= */
 const EmployeeInfoSkeleton = () => (
   <div className="p-2 space-y-4">
-    {/* ================= EMPLOYEE HEADER ================= */}
     <div className="bg-white border border-neutral-300 rounded-lg p-6 flex flex-col lg:flex-row justify-between gap-6">
-      {/* Employee info */}
       <div className="space-y-2">
         <Skeleton width={220} height={26} />
         <Skeleton width={260} height={14} />
         <Skeleton width={240} height={14} />
       </div>
 
-      {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto">
         {[...Array(3)].map((_, i) => (
           <div
@@ -38,9 +35,7 @@ const EmployeeInfoSkeleton = () => (
       </div>
     </div>
 
-    {/* ================= TABS + TABLE ================= */}
     <div className="bg-white border border-neutral-300 rounded-lg">
-      {/* Tabs */}
       <div className="flex border-b border-neutral-300">
         <div className="px-6 py-3">
           <Skeleton width={90} height={16} />
@@ -50,7 +45,6 @@ const EmployeeInfoSkeleton = () => (
         </div>
       </div>
 
-      {/* Table rows */}
       <div className="p-4 space-y-2">
         {[...Array(6)].map((_, i) => (
           <Skeleton key={i} height={40} />
@@ -73,6 +67,7 @@ const CtoEmployeeInformation = ({
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
   const [status, setStatus] = useState("");
+  const [search, setSearch] = useState(""); // ✅ added only
 
   /* ================= EMPLOYEE DETAILS ================= */
   const {
@@ -102,12 +97,13 @@ const CtoEmployeeInformation = ({
     isLoading: isApplicationLoading,
     isError: isApplicationError,
   } = useQuery({
-    queryKey: ["employeeApplications", selectedId, page, limit, status],
+    queryKey: ["employeeApplications", selectedId, page, limit, status, search],
     queryFn: () =>
       fetchEmployeeApplications(selectedId, {
         page,
         limit,
         status,
+        search,
       }),
     keepPreviousData: true,
     enabled: !!selectedId && activeTab === "application",
@@ -169,7 +165,6 @@ const CtoEmployeeInformation = ({
   /* ================= RENDER ================= */
   return (
     <div className="p-2 space-y-4 h-full flex flex-col">
-      {/* ================= EMPLOYEE HEADER ================= */}
       <div className="bg-white border-b border-neutral-300 pb-4 flex flex-col lg:flex-row justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-800">
@@ -188,8 +183,7 @@ const CtoEmployeeInformation = ({
         </div>
       </div>
 
-      {/* ================= TABS ================= */}
-      <div className="bg-white border border-neutral-300 rounded-lg flex-1 min-h-0 flex flex flex-col">
+      <div className="bg-white border border-neutral-300 rounded-lg flex-1 min-h-0 flex flex-col">
         <div className="flex border-b border-neutral-300">
           <TabButton
             active={activeTab === "credit"}
@@ -210,6 +204,11 @@ const CtoEmployeeInformation = ({
             <ApplicationCtoTable
               applications={applications}
               status={status}
+              search={search} // ✅ passed
+              onSearchChange={(val) => {
+                setPage(1);
+                setSearch(val);
+              }}
               onStatusChange={(val) => {
                 setPage(1);
                 setStatus(val);

@@ -3,11 +3,8 @@ import MyCtoApplications from "./ctoApplicationComponents/myCtoApplicationHistor
 import { CardFull, CardLg } from "../cardComponent";
 const CtoApplication = () => {
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-3 items-start">
-      {/* <CardLg>
-        <AddCtoApplicationForm />
-      </CardLg> */}
-      <CardFull>
+    <div className=" w-[100%]  bg-neutral-200 flex gap-3 min-h-[calc(100vh-4rem-1.5rem)]">
+      <CardFull className="flex flex-col">
         <MyCtoApplications />
       </CardFull>
     </div>

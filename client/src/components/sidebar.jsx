@@ -58,7 +58,7 @@ const Sidebar = () => {
           name: "Apply CTO Leave",
           path: "/dashboard/cto/apply",
           icon: <FileClock size={16} />,
-          roles: ["employee", "admin"],
+          roles: ["employee", "admin", "hr"],
         },
         {
           name: "Pending Approvals",

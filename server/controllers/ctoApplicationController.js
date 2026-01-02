@@ -1,6 +1,6 @@
 const {
   addCtoApplicationService,
-  getCtoApplicationsService,
+  getAllCtoApplicationsService,
   getCtoApplicationsByEmployeeService,
 } = require("../services/ctoApplication.service");
 
@@ -45,7 +45,7 @@ const getAllCtoApplicationsRequest = async (req, res) => {
   try {
     const { page, limit, status, from, to, search, employeeId } = req.query;
 
-    const result = await getCtoApplicationsService(
+    const result = await getAllCtoApplicationsService(
       { status, from, to, search, employeeId },
       page,
       limit
@@ -65,7 +65,7 @@ const getAllCtoApplicationsRequest = async (req, res) => {
 
 const getCtoApplicationsByEmployeeRequest = async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const employeeId = req.params.employeeId || req.user.id;
     const { page, limit, status, from, to, search } = req.query;
 
     const result = await getCtoApplicationsByEmployeeService(

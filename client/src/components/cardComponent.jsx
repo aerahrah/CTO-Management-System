@@ -23,7 +23,7 @@ export const CardLg = ({ height = "142", children, className = "" }) => {
 export const CardMd = ({ height = "142", children, className = "" }) => {
   return (
     <div
-      className={`bg-white ${height} p-4 rounded-md shadow-md w-136 ${className}`}
+      className={`bg-white ${height} p-4 rounded-md shadow-md w-128 ${className}`}
     >
       {children || <p className="text-gray-400 text-center">Card Medium</p>}
     </div>

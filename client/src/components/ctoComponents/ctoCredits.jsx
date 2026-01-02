@@ -2,8 +2,8 @@ import CtoCreditHistory from "./ctoCreditComponents/recentCtoCreditHistory";
 import { CardFull, CardLg } from "../cardComponent";
 const CtoCredits = () => {
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-3 ">
-      <CardFull>
+    <div className=" w-[100%] bg-neutral-200 flex gap-3 min-h-screen">
+      <CardFull className="flex flex-col">
         <CtoCreditHistory />
       </CardFull>
     </div>

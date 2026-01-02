@@ -127,7 +127,7 @@ const addCtoApplicationService = async ({
 
   return populatedApp;
 };
-const getCtoApplicationsService = async (
+const getAllCtoApplicationsService = async (
   filters = {},
   page = 1,
   limit = 20
@@ -150,10 +150,9 @@ const getCtoApplicationsService = async (
     query["memo.memoId.memoNo"] = { $regex: filters.search, $options: "i" };
   }
 
+  console.log(filters.search);
   // ---- DEBUG LOGS ----
   console.log("Filters received:", filters);
-  console.log("MongoDB query object:", query);
-  console.log("Page:", page, "Limit:", limit);
   // --------------------
 
   const skip = (page - 1) * limit;
@@ -176,11 +175,6 @@ const getCtoApplicationsService = async (
 
     CtoApplication.countDocuments(query),
   ]);
-
-  // ---- DEBUG LOGS ----
-  console.log("Applications returned:", applications.length);
-  console.log("Total matching applications:", total);
-  // --------------------
 
   return {
     data: applications,
@@ -208,38 +202,96 @@ const getCtoApplicationsByEmployeeService = async (
   const employeeObjectId = new mongoose.Types.ObjectId(employeeId);
   page = Math.max(parseInt(page) || 1, 1);
   limit = Math.min(parseInt(limit) || 20, 100);
-
-  const query = { employee: employeeObjectId };
-
-  // Apply filters
-  if (filters.status) query.overallStatus = filters.status;
-  if (filters.from && filters.to) {
-    query.createdAt = { $gte: filters.from, $lte: filters.to };
-  }
-  if (filters.search) {
-    query["memo.memoId.memoNo"] = { $regex: filters.search, $options: "i" };
-  }
-
   const skip = (page - 1) * limit;
 
-  const [applications, total] = await Promise.all([
-    CtoApplication.find(query)
-      .select(
-        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
-      )
-      .populate({
-        path: "approvals",
-        populate: { path: "approver", select: "firstName lastName position" },
-      })
-      .populate("employee", "firstName lastName position")
-      .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
+  // Build aggregation pipeline
+  const pipeline = [{ $match: { employee: employeeObjectId } }];
 
-    CtoApplication.countDocuments(query),
-  ]);
+  // Apply status filter
+  if (filters.status) {
+    pipeline.push({ $match: { overallStatus: filters.status } });
+  }
+
+  // Apply date range filter
+  if (filters.from && filters.to) {
+    pipeline.push({
+      $match: {
+        createdAt: { $gte: new Date(filters.from), $lte: new Date(filters.to) },
+      },
+    });
+  }
+
+  // Lookup memo info
+  pipeline.push({
+    $lookup: {
+      from: "ctocredits",
+      localField: "memo.memoId",
+      foreignField: "_id",
+      as: "memoDetails",
+    },
+  });
+
+  // Apply search filter on memoNo
+  if (filters.search) {
+    pipeline.push({
+      $match: {
+        "memoDetails.memoNo": { $regex: filters.search, $options: "i" },
+      },
+    });
+  }
+
+  // Populate employee info
+  pipeline.push({
+    $lookup: {
+      from: "employees",
+      localField: "employee",
+      foreignField: "_id",
+      as: "employee",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$employee", preserveNullAndEmptyArrays: true },
+  });
+
+  // Populate approvals info
+  pipeline.push({
+    $lookup: {
+      from: "approvalsteps",
+      localField: "approvals",
+      foreignField: "_id",
+      as: "approvals",
+    },
+  });
+
+  // Sort, skip, limit
+  pipeline.push({ $sort: { createdAt: -1 } });
+  pipeline.push({ $skip: skip });
+  pipeline.push({ $limit: limit });
+
+  // Execute aggregation
+  let applications = await CtoApplication.aggregate(pipeline);
+
+  // Map memoDetails back to memo.memoId to keep the same structure
+  applications = applications.map((app) => {
+    if (app.memo && Array.isArray(app.memo)) {
+      app.memo = app.memo.map((m, i) => ({
+        ...m,
+        memoId: app.memoDetails[i] || null,
+      }));
+    }
+    delete app.memoDetails;
+    return app;
+  });
+
+  // Get total count (without skip/limit)
+  const countPipeline = [
+    ...pipeline.filter((stage) => !("$skip" in stage || "$limit" in stage)),
+    {
+      $count: "total",
+    },
+  ];
+  const totalResult = await CtoApplication.aggregate(countPipeline);
+  const total = totalResult[0]?.total || 0;
 
   return {
     data: applications,
@@ -254,6 +306,6 @@ const getCtoApplicationsByEmployeeService = async (
 
 module.exports = {
   addCtoApplicationService,
-  getCtoApplicationsService,
+  getAllCtoApplicationsService,
   getCtoApplicationsByEmployeeService,
 };

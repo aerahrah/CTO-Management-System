@@ -108,16 +108,6 @@ async function getAllCredits({
     .skip(skip)
     .limit(limit);
 
-  console.log(
-    "DEBUG: Query object for getAllCredits:",
-    JSON.stringify(query, null, 2)
-  );
-  console.log("DEBUG: Total matched credits:", totalCount);
-  console.log(
-    "DEBUG: Fetched items:",
-    items.map((i) => i._id)
-  );
-
   return { totalCount, items };
 }
 async function getEmployeeDetails(employeeId) {
@@ -139,12 +129,10 @@ const getEmployeeCredits = async (employeeId) => {
       .lean()
       .exec();
 
-    console.log("All credits fetched:", credits);
-
     return credits;
   } catch (error) {
     console.error("Error fetching employee credits:", error.message);
-    throw new Error("Failed to fetch employee credits"); // generic error for security
+    throw new Error("Failed to fetch employee credits");
   }
 };
 

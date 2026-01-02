@@ -154,96 +154,101 @@ const CtoCreditHistory = () => {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto">
-        <div className="max-h-128 overflow-y-auto rounded-lg shadow-sm">
-          <table className="w-full table-fixed text-sm rounded-lg shadow-sm">
-            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
-              <tr>
-                <th className="p-3 w-36 border-b border-r border-gray-200">
-                  Employees
-                </th>
-                <th className="p-3 text-center border-b border-r border-gray-200">
-                  Duration
-                </th>
-                <th className="p-3 border-b border-r border-gray-200 text-center">
-                  Memo No.
-                </th>
-                <th className="p-3 text-center border-b border-r border-gray-200">
-                  Status
-                </th>
-                <th className="p-3 text-center border-b border-gray-200">
-                  Action
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading || isProcessing ? (
-                [...Array(limit)].map((_, i) => (
-                  <tr
-                    key={i}
-                    className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
-                  >
-                    {[...Array(5)].map((__, j) => (
-                      <td
-                        key={j}
-                        className="p-3 border-b border-r border-gray-200"
-                      >
-                        <Skeleton width="100%" height={20} />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : credits.length > 0 ? (
-                credits.map((credit, index) => (
-                  <tr
-                    key={credit._id}
-                    className={`transition-colors ${
-                      index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                    } hover:bg-gray-100`}
-                  >
-                    <td className="p-3 font-medium text-gray-800 border-b border-gray-200 border-r">
-                      {credit.employees
-                        .map(
-                          (e) =>
-                            `${e.employee?.firstName} ${e.employee?.lastName}`
-                        )
-                        .join(", ")}
+
+      <div className="max-h-124 overflow-y-auto overflow-x-auto rounded-lg shadow-sm flex-1">
+        <table className="w-full table-fixed text-sm rounded-lg shadow-sm h-full">
+          <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
+            <tr>
+              <th className="p-3 w-36 border-b border-r border-gray-200">
+                Employees
+              </th>
+              <th className="p-3 border-b border-r border-gray-200 text-center">
+                Memo No.
+              </th>
+              <th className="p-3 text-center border-b border-r border-gray-200">
+                Duration
+              </th>
+              <th className="p-3 text-center border-b border-r border-gray-200">
+                Status
+              </th>
+              <th className="p-3 border-b border-r border-gray-200 text-center">
+                Memo File
+              </th>
+              <th className="p-3 text-center border-b border-gray-200">
+                Action
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading || isProcessing ? (
+              [...Array(limit)].map((_, i) => (
+                <tr
+                  key={i}
+                  className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
+                >
+                  {[...Array(6)].map((__, j) => (
+                    <td
+                      key={j}
+                      className="p-3 border-b border-r border-gray-200"
+                    >
+                      <Skeleton width="100%" height={20} />
                     </td>
-                    <td className="p-3 text-center border-b border-gray-200 border-r">
-                      {formatDuration(credit.duration)}
-                    </td>
-                    <td className="p-3 border-b border-gray-200 border-r text-center">
-                      <TableActionButton
-                        label="View Memo"
-                        onClick={() =>
-                          setMemoModal({ isOpen: true, memo: credit })
-                        }
-                        variant="neutral"
-                      />
-                    </td>
-                    <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
-                      <StatusBadge status={credit.status} />
-                    </td>
-                    <td className="p-3 text-center border-b border-gray-200">
-                      <TableActionButton
-                        label={isProcessing ? "Processing..." : "Rollback"}
-                        onClick={() => handleRollback(credit._id)}
-                        disabled={credit.status !== "CREDITED" || isProcessing}
-                        variant="neutral"
-                      />
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5} className="text-center py-10 text-gray-500">
-                    No credit requests found
+                  ))}
+                </tr>
+              ))
+            ) : credits.length > 0 ? (
+              credits.map((credit, index) => (
+                <tr
+                  key={credit._id}
+                  className={`transition-colors ${
+                    index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                  } hover:bg-gray-100`}
+                >
+                  <td className="p-3 font-medium text-gray-800 border-b border-gray-200 border-r">
+                    {credit.employees
+                      .map(
+                        (e) =>
+                          `${e.employee?.firstName} ${e.employee?.lastName}`
+                      )
+                      .join(", ")}
+                  </td>
+                  <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
+                    {credit.memoNo}
+                  </td>
+                  <td className="p-3 text-center border-b border-gray-200 border-r">
+                    {formatDuration(credit.duration)}
+                  </td>
+                  <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
+                    <StatusBadge status={credit.status} />
+                  </td>
+                  <td className="p-3 border-b border-gray-200 border-r text-center">
+                    <TableActionButton
+                      label="View Memo"
+                      onClick={() =>
+                        setMemoModal({ isOpen: true, memo: credit })
+                      }
+                      variant="neutral"
+                    />
+                  </td>
+                  <td className="p-3 text-center border-b border-gray-200">
+                    <TableActionButton
+                      label={isProcessing ? "Processing..." : "Rollback"}
+                      onClick={() => handleRollback(credit._id)}
+                      disabled={credit.status !== "CREDITED" || isProcessing}
+                      variant="neutral"
+                    />
                   </td>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="text-center py-10 text-gray-500">
+                  No credit requests found
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Pagination Controls */}

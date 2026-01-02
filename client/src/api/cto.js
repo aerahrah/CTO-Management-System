@@ -56,6 +56,7 @@ export const fetchEmployeeCredits = async (employeeId) => {
 
 export const fetchEmployeeApplications = async (employeeId, params = {}) => {
   console.log(employeeId);
+  console.log(params);
   const res = await API.get(`/cto/applications/employee/${employeeId}`, {
     params,
   });
@@ -118,6 +119,7 @@ export const rejectApplicationRequest = async (applicationId, remarks) => {
 };
 
 export const fetchMyCtoApplications = async (params = {}) => {
+  console.log(params);
   const { data } = await API.get(`cto/applications/my-application`, {
     params,
   });

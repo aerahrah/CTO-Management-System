@@ -87,10 +87,17 @@ router.post(
 );
 
 router.get(
-  "/applications/my-application",
+  "/applications/all",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
   getAllCtoApplicationsRequest
+);
+
+router.get(
+  "/applications/my-application",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  getCtoApplicationsByEmployeeRequest
 );
 
 router.get(

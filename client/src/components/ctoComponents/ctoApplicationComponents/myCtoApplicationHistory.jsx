@@ -94,8 +94,7 @@ const MyCtoApplications = () => {
   };
 
   return (
-    <div>
-      {/* Header */}
+    <>
       <div className="flex items-center w-full justify-between mb-4 border-b pb-2">
         <h2 className="flex items-center gap-3 ">
           <span className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-full">
@@ -138,93 +137,97 @@ const MyCtoApplications = () => {
         <span className="font-semibold">{pagination.total}</span> items
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <div className="max-h-128 overflow-y-auto rounded-lg shadow-sm">
-          <table className="w-full table-fixed text-sm rounded-lg shadow-sm">
-            <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
+      <div className="max-h-124 overflow-y-auto overflow-x-auto rounded-lg shadow-sm flex-1">
+        <table className="w-full table-fixed text-sm rounded-lg shadow-sm h-full">
+          <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
+            <tr>
+              <th className="p-3 w-36 border-b border-r border-gray-200">
+                Memo No.
+              </th>
+              <th className="p-3 w-36 border-b border-r border-gray-200">
+                Requested Hours
+              </th>
+              <th className="p-3 border-b border-r border-gray-200">Status</th>
+              <th className="p-3 border-b border-r border-gray-200">
+                Submitted
+              </th>
+              <th className="p-3 border-b border-r border-gray-200">
+                Inclusive Dates
+              </th>
+              <th className="p-3 border-b border-r border-gray-200">
+                Memo File
+              </th>
+              <th className="p-3 border-b border-r border-gray-200">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {isLoading ? (
               <tr>
-                <th className="p-3 w-36 border-b border-r border-gray-200">
-                  Requested Hours
-                </th>
-                <th className="p-3 border-b border-r border-gray-200">
-                  Status
-                </th>
-                <th className="p-3 border-b border-r border-gray-200">
-                  Submitted
-                </th>
-                <th className="p-3 border-b border-r border-gray-200">
-                  Inclusive Dates
-                </th>
-                <th className="p-3 border-b border-r border-gray-200">Memos</th>
-                <th className="p-3 border-b border-r border-gray-200">
-                  Action
-                </th>
+                <td colSpan={7}>
+                  <SkeletonTable rows={10} />
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {isLoading ? (
-                <tr>
-                  <td colSpan={6}>
-                    <SkeletonTable rows={10} />
+            ) : applications.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="text-center py-10 text-gray-500">
+                  No CTO applications found
+                </td>
+              </tr>
+            ) : (
+              applications.map((app, index) => (
+                <tr
+                  key={app._id}
+                  className={`transition-colors ${
+                    index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                  } hover:bg-gray-100`}
+                >
+                  <td className="p-3 border-r border-b border-neutral-300 font-medium text-gray-700">
+                    {Array.isArray(app.memo) && app.memo.length > 0
+                      ? app.memo.map((m) => m?.memoId?.memoNo).join(", ")
+                      : "-"}
                   </td>
-                </tr>
-              ) : applications.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-10 text-gray-500">
-                    No CTO applications found
+
+                  <td className="p-3 border-b border-r border-gray-200 text-gray-800 font-medium">
+                    {app.requestedHours}
                   </td>
-                </tr>
-              ) : (
-                applications.map((app, index) => (
-                  <tr
-                    key={app._id}
-                    className={`transition-colors ${
-                      index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                    } hover:bg-gray-100`}
-                  >
-                    <td className="p-3 border-b border-r border-gray-200 text-gray-800 font-medium">
-                      {app.requestedHours}
-                    </td>
-                    <td className="p-3 border-b border-r border-gray-200 text-center font-semibold">
-                      <StatusBadge status={app.overallStatus} />
-                    </td>
-                    <td className="p-3 border-b border-r border-gray-200 text-sm text-gray-500">
-                      {new Date(app.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </td>
-                    <td className="p-3 border-b border-r border-gray-200 text-sm text-gray-600">
-                      {app.inclusiveDates
-                        ?.map((d) => new Date(d).toLocaleDateString("en-US"))
-                        .join(", ")}
-                    </td>
-                    <td className="p-3 border-b border-r border-gray-200 text-center">
-                      {app.memo?.length > 0 ? (
-                        <TableActionButton
-                          label={`View Memos (${app.memo.length})`}
-                          onClick={() => openMemoModal(app.memo)}
-                          variant="secondary"
-                        />
-                      ) : (
-                        <span className="text-gray-400 text-sm">No memos</span>
-                      )}
-                    </td>
-                    <td className="p-3 text-center border-b border-gray-200">
+                  <td className="p-3 border-b border-r border-gray-200 text-center font-semibold">
+                    <StatusBadge status={app.overallStatus} />
+                  </td>
+                  <td className="p-3 border-b border-r border-gray-200 text-sm text-gray-500">
+                    {new Date(app.createdAt).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </td>
+                  <td className="p-3 border-b border-r border-gray-200 text-sm text-gray-600">
+                    {app.inclusiveDates
+                      ?.map((d) => new Date(d).toLocaleDateString("en-US"))
+                      .join(", ")}
+                  </td>
+                  <td className="p-3 border-b border-r border-gray-200 text-center">
+                    {app.memo?.length > 0 ? (
                       <TableActionButton
-                        label="View Details"
-                        onClick={() => openModal(app)}
-                        variant="neutral"
+                        label={`View Memos (${app.memo.length})`}
+                        onClick={() => openMemoModal(app.memo)}
+                        variant="secondary"
                       />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    ) : (
+                      <span className="text-gray-400 text-sm">No memos</span>
+                    )}
+                  </td>
+                  <td className="p-3 text-center border-b border-gray-200">
+                    <TableActionButton
+                      label="View Details"
+                      onClick={() => openModal(app)}
+                      variant="neutral"
+                    />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
 
       {/* Pagination Controls */}
@@ -302,7 +305,7 @@ const MyCtoApplications = () => {
           />
         </div>
       </Modal>
-    </div>
+    </>
   );
 };
 
