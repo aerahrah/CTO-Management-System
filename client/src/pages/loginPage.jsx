@@ -3,10 +3,12 @@ import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as Yup from "yup";
 import { useMutation } from "@tanstack/react-query";
-import { loginEmployee } from "../api/employee";
-import { useAuth } from "../store/authStore";
 import { useNavigate } from "react-router-dom";
 import { Lock, User } from "lucide-react";
+import { toast } from "react-toastify";
+
+import { loginEmployee } from "../api/employee";
+import { useAuth } from "../store/authStore";
 
 const schema = Yup.object({
   username: Yup.string()
@@ -32,121 +34,150 @@ const Login = () => {
     mode: "onTouched",
   });
 
-  const { mutate, isPending, isError, error } = useMutation({
+  const { mutate, isPending } = useMutation({
     mutationFn: loginEmployee,
     onSuccess: (data) => {
       login(data);
       navigate("/dashboard");
+    },
+    onError: (err) => {
+      toast.error(
+        err?.response?.data?.message || "Invalid username or password.",
+        { toastId: "login-error" }
+      );
     },
   });
 
   const onSubmit = (data) => mutate(data);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-neutral-200 px-4">
-      <div className="w-full max-w-md bg-neutral-50 shadow-md rounded-md border border-neutral-300 p-8">
-        {/* Header */}
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold text-neutral-800">
-            Employee Management System
-          </h1>
-          <p className="text-neutral-500 text-sm mt-1">
-            Department of Information and Communications Technology
-          </p>
+    <div className="h-screen relative overflow-hidden flex items-center justify-center bg-slate-100 px-4">
+      <div className="z-20 relative w-full max-w-md bg-white rounded-lg shadow-md border border-slate-200 overflow-hidden">
+        {/* Top Header with Logo */}
+        <div className="bg-blue-800 gap-4 px-6 py-4 flex justify-center items-center">
+          {/* Logo Placeholder */}
+          <img
+            src="/loginSrc/DICT-Logo.png" // replace with your logo path
+            alt="DICT Logo"
+            className="h-12 rounded-full w-auto"
+          />
+          <div>
+            <h1 className="text-white text-lg font-semibold tracking-wide">
+              Employee Management System
+            </h1>
+            <p className="text-blue-100 text-xs mt-1">
+              Department of Information and Communications Technology
+            </p>
+          </div>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-1">
-          <div className="flex flex-col gap-1 relative pb-5">
-            <label
-              htmlFor="username"
-              className="text-sm font-medium text-neutral-700"
-            >
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="px-8 py-6 flex flex-col gap-4"
+        >
+          {/* Username */}
+          <div>
+            <label className="text-sm font-medium text-slate-700">
               Username
             </label>
-            <div className="relative">
+
+            <div className="relative mt-1">
               <User
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400"
-                strokeWidth={1.5}
+                className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition
+                  ${errors.username ? "text-red-500" : "text-slate-400"}`}
               />
               <input
-                id="username"
                 type="text"
-                placeholder="Enter your username"
                 disabled={isPending}
                 {...register("username")}
-                className={`w-full pl-9 pr-3 py-2.5 rounded-sm border ${
-                  errors.username ? "border-red-500" : "border-neutral-300"
-                } text-neutral-800 placeholder-neutral-400 focus:ring-2 focus:ring-neutral-400 focus:border-neutral-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all`}
+                placeholder="Enter your username"
+                className={`w-full pl-9 pr-3 py-2.5 rounded-md text-sm border transition
+                  ${
+                    errors.username
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:ring-blue-200"
+                  }
+                  focus:outline-none focus:ring-2`}
               />
             </div>
-            {errors.username && (
-              <p className="absolute text-red-600 text-xs mt-1 bottom-0 left-0">
-                {errors.username.message}
+
+            <div className="h-[8px] mt-1">
+              <p
+                className={`text-xs text-red-600 transition-opacity
+                  ${errors.username ? "opacity-100" : "opacity-0"}`}
+              >
+                {errors.username?.message || "placeholder"}
               </p>
-            )}
+            </div>
           </div>
 
           {/* Password */}
-          <div className="flex flex-col gap-1 relative pb-5">
-            <label
-              htmlFor="password"
-              className="text-sm font-medium text-neutral-700"
-            >
+          <div>
+            <label className="text-sm font-medium text-slate-700">
               Password
             </label>
-            <div className="relative">
+
+            <div className="relative mt-1">
               <Lock
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400"
-                strokeWidth={1.5}
+                className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 transition
+                  ${errors.password ? "text-red-500" : "text-slate-400"}`}
               />
               <input
-                id="password"
                 type="password"
-                placeholder="Enter your password"
                 disabled={isPending}
                 {...register("password")}
-                className={`w-full pl-9 pr-3 py-2.5 rounded-sm border ${
-                  errors.password ? "border-red-500" : "border-neutral-300"
-                } text-neutral-800 placeholder-neutral-400 focus:ring-2 focus:ring-neutral-400 focus:border-neutral-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all`}
+                placeholder="Enter your password"
+                className={`w-full pl-9 pr-3 py-2.5 rounded-md text-sm border transition
+                  ${
+                    errors.password
+                      ? "border-red-500 focus:ring-red-200"
+                      : "border-slate-300 focus:ring-blue-200"
+                  }
+                  focus:outline-none focus:ring-2`}
               />
             </div>
-            {errors.password && (
-              <p className="absolute text-red-600 text-xs mt-1 bottom-0 left-0">
-                {errors.password.message}
+
+            <div className="h-[16px] mt-1">
+              <p
+                className={`text-xs text-red-600 transition-opacity
+                  ${errors.password ? "opacity-100" : "opacity-0"}`}
+              >
+                {errors.password?.message || "placeholder"}
               </p>
-            )}
+            </div>
           </div>
 
-          {/* Error Feedback from API */}
-          {isError && (
-            <p className="text-red-600 text-sm text-center">
-              {error?.response?.data?.message ||
-                "Invalid username or password."}
-            </p>
-          )}
-
-          {/* Submit Button */}
+          {/* Submit */}
           <button
             type="submit"
             disabled={isPending}
-            className={`w-full mt-4 py-2.5 rounded-sm font-medium text-neutral-50 transition-all shadow-sm
+            className={`mt-2 w-full py-2.5 rounded-md text-sm font-medium text-white transition
               ${
                 isPending
-                  ? "bg-neutral-500 cursor-not-allowed"
-                  : "bg-neutral-700 hover:bg-neutral-800 active:scale-[0.98]"
+                  ? "bg-blue-400 cursor-not-allowed"
+                  : "bg-blue-700 hover:bg-blue-800 active:scale-[0.99]"
               }`}
           >
-            {isPending ? "Logging in..." : "Login"}
+            {isPending ? "Signing in..." : "Sign In"}
           </button>
         </form>
 
         {/* Footer */}
-        <p className="text-xs text-neutral-500 text-center mt-6">
-          © {new Date().getFullYear()} Department of Information and
-          Communications Technology
-        </p>
+        <div className="bg-slate-50 border-t border-slate-200 text-center py-3 relative">
+          <p className="text-xs text-slate-500">
+            © {new Date().getFullYear()} Department of Information and
+            Communications Technology
+          </p>
+
+          {/* Map Placeholder Bottom Left */}
+        </div>
       </div>
+      <img
+        src="/loginSrc/phlogo.png" // replace with your map path
+        alt="Philippines Map"
+        className="absolute top-80 sm:top-48 md:top-24 right-[-16%] sm:right-[-8%] md:right-12  w-auto "
+      />
     </div>
   );
 };

@@ -44,7 +44,7 @@ const EmployeeInformation = ({ selectedId }) => {
   if (!emp) return <EmployeeSkeleton />;
 
   return (
-    <div className="p-2 bg-white space-y-6 flex-start">
+    <div className="p-2 flex flex-col h-full bg-white space-y-6 flex-start">
       {/* Header */}
       <div className="flex items-center justify-between border-b pb-5">
         <div className="flex items-center gap-4">
@@ -71,7 +71,7 @@ const EmployeeInformation = ({ selectedId }) => {
       </div>
 
       {/* Info Sections */}
-      <div className="grid grid-cols-1 md:grid-cols-2 py-1 gap-6 overflow-y-auto">
+      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 py-1 gap-6 overflow-y-auto">
         <Section title="Basic Information">
           <InfoRow label="Employee ID" value={emp?.employeeId} />
           <InfoRow label="Username" value={emp?.username} />

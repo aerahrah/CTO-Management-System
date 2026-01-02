@@ -138,11 +138,11 @@ const Sidebar = () => {
   /* ===================== RENDER ===================== */
   return (
     <aside
-      className={`bg-white h-screen sticky top-0 border-r border-gray-200 flex flex-col transition-all duration-300 
-        ${collapsed ? "w-16" : "w-64"}`}
+      className={`bg-white h-screen sticky top-0 border-r border-gray-200 flex flex-col transition-all duration-200 
+    ${collapsed ? "w-16" : "w-64"}`}
     >
       {/* HEADER */}
-      <div className="flex items-center h-16 justify-between px-4 border-b border-neutral-300">
+      <div className="flex flex-shrink-0 items-center h-16 justify-between px-4 border-b border-neutral-300">
         {!collapsed && (
           <img src="/logo_dict.png" alt="Logo" className="w-24 select-none" />
         )}
@@ -154,8 +154,8 @@ const Sidebar = () => {
         </button>
       </div>
 
-      {/* MENU */}
-      <nav className="mt-4 px-2 space-y-3">
+      {/* MENU (scrollable) */}
+      <nav className="flex-1 mt-4 px-2 space-y-3 overflow-y-auto">
         {filteredMenuItems.map((item) => (
           <div key={item.name} className="relative">
             {/* MAIN ITEM */}
@@ -165,12 +165,12 @@ const Sidebar = () => {
               onMouseLeave={handleMouseLeave}
               title={collapsed ? item.name : ""}
               className={`flex items-center px-3 py-3 rounded-lg cursor-pointer transition-all
-                ${collapsed ? "justify-center" : "gap-3"}
-                ${
-                  activeItem === item.name
-                    ? "bg-neutral-800 text-white"
-                    : "text-neutral-700 hover:bg-neutral-800 hover:text-white"
-                }`}
+            ${collapsed ? "justify-center" : "gap-3"}
+            ${
+              activeItem === item.name
+                ? "bg-neutral-800 text-white"
+                : "text-neutral-700 hover:bg-neutral-800 hover:text-white"
+            }`}
             >
               {item.icon}
               {!collapsed && (
@@ -188,11 +188,11 @@ const Sidebar = () => {
                     key={sub.name}
                     onClick={() => handleSubClick(sub)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm transition-all
-                      ${
-                        activeItem === sub.name
-                          ? "bg-neutral-700 text-white"
-                          : "text-neutral-600 hover:bg-neutral-700 hover:text-white"
-                      }`}
+                  ${
+                    activeItem === sub.name
+                      ? "bg-neutral-700 text-white"
+                      : "text-neutral-600 hover:bg-neutral-700 hover:text-white"
+                  }`}
                   >
                     {sub.icon}
                     <span className="whitespace-nowrap">{sub.name}</span>
@@ -223,11 +223,11 @@ const Sidebar = () => {
                         key={sub.name}
                         onClick={() => handleSubClick(sub)}
                         className={`flex items-center gap-3 px-3 py-2 rounded-md cursor-pointer text-sm transition-all
-                          ${
-                            activeItem === sub.name
-                              ? "bg-neutral-700 text-white"
-                              : "text-neutral-600 hover:bg-neutral-700 hover:text-white"
-                          }`}
+                      ${
+                        activeItem === sub.name
+                          ? "bg-neutral-700 text-white"
+                          : "text-neutral-600 hover:bg-neutral-700 hover:text-white"
+                      }`}
                       >
                         {sub.icon}
                         <span className="font-semibold whitespace-nowrap">
