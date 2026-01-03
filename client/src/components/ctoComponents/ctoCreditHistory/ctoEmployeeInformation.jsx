@@ -11,46 +11,12 @@ import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
 /* =========================
-   MATCHING SKELETON
+   SKELETON
 ========================= */
 const EmployeeInfoSkeleton = () => (
   <div className="p-2 space-y-4">
-    <div className="bg-white border border-neutral-300 rounded-lg p-6 flex flex-col lg:flex-row justify-between gap-6">
-      <div className="space-y-2">
-        <Skeleton width={220} height={26} />
-        <Skeleton width={260} height={14} />
-        <Skeleton width={240} height={14} />
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full lg:w-auto">
-        {[...Array(3)].map((_, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-neutral-300 p-4 text-center bg-gray-50"
-          >
-            <Skeleton width={80} height={12} />
-            <Skeleton width={100} height={22} className="mt-2" />
-          </div>
-        ))}
-      </div>
-    </div>
-
-    <div className="bg-white border border-neutral-300 rounded-lg">
-      <div className="flex border-b border-neutral-300">
-        <div className="px-6 py-3">
-          <Skeleton width={90} height={16} />
-        </div>
-        <div className="px-6 py-3">
-          <Skeleton width={120} height={16} />
-        </div>
-      </div>
-
-      <div className="p-4 space-y-2">
-        {[...Array(6)].map((_, i) => (
-          <Skeleton key={i} height={40} />
-        ))}
-      </div>
-    </div>
+    <Skeleton height={120} />
+    <Skeleton height={400} />
   </div>
 );
 
@@ -63,11 +29,17 @@ const CtoEmployeeInformation = ({
 }) => {
   const [activeTab, setActiveTab] = useState("credit");
 
-  /* ===== APPLICATION TAB STATE ===== */
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [status, setStatus] = useState("");
-  const [search, setSearch] = useState(""); // ✅ added only
+  /* ================= CREDIT TAB STATE ================= */
+  const [creditPage, setCreditPage] = useState(1);
+  const [creditLimit, setCreditLimit] = useState(20);
+  const [creditStatus, setCreditStatus] = useState("");
+  const [creditSearch, setCreditSearch] = useState("");
+
+  /* ================= APPLICATION TAB STATE ================= */
+  const [appPage, setAppPage] = useState(1);
+  const [appLimit, setAppLimit] = useState(20);
+  const [appStatus, setAppStatus] = useState("");
+  const [appSearch, setAppSearch] = useState("");
 
   /* ================= EMPLOYEE DETAILS ================= */
   const {
@@ -80,30 +52,51 @@ const CtoEmployeeInformation = ({
     enabled: !!selectedId,
   });
 
-  /* ================= CREDITS ================= */
+  /* ================= CREDIT QUERY (SERVER-SIDE) ================= */
   const {
     data: creditData,
     isLoading: isCreditLoading,
     isError: isCreditError,
   } = useQuery({
-    queryKey: ["employeeCredits", selectedId],
-    queryFn: () => fetchEmployeeCredits(selectedId),
-    enabled: !!selectedId,
+    queryKey: [
+      "employeeCredits",
+      selectedId,
+      creditPage,
+      creditLimit,
+      creditStatus,
+      creditSearch,
+    ],
+    queryFn: () =>
+      fetchEmployeeCredits(selectedId, {
+        page: creditPage,
+        limit: creditLimit,
+        status: creditStatus,
+        search: creditSearch,
+      }),
+    keepPreviousData: true,
+    enabled: !!selectedId && activeTab === "credit",
   });
 
-  /* ================= APPLICATIONS ================= */
+  /* ================= APPLICATION QUERY (SERVER-SIDE) ================= */
   const {
     data: applicationData,
     isLoading: isApplicationLoading,
     isError: isApplicationError,
   } = useQuery({
-    queryKey: ["employeeApplications", selectedId, page, limit, status, search],
+    queryKey: [
+      "employeeApplications",
+      selectedId,
+      appPage,
+      appLimit,
+      appStatus,
+      appSearch,
+    ],
     queryFn: () =>
       fetchEmployeeApplications(selectedId, {
-        page,
-        limit,
-        status,
-        search,
+        page: appPage,
+        limit: appLimit,
+        status: appStatus,
+        search: appSearch,
       }),
     keepPreviousData: true,
     enabled: !!selectedId && activeTab === "application",
@@ -111,17 +104,18 @@ const CtoEmployeeInformation = ({
 
   /* ================= DATA ================= */
   const employee = employeeData?.employee;
+
   const credits = creditData?.credits || [];
+  const creditPagination = creditData?.pagination || {
+    page: 1,
+    totalPages: 1,
+  };
 
-  const applications = useMemo(
-    () => applicationData?.data || [],
-    [applicationData]
-  );
-
-  const pagination = useMemo(
-    () => applicationData?.pagination || { page: 1, totalPages: 1 },
-    [applicationData]
-  );
+  const applications = applicationData?.data || [];
+  const appPagination = applicationData?.pagination || {
+    page: 1,
+    totalPages: 1,
+  };
 
   /* ================= COMPUTATIONS ================= */
   const totalEarned = credits
@@ -135,22 +129,8 @@ const CtoEmployeeInformation = ({
   const totalUsed = 0;
   const balance = totalEarned - totalUsed;
 
-  /* ================= PAGINATION ================= */
-  const handleNextPage = () => {
-    if (page < pagination.totalPages) setPage((p) => p + 1);
-  };
-
-  const handlePrevPage = () => {
-    if (page > 1) setPage((p) => p - 1);
-  };
-
-  /* ================= LOADING & ERROR ================= */
-  if (
-    !selectedId ||
-    isEmployeeLoadingFromEmployeeList ||
-    isEmployeeLoading ||
-    isCreditLoading
-  ) {
+  /* ================= LOADING / ERROR ================= */
+  if (!selectedId || isEmployeeLoadingFromEmployeeList || isEmployeeLoading) {
     return <EmployeeInfoSkeleton />;
   }
 
@@ -165,6 +145,7 @@ const CtoEmployeeInformation = ({
   /* ================= RENDER ================= */
   return (
     <div className="p-2 space-y-4 h-full flex flex-col">
+      {/* ================= HEADER ================= */}
       <div className="bg-white border-b border-neutral-300 pb-4 flex flex-col lg:flex-row justify-between gap-4">
         <div>
           <h2 className="text-2xl font-semibold text-gray-800">
@@ -183,6 +164,7 @@ const CtoEmployeeInformation = ({
         </div>
       </div>
 
+      {/* ================= TABS ================= */}
       <div className="bg-white border border-neutral-300 rounded-lg flex-1 min-h-0 flex flex-col">
         <div className="flex border-b border-neutral-300">
           <TabButton
@@ -199,30 +181,58 @@ const CtoEmployeeInformation = ({
 
         <div className="p-3 flex-1 min-h-0">
           {activeTab === "credit" ? (
-            <CreditCtoTable credits={credits} />
+            <CreditCtoTable
+              credits={credits}
+              page={creditPage}
+              limit={creditLimit}
+              status={creditStatus}
+              search={creditSearch}
+              totalPages={creditPagination.totalPages}
+              isLoading={isCreditLoading}
+              onSearchChange={(val) => {
+                setCreditPage(1);
+                setCreditSearch(val);
+              }}
+              onStatusChange={(val) => {
+                setCreditPage(1);
+                setCreditStatus(val);
+              }}
+              onLimitChange={(val) => {
+                setCreditPage(1);
+                setCreditLimit(val);
+              }}
+              onNextPage={() =>
+                setCreditPage((p) =>
+                  p < creditPagination.totalPages ? p + 1 : p
+                )
+              }
+              onPrevPage={() => setCreditPage((p) => (p > 1 ? p - 1 : p))}
+            />
           ) : (
             <ApplicationCtoTable
               applications={applications}
-              status={status}
-              search={search} // ✅ passed
+              page={appPage}
+              limit={appLimit}
+              status={appStatus}
+              search={appSearch}
+              totalPages={appPagination.totalPages}
+              isLoading={isApplicationLoading}
               onSearchChange={(val) => {
-                setPage(1);
-                setSearch(val);
+                setAppPage(1);
+                setAppSearch(val);
               }}
               onStatusChange={(val) => {
-                setPage(1);
-                setStatus(val);
+                setAppPage(1);
+                setAppStatus(val);
               }}
               onLimitChange={(val) => {
-                setPage(1);
-                setLimit(val);
+                setAppPage(1);
+                setAppLimit(val);
               }}
-              page={page}
-              limit={limit}
-              totalPages={pagination.totalPages}
-              onNextPage={handleNextPage}
-              onPrevPage={handlePrevPage}
-              isLoading={isApplicationLoading}
+              onNextPage={() =>
+                setAppPage((p) => (p < appPagination.totalPages ? p + 1 : p))
+              }
+              onPrevPage={() => setAppPage((p) => (p > 1 ? p - 1 : p))}
             />
           )}
         </div>

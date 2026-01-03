@@ -61,6 +61,21 @@ const rollbackCreditedRequest = async (req, res) => {
   }
 };
 
+const getEmployeeDetails = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    const employee = await ctoCreditService.getEmployeeDetails(employeeId);
+
+    if (!employee) {
+      return res.status(404).json({ message: "Employee not found" });
+    }
+
+    res.json({ message: "Employee fetched", employee });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const getAllCreditRequests = async (req, res) => {
   try {
     const { page, limit, search, status } = req.query;
@@ -84,53 +99,25 @@ const getAllCreditRequests = async (req, res) => {
   }
 };
 
-const getEmployeeDetails = async (req, res) => {
-  try {
-    const { employeeId } = req.params;
-    const employee = await ctoCreditService.getEmployeeDetails(employeeId);
-
-    if (!employee) {
-      return res.status(404).json({ message: "Employee not found" });
-    }
-
-    res.json({ message: "Employee fetched", employee });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
-
 const getEmployeeCredits = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    const credits = await ctoCreditService.getEmployeeCredits(employeeId);
+    const { search, status, page, limit } = req.query;
 
-    // Format each credit for the employee
-    const formattedCredits = credits.map((credit) => {
-      const empData = credit.employees.find(
-        (e) => e.employee._id.toString() === employeeId
-      );
-
-      return {
-        memoNo: credit.memoNo,
-        dateApproved: credit.dateApproved,
-        uploadedMemo: credit.uploadedMemo,
-        duration: credit.duration,
-        appliedHours: empData?.appliedHours || 0,
-        remainingHours:
-          credit.duration.hours +
-          credit.duration.minutes / 60 -
-          (empData?.appliedHours || 0),
-        status: credit.status,
-        creditedBy: credit.creditedBy,
-      };
+    const result = await ctoCreditService.getEmployeeCredits(employeeId, {
+      search,
+      filters: { status },
+      page,
+      limit,
     });
 
     res.json({
       message: "Employee credits fetched successfully",
       employeeId,
-      credits: formattedCredits,
+      ...result,
     });
   } catch (error) {
+    console.error("Controller error:", error.message);
     res.status(400).json({ message: error.message });
   }
 };

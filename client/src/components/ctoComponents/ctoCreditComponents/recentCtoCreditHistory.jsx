@@ -10,7 +10,7 @@ import { Clipboard } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoCreditForm from "./forms/addCtoCreditForm"; // ✅ ADDED
 
-const statusOptions = ["All", "CREDITED", "PENDING", "ROLLED_BACK"];
+const statusOptions = ["All", "CREDITED", "ROLLEDBACK"];
 const pageSizeOptions = [20, 50, 100];
 
 const CtoCreditHistory = () => {
@@ -98,7 +98,7 @@ const CtoCreditHistory = () => {
   const endItem = Math.min(pagination.page * limit, pagination.total);
 
   return (
-    <div>
+    <>
       {/* Header */}
       <div className="flex items-center w-full justify-between mb-4 border-b pb-2">
         <h2 className="flex items-center gap-3">
@@ -355,7 +355,7 @@ const CtoCreditHistory = () => {
           />
         </div>
       </Modal>
-    </div>
+    </>
   );
 };
 

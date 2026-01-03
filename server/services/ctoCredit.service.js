@@ -116,25 +116,67 @@ async function getEmployeeDetails(employeeId) {
     .lean();
 }
 
-const getEmployeeCredits = async (employeeId) => {
-  try {
-    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
-      throw new Error("Invalid employee ID");
-    }
-
-    const credits = await CtoCredit.find({ "employees.employee": employeeId })
-      .populate("employees.employee", "firstName lastName")
-      .populate("creditedBy", "firstName lastName")
-      .populate("creditedBy", "firstName lastName")
-      .lean()
-      .exec();
-
-    return credits;
-  } catch (error) {
-    console.error("Error fetching employee credits:", error.message);
-    throw new Error("Failed to fetch employee credits");
+async function getEmployeeCredits(
+  employeeId,
+  { search = "", filters = {}, page = 1, limit = 20 } = {}
+) {
+  if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
+    throw new Error("Invalid employee ID");
   }
-};
+
+  page = parseInt(page);
+  limit = Math.min(Math.max(limit, 20), 100);
+  const skip = (page - 1) * limit;
+
+  // Base query: filter only for this employee
+  const query = { "employees.employee": employeeId };
+
+  // Status filter
+  if (filters.status) {
+    query.status = filters.status;
+  }
+
+  // Search filter: only search by memoNo
+  if (search) {
+    query.memoNo = { $regex: search, $options: "i" };
+  }
+
+  // Total count for pagination
+  const totalCount = await CtoCredit.countDocuments(query);
+
+  // Fetch credits with pagination
+  const credits = await CtoCredit.find(query)
+    .populate("employees.employee", "firstName lastName position")
+    .populate("rolledBackBy", "firstName lastName position role")
+    .populate("creditedBy", "firstName lastName position role")
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  // Format each credit for the employee
+  const formattedCredits = credits.map((credit) => {
+    const empData = credit.employees.find(
+      (e) => e.employee._id.toString() === employeeId
+    );
+
+    return {
+      memoNo: credit.memoNo,
+      dateApproved: credit.dateApproved,
+      uploadedMemo: credit.uploadedMemo,
+      duration: credit.duration,
+      appliedHours: empData?.appliedHours || 0,
+      remainingHours:
+        credit.duration.hours +
+        credit.duration.minutes / 60 -
+        (empData?.appliedHours || 0),
+      status: credit.status,
+      creditedBy: credit.creditedBy,
+    };
+  });
+
+  return { totalCount, credits: formattedCredits, page, limit };
+}
 
 // async function createCreditRequest({
 //   employees,
