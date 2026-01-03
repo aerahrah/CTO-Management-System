@@ -12,7 +12,6 @@ import {
   fetchMyCtoMemos,
 } from "../../../../api/cto";
 import { useAuth } from "../../../../store/authStore";
-import { CustomButton } from "../../../customButton";
 import { Clock, ChevronDown, ChevronUp } from "lucide-react";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -38,7 +37,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     approver3: "",
   });
 
-  // Fetch approver settings
+  /* ---------------- Fetch Approvers ---------------- */
   const {
     data: approverResponse,
     isLoading: isApproverLoading,
@@ -49,25 +48,13 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     enabled: !!admin?.provincialOffice,
   });
 
-  useEffect(() => {
-    if (approverResponse?.data) {
-      const a = approverResponse.data;
-      setFormData((prev) => ({
-        ...prev,
-        approver1: a.level1Approver?._id || "",
-        approver2: a.level2Approver?._id || "",
-        approver3: a.level3Approver?._id || "",
-      }));
-    }
-  }, [approverResponse]);
-
-  // Fetch CTO memos
+  /* ---------------- Fetch CTO Memos ---------------- */
   const { data: memoResponse, isLoading: memoLoading } = useQuery({
     queryKey: ["myCtoMemos"],
     queryFn: fetchMyCtoMemos,
   });
 
-  // Mutation to submit CTO application
+  /* ---------------- Submit Mutation ---------------- */
   const mutation = useMutation({
     mutationFn: addApplicationRequest,
     onSuccess: () => {
@@ -94,7 +81,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     },
   });
 
-  // Expose submit function to parent
+  /* ---------------- Expose submit ---------------- */
   useImperativeHandle(ref, () => ({
     submit: () => handleSubmit(),
   }));
@@ -105,29 +92,48 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
     if (name === "requestedHours") {
       let val = Number(value);
-      if (maxRequestedHours !== null && val > maxRequestedHours)
-        val = maxRequestedHours;
+      if (isNaN(val) || val <= 0) {
+        setFormData((prev) => ({ ...prev, requestedHours: "" }));
+        return;
+      }
 
-      // Distribute appliedHours across memos
       let remaining = val;
-      const updatedMemos = selectedMemos.map((m) => {
-        const take = Math.min(m.totalHours, remaining);
-        remaining -= take;
-        return { ...m, appliedHours: take };
-      });
+      const newSelectedMemos = [];
+      const newFormMemos = [];
 
-      setSelectedMemos(updatedMemos);
+      for (let memo of memoResponse?.memos || []) {
+        if (remaining <= 0) break;
 
-      // Update formData.memos appliedHours
-      const updatedFormMemos = formData.memos.map((fm) => {
-        const matched = updatedMemos.find((m) => m.memoId === fm.memoId);
-        return { ...fm, appliedHours: matched?.appliedHours || 0 };
-      });
+        const availableHours = memo.remainingHours;
+        if (availableHours <= 0) continue;
 
+        const applied = Math.min(availableHours, remaining);
+        remaining -= applied;
+
+        newSelectedMemos.push({
+          memoId: memo.id,
+          uploadedMemo: memo.uploadedMemo,
+          memoNo: memo.memoNo,
+          creditedHours: memo.creditedHours,
+          usedHours: memo.usedHours,
+          appliedHours: applied,
+          totalHours: memo.totalHours,
+          remainingHours: memo.remainingHours,
+        });
+
+        newFormMemos.push({
+          memoId: memo.id,
+          uploadedMemo: memo.uploadedMemo,
+          appliedHours: applied,
+        });
+      }
+
+      setSelectedMemos(newSelectedMemos);
       setFormData((prev) => ({
         ...prev,
-        requestedHours: val,
-        memos: updatedFormMemos,
+        requestedHours: val - remaining,
+        memos: newFormMemos,
+        inclusiveDates: [], // reset inclusive dates when hours change
       }));
 
       return;
@@ -136,15 +142,32 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  // Inclusive dates logic based on requestedHours
   const handleDateAdd = (e) => {
     const value = e.target.value;
     if (!value) return;
-    setFormData((prev) => ({
-      ...prev,
-      inclusiveDates: prev.inclusiveDates.includes(value)
-        ? prev.inclusiveDates
-        : [...prev.inclusiveDates, value],
-    }));
+
+    setFormData((prev) => {
+      const maxSelectableDates = Math.ceil(Number(prev.requestedHours) / 8);
+      if (!prev.requestedHours) {
+        toast.warn("Enter requested hours first.");
+        return prev;
+      }
+
+      if (prev.inclusiveDates.includes(value)) return prev;
+
+      if (prev.inclusiveDates.length >= maxSelectableDates) {
+        toast.warn(
+          `You can only select up to ${maxSelectableDates} date(s) for ${prev.requestedHours} hours.`
+        );
+        return prev;
+      }
+
+      return {
+        ...prev,
+        inclusiveDates: [...prev.inclusiveDates, value],
+      };
+    });
   };
 
   const handleDateRemove = (date) => {
@@ -154,29 +177,11 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     }));
   };
 
-  const handleRemoveMemo = (memoId) => {
-    const updatedMemos = selectedMemos.filter((m) => m.memoId !== memoId);
-    setSelectedMemos(updatedMemos);
-    setFormData((prev) => ({
-      ...prev,
-      memos: prev.memos.filter((m) => m.memoId !== memoId),
-    }));
-
-    const cumulativeMax = updatedMemos.reduce(
-      (acc, m) => acc + m.totalHours,
-      0
-    );
-    setMaxRequestedHours(cumulativeMax);
-
-    if (formData.requestedHours > cumulativeMax) {
-      setFormData((prev) => ({
-        ...prev,
-        requestedHours: cumulativeMax,
-      }));
-    }
-  };
-
   const handleSubmit = () => {
+    if (!formData.requestedHours || formData.requestedHours <= 0) {
+      toast.error("Please enter requested hours");
+      return;
+    }
     mutation.mutate({
       requestedHours: Number(formData.requestedHours),
       reason: formData.reason,
@@ -194,6 +199,30 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     approverResponse?.data?.level3Approver,
   ];
 
+  useEffect(() => {
+    if (approverResponse?.data) {
+      const a = approverResponse.data;
+      console.log(a);
+      setFormData((prev) => ({
+        ...prev,
+        approver1: a.level1Approver?._id || "",
+        approver2: a.level2Approver?._id || "",
+        approver3: a.level3Approver?._id || "",
+      }));
+    }
+  }, [approverResponse]);
+
+  useEffect(() => {
+    if (memoResponse?.memos) {
+      const totalRemaining = memoResponse.memos.reduce(
+        (sum, memo) => sum + (memo.remainingHours || 0),
+        0
+      );
+      setMaxRequestedHours(totalRemaining);
+    } else {
+      setMaxRequestedHours(null);
+    }
+  }, [memoResponse]);
   /* ---------------- UI ---------------- */
   return (
     <div className="max-w-xl mx-auto">
@@ -205,51 +234,34 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
       </h2>
 
       <div className="space-y-5 overflow-y-auto pr-2 h-122">
-        {/* CTO Memo */}
+        {/* CTO Memo - Read Only Box */}
         <div>
-          <label className="block text-sm font-medium mb-1">CTO Memo</label>
+          <label className="block text-sm font-medium mb-1">
+            CTO Memos in Use
+          </label>
           {memoLoading ? (
             <Skeleton height={38} />
+          ) : selectedMemos.length === 0 ? (
+            <p className="text-sm text-gray-500">No memos used yet.</p>
           ) : (
-            <div>
-              <button
-                type="button"
-                onClick={() => setIsMemoModalOpen(true)}
-                className="w-full px-3 py-2 border rounded-md text-left hover:bg-gray-50 flex flex-col items-start gap-1 max-h-40 overflow-y-auto"
-              >
-                <span className="text-gray-400 text-sm">
-                  Click to select memos
-                </span>
-                {selectedMemos.length > 0 &&
-                  selectedMemos.map((m, index) => {
-                    const isLast = index === selectedMemos.length - 1;
-                    return (
-                      <div
-                        key={m.memoId}
-                        className="w-full flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
-                      >
-                        <span className="text-sm">
-                          {m.memoNo} (Applied / Total: {m.appliedHours || 0} /{" "}
-                          {m.totalHours})
-                        </span>
-                        {isLast && (
-                          <div
-                            type="button"
-                            className="text-xs text-red-500 ml-2 cursor-pointer"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveMemo(m.memoId);
-                            }}
-                          >
-                            Remove
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-              </button>
-            </div>
+            <ul className="text-sm text-gray-600 pl-4 space-y-1 border p-2 rounded-md bg-gray-50 max-h-40 overflow-y-auto">
+              {selectedMemos.map((memo) => (
+                <li key={memo.memoId}>
+                  {memo.memoNo} — Applied: {memo.appliedHours}h / Remaining:{" "}
+                  {memo.remainingHours ?? memo.totalHours}h
+                </li>
+              ))}
+            </ul>
           )}
+
+          {/* View Memo Modal Button */}
+          <button
+            type="button"
+            onClick={() => setIsMemoModalOpen(true)}
+            className="mt-2 px-3 py-2 text-sm rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+          >
+            View Memo Details
+          </button>
         </div>
 
         {/* Inclusive Dates */}
@@ -263,7 +275,13 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
               onClick={() => dateInputRef.current?.showPicker?.()}
               className="w-full px-3 py-2 border rounded-md text-left hover:bg-gray-50 flex flex-col items-start gap-1 max-h-40 overflow-y-auto focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
-              <span className="text-gray-400 text-sm">Click to add date</span>
+              <span className="text-gray-400 text-sm">
+                {formData.requestedHours
+                  ? `Click to add up to ${Math.ceil(
+                      Number(formData.requestedHours) / 8
+                    )} date(s)`
+                  : "Click to add dates"}
+              </span>
               {formData.inclusiveDates.map((date) => (
                 <div
                   key={date}
@@ -306,7 +324,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
             max={maxRequestedHours || undefined}
             className="w-full px-3 py-2 border rounded-md"
           />
-          {maxRequestedHours && (
+          {maxRequestedHours !== null && maxRequestedHours !== undefined && (
             <p className="text-xs text-gray-500 mt-1">
               Maximum allowed: {maxRequestedHours} hours
             </p>
@@ -385,40 +403,15 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
           </div>
         </div>
 
-        {/* Memo Selection Modal */}
+        {/* Memo Modal with Progress Bar */}
         <SelectCtoMemoModal
           isOpen={isMemoModalOpen}
           onClose={() => setIsMemoModalOpen(false)}
+          requestedHours={formData.requestedHours}
           memos={memoResponse?.memos || []}
           selectedMemos={selectedMemos}
-          onSelect={(memo) => {
-            if (selectedMemos.some((m) => m.memoId === memo.id)) return;
-
-            const newEntry = {
-              memoId: memo.id,
-              uploadedMemo: memo.uploadedMemo,
-              memoNo: memo.memoNo,
-              totalHours: memo.totalHours,
-              appliedHours: 0,
-            };
-
-            const updatedMemos = [...selectedMemos, newEntry];
-            setSelectedMemos(updatedMemos);
-
-            setFormData((prev) => ({
-              ...prev,
-              memos: [
-                ...prev.memos,
-                { memoId: memo.id, uploadedMemo: memo.uploadedMemo },
-              ],
-            }));
-
-            const cumulativeMax = updatedMemos.reduce(
-              (acc, m) => acc + m.totalHours,
-              0
-            );
-            setMaxRequestedHours(cumulativeMax);
-          }}
+          readOnly={true} // Modal is view-only
+          showProgress={true} // new prop to show applied vs remaining
         />
       </div>
     </div>

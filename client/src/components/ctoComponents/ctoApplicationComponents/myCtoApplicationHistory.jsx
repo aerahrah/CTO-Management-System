@@ -355,7 +355,7 @@ const MemoGrid = ({ memos }) => (
           >
             {memo.uploadedMemo?.endsWith(".pdf") ? (
               <iframe
-                src={`http://localhost:3000${memo?.uploadedMemo}`}
+                src={`http://localhost:3000/${memo?.uploadedMemo}`}
                 title={memo.memoId?.memoNo || `Memo ${i}`}
                 className="w-full h-40 border-b border-gray-200 rounded-t-md"
               />
@@ -372,13 +372,13 @@ const MemoGrid = ({ memos }) => (
                     {memo.memoId?.memoNo || "—"}
                   </p>
                 </div>
-                <p className="text-gray-500 text-xs md:text-sm">
+                {/* <p className="text-gray-500 text-xs md:text-sm">
                   Hours: {memo.memoId?.totalHours || "—"}
-                </p>
+                </p> */}
               </div>
               <div className="flex justify-between gap-2 mt-auto">
                 <a
-                  href={`http://localhost:3000${memo?.uploadedMemo}`}
+                  href={`http://localhost:3000/${memo?.uploadedMemo}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="w-full flex items-center gap-1 px-3 py-1 text-xs md:text-sm font-medium border border-gray-400 rounded hover:bg-gray-100 transition-colors"

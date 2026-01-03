@@ -12,20 +12,15 @@ const addCtoApplicationRequest = async (req, res) => {
       approver1,
       approver2,
       approver3,
-      memos, // array of objects: [{ memoId, uploadedMemo }]
       inclusiveDates,
     } = req.body;
-
     const userId = req.user.id;
 
     const application = await addCtoApplicationService({
       userId,
       requestedHours,
       reason,
-      approver1,
-      approver2,
-      approver3,
-      memos,
+      approvers: [approver1, approver2, approver3],
       inclusiveDates,
     });
 
@@ -35,12 +30,10 @@ const addCtoApplicationRequest = async (req, res) => {
     });
   } catch (error) {
     console.error("Error applying CTO:", error);
-    const status = error.status || 500;
-    res.status(status).json({
-      error: error.message || "Server error while applying CTO",
-    });
+    res.status(error.status || 500).json({ error: error.message });
   }
 };
+
 const getAllCtoApplicationsRequest = async (req, res) => {
   try {
     const { page, limit, status, from, to, search, employeeId } = req.query;

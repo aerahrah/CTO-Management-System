@@ -13,10 +13,13 @@ const addCredit = async ({
 }) => {
   const totalHours = duration.hours + duration.minutes / 60;
 
-  // Build employees array with appliedHours 0
   const employeeObjs = employees.map((id) => ({
     employee: id,
-    appliedHours: 0,
+    creditedHours: totalHours,
+    usedHours: 0,
+    remainingHours: totalHours,
+    status: "ACTIVE",
+    dateCredited: dateApproved,
   }));
 
   const credit = await CtoCredit.create({
@@ -24,9 +27,9 @@ const addCredit = async ({
     dateApproved,
     uploadedMemo: filePath,
     duration,
-    totalHours,
     employees: employeeObjs,
     creditedBy: userId,
+    status: "CREDITED", // memo-level
   });
 
   return credit;

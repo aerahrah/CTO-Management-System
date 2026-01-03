@@ -133,28 +133,30 @@ const getEmployeeCtoMemos = async (employeeId) => {
     .populate("employees.employee", "firstName lastName")
     .exec();
 
-  // Convert uploadedMemo to browser-friendly URL and include _id
   const formatted = memos.map((memo) => {
-    const fileName = memo.uploadedMemo.split(/[/\\]/).pop(); // handles both / and \
     const empData = memo.employees.find(
       (e) => e.employee._id.toString() === employeeId
     );
 
     return {
-      id: memo._id, // <-- add this
+      id: memo._id,
       memoNo: memo.memoNo,
       dateApproved: memo.dateApproved,
-      totalHours: memo.totalHours,
-      appliedHours: empData?.appliedHours || 0,
-      remainingHours: memo.totalHours - (empData?.appliedHours || 0),
-      uploadedMemo: `/uploads/cto_memos/${fileName}`, // browser-friendly URL
-      status: memo.status,
+      uploadedMemo: `/uploads/cto_memos/${memo.uploadedMemo
+        .split(/[/\\]/)
+        .pop()}`,
+      creditedHours: empData?.creditedHours || 0,
+      usedHours: empData?.usedHours || 0,
+      remainingHours: empData?.remainingHours || 0,
+      status: empData?.status || "ACTIVE",
     };
   });
 
+  // Optional: sort oldest to newest
+  formatted.sort((a, b) => new Date(a.dateApproved) - new Date(b.dateApproved));
+
   return formatted;
 };
-
 module.exports = {
   updateEmployeeService,
   createEmployeeService,

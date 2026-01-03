@@ -19,7 +19,6 @@ const addCtoCreditRequest = async (req, res) => {
       const cleanDate = dateApproved.replace(/-/g, "");
       const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
       const newPath = path.join(path.dirname(filePath), newFileName);
-
       fs.renameSync(filePath, newPath);
       filePath = newPath;
     }

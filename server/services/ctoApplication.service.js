@@ -8,136 +8,140 @@ const addCtoApplicationService = async ({
   userId,
   requestedHours,
   reason,
-  approver1,
-  approver2,
-  approver3,
-  memos, // array of { memoId, uploadedMemo, appliedHours }
   inclusiveDates,
+  approvers,
 }) => {
-  // Validations
-  if (!requestedHours || !reason || !memos?.length || !inclusiveDates?.length) {
-    const err = new Error(
-      "Requested hours, reason, memos, and inclusive dates are required."
+  // 1️⃣ Basic validations
+  if (!requestedHours || !reason || !inclusiveDates?.length)
+    throw Object.assign(
+      new Error("Requested hours, reason, and inclusive dates are required."),
+      { status: 400 }
     );
-    err.status = 400;
-    throw err;
-  }
 
-  if (!approver1 || !approver2 || !approver3) {
-    const err = new Error("All 3 approvers (Level 1, 2, and 3) are required.");
-    err.status = 400;
-    throw err;
-  }
+  if (!approvers || approvers.length !== 3 || approvers.some((a) => !a))
+    throw Object.assign(
+      new Error("Three approvers (Level 1,2,3) are required."),
+      { status: 400 }
+    );
 
-  // Employee check & balance
   const employee = await Employee.findById(userId);
-  if (!employee) {
-    const err = new Error("Employee not found.");
-    err.status = 404;
-    throw err;
+  if (!employee)
+    throw Object.assign(new Error("Employee not found."), { status: 404 });
+
+  // 2️⃣ Fetch credits with remaining hours, oldest first
+  const credits = await CtoCredit.find({
+    "employees.employee": employee._id,
+    "employees.remainingHours": { $gt: 0 },
+    status: "CREDITED",
+  }).sort({ dateCredited: 1 });
+
+  const totalAvailableHours = credits.reduce((sum, credit) => {
+    const empCredit = credit.employees.find(
+      (e) => e.employee.toString() === employee._id.toString()
+    );
+    return sum + (empCredit?.remainingHours || 0);
+  }, 0);
+
+  if (requestedHours > totalAvailableHours)
+    throw Object.assign(
+      new Error(`Insufficient CTO balance. Available: ${totalAvailableHours}`),
+      { status: 400 }
+    );
+
+  // 3️⃣ Allocate hours automatically
+  let remaining = requestedHours;
+  const memoUsage = [];
+
+  for (const credit of credits) {
+    if (remaining <= 0) break;
+
+    const empCredit = credit.employees.find(
+      (e) => e.employee.toString() === employee._id.toString()
+    );
+
+    if (!empCredit || empCredit.remainingHours <= 0) continue;
+
+    const hoursToUse = Math.min(empCredit.remainingHours, remaining);
+
+    empCredit.usedHours += hoursToUse;
+    empCredit.remainingHours -= hoursToUse;
+    empCredit.status = empCredit.remainingHours === 0 ? "EXHAUSTED" : "ACTIVE";
+
+    await CtoCredit.updateOne(
+      { _id: credit._id, "employees.employee": employee._id },
+      { $set: { "employees.$": empCredit } }
+    );
+
+    memoUsage.push({
+      memoId: credit._id,
+      employee: employee._id,
+      hoursUsed: hoursToUse,
+      uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"), // <-- replace backslashes with forward slashes
+      memoNo: credit.memoNo,
+      totalHours: empCredit.usedHours + empCredit.remainingHours,
+    });
+
+    remaining -= hoursToUse;
   }
-  if (employee.balances.ctoHours < requestedHours) {
-    const err = new Error("Insufficient CTO hours balance.");
-    err.status = 400;
-    throw err;
-  }
 
-  // Validate memos and reserve applied hours
-  const memoEntries = [];
-  for (const memoEntry of memos) {
-    const { memoId, uploadedMemo, appliedHours: hoursToApply } = memoEntry;
-
-    if (!memoId || !uploadedMemo || !hoursToApply) {
-      const err = new Error(
-        "Each memo must have memoId, uploadedMemo, and appliedHours."
-      );
-      err.status = 400;
-      throw err;
-    }
-
-    const memo = await CtoCredit.findById(memoId);
-    if (!memo) {
-      const err = new Error(`CTO memo not found: ${memoId}`);
-      err.status = 404;
-      throw err;
-    }
-
-    const remainingHours = memo.totalHours - (memo.appliedHours || 0);
-    if (hoursToApply > remainingHours) {
-      const err = new Error(
-        `Cannot apply ${hoursToApply} hours. Remaining hours for memo ${memo.memoNo} is ${remainingHours}.`
-      );
-      err.status = 400;
-      throw err;
-    }
-
-    // Temporarily reserve applied hours
-    memo.appliedHours = (memo.appliedHours || 0) + hoursToApply;
-    await memo.save();
-
-    memoEntries.push({ memoId, uploadedMemo, appliedHours: hoursToApply });
-  }
-
-  // Validate approvers
-  const approvers = [approver1, approver2, approver3];
-  for (const approverId of approvers) {
-    const approver = await Employee.findById(approverId);
-    if (!approver) {
-      const err = new Error(`Approver not found: ${approverId}`);
-      err.status = 404;
-      throw err;
-    }
-  }
-
-  // Create CTO application
-  const newCtoApplication = new CtoApplication({
-    employee: userId,
+  // 4️⃣ Create CTO application
+  const newApplication = new CtoApplication({
+    employee: employee._id,
     requestedHours,
     reason,
-    memo: memoEntries, // store array of { memoId, uploadedMemo, appliedHours }
     inclusiveDates,
+    memo: memoUsage,
     overallStatus: "PENDING",
   });
 
-  await newCtoApplication.save();
+  await newApplication.save();
 
-  // Create approval steps
+  // 5️⃣ Create approval steps
   const approvalSteps = await Promise.all(
-    approvers.map(async (approverId, index) => {
-      return await ApprovalStep.create({
+    approvers.map((approverId, index) =>
+      ApprovalStep.create({
         level: index + 1,
         approver: approverId,
         status: "PENDING",
-        ctoApplication: newCtoApplication._id,
-      });
-    })
+        ctoApplication: newApplication._id,
+      })
+    )
   );
 
-  newCtoApplication.approvals = approvalSteps.map((step) => step._id);
-  await newCtoApplication.save();
+  newApplication.approvals = approvalSteps.map((step) => step._id);
+  await newApplication.save();
 
-  // Populate for return
-  const populatedApp = await CtoApplication.findById(newCtoApplication._id)
+  // 6️⃣ Populate for frontend
+  const populatedApp = await CtoApplication.findById(newApplication._id)
+    .populate("employee", "firstName lastName position")
     .populate({
       path: "approvals",
-      populate: { path: "approver", select: "firstName lastName position" },
+      populate: { path: "approver", select: "firstName lastName" }, // only firstName & lastName
     })
-    .populate("employee", "firstName lastName position")
-    .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours");
+    .populate("memo.memoId", "memoNo uploadedMemo duration");
+
+  // Format uploadedMemo paths in populated memos as well
+  if (populatedApp.memo && Array.isArray(populatedApp.memo)) {
+    populatedApp.memo.forEach((m) => {
+      if (m.memoId?.uploadedMemo) {
+        m.memoId.uploadedMemo = m.memoId.uploadedMemo.replace(/\\/g, "/");
+      }
+    });
+  }
 
   return populatedApp;
 };
+
 const getAllCtoApplicationsService = async (
   filters = {},
   page = 1,
   limit = 20
 ) => {
   page = Math.max(parseInt(page) || 1, 1);
-  limit = Math.min(parseInt(limit) || 20, 100); // max 100
+  limit = Math.min(parseInt(limit) || 20, 100);
 
   const query = {};
 
-  // Apply filters
   if (filters.employeeId) query.employee = filters.employeeId;
   if (filters.status) query.overallStatus = filters.status;
   if (filters.from && filters.to) {
@@ -150,11 +154,6 @@ const getAllCtoApplicationsService = async (
     query["memo.memoId.memoNo"] = { $regex: filters.search, $options: "i" };
   }
 
-  console.log(filters.search);
-  // ---- DEBUG LOGS ----
-  console.log("Filters received:", filters);
-  // --------------------
-
   const skip = (page - 1) * limit;
 
   const [applications, total] = await Promise.all([
@@ -164,9 +163,13 @@ const getAllCtoApplicationsService = async (
       )
       .populate({
         path: "approvals",
-        populate: { path: "approver", select: "firstName lastName position" },
+        options: { sort: { level: 1 } }, // ensure Level 1 → Level 3 order
+        populate: {
+          path: "approver",
+          select: "firstName lastName position _id",
+        },
       })
-      .populate("employee", "firstName lastName position")
+      .populate("employee", "firstName lastName position _id")
       .populate("memo.memoId", "memoNo uploadedMemo totalHours appliedHours")
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -176,8 +179,19 @@ const getAllCtoApplicationsService = async (
     CtoApplication.countDocuments(query),
   ]);
 
+  // Transform approvals into approver1, approver2, approver3 for easier frontend consumption
+  const transformed = applications.map((app) => {
+    const sortedApprovals = app.approvals || [];
+    return {
+      ...app,
+      approver1: sortedApprovals[0]?.approver || null,
+      approver2: sortedApprovals[1]?.approver || null,
+      approver3: sortedApprovals[2]?.approver || null,
+    };
+  });
+
   return {
-    data: applications,
+    data: transformed,
     pagination: {
       page,
       limit,
@@ -204,15 +218,10 @@ const getCtoApplicationsByEmployeeService = async (
   limit = Math.min(parseInt(limit) || 20, 100);
   const skip = (page - 1) * limit;
 
-  // Build aggregation pipeline
   const pipeline = [{ $match: { employee: employeeObjectId } }];
 
-  // Apply status filter
-  if (filters.status) {
+  if (filters.status)
     pipeline.push({ $match: { overallStatus: filters.status } });
-  }
-
-  // Apply date range filter
   if (filters.from && filters.to) {
     pipeline.push({
       $match: {
@@ -231,7 +240,6 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
-  // Apply search filter on memoNo
   if (filters.search) {
     pipeline.push({
       $match: {
@@ -253,7 +261,7 @@ const getCtoApplicationsByEmployeeService = async (
     $unwind: { path: "$employee", preserveNullAndEmptyArrays: true },
   });
 
-  // Populate approvals info
+  // Populate approvals and only select firstName & lastName of approver
   pipeline.push({
     $lookup: {
       from: "approvalsteps",
@@ -263,15 +271,73 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
+  // Nested lookup for approver info (only firstName & lastName)
+  pipeline.push({
+    $lookup: {
+      from: "employees",
+      localField: "approvals.approver",
+      foreignField: "_id",
+      as: "approverDetails",
+    },
+  });
+
+  // Map approverDetails into approvals array
+  pipeline.push({
+    $addFields: {
+      approvals: {
+        $map: {
+          input: "$approvals",
+          as: "appr",
+          in: {
+            level: "$$appr.level",
+            status: "$$appr.status",
+            approver: {
+              $arrayElemAt: [
+                {
+                  $filter: {
+                    input: "$approverDetails",
+                    cond: { $eq: ["$$this._id", "$$appr.approver"] },
+                  },
+                },
+                0,
+              ],
+            },
+          },
+        },
+      },
+    },
+  });
+
+  // Only keep firstName & lastName in approver
+  pipeline.push({
+    $addFields: {
+      approvals: {
+        $map: {
+          input: "$approvals",
+          as: "a",
+          in: {
+            level: "$$a.level",
+            status: "$$a.status",
+            approver: {
+              firstName: "$$a.approver.firstName",
+              lastName: "$$a.approver.lastName",
+              position: "$$a.approver.position",
+              _id: "$$a.approver._id",
+            },
+          },
+        },
+      },
+    },
+  });
+
   // Sort, skip, limit
   pipeline.push({ $sort: { createdAt: -1 } });
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: limit });
 
-  // Execute aggregation
   let applications = await CtoApplication.aggregate(pipeline);
 
-  // Map memoDetails back to memo.memoId to keep the same structure
+  // Map memoDetails back to memo.memoId
   applications = applications.map((app) => {
     if (app.memo && Array.isArray(app.memo)) {
       app.memo = app.memo.map((m, i) => ({
@@ -283,12 +349,13 @@ const getCtoApplicationsByEmployeeService = async (
     return app;
   });
 
-  // Get total count (without skip/limit)
+  // Total count
   const countPipeline = [
-    ...pipeline.filter((stage) => !("$skip" in stage || "$limit" in stage)),
-    {
-      $count: "total",
-    },
+    { $match: { employee: employeeObjectId } },
+    ...pipeline.filter(
+      (stage) => !("$skip" in stage || "$limit" in stage || "$sort" in stage)
+    ),
+    { $count: "total" },
   ];
   const totalResult = await CtoApplication.aggregate(countPipeline);
   const total = totalResult[0]?.total || 0;

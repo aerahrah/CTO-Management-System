@@ -169,9 +169,9 @@ const CtoApplicationDetails = ({ app }) => {
                           {memo.memoId?.memoNo || "—"}
                         </p>
                       </div>
-                      <p className="text-gray-500 text-xs md:text-sm">
+                      {/* <p className="text-gray-500 text-xs md:text-sm">
                         Hours: {memo.memoId?.totalHours || "—"}
-                      </p>
+                      </p> */}
                     </div>
 
                     {/* Actions */}
