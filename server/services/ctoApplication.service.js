@@ -21,7 +21,7 @@ const addCtoApplicationService = async ({
 
   if (!approvers || approvers.length !== 3 || approvers.some((a) => !a))
     throw Object.assign(
-      new Error("Three approvers (Level 1,2,3) are required."),
+      new Error("Three approvers (Level 1, 2, 3) are required."),
       { status: 400 }
     );
 
@@ -57,11 +57,11 @@ const addCtoApplicationService = async ({
     const credit = credits.find(
       (c) => c._id.toString() === input.memoId.toString()
     );
+
     const empCredit = credit.employees.find(
       (e) => e.employee.toString() === employee._id.toString()
     );
 
-    // ✅ Fix: use only remainingHours
     const availableHours = empCredit.remainingHours || 0;
 
     if (input.appliedHours <= 0 || input.appliedHours > availableHours)
@@ -85,14 +85,9 @@ const addCtoApplicationService = async ({
 
     memoUsage.push({
       memoId: credit._id,
-      employee: employee._id,
-      hoursReserved: input.appliedHours,
       uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"),
       memoNo: credit.memoNo,
-      totalHours:
-        empCredit.usedHours +
-        empCredit.reservedHours +
-        empCredit.remainingHours,
+      appliedHours: input.appliedHours, // ✅ store applied hours
     });
 
     totalAppliedHours += input.appliedHours;
@@ -138,7 +133,7 @@ const addCtoApplicationService = async ({
     .populate("employee", "firstName lastName position")
     .populate({
       path: "approvals",
-      populate: { path: "approver", select: "firstName lastName" },
+      populate: { path: "approver", select: "firstName lastName position" },
     })
     .populate("memo.memoId", "memoNo uploadedMemo duration");
 

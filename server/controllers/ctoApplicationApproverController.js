@@ -19,10 +19,12 @@ const approveCtoApplication = async (req, res, next) => {
   try {
     const approverId = req.user.id;
     const { applicationId } = req.params;
+
     const data = await approveCtoApplicationService({
       approverId,
       applicationId,
     });
+
     res.json({ success: true, data });
   } catch (err) {
     next(err);

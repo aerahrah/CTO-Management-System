@@ -28,9 +28,10 @@ const ctoApplicationSchema = new mongoose.Schema(
           required: true,
         },
         uploadedMemo: {
-          type: String, 
+          type: String,
           required: true,
         },
+        appliedHours: { type: Number, required: true },
       },
     ],
     approvals: [

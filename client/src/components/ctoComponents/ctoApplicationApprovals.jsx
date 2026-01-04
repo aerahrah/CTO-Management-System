@@ -27,7 +27,7 @@ const CtoApplicationApprovals = () => {
           isLoading={isLoading}
         />
       </CardMd>
-      <CardFull>
+      <CardFull className="flex flex-col">
         <CtoApplicationDetails
           application={selectedApp}
           onSelect={setSelectedApp}

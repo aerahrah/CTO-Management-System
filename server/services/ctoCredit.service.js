@@ -32,6 +32,18 @@ const addCredit = async ({
     status: "CREDITED", // memo-level
   });
 
+  // ✅ Update each employee's CTO balance
+  await Promise.all(
+    employees.map(async (employeeId) => {
+      const employee = await Employee.findById(employeeId);
+      if (employee) {
+        employee.balances.ctoHours =
+          (employee.balances.ctoHours || 0) + totalHours;
+        await employee.save();
+      }
+    })
+  );
+
   return credit;
 };
 

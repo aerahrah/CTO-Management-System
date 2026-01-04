@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Clock,
   FileText,
@@ -19,10 +19,10 @@ import { CustomButton } from "../../customButton";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { toast } from "react-toastify";
+
 const CtoApplicationDetailsSkeleton = () => {
   return (
-    <div className="border-gray-200 p-4 space-y-4">
-      {/* Header skeleton */}
+    <div className="border-gray-200 p-4 space-y-4 flex flex-col h-full">
       <div className="flex flex-col md:flex-row md:justify-between gap-2 mb-4">
         <div className="space-y-2">
           <Skeleton width={240} height={24} />
@@ -33,7 +33,6 @@ const CtoApplicationDetailsSkeleton = () => {
           <Skeleton width={100} height={36} />
         </div>
       </div>
-
       <div className="h-136 pr-2 overflow-y-auto">
         <div className="flex items-center gap-4 mb-6 bg-gray-50 p-4 rounded-lg">
           <Skeleton circle width={48} height={48} />
@@ -42,8 +41,6 @@ const CtoApplicationDetailsSkeleton = () => {
             <Skeleton width={80} height={12} />
           </div>
         </div>
-
-        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
             <Skeleton width={100} height={14} />
@@ -54,14 +51,10 @@ const CtoApplicationDetailsSkeleton = () => {
             <Skeleton width={60} height={18} className="mt-2" />
           </div>
         </div>
-
-        {/* Reason */}
         <div className="bg-gray-50 p-3 rounded-lg mb-6">
           <Skeleton width={80} height={14} />
           <Skeleton width="100%" height={60} className="mt-2" />
         </div>
-
-        {/* Approval Steps */}
         <div className="bg-gray-50 p-3 rounded-lg space-y-2">
           {[...Array(3)].map((_, i) => (
             <div
@@ -82,46 +75,76 @@ const CtoApplicationDetailsSkeleton = () => {
   );
 };
 
-const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
+const CtoApplicationDetails = ({
+  application: appProp,
+  isLoading,
+  onSelect,
+}) => {
   const { admin } = useAuth();
   const queryClient = useQueryClient();
+
+  const [application, setApplication] = useState(null);
   const [isProcessed, setIsProcessed] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+  const [error, setError] = useState(null);
+
+  // Update local state if selected application changes
+  useEffect(() => {
+    if (appProp?._id !== application?._id) {
+      setApplication(appProp);
+      setIsProcessed(false);
+      setError(null);
+    }
+  }, [appProp, application?._id]);
 
   const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+    onSuccess: (updatedApp) => {
+      setApplication(updatedApp);
+      onSelect(updatedApp); // Update parent immediately
       setIsProcessed(true);
       setIsModalOpen(false);
       toast.success("Application approved successfully.");
+      queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
     },
-    onError: (error) =>
-      toast.error(error.message || "Failed to approve application."),
+    onError: (err) => {
+      setError(err.message || "Failed to approve application.");
+      toast.error(err.message || "Failed to approve application.");
+    },
   });
 
   const rejectMutation = useMutation({
     mutationFn: ({ applicationId, remarks }) =>
       rejectApplicationRequest(applicationId, remarks),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+    onSuccess: (updatedApp) => {
+      setApplication(updatedApp);
+      onSelect(updatedApp); // Update parent immediately
       setRemarks("");
       setIsProcessed(true);
       setIsModalOpen(false);
       toast.success("Application rejected successfully.");
+      queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
     },
-    onError: (error) =>
-      toast.error(error.message || "Failed to reject application."),
+    onError: (err) => {
+      setError(err.message || "Failed to reject application.");
+      toast.error(err.message || "Failed to reject application.");
+    },
   });
 
-  if (isLoading || !application) return <CtoApplicationDetailsSkeleton />;
+  if (isLoading) return <CtoApplicationDetailsSkeleton />;
+  if (error) return <p className="text-red-500 py-10 text-center">{error}</p>;
+  if (!application)
+    return (
+      <p className="text-gray-500 py-10 text-center">No application data.</p>
+    );
 
   const initials = `${application.employee?.firstName?.[0] || ""}${
     application.employee?.lastName?.[0] || ""
   }`;
+
   const formattedDate = application.createdAt
     ? new Date(application.createdAt).toLocaleString("en-US", {
         dateStyle: "medium",
@@ -135,9 +158,22 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
   const currentStep = application.approvals?.find(
     (step) => step.approver?._id === admin?.id
   );
+
   const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
 
   const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
+
+  const handleApproveOrReject = () => {
+    if (modalType === "approve") {
+      approveMutation.mutate(application._id);
+    } else {
+      if (!remarks.trim()) {
+        toast.error("Please enter remarks before rejecting.");
+        return;
+      }
+      rejectMutation.mutate({ applicationId: application._id, remarks });
+    }
+  };
 
   return (
     <div className="border-gray-200 flex flex-col h-full">
@@ -314,20 +350,7 @@ const CtoApplicationDetails = ({ application, isLoading, onSelect }) => {
           show: true,
           label: modalType === "approve" ? "Approve" : "Reject",
           variant: modalType === "approve" ? "save" : "cancel",
-          onClick: () => {
-            if (modalType === "approve") {
-              approveMutation.mutate(application._id);
-            } else {
-              if (!remarks.trim()) {
-                toast.error("Please enter remarks before rejecting.");
-                return;
-              }
-              rejectMutation.mutate({
-                applicationId: application._id,
-                remarks,
-              });
-            }
-          },
+          onClick: handleApproveOrReject,
         }}
       >
         {modalType === "approve" ? (
