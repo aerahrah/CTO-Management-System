@@ -149,6 +149,7 @@ const getEmployeeCtoMemos = async (employeeId) => {
       usedHours: empData?.usedHours || 0,
       remainingHours: empData?.remainingHours || 0,
       status: empData?.status || "ACTIVE",
+      reservedHours: empData?.reservedHours || 0,
     };
   });
 

@@ -13,7 +13,9 @@ const addCtoApplicationRequest = async (req, res) => {
       approver2,
       approver3,
       inclusiveDates,
+      memos, // <-- match the service parameter
     } = req.body;
+
     const userId = req.user.id;
 
     const application = await addCtoApplicationService({
@@ -22,6 +24,7 @@ const addCtoApplicationRequest = async (req, res) => {
       reason,
       approvers: [approver1, approver2, approver3],
       inclusiveDates,
+      memos, // <-- now correctly passed to service
     });
 
     res.status(201).json({

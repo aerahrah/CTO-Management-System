@@ -21,20 +21,11 @@ const ctoCreditSchema = new mongoose.Schema(
           required: true,
         },
 
-        creditedHours: {
-          type: Number,
-          required: true,
-        },
+        creditedHours: { type: Number, required: true },
 
-        usedHours: {
-          type: Number,
-          default: 0,
-        },
-
-        remainingHours: {
-          type: Number,
-          required: true,
-        },
+        usedHours: { type: Number, default: 0 }, // approved CTO
+        reservedHours: { type: Number, default: 0 }, // pending CTO
+        remainingHours: { type: Number, required: true }, // credited - used - reserved
 
         status: {
           type: String,
@@ -42,10 +33,7 @@ const ctoCreditSchema = new mongoose.Schema(
           default: "ACTIVE",
         },
 
-        dateCredited: {
-          type: Date,
-          required: true,
-        },
+        dateCredited: { type: Date, required: true },
       },
     ],
 

@@ -8,8 +8,9 @@ const addCtoApplicationService = async ({
   userId,
   requestedHours,
   reason,
-  inclusiveDates,
   approvers,
+  inclusiveDates,
+  memos, // [{ memoId, appliedHours }]
 }) => {
   // 1️⃣ Basic validations
   if (!requestedHours || !reason || !inclusiveDates?.length)
@@ -24,48 +25,58 @@ const addCtoApplicationService = async ({
       { status: 400 }
     );
 
+  if (!memos || !Array.isArray(memos) || !memos.length)
+    throw Object.assign(
+      new Error("At least one memo with applied hours must be provided."),
+      { status: 400 }
+    );
+
+  // 2️⃣ Check employee exists
   const employee = await Employee.findById(userId);
   if (!employee)
     throw Object.assign(new Error("Employee not found."), { status: 404 });
 
-  // 2️⃣ Fetch credits with remaining hours, oldest first
+  // 3️⃣ Fetch all memos from DB and validate
+  const memoIds = memos.map((m) => m.memoId);
   const credits = await CtoCredit.find({
+    _id: { $in: memoIds },
     "employees.employee": employee._id,
-    "employees.remainingHours": { $gt: 0 },
     status: "CREDITED",
-  }).sort({ dateCredited: 1 });
+  });
 
-  const totalAvailableHours = credits.reduce((sum, credit) => {
-    const empCredit = credit.employees.find(
-      (e) => e.employee.toString() === employee._id.toString()
-    );
-    return sum + (empCredit?.remainingHours || 0);
-  }, 0);
+  if (credits.length !== memoIds.length)
+    throw Object.assign(new Error("Some memos are invalid or not credited."), {
+      status: 400,
+    });
 
-  if (requestedHours > totalAvailableHours)
-    throw Object.assign(
-      new Error(`Insufficient CTO balance. Available: ${totalAvailableHours}`),
-      { status: 400 }
-    );
-
-  // 3️⃣ Allocate hours automatically
-  let remaining = requestedHours;
+  // 4️⃣ Validate hours and update reserved
+  let totalAppliedHours = 0;
   const memoUsage = [];
 
-  for (const credit of credits) {
-    if (remaining <= 0) break;
-
+  for (const input of memos) {
+    const credit = credits.find(
+      (c) => c._id.toString() === input.memoId.toString()
+    );
     const empCredit = credit.employees.find(
       (e) => e.employee.toString() === employee._id.toString()
     );
 
-    if (!empCredit || empCredit.remainingHours <= 0) continue;
+    // ✅ Fix: use only remainingHours
+    const availableHours = empCredit.remainingHours || 0;
 
-    const hoursToUse = Math.min(empCredit.remainingHours, remaining);
+    if (input.appliedHours <= 0 || input.appliedHours > availableHours)
+      throw Object.assign(
+        new Error(
+          `Invalid applied hours for memo ${credit.memoNo}. Available: ${availableHours}`
+        ),
+        { status: 400 }
+      );
 
-    empCredit.usedHours += hoursToUse;
-    empCredit.remainingHours -= hoursToUse;
-    empCredit.status = empCredit.remainingHours === 0 ? "EXHAUSTED" : "ACTIVE";
+    // Update reservedHours and remainingHours
+    empCredit.reservedHours =
+      (empCredit.reservedHours || 0) + input.appliedHours;
+    empCredit.remainingHours = empCredit.remainingHours - input.appliedHours;
+    empCredit.status = empCredit.status || "ACTIVE";
 
     await CtoCredit.updateOne(
       { _id: credit._id, "employees.employee": employee._id },
@@ -75,16 +86,27 @@ const addCtoApplicationService = async ({
     memoUsage.push({
       memoId: credit._id,
       employee: employee._id,
-      hoursUsed: hoursToUse,
-      uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"), // <-- replace backslashes with forward slashes
+      hoursReserved: input.appliedHours,
+      uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"),
       memoNo: credit.memoNo,
-      totalHours: empCredit.usedHours + empCredit.remainingHours,
+      totalHours:
+        empCredit.usedHours +
+        empCredit.reservedHours +
+        empCredit.remainingHours,
     });
 
-    remaining -= hoursToUse;
+    totalAppliedHours += input.appliedHours;
   }
 
-  // 4️⃣ Create CTO application
+  if (totalAppliedHours !== requestedHours)
+    throw Object.assign(
+      new Error(
+        `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${requestedHours})`
+      ),
+      { status: 400 }
+    );
+
+  // 5️⃣ Create CTO application
   const newApplication = new CtoApplication({
     employee: employee._id,
     requestedHours,
@@ -96,7 +118,7 @@ const addCtoApplicationService = async ({
 
   await newApplication.save();
 
-  // 5️⃣ Create approval steps
+  // 6️⃣ Create approval steps
   const approvalSteps = await Promise.all(
     approvers.map((approverId, index) =>
       ApprovalStep.create({
@@ -111,16 +133,16 @@ const addCtoApplicationService = async ({
   newApplication.approvals = approvalSteps.map((step) => step._id);
   await newApplication.save();
 
-  // 6️⃣ Populate for frontend
+  // 7️⃣ Populate for frontend
   const populatedApp = await CtoApplication.findById(newApplication._id)
     .populate("employee", "firstName lastName position")
     .populate({
       path: "approvals",
-      populate: { path: "approver", select: "firstName lastName" }, // only firstName & lastName
+      populate: { path: "approver", select: "firstName lastName" },
     })
     .populate("memo.memoId", "memoNo uploadedMemo duration");
 
-  // Format uploadedMemo paths in populated memos as well
+  // Fix uploadedMemo paths
   if (populatedApp.memo && Array.isArray(populatedApp.memo)) {
     populatedApp.memo.forEach((m) => {
       if (m.memoId?.uploadedMemo) {

@@ -30,14 +30,14 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   const [formData, setFormData] = useState({
     requestedHours: "",
     reason: "",
-    memos: [],
+    memos: [], // will be sent to backend
     inclusiveDates: [],
     approver1: "",
     approver2: "",
     approver3: "",
   });
 
-  /* ---------------- Fetch Approvers ---------------- */
+  // ---------------- Fetch Approvers ----------------
   const {
     data: approverResponse,
     isLoading: isApproverLoading,
@@ -48,27 +48,27 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     enabled: !!admin?.provincialOffice,
   });
 
-  /* ---------------- Fetch CTO Memos ---------------- */
+  // ---------------- Fetch CTO Memos ----------------
   const { data: memoResponse, isLoading: memoLoading } = useQuery({
     queryKey: ["myCtoMemos"],
     queryFn: fetchMyCtoMemos,
   });
 
-  /* ---------------- Submit Mutation ---------------- */
+  // ---------------- Submit Mutation ----------------
   const mutation = useMutation({
     mutationFn: addApplicationRequest,
     onSuccess: () => {
       toast.success("CTO application submitted successfully!");
       queryClient.invalidateQueries(["ctoApplications"]);
-      setFormData({
+      setFormData((prev) => ({
         requestedHours: "",
         reason: "",
         memos: [],
         inclusiveDates: [],
-        approver1: formData.approver1,
-        approver2: formData.approver2,
-        approver3: formData.approver3,
-      });
+        approver1: prev.approver1,
+        approver2: prev.approver2,
+        approver3: prev.approver3,
+      }));
       setSelectedMemos([]);
       setMaxRequestedHours(null);
       onClose?.();
@@ -81,22 +81,23 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     },
   });
 
-  /* ---------------- Expose submit ---------------- */
+  // ---------------- Expose submit ----------------
   useImperativeHandle(ref, () => ({
     submit: () => handleSubmit(),
   }));
 
-  /* ---------------- Handlers ---------------- */
+  // ---------------- Handlers ----------------
   const handleChange = (e) => {
     const { name, value } = e.target;
 
     if (name === "requestedHours") {
-      let val = Number(value);
+      const val = Number(value);
       if (isNaN(val) || val <= 0) {
         setFormData((prev) => ({ ...prev, requestedHours: "" }));
         return;
       }
 
+      // Compute applied memos based on remaining hours
       let remaining = val;
       const newSelectedMemos = [];
       const newFormMemos = [];
@@ -104,7 +105,8 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
       for (let memo of memoResponse?.memos || []) {
         if (remaining <= 0) break;
 
-        const availableHours = memo.remainingHours;
+        const availableHours =
+          (memo.remainingHours || 0) - (memo.reservedHours || 0);
         if (availableHours <= 0) continue;
 
         const applied = Math.min(availableHours, remaining);
@@ -116,6 +118,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
           memoNo: memo.memoNo,
           creditedHours: memo.creditedHours,
           usedHours: memo.usedHours,
+          reservedHours: memo.reservedHours || 0,
           appliedHours: applied,
           totalHours: memo.totalHours,
           remainingHours: memo.remainingHours,
@@ -123,7 +126,6 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
         newFormMemos.push({
           memoId: memo.id,
-          uploadedMemo: memo.uploadedMemo,
           appliedHours: applied,
         });
       }
@@ -142,7 +144,6 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Inclusive dates logic based on requestedHours
   const handleDateAdd = (e) => {
     const value = e.target.value;
     if (!value) return;
@@ -163,10 +164,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
         return prev;
       }
 
-      return {
-        ...prev,
-        inclusiveDates: [...prev.inclusiveDates, value],
-      };
+      return { ...prev, inclusiveDates: [...prev.inclusiveDates, value] };
     });
   };
 
@@ -182,10 +180,16 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
       toast.error("Please enter requested hours");
       return;
     }
+
+    if (!formData.memos || formData.memos.length === 0) {
+      toast.error("No memos selected for CTO application");
+      return;
+    }
+
     mutation.mutate({
       requestedHours: Number(formData.requestedHours),
       reason: formData.reason,
-      memos: formData.memos,
+      memos: formData.memos, // <-- pass memos to backend
       inclusiveDates: formData.inclusiveDates,
       approver1: formData.approver1,
       approver2: formData.approver2,
@@ -202,7 +206,6 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   useEffect(() => {
     if (approverResponse?.data) {
       const a = approverResponse.data;
-      console.log(a);
       setFormData((prev) => ({
         ...prev,
         approver1: a.level1Approver?._id || "",
@@ -215,7 +218,8 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   useEffect(() => {
     if (memoResponse?.memos) {
       const totalRemaining = memoResponse.memos.reduce(
-        (sum, memo) => sum + (memo.remainingHours || 0),
+        (sum, memo) =>
+          sum + ((memo.remainingHours || 0) - (memo.reservedHours || 0)),
         0
       );
       setMaxRequestedHours(totalRemaining);
@@ -223,7 +227,8 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
       setMaxRequestedHours(null);
     }
   }, [memoResponse]);
-  /* ---------------- UI ---------------- */
+
+  // ---------------- UI ----------------
   return (
     <div className="max-w-xl mx-auto">
       <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
@@ -248,13 +253,12 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
               {selectedMemos.map((memo) => (
                 <li key={memo.memoId}>
                   {memo.memoNo} — Applied: {memo.appliedHours}h / Remaining:{" "}
-                  {memo.remainingHours ?? memo.totalHours}h
+                  {memo.remainingHours - (memo.reservedHours || 0)}h
                 </li>
               ))}
             </ul>
           )}
 
-          {/* View Memo Modal Button */}
           <button
             type="button"
             onClick={() => setIsMemoModalOpen(true)}
@@ -324,7 +328,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
             max={maxRequestedHours || undefined}
             className="w-full px-3 py-2 border rounded-md"
           />
-          {maxRequestedHours !== null && maxRequestedHours !== undefined && (
+          {maxRequestedHours !== null && (
             <p className="text-xs text-gray-500 mt-1">
               Maximum allowed: {maxRequestedHours} hours
             </p>
@@ -403,15 +407,15 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
           </div>
         </div>
 
-        {/* Memo Modal with Progress Bar */}
+        {/* Memo Modal */}
         <SelectCtoMemoModal
           isOpen={isMemoModalOpen}
           onClose={() => setIsMemoModalOpen(false)}
           requestedHours={formData.requestedHours}
           memos={memoResponse?.memos || []}
           selectedMemos={selectedMemos}
-          readOnly={true} // Modal is view-only
-          showProgress={true} // new prop to show applied vs remaining
+          readOnly={true}
+          showProgress={true}
         />
       </div>
     </div>
