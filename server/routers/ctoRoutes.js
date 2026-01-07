@@ -73,6 +73,13 @@ router.get(
 );
 
 router.get(
+  "/credits/my-credits",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "employee", "supervisor"),
+  getEmployeeCredits
+);
+
+router.get(
   "/employee/:employeeId/details",
   authenticateToken,
   authorizeRoles("admin", "hr"),

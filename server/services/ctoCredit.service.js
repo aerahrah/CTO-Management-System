@@ -138,6 +138,7 @@ async function getEmployeeCredits(
   if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
     throw new Error("Invalid employee ID");
   }
+  console.log(employeeId);
 
   page = parseInt(page);
   limit = Math.min(Math.max(limit, 20), 100);

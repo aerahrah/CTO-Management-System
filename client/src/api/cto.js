@@ -18,6 +18,14 @@ export const fetchAllCreditRequests = async (params = {}) => {
   return res.data;
 };
 
+export const fetchMyCreditRequests = async (params = {}) => {
+  const res = await API.get(`/cto/credits/my-credits`, {
+    params,
+  });
+  console.log(res.data);
+  return res.data;
+};
+
 // export const fetchRecentCreditRequest = async () => {
 //   const res = await API.get("/cto/credits/recent", {
 //     withCredentials: true,

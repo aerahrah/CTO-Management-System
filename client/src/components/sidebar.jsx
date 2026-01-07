@@ -55,6 +55,12 @@ const Sidebar = () => {
           roles: ["admin", "hr"],
         },
         {
+          name: "My CTO Records",
+          path: "/dashboard/cto/my-credits",
+          icon: <ClipboardPlus size={16} />,
+          roles: ["admin", "hr", "employee", "supervisor"],
+        },
+        {
           name: "Apply CTO Leave",
           path: "/dashboard/cto/apply",
           icon: <FileClock size={16} />,

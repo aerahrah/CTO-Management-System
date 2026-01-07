@@ -18,6 +18,7 @@ import CtoCredits from "./components/ctoComponents/ctoCredits";
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
 import ProtectedRoute from "./components/protectedRoute";
+import MyCtoCredits from "./components/ctoComponents/myCtoCredits";
 
 function App() {
   return (
@@ -42,6 +43,7 @@ function App() {
           <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
           <Route path="cto/records" element={<CtoRecords />} />
           <Route path="cto/dashboard" element={<CtoDashboard />} />
+          <Route path="cto/my-credits" element={<MyCtoCredits />} />
         </Route>
 
         <Route path="*" element={<div>404 - Page Not Found</div>} />

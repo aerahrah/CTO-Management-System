@@ -100,7 +100,7 @@ const getAllCreditRequests = async (req, res) => {
 
 const getEmployeeCredits = async (req, res) => {
   try {
-    const { employeeId } = req.params;
+    const employeeId = req.params.employeeId || req.user.id;
     const { search, status, page, limit } = req.query;
 
     const result = await ctoCreditService.getEmployeeCredits(employeeId, {
@@ -120,7 +120,6 @@ const getEmployeeCredits = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
-
 // const addCreditRequestWithApprover = async (req, res) => {
 //   try {
 //     const { employees, hours, memoNo, approver } = req.body;
