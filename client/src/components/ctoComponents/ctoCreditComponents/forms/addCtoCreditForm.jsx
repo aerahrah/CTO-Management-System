@@ -1,5 +1,5 @@
 import { useState, useRef, forwardRef, useImperativeHandle } from "react";
-import { Upload, Plus } from "lucide-react";
+import { Upload, Users, Clock, FileText, Calendar } from "lucide-react";
 import Select from "react-select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../../../../api/employee";
@@ -19,7 +19,6 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
     dateApproved: "",
   });
 
-  // Fetch employees only when menu opens
   const { data: employeesData, isLoading } = useQuery({
     queryKey: ["employees"],
     queryFn: getEmployees,
@@ -30,21 +29,11 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
   const addCreditMutation = useMutation({
     mutationFn: addCreditRequest,
     onSuccess: () => {
-      toast.success("Credit request submitted successfully!");
-      setFormData({
-        employees: [],
-        duration: { hours: "", minutes: "" },
-        memoNo: "",
-        memoFile: null,
-        dateApproved: "",
-      });
+      toast.success("CTO credit added successfully");
       queryClient.invalidateQueries(["ctoCredits"]);
-      if (onClose) onClose(); // automatically close after submission
+      onClose?.();
     },
-    onError: (err) => {
-      console.error(err);
-      toast.error("Failed to submit credit request");
-    },
+    onError: () => toast.error("Failed to submit credit request"),
   });
 
   const handleChange = (e) => {
@@ -63,15 +52,8 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
     }
   };
 
-  const handleEmployeeChange = (selected) => {
-    setFormData((prev) => ({
-      ...prev,
-      employees: selected ? selected.map((s) => s.value) : [],
-    }));
-  };
-
   const handleSubmit = (e) => {
-    if (e) e.preventDefault();
+    e?.preventDefault();
 
     const payload = new FormData();
     payload.append("memoFile", formData.memoFile);
@@ -89,9 +71,8 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
     addCreditMutation.mutate(payload);
   };
 
-  // Expose submit method to parent via ref
   useImperativeHandle(ref, () => ({
-    submit: () => handleSubmit(),
+    submit: handleSubmit,
   }));
 
   const employeeOptions =
@@ -101,143 +82,168 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
     })) || [];
 
   return (
-    <div className="max-w-xl mx-auto">
-      <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
-        <span className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-full">
-          <Plus className="w-5 h-5 text-white" />
-        </span>
-        <span className="text-xl font-bold text-gray-800">Credit CTO</span>
-      </h2>
-
-      <form className="space-y-5" ref={formRef} onSubmit={handleSubmit}>
-        {/* Employees */}
+    <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200 ">
+      {/* Header */}
+      <div className="px-4 py-4 border-b flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+          <Clock className="w-6 h-6 text-blue-600" />
+        </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Select Employees
-          </label>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Add CTO Credit
+          </h2>
+          <p className="text-xs text-gray-500">
+            Assign Compensatory Time Credits
+          </p>
+        </div>
+      </div>
+
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        className="px-4 py-5 space-y-7 h-[calc(100vh-16rem)] overflow-y-auto"
+      >
+        {/* Employees */}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+              <Users className="w-4 h-4 text-gray-600" />
+            </div>
+            Employees
+          </div>
+
           <Select
             options={employeeOptions}
-            value={employeeOptions.filter((e) =>
-              formData.employees.includes(e.value)
-            )}
             isMulti
-            onChange={handleEmployeeChange}
-            onMenuOpen={() => setMenuOpen(true)}
-            onMenuClose={() => setMenuOpen(false)}
             isLoading={isLoading}
-            placeholder="Search employees..."
+            onChange={(selected) =>
+              setFormData((p) => ({
+                ...p,
+                employees: selected ? selected.map((s) => s.value) : [],
+              }))
+            }
+            onMenuOpen={() => setMenuOpen(true)}
+            placeholder="Search employees"
             classNames={{
               control: ({ isFocused }) =>
-                `border rounded-md px-1 ${
+                `min-h-[42px] rounded-lg border ${
                   isFocused
-                    ? "border-blue-500 ring-2 ring-blue-300"
+                    ? "border-blue-500 ring-1 ring-blue-200"
                     : "border-gray-300"
                 }`,
-              option: ({ isSelected, isFocused }) =>
+              option: ({ isFocused, isSelected }) =>
                 `${
                   isSelected
                     ? "bg-blue-600 text-white"
                     : isFocused
                     ? "bg-gray-100"
                     : "bg-white"
-                } cursor-pointer px-3 py-2`,
-              multiValue: () => "bg-blue-100 text-blue-900 rounded px-2 py-1",
-              multiValueRemove: () =>
-                "text-blue-600 hover:bg-blue-200 hover:text-blue-900 cursor-pointer px-1",
+                } px-3 py-2 cursor-pointer`,
+              multiValue: () =>
+                "bg-blue-100 text-blue-900 rounded-md px-2 py-1",
             }}
           />
         </div>
 
-        {/* Duration */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Credit Duration
-          </label>
-          <div className="flex gap-3">
-            <input
-              type="number"
-              name="hours"
-              value={formData.duration.hours}
-              onChange={handleChange}
-              placeholder="Hours"
-              min="0"
-              className="w-1/2 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <input
-              type="number"
-              name="minutes"
-              value={formData.duration.minutes}
-              onChange={handleChange}
-              placeholder="Minutes"
-              min="0"
-              max="59"
-              className="w-1/2 px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
+        {/* Duration & Date */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+                <Clock className="w-4 h-4 text-gray-600" />
+              </div>
+              Credit Duration
+            </div>
 
-        {/* Memo Number */}
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Memo Number
-          </label>
-          <input
-            type="text"
-            name="memoNo"
-            value={formData.memoNo}
-            onChange={handleChange}
-            placeholder="Enter memo number"
-            className="w-full px-3 py-2 border rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-
-        {/* Upload Memo */}
-        <div className="flex flex-col gap-6 w-full">
-          <div className="w-full">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Upload Memo (PDF)
-            </label>
-            <div className="flex items-center justify-between border rounded-lg bg-gray-50 px-4 py-2 hover:bg-gray-100 transition">
-              <label className="flex items-center gap-2 cursor-pointer flex-1 overflow-hidden">
-                <Upload className="h-5 w-5 text-gray-600" />
-                <span className="text-sm text-gray-700 truncate overflow-hidden whitespace-nowrap">
-                  {formData.memoFile ? formData.memoFile.name : "Choose a file"}
-                </span>
-                <input
-                  type="file"
-                  name="memoFile"
-                  accept="application/pdf"
-                  onChange={handleChange}
-                  className="hidden"
-                />
-              </label>
-
-              {formData.memoFile && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setFormData((prev) => ({ ...prev, memoFile: null }))
-                  }
-                  className="ml-3 text-xs text-red-600 hover:underline"
-                >
-                  Remove
-                </button>
-              )}
+            <div className="flex gap-3">
+              <input
+                type="number"
+                name="hours"
+                placeholder="Hours"
+                min="0"
+                value={formData.duration.hours}
+                onChange={handleChange}
+                className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <input
+                type="number"
+                name="minutes"
+                placeholder="Minutes"
+                min="0"
+                max="59"
+                value={formData.duration.minutes}
+                onChange={handleChange}
+                className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              />
             </div>
           </div>
 
-          {/* Date Approved */}
-          <div className="w-full flex gap-1 flex-col">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-gray-600" />
+              </div>
               Date Approved
-            </label>
+            </div>
+
             <input
               type="date"
               name="dateApproved"
               value={formData.dateApproved}
               onChange={handleChange}
-              className="w-34 px-3 py-2 border rounded-md focus:ring-2 text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
+          </div>
+        </div>
+
+        {/* Memo */}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+                <FileText className="w-4 h-4 text-gray-600" />
+              </div>
+              Memo Number
+            </div>
+
+            <input
+              type="text"
+              name="memoNo"
+              value={formData.memoNo}
+              onChange={handleChange}
+              placeholder="Enter memo number"
+              className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Upload Memo (PDF)
+            </label>
+            <label className="flex items-center gap-3 px-4 py-3 border border-neutral-600 border-dashed rounded-lg bg-gray-50 hover:bg-gray-100 cursor-pointer transition">
+              <Upload className="w-5 h-5 text-gray-500" />
+              <span className="text-sm text-gray-700 truncate">
+                {formData.memoFile ? formData.memoFile.name : "Choose PDF file"}
+              </span>
+              <input
+                type="file"
+                accept="application/pdf"
+                name="memoFile"
+                onChange={handleChange}
+                className="hidden"
+              />
+            </label>
+
+            {formData.memoFile && (
+              <button
+                type="button"
+                onClick={() => setFormData((p) => ({ ...p, memoFile: null }))}
+                className="mt-2 text-xs text-red-600 hover:underline"
+              >
+                Remove file
+              </button>
+            )}
           </div>
         </div>
       </form>

@@ -266,44 +266,42 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
   // ---------------- UI ----------------
   return (
-    <div className="max-w-xl mx-auto">
-      <h2 className="flex items-center gap-3 mb-4 border-b pb-2">
-        <span className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-full">
-          <Clock className="w-5 h-5 text-white" />
-        </span>
-        <span className="text-xl font-bold text-gray-800">Apply for CTO</span>
-      </h2>
+    <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200">
+      <div className="px-4 py-4 border-b flex items-center gap-3 ">
+        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+          <Clock className="w-6 h-6 text-blue-600" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">Apply for CTO</h2>
+          <p className="text-xs text-gray-500">
+            Submit a compensatory time-off request
+          </p>
+        </div>
+      </div>
 
-      <div className="space-y-5 overflow-y-auto pr-2 h-122">
+      <div className="px-4 py-5 space-y-5 h-[calc(100vh-16rem)] overflow-y-auto">
         {/* CTO Memo - Read Only Box */}
+
+        {/* Requested Hours */}
         <div>
           <label className="block text-sm font-medium mb-1">
-            CTO Memos in Use
+            Requested Hours
           </label>
-          {memoLoading ? (
-            <Skeleton height={38} />
-          ) : selectedMemos.length === 0 ? (
-            <p className="text-sm text-gray-500">No memos used yet.</p>
-          ) : (
-            <ul className="text-sm text-gray-600 pl-4 space-y-1 border p-2 rounded-md bg-gray-50 max-h-40 overflow-y-auto">
-              {selectedMemos.map((memo) => (
-                <li key={memo.memoId}>
-                  {memo.memoNo} — Applied: {memo.appliedHours}h / Remaining:{" "}
-                  {memo.remainingHours}h
-                </li>
-              ))}
-            </ul>
+          <input
+            type="number"
+            name="requestedHours"
+            value={formData.requestedHours}
+            onChange={handleChange}
+            min={0}
+            max={maxRequestedHours || undefined}
+            className="w-full px-3 py-2 border rounded-md"
+          />
+          {maxRequestedHours !== null && (
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum allowed: {maxRequestedHours} hours
+            </p>
           )}
-
-          <button
-            type="button"
-            onClick={() => setIsMemoModalOpen(true)}
-            className="mt-2 px-3 py-2 text-sm rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
-          >
-            View Memo Details
-          </button>
         </div>
-
         {/* Inclusive Dates */}
         <div>
           <label className="block text-sm font-medium mb-2">
@@ -349,28 +347,6 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
             />
           </div>
         </div>
-
-        {/* Requested Hours */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Requested Hours
-          </label>
-          <input
-            type="number"
-            name="requestedHours"
-            value={formData.requestedHours}
-            onChange={handleChange}
-            min={0}
-            max={maxRequestedHours || undefined}
-            className="w-full px-3 py-2 border rounded-md"
-          />
-          {maxRequestedHours !== null && (
-            <p className="text-xs text-gray-500 mt-1">
-              Maximum allowed: {maxRequestedHours} hours
-            </p>
-          )}
-        </div>
-
         {/* Reason */}
         <div>
           <label className="block text-sm font-medium mb-1">Reason</label>
@@ -381,6 +357,34 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
             rows="3"
             className="w-full px-3 py-2 border rounded-md"
           />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">
+            CTO Memos in Use
+          </label>
+          {memoLoading ? (
+            <Skeleton height={38} />
+          ) : selectedMemos.length === 0 ? (
+            <p className="text-sm text-gray-500">No memos used yet.</p>
+          ) : (
+            <ul className="text-sm text-gray-600 pl-4 space-y-1 border p-2 rounded-md bg-gray-50 max-h-40 overflow-y-auto">
+              {selectedMemos.map((memo) => (
+                <li key={memo.memoId}>
+                  {memo.memoNo} — Applied: {memo.appliedHours}h / Remaining:{" "}
+                  {memo.remainingHours}h
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setIsMemoModalOpen(true)}
+            className="mt-2 px-3 py-2 text-sm rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
+          >
+            View Memo Details
+          </button>
         </div>
 
         {/* Approval Routing */}

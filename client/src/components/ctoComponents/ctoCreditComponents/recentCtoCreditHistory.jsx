@@ -3,33 +3,39 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchAllCreditRequests, rollbackCreditCto } from "../../../api/cto";
 import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
-import { TableActionButton } from "../../customButton";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import { Clipboard } from "lucide-react";
+import {
+  Clipboard,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  RotateCcw,
+  Plus,
+  Filter,
+} from "lucide-react";
 import FilterSelect from "../../filterSelect";
-import AddCtoCreditForm from "./forms/addCtoCreditForm"; // ✅ ADDED
+import AddCtoCreditForm from "./forms/addCtoCreditForm";
 
-const statusOptions = ["All", "CREDITED", "ROLLEDBACK"];
 const pageSizeOptions = [20, 50, 100];
 
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
   const formRef = useRef(null);
-  // Filters & pagination
+
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
+  const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
+  const [isAddCtoOpen, setIsAddCtoOpen] = useState(false);
   const [isConfirmRollback, setIsConfirmRollback] = useState(false);
   const [selectedCreditId, setSelectedCreditId] = useState(null);
-  const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
 
-  const [isAddCtoOpen, setIsAddCtoOpen] = useState(false);
-
-  // Debounce search input manually
+  /* ---------------- SEARCH DEBOUNCE ---------------- */
   useEffect(() => {
     const handler = setTimeout(() => {
       setSearchFilter(searchInput);
@@ -38,7 +44,7 @@ const CtoCreditHistory = () => {
     return () => clearTimeout(handler);
   }, [searchInput]);
 
-  // Fetch credits
+  /* ---------------- FETCH DATA ---------------- */
   const { data, isLoading } = useQuery({
     queryKey: ["allCredits", page, limit, statusFilter, searchFilter],
     queryFn: () =>
@@ -52,292 +58,276 @@ const CtoCreditHistory = () => {
   });
 
   const credits = useMemo(() => data?.credits || [], [data]);
+
   const pagination = useMemo(
     () => ({
       page: data?.page || 1,
-      totalPages: Math.ceil((data?.total || 0) / (data?.limit || limit)),
+      totalPages: Math.max(Math.ceil((data?.total || 0) / limit), 1),
       total: data?.total || 0,
     }),
     [data, limit]
   );
 
-  const { mutate: rollbackRequest, isLoading: isProcessing } = useMutation({
+  /* ---------------- MUTATION ---------------- */
+  const { mutate: rollbackRequest, isLoading: isRollingBack } = useMutation({
     mutationFn: rollbackCreditCto,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["allCredits"] });
+      setIsConfirmRollback(false);
     },
   });
 
-  const handleRollback = (id) => {
-    setSelectedCreditId(id);
-    setIsConfirmRollback(true);
-  };
-
-  const confirmRollback = () => {
-    if (selectedCreditId) rollbackRequest(selectedCreditId);
-    setIsConfirmRollback(false);
-  };
-
-  const formatDuration = (duration) => {
-    if (!duration) return "-";
-    const { hours = 0, minutes = 0 } = duration;
-    return `${hours}h ${minutes}m`;
-  };
-
-  const handleStatusChange = (val) => {
-    setStatusFilter(val === "All" ? "" : val);
-    setPage(1);
-  };
-
-  const handleLimitChange = (val) => {
-    setLimit(val);
-    setPage(1);
-  };
+  const formatDuration = (d) =>
+    d ? `${d.hours || 0}h ${d.minutes || 0}m` : "-";
 
   const startItem = (pagination.page - 1) * limit + 1;
   const endItem = Math.min(pagination.page * limit, pagination.total);
 
   return (
-    <>
-      {/* Header */}
-      <div className="flex items-center w-full justify-between mb-4 border-b pb-2">
-        <h2 className="flex items-center gap-3">
-          <span className="flex items-center justify-center w-8 h-8 bg-violet-600 rounded-full">
-            <Clipboard className="w-5 h-5 text-white" />
-          </span>
-          <span className="text-xl font-bold text-gray-800">
-            Credit History
-          </span>
-        </h2>
+    <div className="w-full flex flex-col h-full space-y-4">
+      {/* ================= HEADER ================= */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-blue-100 rounded-xl">
+            <Clipboard className="w-6 h-6 text-blue-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              CTO Credit History
+            </h1>
+            <p className="text-sm text-gray-500">
+              Manage and monitor CTO credits issued to employees
+            </p>
+          </div>
+        </div>
 
         <button
-          className="flex justify-end bg-blue-600 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform rounded-md p-2 px-6 text-neutral-50 shadow"
           onClick={() => setIsAddCtoOpen(true)}
+          className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow-sm transition"
         >
+          <Plus className="w-4 h-4" />
           Credit CTO
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-4 mb-4 items-end p-4 bg-neutral-50 rounded-lg shadow-sm transition-all duration-100">
-        <FilterSelect
-          label="Status"
-          value={statusFilter || "All"}
-          onChange={handleStatusChange}
-          options={statusOptions}
-        />
-        <div className="w-48">
-          <label className="block text-gray-700 text-sm font-semibold mb-1">
-            Search Employee
-          </label>
-          <input
-            type="text"
-            placeholder="Type to search..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            className="border border-gray-300 rounded-md p-2 text-sm w-full bg-white shadow-sm focus:outline-none focus:ring-1 focus:ring-violet-500 focus:border-violet-500 transition-all"
-          />
+      {/* ================= MAIN CARD ================= */}
+      <div className="bg-white rounded-lg shadow-sm border border-gray-300 flex flex-col flex-1 min-h-0">
+        {/* ================= FILTER BAR ================= */}
+        <div className="p-4 border-b border-gray-200 bg-gray-50/50 flex flex-wrap gap-4">
+          <div className="relative flex-1 bg-white min-w-[300px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search employee or memo..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 ml-auto">
+            <Filter className="w-4 h-4 text-gray-400" />
+            <FilterSelect
+              label=""
+              value={statusFilter || "All Status"}
+              onChange={(v) => {
+                setStatusFilter(v === "All Status" ? "" : v);
+                setPage(1);
+              }}
+              options={["All Status", "CREDITED", "ROLLEDBACK"]}
+              className="!mb-0 min-w-[140px]"
+            />
+            <FilterSelect
+              label=""
+              value={limit}
+              onChange={(v) => {
+                setLimit(v);
+                setPage(1);
+              }}
+              options={pageSizeOptions}
+              className="!mb-0"
+            />
+          </div>
         </div>
-        <FilterSelect
-          label="Rows per page"
-          value={limit}
-          onChange={handleLimitChange}
-          options={pageSizeOptions}
-        />
-      </div>
 
-      {/* Total Items */}
-      <div className="text-sm text-gray-600 mb-2">
-        Showing <span className="font-semibold">{startItem}</span> -{" "}
-        <span className="font-semibold">{endItem}</span> of{" "}
-        <span className="font-semibold">{pagination.total}</span> items
-      </div>
-
-      {/* Table */}
-
-      <div className="max-h-124 overflow-y-auto overflow-x-auto rounded-lg shadow-sm flex-1">
-        <table className="w-full table-fixed text-sm rounded-lg shadow-sm h-full">
-          <thead className="bg-gradient-to-r from-gray-100 to-gray-200 text-gray-700 text-left sticky top-0 z-10">
-            <tr>
-              <th className="p-3 w-36 border-b border-r border-gray-200">
-                Employees
-              </th>
-              <th className="p-3 border-b border-r border-gray-200 text-center">
-                Memo No.
-              </th>
-              <th className="p-3 text-center border-b border-r border-gray-200">
-                Duration
-              </th>
-              <th className="p-3 text-center border-b border-r border-gray-200">
-                Status
-              </th>
-              <th className="p-3 border-b border-r border-gray-200 text-center">
-                Memo File
-              </th>
-              <th className="p-3 text-center border-b border-gray-200">
-                Action
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading || isProcessing ? (
-              [...Array(limit)].map((_, i) => (
-                <tr
-                  key={i}
-                  className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
-                >
-                  {[...Array(6)].map((__, j) => (
-                    <td
-                      key={j}
-                      className="p-3 border-b border-r border-gray-200"
-                    >
-                      <Skeleton width="100%" height={20} />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : credits.length > 0 ? (
-              credits.map((credit, index) => (
-                <tr
-                  key={credit._id}
-                  className={`transition-colors ${
-                    index % 2 === 0 ? "bg-white" : "bg-gray-50"
-                  } hover:bg-gray-100`}
-                >
-                  <td className="p-3 font-medium text-gray-800 border-b border-gray-200 border-r">
-                    {credit.employees
-                      .map(
-                        (e) =>
-                          `${e.employee?.firstName} ${e.employee?.lastName}`
-                      )
-                      .join(", ")}
-                  </td>
-                  <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
-                    {credit.memoNo}
-                  </td>
-                  <td className="p-3 text-center border-b border-gray-200 border-r">
-                    {formatDuration(credit.duration)}
-                  </td>
-                  <td className="p-3 font-semibold text-center border-b border-gray-200 border-r">
-                    <StatusBadge status={credit.status} />
-                  </td>
-                  <td className="p-3 border-b border-gray-200 border-r text-center">
-                    <TableActionButton
-                      label="View Memo"
-                      onClick={() =>
-                        setMemoModal({ isOpen: true, memo: credit })
-                      }
-                      variant="neutral"
-                    />
-                  </td>
-                  <td className="p-3 text-center border-b border-gray-200">
-                    <TableActionButton
-                      label={isProcessing ? "Processing..." : "Rollback"}
-                      onClick={() => handleRollback(credit._id)}
-                      disabled={credit.status !== "CREDITED" || isProcessing}
-                      variant="neutral"
-                    />
-                  </td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="text-center py-10 text-gray-500">
-                  No credit requests found
-                </td>
+        {/* ================= TABLE ================= */}
+        <div className="overflow-auto flex-1">
+          <table className="w-full table-auto">
+            <thead className="sticky top-0 bg-gray-50 z-10">
+              <tr className="text-xs uppercase tracking-wider text-gray-600">
+                <th className="px-8 py-4">Employees</th>
+                <th className="px-8 py-4">Memo No.</th>
+                <th className="px-8 py-4 text-center">Duration</th>
+                <th className="px-8 py-4 text-center">Status</th>
+                <th className="px-8 py-4 text-right">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            </thead>
 
-      {/* Pagination Controls */}
-      <div className="flex justify-between items-center mt-4">
-        <div></div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
-            disabled={pagination.page === 1 || isLoading}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Prev
-          </button>
-          <span className="text-sm">
-            Page {pagination.page} of {pagination.totalPages}
-          </span>
-          <button
-            onClick={() =>
-              setPage((prev) => Math.min(prev + 1, pagination.totalPages))
-            }
-            disabled={pagination.page === pagination.totalPages || isLoading}
-            className="px-3 py-1 border rounded disabled:opacity-50"
-          >
-            Next
-          </button>
+            <tbody className="divide-y divide-gray-100">
+              {isLoading || isRollingBack ? (
+                [...Array(8)].map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-8 py-4">
+                      <Skeleton />
+                    </td>
+                    <td className="px-8 py-4">
+                      <Skeleton />
+                    </td>
+                    <td className="px-8 py-4 text-center">
+                      <Skeleton width={60} />
+                    </td>
+                    <td className="px-8 py-4 text-center">
+                      <Skeleton width={80} />
+                    </td>
+                    <td className="px-8 py-4 text-right">
+                      <Skeleton width={80} />
+                    </td>
+                  </tr>
+                ))
+              ) : credits.length ? (
+                credits.map((credit, i) => (
+                  <tr
+                    key={credit._id}
+                    className={`transition ${
+                      i % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    } hover:bg-blue-50`}
+                  >
+                    <td className="px-8 py-4 font-medium text-gray-900">
+                      {credit.employees
+                        .map(
+                          (e) =>
+                            `${e.employee?.firstName} ${e.employee?.lastName}`
+                        )
+                        .join(", ")}
+                    </td>
+
+                    <td className="px-8 py-4">{credit.memoNo}</td>
+
+                    <td className="px-8 py-4 text-center text-gray-600">
+                      {formatDuration(credit.duration)}
+                    </td>
+
+                    <td className="px-8 py-4 text-center">
+                      <StatusBadge status={credit.status} />
+                    </td>
+
+                    <td className="px-8 py-4 text-right space-x-2">
+                      <button
+                        onClick={() =>
+                          setMemoModal({ isOpen: true, memo: credit })
+                        }
+                        className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg font-semibold transition"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View
+                      </button>
+
+                      <button
+                        disabled={credit.status !== "CREDITED"}
+                        onClick={() => {
+                          setSelectedCreditId(credit._id);
+                          setIsConfirmRollback(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-red-600 hover:bg-red-50 px-3 py-1.5 rounded-lg font-semibold transition disabled:opacity-40"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Rollback
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-20 text-center text-gray-500">
+                    <div className="flex flex-col items-center gap-4">
+                      <p className="rounded-full bg-gray-50 p-4">
+                        <Search className="w-12 h-12" />
+                      </p>
+                      <p className="text-neutral-500">
+                        No credit history found
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ================= PAGINATION ================= */}
+        <div className="px-8 py-2.5 border-t border-gray-300 bg-gray-50/50 flex justify-between items-center">
+          <p className="text-sm text-gray-500">
+            Showing{" "}
+            <strong>
+              {startItem}-{endItem}
+            </strong>{" "}
+            of <strong>{pagination.total}</strong>
+          </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(p - 1, 1))}
+              disabled={pagination.page === 1}
+              className="p-2 border border-gray-400 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <span className="px-1 text-sm font-semibold">
+              {pagination.page} of {pagination.totalPages}
+            </span>
+
+            <button
+              onClick={() =>
+                setPage((p) => Math.min(p + 1, pagination.totalPages))
+              }
+              disabled={pagination.page === pagination.totalPages}
+              className="p-2 border border-gray-400 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Rollback Modal */}
+      {/* ================= MODALS ================= */}
       <Modal
         isOpen={isConfirmRollback}
         onClose={() => setIsConfirmRollback(false)}
+        title="Confirm Rollback"
         action={{
           label: "Confirm Rollback",
-          onClick: confirmRollback,
-          show: true,
           variant: "delete",
+          show: true,
+          onClick: () => rollbackRequest(selectedCreditId),
         }}
         closeLabel="Cancel"
-        title="Confirm Rollback"
       >
-        <p className="text-l py-2">
-          Are you sure you want to rollback this credited CTO? This will remove
-          the credits from the employee balances.
+        <p className="py-2 text-gray-700">
+          Are you sure you want to rollback this CTO credit?
         </p>
       </Modal>
 
-      {/* Memo Modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={() => setMemoModal({ isOpen: false, memo: null })}
         title={`Memo: ${memoModal.memo?.memoNo || ""}`}
-        action={{
-          label: "Open in new Tab",
-          variant: "save",
-          show: true,
-          onClick: () => {
-            if (memoModal.memo?.uploadedMemo) {
-              const url = `http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
-                /\\/g,
-                "/"
-              )}`;
-              window.open(url, "_blank", "noopener,noreferrer");
-            }
-          },
-        }}
         closeLabel="Close"
       >
-        {memoModal.memo?.uploadedMemo ? (
-          memoModal.memo.uploadedMemo.endsWith(".pdf") ? (
-            <iframe
-              src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
-                /\\/g,
-                "/"
-              )}`}
-              title={memoModal.memo.memoNo}
-              className="w-full h-96 border"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-96 bg-gray-100 border">
-              <p>No preview available</p>
-            </div>
-          )
+        {memoModal.memo?.uploadedMemo?.endsWith(".pdf") ? (
+          <iframe
+            src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
+              /\\/g,
+              "/"
+            )}`}
+            className="w-full h-96 border rounded"
+            title="Memo Preview"
+          />
         ) : (
-          <p className="text-gray-500">No uploaded memo found.</p>
+          <p className="text-gray-500">No preview available.</p>
         )}
       </Modal>
 
-      {/* ✅ ADD CREDIT CTO MODAL */}
       <Modal
         isOpen={isAddCtoOpen}
         onClose={() => setIsAddCtoOpen(false)}
@@ -348,14 +338,12 @@ const CtoCreditHistory = () => {
           onClick: () => formRef.current?.submit(),
         }}
       >
-        <div className="w-120">
-          <AddCtoCreditForm
-            ref={formRef}
-            onClose={() => setIsAddCtoOpen(false)}
-          />
-        </div>
+        <AddCtoCreditForm
+          ref={formRef}
+          onClose={() => setIsAddCtoOpen(false)}
+        />
       </Modal>
-    </>
+    </div>
   );
 };
 
