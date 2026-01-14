@@ -12,7 +12,16 @@ import {
   fetchMyCtoMemos,
 } from "../../../../api/cto";
 import { useAuth } from "../../../../store/authStore";
-import { Clock, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Clock,
+  Calendar,
+  FileText,
+  UserCheck,
+  ChevronDown,
+  ChevronUp,
+  AlertCircle,
+  X,
+} from "lucide-react";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import SelectCtoMemoModal from "./selectCtoMemoModal";
@@ -37,51 +46,46 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     approver3: "",
   });
 
-  // ---------------- Fetch Approvers ----------------
-  const {
-    data: approverResponse,
-    isLoading: isApproverLoading,
-    isError: isApproverError,
-  } = useQuery({
+  // --- Helper: Get date after 5 working days ---
+  const getMinSelectableDate = () => {
+    let date = new Date();
+    let count = 0;
+    while (count < 5) {
+      date.setDate(date.getDate() + 1);
+      const day = date.getDay();
+      if (day !== 0 && day !== 6) {
+        // Skip Sunday (0) and Saturday (6)
+        count++;
+      }
+    }
+    return date.toISOString().split("T")[0];
+  };
+
+  const minDate = getMinSelectableDate();
+
+  // ---------------- Queries & Mutations ----------------
+  const { data: approverResponse, isLoading: isApproverLoading } = useQuery({
     queryKey: ["approverSettings", admin?.provincialOffice],
     queryFn: () => fetchApproverSettings(admin.provincialOffice),
     enabled: !!admin?.provincialOffice,
   });
 
-  // ---------------- Fetch CTO Memos ----------------
   const { data: memoResponse, isLoading: memoLoading } = useQuery({
     queryKey: ["myCtoMemos"],
     queryFn: fetchMyCtoMemos,
   });
 
-  // ---------------- Submit Mutation ----------------
   const mutation = useMutation({
     mutationFn: addApplicationRequest,
     onSuccess: () => {
       toast.success("CTO application submitted successfully!");
       queryClient.invalidateQueries(["ctoApplications"]);
-      setFormData((prev) => ({
-        requestedHours: "",
-        reason: "",
-        memos: [],
-        inclusiveDates: [],
-        approver1: prev.approver1,
-        approver2: prev.approver2,
-        approver3: prev.approver3,
-      }));
-      setSelectedMemos([]);
-      setMaxRequestedHours(null);
       onClose?.();
     },
-    onError: (err) => {
-      console.error(err);
-      toast.error(
-        err.response?.data?.error || "Failed to submit CTO application"
-      );
-    },
+    onError: (err) =>
+      toast.error(err.response?.data?.error || "Failed to submit"),
   });
 
-  // ---------------- Expose submit ----------------
   useImperativeHandle(ref, () => ({
     submit: () => handleSubmit(),
   }));
@@ -89,56 +93,34 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   // ---------------- Handlers ----------------
   const handleChange = (e) => {
     const { name, value } = e.target;
-
     if (name === "requestedHours") {
       let val = Number(value);
-
-      // Clamp to 0..maxRequestedHours
       if (isNaN(val) || val < 0) val = 0;
-      if (maxRequestedHours !== null && val > maxRequestedHours) {
+      if (maxRequestedHours !== null && val > maxRequestedHours)
         val = maxRequestedHours;
-      }
 
-      setFormData((prev) => ({ ...prev, requestedHours: val }));
+      setFormData((prev) => ({
+        ...prev,
+        requestedHours: val,
+        inclusiveDates: [],
+      }));
 
-      // --- Recompute selected memos immediately ---
       let remaining = val;
       const newSelectedMemos = [];
       const newFormMemos = [];
-
       for (let memo of memoResponse?.memos || []) {
         if (remaining <= 0) break;
-
         const availableHours = memo.remainingHours || 0;
         if (availableHours <= 0) continue;
-
         const applied = Math.min(availableHours, remaining);
         remaining -= applied;
-
-        newSelectedMemos.push({
-          memoId: memo.id,
-          uploadedMemo: memo.uploadedMemo,
-          memoNo: memo.memoNo,
-          creditedHours: memo.creditedHours,
-          usedHours: memo.usedHours,
-          reservedHours: memo.reservedHours || 0,
-          appliedHours: applied,
-          totalHours: memo.totalHours,
-          remainingHours: memo.remainingHours,
-        });
-
-        newFormMemos.push({
-          memoId: memo.id,
-          appliedHours: applied,
-        });
+        newSelectedMemos.push({ ...memo, appliedHours: applied });
+        newFormMemos.push({ memoId: memo.id, appliedHours: applied });
       }
-
       setSelectedMemos(newSelectedMemos);
       setFormData((prev) => ({ ...prev, memos: newFormMemos }));
-
       return;
     }
-
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -146,24 +128,42 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     const value = e.target.value;
     if (!value) return;
 
-    setFormData((prev) => {
-      const maxSelectableDates = Math.ceil(Number(prev.requestedHours) / 8);
-      if (!prev.requestedHours) {
-        toast.warn("Enter requested hours first.");
-        return prev;
-      }
+    // Rule 1: Hours must be entered
+    if (!formData.requestedHours || formData.requestedHours <= 0) {
+      toast.warn("Please enter requested hours first.");
+      e.target.value = "";
+      return;
+    }
 
-      if (prev.inclusiveDates.includes(value)) return prev;
+    // Rule 2: 5 Working Days Lead Time
+    if (value < minDate) {
+      toast.error(
+        "Applications must be filed at least 5 working days in advance."
+      );
+      e.target.value = "";
+      return;
+    }
 
-      if (prev.inclusiveDates.length >= maxSelectableDates) {
-        toast.warn(
-          `You can only select up to ${maxSelectableDates} date(s) for ${prev.requestedHours} hours.`
-        );
-        return prev;
-      }
+    const maxSelectableDates = Math.ceil(Number(formData.requestedHours) / 8);
 
-      return { ...prev, inclusiveDates: [...prev.inclusiveDates, value] };
-    });
+    if (formData.inclusiveDates.includes(value)) {
+      e.target.value = "";
+      return;
+    }
+
+    if (formData.inclusiveDates.length >= maxSelectableDates) {
+      toast.warn(
+        `You can only select up to ${maxSelectableDates} days for ${formData.requestedHours} hours.`
+      );
+      e.target.value = "";
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      inclusiveDates: [...prev.inclusiveDates, value],
+    }));
+    e.target.value = ""; // Reset to allow re-selecting same date if removed
   };
 
   const handleDateRemove = (date) => {
@@ -173,72 +173,17 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     }));
   };
 
-  // ---------------- Compute Memo Allocation on Submit ----------------
-  const computeMemosForSubmit = () => {
-    let remaining = Number(formData.requestedHours) || 0;
-    const newSelectedMemos = [];
-    const newFormMemos = [];
-
-    for (let memo of memoResponse?.memos || []) {
-      if (remaining <= 0) break;
-
-      const availableHours = memo.remainingHours || 0;
-      if (availableHours <= 0) continue;
-
-      const applied = Math.min(availableHours, remaining);
-      remaining -= applied;
-
-      newSelectedMemos.push({
-        memoId: memo.id,
-        uploadedMemo: memo.uploadedMemo,
-        memoNo: memo.memoNo,
-        creditedHours: memo.creditedHours,
-        usedHours: memo.usedHours,
-        reservedHours: memo.reservedHours || 0,
-        appliedHours: applied,
-        totalHours: memo.totalHours,
-        remainingHours: memo.remainingHours,
-      });
-
-      newFormMemos.push({
-        memoId: memo.id,
-        appliedHours: applied,
-      });
-    }
-
-    setSelectedMemos(newSelectedMemos);
-    return newFormMemos;
-  };
-
   const handleSubmit = () => {
     if (!formData.requestedHours || formData.requestedHours <= 0) {
       toast.error("Please enter requested hours");
       return;
     }
-
-    const memosToSend = computeMemosForSubmit();
-
-    if (!memosToSend || memosToSend.length === 0) {
-      toast.error("No memos available to cover requested hours");
+    if (formData.inclusiveDates.length === 0) {
+      toast.error("Please select inclusive dates");
       return;
     }
-
-    mutation.mutate({
-      requestedHours: Number(formData.requestedHours),
-      reason: formData.reason,
-      memos: memosToSend,
-      inclusiveDates: formData.inclusiveDates,
-      approver1: formData.approver1,
-      approver2: formData.approver2,
-      approver3: formData.approver3,
-    });
+    mutation.mutate(formData);
   };
-
-  const approverNames = [
-    approverResponse?.data?.level1Approver,
-    approverResponse?.data?.level2Approver,
-    approverResponse?.data?.level3Approver,
-  ];
 
   useEffect(() => {
     if (approverResponse?.data) {
@@ -255,209 +200,298 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   useEffect(() => {
     if (memoResponse?.memos) {
       const totalRemaining = memoResponse.memos.reduce(
-        (sum, memo) => sum + (memo.remainingHours || 0),
+        (sum, m) => sum + (m.remainingHours || 0),
         0
       );
       setMaxRequestedHours(totalRemaining);
-    } else {
-      setMaxRequestedHours(null);
     }
   }, [memoResponse]);
 
-  // ---------------- UI ----------------
+  const maxDatesPossible = Math.ceil(Number(formData.requestedHours) / 8);
+  const progressPercentage =
+    maxDatesPossible > 0
+      ? (formData.inclusiveDates.length / maxDatesPossible) * 100
+      : 0;
+
   return (
     <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200">
-      <div className="px-4 py-4 border-b flex items-center gap-3 ">
-        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-          <Clock className="w-6 h-6 text-blue-600" />
+      {/* Header */}
+      <div className="px-4 py-4 border-b flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+            <Clock className="w-6 h-6 text-blue-600" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              CTO Application
+            </h2>
+            <p className="text-xs text-gray-500">
+              Compensatory Time-Off Request
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">Apply for CTO</h2>
-          <p className="text-xs text-gray-500">
-            Submit a compensatory time-off request
+        <div className="text-right">
+          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
+            Available
+          </p>
+          <p className="text-sm font-bold text-blue-600">
+            {maxRequestedHours || 0} hrs
           </p>
         </div>
       </div>
 
-      <div className="px-4 py-5 space-y-5 h-[calc(100vh-16rem)] overflow-y-auto">
-        {/* CTO Memo - Read Only Box */}
-
-        {/* Requested Hours */}
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Requested Hours
-          </label>
-          <input
-            type="number"
-            name="requestedHours"
-            value={formData.requestedHours}
-            onChange={handleChange}
-            min={0}
-            max={maxRequestedHours || undefined}
-            className="w-full px-3 py-2 border rounded-md"
-          />
-          {maxRequestedHours !== null && (
-            <p className="text-xs text-gray-500 mt-1">
-              Maximum allowed: {maxRequestedHours} hours
-            </p>
-          )}
-        </div>
-        {/* Inclusive Dates */}
-        <div>
-          <label className="block text-sm font-medium mb-2">
-            Inclusive Dates
-          </label>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => dateInputRef.current?.showPicker?.()}
-              className="w-full px-3 py-2 border rounded-md text-left hover:bg-gray-50 flex flex-col items-start gap-1 max-h-40 overflow-y-auto focus:outline-none focus:ring-2 focus:ring-violet-500"
-            >
-              <span className="text-gray-400 text-sm">
-                {formData.requestedHours
-                  ? `Click to add up to ${Math.ceil(
-                      Number(formData.requestedHours) / 8
-                    )} date(s)`
-                  : "Click to add dates"}
-              </span>
-              {formData.inclusiveDates.map((date) => (
-                <div
-                  key={date}
-                  className="w-full flex items-center justify-between bg-gray-100 px-2 py-1 rounded"
-                >
-                  <span className="text-sm">{date}</span>
-                  <button
-                    type="button"
-                    className="text-xs text-red-500 ml-2"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDateRemove(date);
-                    }}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </button>
+      <div className="px-4 py-5 space-y-7 h-[calc(100vh-16rem)] overflow-y-auto">
+        {/* Step 1 & 2: Hours and Dates */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+                <Clock className="w-4 h-4 text-gray-600" />
+              </div>
+              Requested Hours
+            </div>
             <input
-              type="date"
-              ref={dateInputRef}
-              onChange={handleDateAdd}
-              className="absolute top-0 left-0 opacity-0 pointer-events-none"
+              type="number"
+              name="requestedHours"
+              value={formData.requestedHours}
+              onChange={handleChange}
+              placeholder="0"
+              className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
           </div>
+
+          <div className="space-y-2 relative">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+                <Calendar className="w-4 h-4 text-gray-600" />
+              </div>
+              Inclusive Dates
+            </div>
+
+            {/* Improved Wrapper for Positioning */}
+            <div className="relative">
+              <button
+                type="button"
+                disabled={!formData.requestedHours}
+                onClick={() => dateInputRef.current?.showPicker?.()}
+                className={`w-full h-10 px-3 border rounded-lg flex items-center justify-between transition ${
+                  !formData.requestedHours
+                    ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-400"
+                    : "border-neutral-400 text-gray-500 hover:bg-gray-50"
+                }`}
+              >
+                <span className="text-sm">
+                  {!formData.requestedHours
+                    ? "Enter hours first"
+                    : "Select dates..."}
+                </span>
+                <Calendar className="w-4 h-4" />
+              </button>
+
+              {/* Hidden but correctly anchored input */}
+              <input
+                type="date"
+                ref={dateInputRef}
+                min={minDate}
+                onChange={handleDateAdd}
+                className="absolute inset-0 opacity-0 pointer-events-none w-full"
+              />
+            </div>
+          </div>
         </div>
+
+        {/* Dynamic Dates Progress Section */}
+        {formData.requestedHours > 0 && (
+          <div className="space-y-3 animate-in fade-in duration-300">
+            <div className="flex justify-between items-end">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                Dates Selected ({formData.inclusiveDates.length} /{" "}
+                {maxDatesPossible})
+              </span>
+              <span className="text-[10px] text-gray-400 italic">
+                Min. Lead Time: 5 Work Days
+              </span>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-blue-500 transition-all duration-500 ease-out"
+                style={{ width: `${progressPercentage}%` }}
+              />
+            </div>
+
+            {/* Date Tags */}
+            <div className="flex flex-wrap gap-2 p-3 bg-blue-50/30 rounded-xl border border-blue-50/50 min-h-[50px]">
+              {formData.inclusiveDates.length === 0 ? (
+                <p className="text-xs text-blue-400/70 italic flex items-center gap-2">
+                  <AlertCircle size={14} /> No dates selected yet
+                </p>
+              ) : (
+                formData.inclusiveDates.map((date) => (
+                  <div
+                    key={date}
+                    className="flex items-center gap-2 px-2.5 py-1 bg-white border border-blue-100 rounded-lg text-xs font-semibold text-blue-700 shadow-sm"
+                  >
+                    {date}
+                    <button
+                      onClick={() => handleDateRemove(date)}
+                      className="text-blue-300 hover:text-red-500 transition-colors"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Reason */}
-        <div>
-          <label className="block text-sm font-medium mb-1">Reason</label>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+            <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+              <FileText className="w-4 h-4 text-gray-600" />
+            </div>
+            Reason / Justification
+          </div>
           <textarea
             name="reason"
             value={formData.reason}
             onChange={handleChange}
             rows="3"
-            className="w-full px-3 py-2 border rounded-md"
+            placeholder="Type your justification here..."
+            className="w-full p-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm"
           />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            CTO Memos in Use
-          </label>
-          {memoLoading ? (
-            <Skeleton height={38} />
-          ) : selectedMemos.length === 0 ? (
-            <p className="text-sm text-gray-500">No memos used yet.</p>
-          ) : (
-            <ul className="text-sm text-gray-600 pl-4 space-y-1 border p-2 rounded-md bg-gray-50 max-h-40 overflow-y-auto">
-              {selectedMemos.map((memo) => (
-                <li key={memo.memoId}>
-                  {memo.memoNo} — Applied: {memo.appliedHours}h / Remaining:{" "}
-                  {memo.remainingHours}h
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setIsMemoModalOpen(true)}
-            className="mt-2 px-3 py-2 text-sm rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800"
-          >
-            View Memo Details
-          </button>
-        </div>
-
-        {/* Approval Routing */}
-        <button
-          type="button"
-          onClick={() => setShowRouting((prev) => !prev)}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-colors m-0"
-        >
-          {showRouting ? "Hide Approval Routing" : "View Approval Routing"}
-          {showRouting ? (
-            <ChevronUp size={16} className="ml-1" />
-          ) : (
-            <ChevronDown size={16} className="ml-1" />
-          )}
-        </button>
-
-        <div
-          className={`transition-all duration-300 ease-in-out overflow-hidden ${
-            showRouting ? "max-h-[600px] opacity-100 mt-4" : "max-h-0 opacity-0"
-          }`}
-        >
-          <div className="border border-gray-200 rounded-xl bg-gray-50 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-gray-800 border-b pb-2">
-              Approval Routing
-            </h3>
-            {isApproverLoading ? (
-              <div className="space-y-2">
-                {[...Array(3)].map((_, idx) => (
-                  <Skeleton key={idx} height={36} />
-                ))}
+        {/* Deductions Table */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
+                <AlertCircle className="w-4 h-4 text-gray-600" />
               </div>
-            ) : isApproverError ? (
-              <p className="text-sm text-red-500 italic">
-                Failed to load approvers.
-              </p>
+              Credit Deductions
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsMemoModalOpen(true)}
+              className="text-xs font-semibold text-blue-600 hover:underline"
+            >
+              View Ledgers
+            </button>
+          </div>
+
+          <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
+            {memoLoading ? (
+              <div className="p-4">
+                <Skeleton height={30} count={2} />
+              </div>
+            ) : selectedMemos.length === 0 ? (
+              <div className="p-8 text-center bg-gray-50/50">
+                <p className="text-xs text-gray-400 italic">
+                  No hours allocated yet
+                </p>
+              </div>
             ) : (
-              <div className="space-y-2">
-                {approverNames.map((approver, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-3 px-3 py-2 bg-white border rounded-lg transition hover:shadow-sm"
-                  >
-                    <div className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-600">
-                      {idx + 1}
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-gray-800">
-                        {approver
-                          ? `${approver.firstName} ${approver.lastName}`
-                          : "Not Assigned"}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        {approver?.position || "—"}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <table className="w-full text-left text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase">
+                      Memo Reference
+                    </th>
+                    <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase text-right">
+                      Deduction
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {selectedMemos.map((memo) => (
+                    <tr
+                      key={memo.memoId}
+                      className="hover:bg-gray-50/50 transition-colors"
+                    >
+                      <td className="px-4 py-2.5 font-medium text-gray-700">
+                        {memo.memoNo}
+                      </td>
+                      <td className="px-4 py-2.5 text-right font-bold text-blue-600">
+                        -{memo.appliedHours}h
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </div>
         </div>
 
-        {/* Memo Modal */}
-        <SelectCtoMemoModal
-          isOpen={isMemoModalOpen}
-          onClose={() => setIsMemoModalOpen(false)}
-          requestedHours={formData.requestedHours}
-          memos={memoResponse?.memos || []}
-          selectedMemos={selectedMemos}
-          readOnly={true}
-          showProgress={true}
-        />
+        {/* Approval Routing */}
+        <div className="space-y-3 pt-2">
+          <button
+            type="button"
+            onClick={() => setShowRouting(!showRouting)}
+            className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition"
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+              <UserCheck size={16} className="text-gray-500" />
+              Approval Routing
+            </div>
+            {showRouting ? (
+              <ChevronUp size={16} className="text-gray-400" />
+            ) : (
+              <ChevronDown size={16} className="text-gray-400" />
+            )}
+          </button>
+
+          <div
+            className={`overflow-hidden transition-all duration-300 ${
+              showRouting ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"
+            }`}
+          >
+            <div className="space-y-2 pt-1">
+              {isApproverLoading ? (
+                <Skeleton height={50} count={3} borderRadius={8} />
+              ) : (
+                [
+                  approverResponse?.data?.level1Approver,
+                  approverResponse?.data?.level2Approver,
+                  approverResponse?.data?.level3Approver,
+                ].map((app, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-sm"
+                  >
+                    <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-[10px] font-bold text-blue-600">
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-800">
+                        {app
+                          ? `${app.firstName} ${app.lastName}`
+                          : "Not Assigned"}
+                      </p>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-tight">
+                        {app?.position || "Position not specified"}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
       </div>
+
+      <SelectCtoMemoModal
+        isOpen={isMemoModalOpen}
+        onClose={() => setIsMemoModalOpen(false)}
+        requestedHours={formData.requestedHours}
+        memos={memoResponse?.memos || []}
+        selectedMemos={selectedMemos}
+        readOnly={true}
+        showProgress={true}
+      />
     </div>
   );
 });

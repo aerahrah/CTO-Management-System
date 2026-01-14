@@ -10,8 +10,16 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Plus,
   Eye,
   Filter,
+  X,
+  RotateCcw,
+  Clock,
+  Calendar,
+  FileText,
+  Info,
+  Inbox,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
@@ -72,8 +80,30 @@ const MyCtoApplications = () => {
   const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
   const closeMemoModal = () => setMemoModal({ isOpen: false, memos: [] });
 
+  const handleResetFilters = () => {
+    setSearchInput("");
+    setSearchFilter("");
+    setStatusFilter("");
+    setPage(1);
+  };
+
+  const isFiltered = statusFilter !== "" || searchFilter !== "";
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "APPROVED":
+        return "border-l-green-500";
+      case "REJECTED":
+        return "border-l-red-500";
+      case "PENDING":
+        return "border-l-amber-500";
+      default:
+        return "border-l-gray-300";
+    }
+  };
+
   return (
-    <div className="w-full flex flex-col h-full space-y-4">
+    <div className="w-full flex-1 flex h-full flex-col space-y-3 md:p-0">
       {/* ================= HEADER ================= */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
@@ -81,201 +111,414 @@ const MyCtoApplications = () => {
             <Clipboard className="w-6 h-6 text-blue-600" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">
               My CTO Applications
             </h1>
-            <p className="text-sm text-gray-500">
+            <p className="text-xs md:text-sm text-gray-500">
               View and manage your compensatory time-off applications
             </p>
           </div>
         </div>
         <button
           onClick={() => setIsFormModalOpen(true)}
-          className="bg-blue-600 text-white rounded-lg px-6 py-2 hover:bg-blue-700 transition"
+          className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
         >
+          <Plus className="w-4 h-4" />
           Apply CTO
         </button>
       </div>
 
       {/* ================= MAIN CARD ================= */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-300 flex flex-col flex-1 min-h-0">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-300 flex flex-col flex-1 min-h-0 overflow-hidden">
         {/* ================= FILTER BAR ================= */}
-        <div className="p-4 border-b border-gray-200 bg-gray-50/50 flex flex-wrap gap-4">
-          <div className="relative flex-1 min-w-[300px] bg-white">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search memo number..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-            />
-          </div>
-
-          <div className="flex items-center gap-3 ml-auto">
-            <Filter className="w-4 h-4 text-gray-400" />
-            <FilterSelect
-              label=""
-              value={statusFilter || "All Status"}
-              onChange={(v) => {
-                setStatusFilter(v === "All Status" ? "" : v);
-                setPage(1);
-              }}
-              options={["All Status", ...statusOptions]}
-              className="!mb-0 min-w-[140px]"
-            />
-            <FilterSelect
-              label=""
-              value={limit}
-              onChange={(v) => {
-                setLimit(v);
-                setPage(1);
-              }}
-              options={pageSizeOptions}
-              className="!mb-0"
-            />
-          </div>
-        </div>
-
-        {/* ================= TABLE ================= */}
-        <div className="overflow-auto flex-1">
-          <table className="w-full table-auto">
-            <thead className="sticky top-0 bg-gray-50 z-10">
-              <tr className="text-xs uppercase tracking-wider text-gray-600">
-                <th className="px-8 py-4">Memo No.</th>
-                <th className="px-8 py-4 text-center">Requested Hours</th>
-                <th className="px-8 py-4 text-center">Status</th>
-                <th className="px-8 py-4 text-center">Submitted</th>
-                <th className="px-8 py-4 text-center">Inclusive Dates</th>
-                <th className="px-8 py-4 text-center">Memos</th>
-                <th className="px-8 py-4 text-right">Actions</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {isLoading ? (
-                [...Array(8)].map((_, i) => (
-                  <tr
-                    key={i}
-                    className={`${i % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
+        <div className="p-2 md:p-3 border-b border-gray-300 bg-white">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              {/* Search Box */}
+              <div className="relative flex-1 group">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 group-focus-within:text-blue-500" />
+                <input
+                  type="text"
+                  placeholder="Search memo..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-300 rounded-lg text-sm outline-none transition-all"
+                />
+                {searchInput && (
+                  <button
+                    onClick={() => setSearchInput("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400"
                   >
-                    {[...Array(7)].map((__, j) => (
-                      <td key={j} className="px-8 py-4 border border-gray-200">
-                        <Skeleton />
-                      </td>
-                    ))}
-                  </tr>
-                ))
-              ) : applications.length ? (
-                applications.map((app, index) => (
-                  <tr
-                    key={app._id}
-                    className={`transition hover:bg-blue-50 ${
-                      index % 2 === 0 ? "bg-white" : "bg-gray-50"
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Desktop Filters Group */}
+              <div className="hidden md:flex items-center gap-4 border-l pl-4 border-gray-300">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-400" />
+                  <FilterSelect
+                    label=""
+                    value={statusFilter || "All Status"}
+                    onChange={(v) => {
+                      setStatusFilter(v === "All Status" ? "" : v);
+                      setPage(1);
+                    }}
+                    options={["All Status", ...statusOptions]}
+                    className="!mb-0 min-w-[140px]"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Rows
+                  </span>
+                  <FilterSelect
+                    label=""
+                    value={limit}
+                    onChange={(v) => {
+                      setLimit(v);
+                      setPage(1);
+                    }}
+                    options={pageSizeOptions}
+                    className="!mb-0 w-20"
+                  />
+                </div>
+              </div>
+
+              {/* Mobile Rows Toggle - Swapped native select for FilterSelect */}
+              <div className="md:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
+                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  Rows
+                </span>
+                <FilterSelect
+                  label=""
+                  value={limit}
+                  onChange={(v) => {
+                    setLimit(v);
+                    setPage(1);
+                  }}
+                  options={pageSizeOptions}
+                  className="!mb-0 20-16 text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Mobile Horizontal Status Filter */}
+            <div className="md:hidden flex overflow-x-auto pb-1 gap-2 scrollbar-hide">
+              {["All Status", ...statusOptions].map((opt) => {
+                const isSelected =
+                  (opt === "All Status" && !statusFilter) ||
+                  statusFilter === opt;
+                return (
+                  <button
+                    key={opt}
+                    onClick={() => {
+                      setStatusFilter(opt === "All Status" ? "" : opt);
+                      setPage(1);
+                    }}
+                    className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-bold border transition-all ${
+                      isSelected
+                        ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                        : "bg-white border-gray-200 text-gray-600 active:bg-gray-100"
                     }`}
                   >
-                    <td className="px-8 py-4 border border-gray-200 font-medium text-gray-900">
-                      {Array.isArray(app.memo) && app.memo.length
-                        ? app.memo.map((m) => m?.memoId?.memoNo).join(", ")
-                        : "-"}
-                    </td>
-                    <td className="px-8 py-4 border border-gray-200 text-center text-gray-600">
-                      {app.requestedHours}
-                    </td>
-                    <td className="px-8 py-4 border border-gray-200 text-center">
-                      <StatusBadge status={app.overallStatus} />
-                    </td>
-                    <td className="px-8 py-4 border border-gray-200 text-center text-gray-600">
-                      {new Date(app.createdAt).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </td>
-                    <td className="px-8 py-4 border border-gray-200 text-center text-gray-600">
-                      {app.inclusiveDates
-                        ?.map((d) => new Date(d).toLocaleDateString("en-US"))
-                        .join(", ")}
-                    </td>
-                    <td className="px-8 py-4 border border-gray-200 text-center">
-                      {app.memo?.length > 0 ? (
-                        <button
-                          onClick={() => openMemoModal(app.memo)}
-                          className="text-blue-600 font-medium hover:underline transition"
-                        >
-                          View ({app.memo.length})
-                        </button>
-                      ) : (
-                        <span className="text-gray-400">No memos</span>
-                      )}
-                    </td>
-                    <td className="px-8 py-4 border border-gray-200 text-right">
-                      <button
-                        onClick={() => setSelectedApp(app)}
-                        className="text-blue-600 font-medium hover:underline transition"
-                      >
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={7} className="py-20 text-center text-gray-500">
-                    <div className="flex flex-col items-center gap-4">
-                      <p className="rounded-full bg-gray-50 p-4">
-                        <Search className="w-12 h-12" />
-                      </p>
-                      <p>No CTO applications found</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Active Filters Summary */}
+            {isFiltered && (
+              <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">
+                    Active:
+                  </span>
+                  {searchFilter && (
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                      "{searchFilter}"
+                    </span>
+                  )}
+                  {statusFilter && (
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                      {statusFilter}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleResetFilters}
+                  className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase"
+                >
+                  <RotateCcw size={10} /> Reset
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* ================= PAGINATION ================= */}
-        <div className="px-8 py-2.5 border-t border-gray-300 bg-gray-50/50 flex justify-between items-center">
-          <p className="text-sm text-gray-500">
+        {/* ================= CONTENT AREA ================= */}
+        <div className="h-full flex flex-col overflow-y-auto min-h-0 bg-gray-50 md:bg-white">
+          {/* No Results found logic */}
+          {!isLoading && applications.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+              <div className="bg-gray-100 p-4 rounded-full mb-4">
+                <Inbox className="w-12 h-12 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">
+                No Applications Found
+              </h3>
+              <p className="text-sm text-gray-500 max-w-xs mt-1">
+                We couldn't find any CTO applications matching your current
+                filters or search criteria.
+              </p>
+              {isFiltered && (
+                <button
+                  onClick={handleResetFilters}
+                  className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* DESKTOP TABLE VIEW */}
+              <div className="hidden md:block">
+                <table className="w-full table-auto border-collapse">
+                  <thead className="sticky top-0 bg-gray-100 z-10 text-[11px] uppercase tracking-[0.1em] text-gray-600 font-bold">
+                    <tr>
+                      <th className="px-6 py-4 border border-gray-300 text-left">
+                        Memo No.
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-center">
+                        Requested Hours
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-center">
+                        Status
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-center">
+                        Submitted
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-center">
+                        Inclusive Dates
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-center">
+                        Memos
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-right">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoading
+                      ? [...Array(8)].map((_, i) => (
+                          <tr key={i}>
+                            {[...Array(7)].map((__, j) => (
+                              <td
+                                key={j}
+                                className="px-6 py-4 border border-gray-300"
+                              >
+                                <Skeleton />
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      : applications.map((app, index) => (
+                          <tr
+                            key={app._id}
+                            className={`transition group hover:bg-blue-50/40 ${
+                              index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                            }`}
+                          >
+                            <td className="px-6 py-3 border border-gray-300 font-medium text-gray-900">
+                              {Array.isArray(app.memo) && app.memo.length
+                                ? app.memo
+                                    .map((m) => m?.memoId?.memoNo)
+                                    .join(", ")
+                                : "-"}
+                            </td>
+                            <td className="px-6 py-3 border border-gray-300 text-center text-gray-600">
+                              {app.requestedHours}
+                            </td>
+                            <td className="px-6 py-3 border border-gray-300 text-center">
+                              <StatusBadge status={app.overallStatus} />
+                            </td>
+                            <td className="px-6 py-3 border border-gray-300 text-center text-gray-600">
+                              {new Date(app.createdAt).toLocaleDateString(
+                                "en-US",
+                                {
+                                  year: "numeric",
+                                  month: "long",
+                                  day: "numeric",
+                                }
+                              )}
+                            </td>
+                            <td className="px-6 py-3 border border-gray-300 text-center text-gray-600 text-xs">
+                              {app.inclusiveDates
+                                ?.map((d) =>
+                                  new Date(d).toLocaleDateString("en-US")
+                                )
+                                .join(", ")}
+                            </td>
+                            <td className="px-6 py-3 border border-gray-300 text-center">
+                              {app.memo?.length > 0 ? (
+                                <button
+                                  onClick={() => openMemoModal(app.memo)}
+                                  className="text-blue-600 font-medium hover:underline text-sm"
+                                >
+                                  View ({app.memo.length})
+                                </button>
+                              ) : (
+                                <span className="text-gray-400 text-sm">
+                                  No memos
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-3 border border-gray-300 text-right">
+                              <button
+                                onClick={() => setSelectedApp(app)}
+                                className="bg-white border border-gray-300 px-3 py-1.5 rounded-md text-blue-600 text-sm font-semibold hover:bg-blue-600 hover:text-white transition shadow-sm"
+                              >
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* MOBILE CARD VIEW */}
+              <div className="md:hidden flex flex-col p-4 gap-4">
+                {isLoading
+                  ? [...Array(5)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-white rounded-xl p-5 shadow-sm border border-gray-200 space-y-3"
+                      >
+                        <Skeleton count={3} />
+                      </div>
+                    ))
+                  : applications.map((app) => (
+                      <div
+                        key={app._id}
+                        className={`bg-white rounded-xl shadow-sm border-l-4 ${getStatusColor(
+                          app.overallStatus
+                        )} border-y border-r border-gray-200 transition-all active:scale-[0.98]`}
+                      >
+                        <div className="p-4">
+                          <div className="flex justify-between items-start mb-4">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-bold text-gray-400 uppercase mb-0.5">
+                                Memo Reference
+                              </span>
+                              <span className="text-sm font-bold text-gray-900">
+                                {Array.isArray(app.memo) && app.memo.length
+                                  ? app.memo
+                                      .map((m) => m?.memoId?.memoNo)
+                                      .join(", ")
+                                  : "No Memo"}
+                              </span>
+                            </div>
+                            <StatusBadge status={app.overallStatus} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-3 mb-4 bg-gray-50 rounded-lg p-3">
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 bg-white rounded-md">
+                                <Clock size={14} className="text-blue-500" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[9px] text-gray-400 font-bold uppercase">
+                                  Hours
+                                </span>
+                                <span className="text-sm font-bold text-gray-700">
+                                  {app.requestedHours} hrs
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2.5">
+                              <div className="p-2 bg-white rounded-md">
+                                <Calendar size={14} className="text-blue-500" />
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-[9px] text-gray-400 font-bold uppercase">
+                                  Filed On
+                                </span>
+                                <span className="text-sm font-bold text-gray-700">
+                                  {new Date(app.createdAt).toLocaleDateString(
+                                    "en-US",
+                                    { month: "short", day: "numeric" }
+                                  )}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                            <button
+                              onClick={() => openMemoModal(app.memo)}
+                              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg border border-gray-200 text-gray-600 text-xs font-bold"
+                            >
+                              <FileText size={14} /> Memos
+                            </button>
+                            <button
+                              onClick={() => setSelectedApp(app)}
+                              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-bold"
+                            >
+                              <Info size={14} /> Details
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ================= COMPACT PAGINATION ================= */}
+        <div className="px-4 md:px-8 py-3 border-t border-gray-300 bg-white flex items-center justify-between">
+          <div className="text-xs md:text-sm text-gray-500">
             Showing{" "}
-            <strong>
+            <span className="font-bold text-gray-900">
               {startItem}-{endItem}
-            </strong>{" "}
-            of <strong>{pagination.total}</strong>
-          </p>
+            </span>{" "}
+            of{" "}
+            <span className="font-bold text-gray-900">{pagination.total}</span>
+          </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(p - 1, 1))}
-              disabled={pagination.page === 1 || pagination.total === 0}
-              className="p-2 border border-gray-400 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            <span className="px-1 text-sm font-semibold">
-              {pagination.page} of {pagination.totalPages}
-            </span>
-
-            <button
-              onClick={() =>
-                setPage((p) => Math.min(p + 1, pagination.totalPages))
-              }
-              disabled={
-                pagination.page >= pagination.totalPages ||
-                pagination.total === 0
-              }
-              className="p-2 border border-gray-400 rounded-lg bg-white hover:bg-gray-50 disabled:opacity-40"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:block text-xs font-medium text-gray-500 uppercase tracking-tighter">
+              Page {pagination.page} / {pagination.totalPages}
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(p - 1, 1))}
+                disabled={pagination.page === 1 || pagination.total === 0}
+                className="p-1.5 border border-gray-300 rounded-lg disabled:opacity-30"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() =>
+                  setPage((p) => Math.min(p + 1, pagination.totalPages))
+                }
+                disabled={
+                  pagination.page >= pagination.totalPages ||
+                  pagination.total === 0
+                }
+                className="p-1.5 border border-gray-300 rounded-lg disabled:opacity-30"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
       {/* ================= MODALS ================= */}
-      {/* CTO Details Modal */}
       {selectedApp && (
         <Modal
           isOpen={!!selectedApp}
@@ -286,7 +529,6 @@ const MyCtoApplications = () => {
         </Modal>
       )}
 
-      {/* Add CTO Form Modal */}
       <Modal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
@@ -297,7 +539,7 @@ const MyCtoApplications = () => {
           onClick: () => formRef.current?.submit(),
         }}
       >
-        <div className="w-120">
+        <div className="w-full max-w-lg">
           <AddCtoApplicationForm
             ref={formRef}
             onClose={() => setIsFormModalOpen(false)}
@@ -305,60 +547,34 @@ const MyCtoApplications = () => {
         </div>
       </Modal>
 
-      {/* Memo Modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={closeMemoModal}
-        title="Memos Used in CTO Application"
+        title="Memos Used"
         closeLabel="Close"
       >
-        {memoModal.memos.length === 0 ? (
-          <p className="text-gray-500 text-center py-10">No memos available</p>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-neutral-100 rounded-md">
-            {memoModal.memos.map((memo, i) => (
-              <div
-                key={i}
-                className="bg-white border border-gray-300 rounded-md shadow-sm hover:shadow-md transition flex flex-col"
-              >
-                {memo.uploadedMemo?.endsWith(".pdf") ? (
-                  <iframe
-                    src={`http://localhost:3000/${memo?.uploadedMemo}`}
-                    title={memo.memoId?.memoNo || `Memo ${i}`}
-                    className="w-full h-40 border-b border-gray-200 rounded-t-md"
-                  />
-                ) : (
-                  <div className="w-full h-40 flex items-center justify-center bg-gray-50 border-b border-gray-200 rounded-t-md">
-                    <p className="text-gray-400 text-sm">
-                      No Preview Available
-                    </p>
-                  </div>
-                )}
-                <div className="p-4 flex-1 flex flex-col justify-between">
-                  <div className="mb-3">
-                    <div className="flex gap-1 font-semibold">
-                      <p>Memo: </p>
-                      <p className="text-gray-900 text-sm md:text-base">
-                        {memo.memoId?.memoNo || "—"}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex justify-between gap-2 mt-auto">
-                    <a
-                      href={`http://localhost:3000/${memo?.uploadedMemo}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-medium"
-                    >
-                      <Eye size={16} />
-                      View
-                    </a>
-                  </div>
-                </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-2 bg-neutral-100 rounded-md">
+          {memoModal.memos.map((memo, i) => (
+            <div
+              key={i}
+              className="bg-white border border-gray-300 rounded-md shadow-sm overflow-hidden"
+            >
+              <div className="p-4">
+                <p className="text-sm font-semibold mb-3 truncate">
+                  Memo: {memo.memoId?.memoNo || "—"}
+                </p>
+                <a
+                  href={`http://localhost:3000/${memo?.uploadedMemo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-medium"
+                >
+                  <Eye size={16} /> View Original
+                </a>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   );
