@@ -1,6 +1,6 @@
 const express = require("express");
 const {
-  getApproversByProvincialOffice,
+  getApproversByDesignation,
   upsertApproverSetting,
   getAllApproverSettings,
   deleteApproverSetting,
@@ -23,7 +23,7 @@ router.get(
   "/:provincialOfficeId",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getApproversByProvincialOffice
+  getApproversByDesignation
 );
 router.post(
   "/",

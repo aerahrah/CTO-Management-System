@@ -1,18 +1,18 @@
 const ctoApproverSettingService = require("../services/ctoApproverSetting.service");
 
-// Get approvers by provincial office
-exports.getApproversByProvincialOffice = async (req, res) => {
+// Get approvers by designation
+exports.getApproversByDesignation = async (req, res) => {
   try {
-    const { provincialOfficeId } = req.params;
+    const { designationId } = req.params;
     const approverSetting =
-      await ctoApproverSettingService.getApproversByProvincialOfficeService(
-        provincialOfficeId
+      await ctoApproverSettingService.getApproversByDesignationService(
+        designationId
       );
 
     if (!approverSetting) {
       return res.json({
         show: false,
-        message: "No approver setting found for this provincial office.",
+        message: "No approver setting found for this designation.",
       });
     }
 
@@ -38,7 +38,7 @@ exports.upsertApproverSetting = async (req, res) => {
   }
 };
 
-// Get all
+// Get all approver settings
 exports.getAllApproverSettings = async (req, res) => {
   try {
     const settings =
@@ -50,7 +50,7 @@ exports.getAllApproverSettings = async (req, res) => {
   }
 };
 
-// Delete
+// Delete approver setting
 exports.deleteApproverSetting = async (req, res) => {
   try {
     const { id } = req.params;

@@ -73,7 +73,7 @@ const signInEmployeeService = async (username, password) => {
   const payload = {
     id: employee._id,
     username: employee.username,
-    provincialOffice: employee.provincialOffice,
+    designation: employee.designation,
     role: employee.role,
   };
 

@@ -4,7 +4,7 @@ const dotenv = require("dotenv");
 const connectDB = require("./db/connect");
 const employeeRoutes = require("./routers/employeeRoutes");
 const ctoSettingRoutes = require("./routers/ctoSettingRoute");
-const provincialOfficeRoutes = require("./routers/provincialOfficeRoute");
+const designationRoutes = require("./routers/designationRoute");
 const ctoRoutes = require("./routers/ctoRoutes");
 const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const cors = require("cors");
@@ -32,7 +32,7 @@ app.use("/employee", employeeRoutes);
 app.use("/cto", ctoRoutes);
 app.use("/cto", ctoDashboardRoutes);
 app.use("/cto/settings", ctoSettingRoutes);
-app.use("/settings/provincial-office", provincialOfficeRoutes);
+app.use("/settings/provincial-office", designationRoutes);
 
 connectDB().then(() => {
   app.listen(PORT, () => {

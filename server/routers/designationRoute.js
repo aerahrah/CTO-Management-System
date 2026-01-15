@@ -1,11 +1,11 @@
 const express = require("express");
 const {
-  getAllProvincialOffices,
-  getProvincialOfficeById,
-  createProvincialOffice,
-  updateProvincialOffice,
-  deleteProvincialOffice,
-} = require("../controllers/provincialOfficeController");
+  getAllDesignations,
+  getDesignationById,
+  createDesignation,
+  updateDesignation,
+  deleteDesignation,
+} = require("../controllers/designationController.js");
 
 const {
   authenticateToken,
@@ -14,35 +14,44 @@ const {
 
 const router = express.Router();
 
+// GET all designations
 router.get(
   "/",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getAllProvincialOffices
+  getAllDesignations
 );
+
+// GET designation by ID
 router.get(
   "/:id",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getProvincialOfficeById
+  getDesignationById
 );
+
+// CREATE a new designation
 router.post(
   "/",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  createProvincialOffice
+  createDesignation
 );
+
+// UPDATE designation
 router.put(
   "/:id",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  updateProvincialOffice
+  updateDesignation
 );
+
+// DELETE designation
 router.delete(
   "/:id",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  deleteProvincialOffice
+  deleteDesignation
 );
 
 module.exports = router;

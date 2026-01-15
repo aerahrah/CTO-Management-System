@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const provincialOfficeSchema = new mongoose.Schema(
+const designationSchema = new mongoose.Schema(
   {
     name: { type: String, required: true }, // e.g. "Isabela Provincial Office - Cauayan"
     province: { type: String, required: false },
@@ -9,4 +9,4 @@ const provincialOfficeSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("ProvincialOffice", provincialOfficeSchema);
+module.exports = mongoose.model("designation", designationSchema);

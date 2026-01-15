@@ -1,12 +1,16 @@
 const CtoApproverSetting = require("../models/ctoApproverSettingModel");
-const ProvincialOffice = require("../models/provincialOfficeModel");
+const Designation = require("../models/designationModel"); // changed
 const Employee = require("../models/employeeModel");
 
-const getApproversByProvincialOfficeService = async (provincialOfficeId) => {
+/**
+ * Get approvers by designation
+ * @param {String} designationId - ObjectId of designation
+ */
+const getApproversByDesignationService = async (designationId) => {
   const approverSetting = await CtoApproverSetting.findOne({
-    provincialOffice: provincialOfficeId,
+    designation: designationId,
   })
-    .populate("provincialOffice", "name code province")
+    .populate("designation", "name")
     .populate("level1Approver", "firstName lastName position")
     .populate("level2Approver", "firstName lastName position")
     .populate("level3Approver", "firstName lastName position");
@@ -14,13 +18,18 @@ const getApproversByProvincialOfficeService = async (provincialOfficeId) => {
   return approverSetting;
 };
 
+/**
+ * Create or update approver setting per designation
+ * @param {Object} data - { designation, level1Approver, level2Approver, level3Approver }
+ */
 const upsertApproverSettingService = async (data) => {
-  const { provincialOffice, level1Approver, level2Approver, level3Approver } =
-    data;
+  const { designation, level1Approver, level2Approver, level3Approver } = data;
 
-  const officeExists = await ProvincialOffice.findById(provincialOffice);
-  if (!officeExists) throw new Error("Provincial office not found.");
+  // Validate designation
+  const designationExists = await Designation.findById(designation);
+  if (!designationExists) throw new Error("Designation not found.");
 
+  // Validate employee IDs
   const validateEmployee = async (employeeId, levelName) => {
     if (!employeeId) return null;
     const exists = await Employee.findById(employeeId);
@@ -41,27 +50,31 @@ const upsertApproverSettingService = async (data) => {
     "Level 3 Approver"
   );
 
+  // Upsert setting
   const setting = await CtoApproverSetting.findOneAndUpdate(
-    { provincialOffice },
+    { designation },
     {
-      provincialOffice,
+      designation,
       level1Approver: validLevel1,
       level2Approver: validLevel2,
       level3Approver: validLevel3,
     },
     { new: true, upsert: true }
   )
+    .populate("designation", "name")
     .populate("level1Approver", "firstName lastName position")
     .populate("level2Approver", "firstName lastName position")
-    .populate("level3Approver", "firstName lastName position")
-    .populate("provincialOffice", "name");
+    .populate("level3Approver", "firstName lastName position");
 
   return setting;
 };
 
+/**
+ * Get all approver settings
+ */
 const getAllApproverSettingsService = async () => {
   const settings = await CtoApproverSetting.find()
-    .populate("provincialOffice", "name code province")
+    .populate("designation", "name")
     .populate("level1Approver", "firstName lastName position")
     .populate("level2Approver", "firstName lastName position")
     .populate("level3Approver", "firstName lastName position");
@@ -69,6 +82,10 @@ const getAllApproverSettingsService = async () => {
   return settings;
 };
 
+/**
+ * Delete approver setting by ID
+ * @param {String} id - CtoApproverSetting ObjectId
+ */
 const deleteApproverSettingService = async (id) => {
   const deleted = await CtoApproverSetting.findByIdAndDelete(id);
   if (!deleted) throw new Error("Approver setting not found.");
@@ -76,7 +93,7 @@ const deleteApproverSettingService = async (id) => {
 };
 
 module.exports = {
-  getApproversByProvincialOfficeService,
+  getApproversByDesignationService,
   upsertApproverSettingService,
   getAllApproverSettingsService,
   deleteApproverSettingService,

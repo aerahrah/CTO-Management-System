@@ -19,9 +19,9 @@ const employeeSchema = new mongoose.Schema(
       default: "employee",
     },
 
-    provincialOffice: {
+    designation: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "ProvincialOffice",
+      ref: "designation",
       required: false,
     },
 
@@ -30,7 +30,8 @@ const employeeSchema = new mongoose.Schema(
     email: { type: String, lowercase: true },
     phone: { type: String },
     position: { type: String, required: true },
-    department: { type: String },
+    division: { type: String },
+    project: { type: String },
     dateHired: { type: Date, default: Date.now },
     status: {
       type: String,
