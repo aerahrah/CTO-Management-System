@@ -9,12 +9,12 @@ import CreditCtoTable from "./ctoEmployeeCreditTable";
 import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-
+import { useParams } from "react-router-dom";
 /* =========================
    SKELETON
 ========================= */
 const EmployeeInfoSkeleton = () => (
-  <div className="p-2 space-y-4">
+  <div className="space-y-4">
     <Skeleton height={120} />
     <Skeleton height={400} />
   </div>
@@ -144,7 +144,7 @@ const CtoEmployeeInformation = ({
 
   /* ================= RENDER ================= */
   return (
-    <div className="p-2 space-y-4 h-full flex flex-col">
+    <div className="space-y-4 h-full flex flex-col">
       {/* ================= HEADER ================= */}
       <div className="bg-white border-b border-neutral-300 pb-4 flex flex-col lg:flex-row justify-between gap-4">
         <div>
