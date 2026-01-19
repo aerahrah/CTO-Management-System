@@ -137,9 +137,9 @@ const CtoApplicationDetails = ({
   return (
     <div className="flex-1 h-full flex flex-col gap-4 max-w-6xl mx-auto">
       {/* HEADER SECTION */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-1 border-b-1 border-gray-300 sticky top-4 backdrop-blur-lg bg-white/90">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white pb-2 border-b-1 border-gray-300 sticky backdrop-blur-lg px-1 top-2 bg-white/90">
         <div className="flex items-center gap-4 py-2">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-100">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br bg-blue-600 text-blue-50 flex items-center justify-center text-white font-bold text-lg">
             {initials}
           </div>
           <div>
@@ -166,7 +166,7 @@ const CtoApplicationDetails = ({
                   setModalType("reject");
                   setIsModalOpen(true);
                 }}
-                className="flex-1 md:flex-none px-5 bg-gray-200 py-2.5 rounded-xl text-gray-600 hover:bg-gray-300 font-bold text-sm transition-colors"
+                className="flex-1 md:flex-none px-4 bg-gray-200 py-2 rounded-lg text-gray-600 hover:bg-gray-300 font-semibold transition-colors transition-all active:scale-95 "
               >
                 Reject
               </button>
@@ -176,7 +176,7 @@ const CtoApplicationDetails = ({
                   setIsModalOpen(true);
                 }}
                 disabled={approveMutation.isPending}
-                className="flex-1 md:flex-none px-8 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xl shadow-gray-200 transition-all active:scale-95 disabled:opacity-70"
+                className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
               >
                 {approveMutation.isPending
                   ? "Processing..."
@@ -197,7 +197,7 @@ const CtoApplicationDetails = ({
           <div className="md:col-span-2 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-6 text-white flex  justify-between items-center relative overflow-hidden shadow-sm shadow-blue-100">
             <CalendarDays className="absolute right-[-20px] top-[-20px] h-40 w-40 text-white/10 rotate-12" />
             <div>
-              <p className="text-blue-100 text-xs font-bold uppercase tracking-widest mb-1">
+              <p className="text-blue-50 text-xs font-bold uppercase tracking-widest mb-1">
                 Requested Dates
               </p>
               <h3 className="text-2xl md:text-3xl font-bold">
@@ -252,7 +252,7 @@ const CtoApplicationDetails = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* MAIN CONTENT */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4">
             {/* REASON CARD */}
             <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
               <div className="flex items-center gap-3 mb-6">

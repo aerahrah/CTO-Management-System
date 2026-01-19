@@ -3,7 +3,7 @@ import React from "react";
 export const CardFull = ({ height = "120", children, className = "" }) => {
   return (
     <div
-      className={`bg-white ${height} p-4  rounded-md shadow-md w-full ${className}`}
+      className={`bg-white ${height} py-3 px-4  rounded-md shadow-md w-full ${className}`}
     >
       {children || <p className="text-gray-400 text-center">Card Full</p>}
     </div>
@@ -22,9 +22,7 @@ export const CardLg = ({ height = "142", children, className = "" }) => {
 
 export const CardMd = ({ height = "142", children, className = "" }) => {
   return (
-    <div
-      className={`bg-white ${height} p-4 rounded-md shadow-md w-112 ${className}`}
-    >
+    <div className={` ${height} w-112 ${className}`}>
       {children || <p className="text-gray-400 text-center">Card Medium</p>}
     </div>
   );

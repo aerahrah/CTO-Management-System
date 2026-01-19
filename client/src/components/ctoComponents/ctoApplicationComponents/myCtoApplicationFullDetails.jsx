@@ -1,193 +1,336 @@
-// src/components/cto/CtoApplicationDetails.jsx
-
-import { useState } from "react";
+import React, { useState } from "react";
+import {
+  Clock,
+  Calendar,
+  FileText,
+  Users,
+  FileStack,
+  Eye,
+  Download,
+  CalendarDays,
+  ChevronRight,
+  Quote,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+} from "lucide-react";
 import { StatusBadge, StatusIcon, getStatusStyles } from "../../statusUtils";
 import Modal from "../../modal";
+
+const FILE_BASE_URL = "http://localhost:3000";
+
+// --- Helper: Calendar Leaf Component ---
+const DateLeaf = ({ dateString }) => {
+  const date = new Date(dateString);
+  const month = date.toLocaleDateString("en-US", { month: "short" });
+  const day = date.toLocaleDateString("en-US", { day: "numeric" });
+  const weekday = date.toLocaleDateString("en-US", { weekday: "short" });
+
+  return (
+    <div className="flex flex-col items-center bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm min-w-[70px] shrink-0">
+      <div className="w-full bg-slate-50 border-b border-slate-100 py-1 text-center">
+        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+          {month}
+        </span>
+      </div>
+      <div className="px-2 py-1 flex flex-col items-center">
+        <span className="text-xl font-bold text-slate-800 tabular-nums leading-none">
+          {day}
+        </span>
+        <span className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">
+          {weekday}
+        </span>
+      </div>
+    </div>
+  );
+};
+
 const CtoApplicationDetails = ({ app }) => {
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
 
   if (!app) return null;
 
-  const formatDate = (dateString) =>
-    new Date(dateString).toLocaleString("en-US", {
-      weekday: "long",
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
       day: "numeric",
-      hour: "numeric",
+      hour: "2-digit",
       minute: "2-digit",
     });
-
-  const formatInclusiveDates = (dates) =>
-    dates?.map((d) => new Date(d).toLocaleDateString("en-US")).join(", ");
-
-  const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
+  };
 
   return (
-    <div className="space-y-4 max-h-120 rounded-lg overflow-y-auto bg-neutral-100 p-2">
-      {/* Application Info */}
-      <div className="bg-white rounded-lg p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-neutral-800 mb-4">
-          📄 Application Summary
-        </h3>
+    <div className="h-full flex flex-col bg-slate-50/30">
+      <div className="max-h-[80vh] overflow-y-auto px-1 pb-10 custom-scrollbar">
+        {/* 1. High-Impact Header Card */}
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6 relative overflow-hidden">
+          {/* Decorative background circle */}
+          <div
+            className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 ${getStatusStyles(
+              app.overallStatus
+            ).replace("bg-", "bg-")}`}
+          />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-8 text-sm text-gray-700">
-          <div className="flex flex-col">
-            <label className="text-gray-500 font-medium mb-1">Reason</label>
-            <div className="relative">
-              <textarea
-                readOnly
-                value={app.reason || "N/A"}
-                className="w-full h-[8rem] p-2 bg-neutral-50/50 rounded-lg border border-gray-300 text-gray-800 font-medium resize-none overflow-y-auto focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
+          <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 relative z-10">
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+                Application Status
+              </p>
+              <div className="flex items-center gap-3">
+                <StatusBadge
+                  status={app.overallStatus}
+                  className="text-lg px-3 py-1"
+                  showIcon={true}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-6 md:gap-12">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                  <Clock size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">
+                    Requested
+                  </p>
+                  <p className="text-xl font-black text-slate-800 tabular-nums leading-none">
+                    {app.requestedHours}
+                    <span className="text-sm font-medium text-slate-500 ml-1">
+                      hrs
+                    </span>
+                  </p>
+                </div>
+              </div>
+
+              <div className="hidden md:flex items-center gap-3">
+                <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
+                  <Calendar size={20} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">
+                    Submitted
+                  </p>
+                  <p className="text-sm font-bold text-slate-700">
+                    {new Date(app.createdAt).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </p>
+                  <p className="text-[10px] text-slate-400">
+                    {new Date(app.createdAt).toLocaleTimeString("en-US", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
 
-          <div>
-            <p className="text-gray-500 font-medium">Requested Hours</p>
-            <p className="font-semibold text-gray-800 mt-0.5">
-              {app.requestedHours} hour(s)
-            </p>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Left Column: Details & Reason (8 cols) */}
+          <div className="lg:col-span-7 xl:col-span-8 space-y-6">
+            {/* Reason Section */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+              <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
+                Reason for Request
+              </h4>
+              <p className="text-slate-700 leading-relaxed text-[15px] whitespace-pre-wrap font-medium">
+                {app.reason || (
+                  <span className="text-slate-400 italic">
+                    No specific reason provided.
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* Dates Grid */}
+            <div>
+              <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 ml-1">
+                <CalendarDays size={14} /> Selected Dates (
+                {app.inclusiveDates?.length || 0})
+              </h4>
+              <div className="flex flex-wrap gap-3">
+                {app.inclusiveDates?.map((d, i) => (
+                  <DateLeaf key={i} dateString={d} />
+                )) || (
+                  <div className="p-4 w-full bg-slate-100 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm flex items-center gap-2">
+                    <AlertCircle size={16} /> No dates selected
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Documents Trigger */}
+            <button
+              onClick={() => setMemoModal({ isOpen: true, memos: app.memo })}
+              className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-md transition-all group text-left"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <FileStack size={20} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-slate-700 text-sm">
+                    Reference Documents
+                  </h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {app.memo?.length || 0} attached files available
+                  </p>
+                </div>
+              </div>
+              <div className="bg-slate-50 p-2 rounded-full text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                <ArrowRight size={16} />
+              </div>
+            </button>
           </div>
 
-          <div>
-            <p className="text-gray-500 font-medium mb-1">Overall Status</p>
-            <StatusBadge className="tracking-wide" status={app.overallStatus} />
-          </div>
+          {/* Right Column: Workflow Timeline (4 cols) */}
+          <div className="lg:col-span-5 xl:col-span-4">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 h-full">
+              <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-6 border-b border-slate-100 pb-4">
+                <Users size={14} /> Approval Timeline
+              </h4>
 
-          <div>
-            <p className="text-gray-500 font-medium">Date Submitted</p>
-            <p className="font-semibold text-gray-800 mt-0.5">
-              {formatDate(app.createdAt)}
-            </p>
-          </div>
+              {app.approvals?.length > 0 ? (
+                <div className="relative pl-2">
+                  {/* Continuous Vertical Line */}
+                  <div className="absolute left-[19px] top-2 bottom-6 w-0.5 bg-slate-100" />
 
-          <div>
-            <p className="text-gray-500 font-medium">Inclusive Dates</p>
-            <p className="font-semibold text-gray-800 mt-0.5">
-              {formatInclusiveDates(app.inclusiveDates) || "N/A"}
-            </p>
-          </div>
+                  <div className="space-y-8">
+                    {app.approvals.map((a, idx) => (
+                      <div
+                        key={a._id}
+                        className="relative flex gap-4 items-start group"
+                      >
+                        {/* Status Icon Node */}
+                        <div
+                          className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm shrink-0 transition-transform group-hover:scale-105 ${getStatusStyles(
+                            a.status
+                          )}`}
+                        >
+                          <StatusIcon status={a.status} size={16} />
+                        </div>
 
-          <div>
-            <p className="text-gray-500 font-medium">Memos</p>
-            {app.memo?.length > 0 ? (
-              <button
-                className="text-blue-600 underline text-sm mt-1"
-                onClick={() => openMemoModal(app.memo)}
-              >
-                View Memos ({app.memo.length})
-              </button>
-            ) : (
-              <span className="text-gray-400 text-sm mt-1">No memos</span>
-            )}
+                        {/* Text Content */}
+                        <div className="flex-1 pt-1 min-w-0">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
+                              {idx === 0 ? "First Approval" : "Final Approval"}
+                            </span>
+                            <span
+                              className="text-sm font-bold text-slate-800 truncate"
+                              title={`${a.approver?.firstName} ${a.approver?.lastName}`}
+                            >
+                              {a.approver?.firstName} {a.approver?.lastName}
+                            </span>
+                            <span className="text-xs text-indigo-600 font-medium truncate">
+                              {a.approver?.position || "Approver"}
+                            </span>
+                          </div>
+
+                          {/* Optional: Add Approval Timestamp if data existed */}
+                          {/* <div className="mt-2 text-[10px] text-slate-400 bg-slate-50 inline-block px-2 py-0.5 rounded-full">
+                            Jan 12 • 2:30 PM
+                          </div> */}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Final Success State Node (Visual only) */}
+                    {app.overallStatus === "Approved" && (
+                      <div className="relative flex gap-4 items-center">
+                        <div className="relative z-10 w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border-4 border-white shadow-sm shrink-0">
+                          <CheckCircle2 size={20} />
+                        </div>
+                        <span className="text-sm font-bold text-emerald-700">
+                          Request Completed
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-10 px-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                  <Users className="mx-auto text-slate-300 mb-2" size={24} />
+                  <p className="text-xs text-slate-400 font-medium">
+                    No approval workflow has been initiated yet.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Approvals Section */}
-      <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-        <h3 className="text-lg font-semibold text-gray-800 mb-3">
-          👥 Approval Progress
-        </h3>
-
-        {app.approvals?.length > 0 ? (
-          <ul className="divide-y divide-gray-200">
-            {app.approvals.map((a) => (
-              <li
-                key={a._id}
-                className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`h-8 w-8 flex items-center justify-center rounded-full border ${getStatusStyles(
-                      a.status
-                    )}`}
-                  >
-                    <StatusIcon status={a.status} />
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">
-                      {a.approver?.firstName} {a.approver?.lastName}
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      {a.approver?.position || "N/A"}
-                    </p>
-                  </div>
-                </div>
-                <span className="mt-2 sm:mt-0 inline-block px-3 py-1 rounded-full text-xs font-semibold tracking-wide">
-                  <StatusBadge showIcon={false} status={a.status} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-gray-500 text-sm italic">No approvers yet</p>
-        )}
-      </div>
-
-      {/* Memo Modal */}
+      {/* 3. Refined Modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={() => setMemoModal({ isOpen: false, memos: [] })}
-        title="Memos Used in CTO Application"
-        closeLabel="Close"
+        title="Attached Reference Documents"
+        closeLabel="Done"
+        maxWidth="max-w-xl"
       >
-        <div className="max-h-[500px] overflow-y-auto relative">
-          {memoModal.memos.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-10">
-              No memos available
-            </p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-neutral-100 rounded-md">
+        <div className="p-1 max-h-[60vh] overflow-y-auto custom-scrollbar">
+          {memoModal.memos.length > 0 ? (
+            <div className="space-y-2">
               {memoModal.memos.map((memo, i) => (
                 <div
                   key={i}
-                  className="bg-white border border-gray-300 rounded-md shadow-sm hover:shadow-md transition-shadow flex flex-col"
+                  className="flex items-center justify-between p-3 border border-slate-200 rounded-xl bg-white hover:border-indigo-300 hover:shadow-sm transition-all group"
                 >
-                  {/* PDF Preview */}
-                  {memo.uploadedMemo?.endsWith(".pdf") ? (
-                    <iframe
-                      src={`http://localhost:3000${memo.uploadedMemo}`}
-                      title={memo.memoId?.memoNo || `Memo ${i + 1}`}
-                      className="w-full h-40 border-b border-gray-200 rounded-t-md"
-                    />
-                  ) : (
-                    <div className="w-full h-40 flex items-center justify-center bg-gray-50 border-b border-gray-200 rounded-t-md">
-                      <p className="text-gray-400 text-sm">
-                        No Preview Available
+                  <div className="flex items-center gap-4 overflow-hidden">
+                    <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors shrink-0">
+                      <FileText size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">
+                        Memo #{memo.memoId?.memoNo || "---"}
+                      </p>
+                      <p className="text-sm font-medium text-slate-900 truncate">
+                        Document Attachment {i + 1}
                       </p>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Memo Info */}
-                  <div className="p-4 flex-1 flex flex-col justify-between">
-                    <div className="mb-3">
-                      <div className="flex gap-1 font-semibold">
-                        <p>Memo: </p>
-                        <p className="text-gray-900 text-sm md:text-base">
-                          {memo.memoId?.memoNo || "—"}
-                        </p>
-                      </div>
-                      {/* <p className="text-gray-500 text-xs md:text-sm">
-                        Hours: {memo.memoId?.totalHours || "—"}
-                      </p> */}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex justify-between gap-2 mt-auto">
-                      <a
-                        href={`http://localhost:3000${memo.uploadedMemo}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center gap-1 px-3 py-1 text-xs md:text-sm font-medium border border-gray-400 rounded hover:bg-gray-100 transition-colors justify-center"
-                      >
-                        View
-                      </a>
-                    </div>
+                  <div className="flex items-center gap-2 pl-2">
+                    <a
+                      href={`${FILE_BASE_URL}${memo.uploadedMemo}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                      title="View File"
+                    >
+                      <Eye size={18} />
+                    </a>
+                    <div className="w-px h-4 bg-slate-200"></div>
+                    <a
+                      href={`${FILE_BASE_URL}${memo.uploadedMemo}`}
+                      download
+                      className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                      title="Download"
+                    >
+                      <Download size={18} />
+                    </a>
                   </div>
                 </div>
               ))}
+            </div>
+          ) : (
+            <div className="py-12 flex flex-col items-center justify-center text-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
+                <FileStack size={32} className="text-slate-300" />
+              </div>
+              <p className="text-slate-500 font-medium">
+                No documents attached
+              </p>
+              <p className="text-xs text-slate-400 mt-1">
+                This request was submitted without supporting files.
+              </p>
             </div>
           )}
         </div>

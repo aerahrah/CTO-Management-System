@@ -49,8 +49,52 @@ const createEmployeeService = async (employeeData) => {
 };
 
 // Get all employees
-const getEmployeesService = async () => {
-  return await Employee.find();
+const getEmployeesService = async ({
+  division,
+  designation,
+  project,
+  search,
+  page,
+  limit,
+}) => {
+  const query = {};
+
+  // Filters
+  if (division) {
+    query.division = division;
+  }
+
+  if (designation) {
+    query.designation = designation;
+  }
+
+  if (project) {
+    query.project = project;
+  }
+
+  // Search by name (firstName or lastName)
+  if (search) {
+    query.$or = [
+      { firstName: { $regex: search, $options: "i" } },
+      { lastName: { $regex: search, $options: "i" } },
+    ];
+  }
+
+  const skip = (page - 1) * limit;
+
+  const [data, total] = await Promise.all([
+    Employee.find(query)
+      .skip(skip)
+      .limit(limit)
+      .sort({ lastName: 1, firstName: 1 }),
+    Employee.countDocuments(query),
+  ]);
+
+  return {
+    data,
+    total,
+    totalPages: Math.ceil(total / limit),
+  };
 };
 
 // Get employee by ID

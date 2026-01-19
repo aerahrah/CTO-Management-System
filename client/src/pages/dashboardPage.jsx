@@ -2,21 +2,22 @@ import { useEffect, useState, useRef } from "react";
 import { useNavigate, Outlet } from "react-router-dom";
 import { useAuth } from "../store/authStore";
 import Sidebar from "../components/sidebar";
-import { LogOut, ChevronDown } from "lucide-react";
+import { LogOut, ChevronDown, Menu } from "lucide-react";
 import { RoleBadge } from "../components/statusUtils";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { token, admin, logout } = useAuth();
+
+  const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
-  // Redirect if not authenticated
   useEffect(() => {
     if (!token) navigate("/");
   }, [token, navigate]);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -40,78 +41,82 @@ const Dashboard = () => {
       .toUpperCase() || "A";
 
   return (
-    <div className="min-h-screen flex bg-neutral-200 w-full ">
-      {/* Sidebar */}
+    /* h-screen and overflow-hidden here prevents the whole body from scrolling */
+    <div className="flex h-screen bg-neutral-100 w-full overflow-hidden">
+      <Sidebar
+        admin={admin}
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+      />
 
-      <Sidebar admin={admin} />
+      {/* Main Content Area: flex-col with h-full and overflow-hidden */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Top Navbar: flex-shrink-0 ensures it stays at 16 (h-16) */}
+        <nav className="flex-shrink-0 z-30 flex justify-between lg:justify-end items-center bg-white/80 backdrop-blur-md border-b border-gray-200 h-14 px-4 lg:px-10">
+          <button
+            onClick={() => setMobileOpen(true)}
+            className="p-2 mr-4 rounded-lg hover:bg-gray-100 lg:hidden text-gray-600"
+          >
+            <Menu size={24} />
+          </button>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Top Navbar */}
-        <nav className="sticky z-20 top-0 flex justify-end items-center bg-white backdrop-blur-lg shadow-md w-full h-16 px-10  border-b border-gray-300">
-          <div className="relative " ref={dropdownRef}>
+          <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-3 px-8 py-2 rounded-full transition-all duration-200 hover:bg-gray-100 group border-1 border-gray-200"
+              className="flex items-center gap-2 lg:gap-3 pl-2 pr-4 lg:px-6 py-1.5 rounded-full transition-all hover:bg-gray-50 border border-transparent hover:border-gray-200 group"
             >
-              {/* Avatar */}
-              <div className="relative w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white font-semibold ring-2 ring-blue-200 shadow-sm">
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold ring-4 ring-blue-50 shadow-sm">
                 {initials}
               </div>
-
-              <div className="text-left">
-                <p className="text-sm font-medium text-gray-800 leading-tight">
-                  {admin?.username || "Admin"}
+              <div className="hidden sm:block text-left">
+                <p className="text-sm font-semibold text-gray-700 leading-tight">
+                  {admin?.username || "User"}
                 </p>
-                <p className="text-xs text-gray-500 capitalize">
-                  {" "}
-                  {admin?.role || ""}
+                <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">
+                  {admin?.role}
                 </p>
               </div>
-
               <ChevronDown
-                className={`w-4 h-4 text-gray-500 transition-transform duration-100 ${
+                className={`w-4 h-4 text-gray-400 transition-transform ${
                   dropdownOpen ? "rotate-180" : ""
                 }`}
               />
             </button>
 
-            {/* Dropdown */}
-            <div
-              className={`absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-lg border border-gray-100 transform transition-all duration-100 ease-out origin-top-right ${
-                dropdownOpen
-                  ? "opacity-100 scale-100 translate-y-0"
-                  : "opacity-0 scale-95 -translate-y-2 pointer-events-none"
-              }`}
-            >
-              <div className="py-2">
-                <div className="px-4 py-2 border-b text-sm text-gray-500">
-                  <p className="text-xs mb-1">Signed in as</p>
-                  <div className="flex justify-between items-center">
-                    <p className="font-semibold text-gray-800">
-                      {admin?.username || "Admin"}
-                    </p>{" "}
+            {dropdownOpen && (
+              <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-4 py-3 border-b border-gray-50">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">
+                    Signed in as
+                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-gray-800 truncate">
+                      {admin?.username}
+                    </span>
                     <RoleBadge role={admin?.role} />
                   </div>
                 </div>
-
                 <button
                   onClick={handleLogout}
-                  className="flex items-center gap-3 w-full px-4 py-3 text-sm font-medium text-gray-700 hover:bg-red-50 hover:text-red-600 transition-all duration-200"
+                  className="flex items-center gap-3 w-[calc(100%-16px)] mx-2 mt-1 px-3 py-2.5 text-sm font-semibold text-red-500 hover:bg-red-50 rounded-xl transition-all"
                 >
-                  <div className="w-8 h-8 bg-red-100 text-red-500 flex items-center justify-center rounded-full">
-                    <LogOut className="w-4 h-4" />
+                  <div className="w-7 h-7 bg-red-100 text-red-500 flex items-center justify-center rounded-lg">
+                    <LogOut size={16} />
                   </div>
                   Logout
                 </button>
               </div>
-            </div>
+            )}
           </div>
         </nav>
 
-        {/* Main Outlet */}
-        <main className=" transition-all duration-300 flex-1 p-3">
-          <Outlet />
+        {/* Main Content Area: flex-1 and overflow-y-auto enables scrolling ONLY here */}
+        <main className="flex-1 overflow-y-auto md:py-2 md:px-3 custom-scrollbar">
+          <div className="max-w-full mx-auto">
+            <Outlet />
+          </div>
         </main>
       </div>
     </div>

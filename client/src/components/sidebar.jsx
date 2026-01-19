@@ -155,7 +155,7 @@ const Sidebar = ({
             : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex flex-shrink-0 items-center h-16 justify-between px-4 border-b border-slate-100">
+        <div className="flex flex-shrink-0 items-center h-14  justify-between px-4 border-b border-slate-100">
           {(!collapsed || mobileOpen) && (
             <img
               src="/logo_dict.png"

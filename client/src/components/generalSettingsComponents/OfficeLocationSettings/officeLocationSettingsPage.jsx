@@ -50,7 +50,7 @@ const OfficeLocationSettingsPage = () => {
   };
 
   return (
-    <div className=" w-[100%] bg-neutral-200 flex gap-3 h-[calc(100vh-4rem-1.5rem)]">
+    <div className=" w-[100%] flex gap-3 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem-1rem)]">
       <CardMd className="sticky h-full top-20 flex flex-col">
         <OfficeLocationList
           selectedOffice={selectedOffice}

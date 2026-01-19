@@ -3,13 +3,19 @@ const CtoApplication = require("../models/ctoApplicationModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 
-const getCtoApplicationsForApproverService = async (approverId) => {
+const getCtoApplicationsForApproverService = async (
+  approverId,
+  search = "",
+  page = 1,
+  limit = 10
+) => {
   if (!approverId) {
     const err = new Error("Approver ID is required.");
     err.status = 400;
     throw err;
   }
 
+  // Fetch all approval steps for this approver
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
       path: "ctoApplication",
@@ -23,7 +29,8 @@ const getCtoApplicationsForApproverService = async (approverId) => {
     })
     .sort({ createdAt: -1 });
 
-  const ctoApplications = approvalSteps
+  // Filter valid applications for this approver
+  let ctoApplications = approvalSteps
     .map((step) => step.ctoApplication)
     .filter(Boolean)
     .filter((app) => {
@@ -37,10 +44,10 @@ const getCtoApplicationsForApproverService = async (approverId) => {
 
       const userStep = steps[userStepIndex];
 
-      // ✅ If the approver already rejected it, they should still see it
+      // If the approver already rejected it, they should still see it
       if (userStep.status === "REJECTED") return true;
 
-      // ✅ If overallStatus is rejected and they didn’t act, skip it
+      // If overallStatus is rejected and they didn’t act, skip it
       if (app.overallStatus === "REJECTED") return false;
 
       const pendingStep = steps.find((s) => s.status === "PENDING");
@@ -58,8 +65,30 @@ const getCtoApplicationsForApproverService = async (approverId) => {
       return isTheirTurn || alreadyActed;
     });
 
-  return ctoApplications;
+  // ===== Filter by search term (employee name) =====
+  if (search.trim()) {
+    const lowerSearch = search.toLowerCase();
+    ctoApplications = ctoApplications.filter((app) => {
+      const fullName = `${app.employee?.firstName || ""} ${
+        app.employee?.lastName || ""
+      }`.toLowerCase();
+      return fullName.includes(lowerSearch);
+    });
+  }
+
+  // ===== Pagination =====
+  const total = ctoApplications.length;
+  const totalPages = Math.ceil(total / limit);
+  const startIndex = (page - 1) * limit;
+  const paginatedData = ctoApplications.slice(startIndex, startIndex + limit);
+
+  return {
+    data: paginatedData,
+    total,
+    totalPages,
+  };
 };
+
 const approveCtoApplicationService = async ({ approverId, applicationId }) => {
   // 1️⃣ Fetch the application with approvals and memos
   const application = await CtoApplication.findById(applicationId).populate(

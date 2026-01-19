@@ -5,8 +5,11 @@ export const addEmployee = async (credentials) => {
   return res.data;
 };
 
-export const getEmployees = async () => {
-  const res = await API.get("/employee/");
+export const getEmployees = async (params = {}) => {
+  const res = await API.get("/employee/", {
+    params,
+    withCredentials: true,
+  });
   console.log(res.data);
   return res.data;
 };

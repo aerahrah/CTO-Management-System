@@ -19,6 +19,8 @@ import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
 import ProtectedRoute from "./components/protectedRoute";
 import MyCtoCredits from "./components/ctoComponents/myCtoCredits";
+import AddEmployeeForm from "./components/employeeDashboard/forms/addEmployeeForm";
+import EmployeeInformation from "./components/employeeDashboard/employeeInformation";
 
 function App() {
   return (
@@ -28,6 +30,8 @@ function App() {
 
         <Route path="/dashboard" element={<Dashboard />}>
           <Route path="employees" element={<EmployeesPage />} />
+          <Route path="employees/add-employee" element={<AddEmployeeForm />} />
+          <Route path="employees/view/:id" element={<EmployeeInformation />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="cto" element={<CtoPage />} />

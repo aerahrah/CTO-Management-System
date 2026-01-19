@@ -28,11 +28,39 @@ const createEmployee = async (req, res) => {
 
 const getEmployees = async (req, res) => {
   try {
-    const employees = await getEmployeesService();
+    const {
+      division,
+      designation,
+      project,
+      search,
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    // Allowed page size options
+    const allowedLimits = [10, 20, 50, 100];
+    const parsedLimit = allowedLimits.includes(Number(limit))
+      ? Number(limit)
+      : 10;
+
+    const parsedPage = Number(page) > 0 ? Number(page) : 1;
+
+    const result = await getEmployeesService({
+      division,
+      designation,
+      project,
+      search,
+      page: parsedPage,
+      limit: parsedLimit,
+    });
+
     res.status(200).json({
       success: true,
-      count: employees.length,
-      data: employees,
+      count: result.data.length,
+      total: result.total,
+      page: parsedPage,
+      totalPages: result.totalPages,
+      data: result.data,
     });
   } catch (err) {
     res.status(500).json({

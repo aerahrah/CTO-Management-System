@@ -49,7 +49,7 @@ const Modal = ({
             leaveFrom="opacity-100 scale-100"
             leaveTo="opacity-0 scale-95"
           >
-            <Dialog.Panel className="bg-white rounded-lg shadow-lg  p-5 max-w-[80%] relative">
+            <Dialog.Panel className="bg-white rounded-lg shadow-lg  p-5 relative">
               {title && (
                 <Dialog.Title className="text-2xl font-semibold mb-4">
                   {title}
