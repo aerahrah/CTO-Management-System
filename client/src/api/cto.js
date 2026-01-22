@@ -39,7 +39,7 @@ export const cancelCreditRequest = async (creditId) => {
     {},
     {
       withCredentials: true,
-    }
+    },
   );
   return res.data.credit;
 };
@@ -50,7 +50,7 @@ export const rollbackCreditCto = async (creditId) => {
     {},
     {
       withCredentials: true,
-    }
+    },
   );
   return res.data.credit;
 };
@@ -87,9 +87,9 @@ export const fetchProvincialOffices = async () => {
   return res.data;
 };
 
-export const fetchApproverSettings = async (provincialOfficeId) => {
-  console.log(provincialOfficeId);
-  const res = await API.get(`/cto/settings/${provincialOfficeId}`);
+export const fetchApproverSettings = async (designationId) => {
+  console.log(designationId);
+  const res = await API.get(`/cto/settings/${designationId}`);
   console.log(res.data);
   return res.data;
 };
@@ -111,7 +111,7 @@ export const addApplicationRequest = async (formData) => {
 export const approveApplicationRequest = async (applicationId) => {
   console.log(applicationId);
   const res = await API.post(
-    `/cto/applications/approver/${applicationId}/approve`
+    `/cto/applications/approver/${applicationId}/approve`,
   );
 
   return res.data;
@@ -122,7 +122,7 @@ export const rejectApplicationRequest = async (applicationId, remarks) => {
   console.log(remarks);
   const res = await API.put(
     `/cto/applications/approver/${applicationId}/reject`,
-    { remarks }
+    { remarks },
   );
 
   return res.data;

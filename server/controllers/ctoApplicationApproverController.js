@@ -8,10 +8,13 @@ const getCtoApplicationsForApprover = async (req, res, next) => {
   try {
     const approverId = req.user.id;
 
-    // Get query params
-    const { search = "", page = 1, limit = 10 } = req.query;
+    const {
+      search = "",
+      status = "", // ✅ ADDED
+      page = 1,
+      limit = 10,
+    } = req.query;
 
-    // Allowed limits
     const allowedLimits = [10, 20, 50, 100];
     const parsedLimit = allowedLimits.includes(Number(limit))
       ? Number(limit)
@@ -21,6 +24,7 @@ const getCtoApplicationsForApprover = async (req, res, next) => {
     const result = await getCtoApplicationsForApproverService(
       approverId,
       search,
+      status,
       parsedPage,
       parsedLimit
     );

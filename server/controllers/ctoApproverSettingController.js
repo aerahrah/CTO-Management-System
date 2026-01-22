@@ -4,9 +4,10 @@ const ctoApproverSettingService = require("../services/ctoApproverSetting.servic
 exports.getApproversByDesignation = async (req, res) => {
   try {
     const { designationId } = req.params;
+    console.log(designationId);
     const approverSetting =
       await ctoApproverSettingService.getApproversByDesignationService(
-        designationId
+        designationId,
       );
 
     if (!approverSetting) {

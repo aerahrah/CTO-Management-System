@@ -3,7 +3,7 @@ import React from "react";
 export const CardFull = ({ height = "120", children, className = "" }) => {
   return (
     <div
-      className={`bg-white ${height} py-3 px-4  rounded-md shadow-md w-full ${className}`}
+      className={`bg-white ${height}  rounded-lg py-3 px-4 shadow-md w-full ${className}`}
     >
       {children || <p className="text-gray-400 text-center">Card Full</p>}
     </div>

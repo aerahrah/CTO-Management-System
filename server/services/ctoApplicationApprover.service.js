@@ -6,6 +6,7 @@ const CtoCredit = require("../models/ctoCreditModel");
 const getCtoApplicationsForApproverService = async (
   approverId,
   search = "",
+  status = "", // ✅ ADDED
   page = 1,
   limit = 10
 ) => {
@@ -15,7 +16,6 @@ const getCtoApplicationsForApproverService = async (
     throw err;
   }
 
-  // Fetch all approval steps for this approver
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
       path: "ctoApplication",
@@ -29,7 +29,6 @@ const getCtoApplicationsForApproverService = async (
     })
     .sort({ createdAt: -1 });
 
-  // Filter valid applications for this approver
   let ctoApplications = approvalSteps
     .map((step) => step.ctoApplication)
     .filter(Boolean)
@@ -44,28 +43,32 @@ const getCtoApplicationsForApproverService = async (
 
       const userStep = steps[userStepIndex];
 
-      // If the approver already rejected it, they should still see it
+      // ❗ EXISTING LOGIC — UNTOUCHED
       if (userStep.status === "REJECTED") return true;
-
-      // If overallStatus is rejected and they didn’t act, skip it
       if (app.overallStatus === "REJECTED") return false;
 
       const pendingStep = steps.find((s) => s.status === "PENDING");
-
-      // First approver always sees it
       if (userStepIndex === 0) return true;
 
-      // It’s their turn if the first pending step belongs to them
       const isTheirTurn =
         pendingStep?.approver?._id?.toString() === approverId.toString();
 
-      // Already acted (approved) can still see it
       const alreadyActed = ["APPROVED"].includes(userStep.status);
 
       return isTheirTurn || alreadyActed;
     });
 
-  // ===== Filter by search term (employee name) =====
+  // ✅ STATUS FILTER (POST-LOGIC, SAFE)
+  if (status) {
+    ctoApplications = ctoApplications.filter((app) => {
+      const myStep = app.approvals.find(
+        (s) => s.approver?._id?.toString() === approverId.toString()
+      );
+      return myStep?.status === status;
+    });
+  }
+
+  // 🔎 SEARCH FILTER (UNCHANGED)
   if (search.trim()) {
     const lowerSearch = search.toLowerCase();
     ctoApplications = ctoApplications.filter((app) => {
@@ -76,7 +79,7 @@ const getCtoApplicationsForApproverService = async (
     });
   }
 
-  // ===== Pagination =====
+  // 📄 PAGINATION (UNCHANGED)
   const total = ctoApplications.length;
   const totalPages = Math.ceil(total / limit);
   const startIndex = (page - 1) * limit;

@@ -6,7 +6,7 @@ const designationSchema = new mongoose.Schema(
     province: { type: String, required: false },
     region: { type: String, default: "Region II - Cagayan Valley" },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-module.exports = mongoose.model("designation", designationSchema);
+module.exports = mongoose.model("Designation", designationSchema);

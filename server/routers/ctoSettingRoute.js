@@ -17,25 +17,25 @@ router.get(
   "/",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getAllApproverSettings
+  getAllApproverSettings,
 );
 router.get(
-  "/:provincialOfficeId",
+  "/:designationId",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getApproversByDesignation
+  getApproversByDesignation,
 );
 router.post(
   "/",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  upsertApproverSetting
+  upsertApproverSetting,
 );
 router.delete(
   "/:id",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  deleteApproverSetting
+  deleteApproverSetting,
 );
 
 module.exports = router;

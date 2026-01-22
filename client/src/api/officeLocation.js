@@ -2,6 +2,7 @@ import API from "./api";
 
 export const fetchAllProvincialOffices = async () => {
   const { data } = await API.get("/settings/provincial-office");
+  console.log(data);
   return data;
 };
 

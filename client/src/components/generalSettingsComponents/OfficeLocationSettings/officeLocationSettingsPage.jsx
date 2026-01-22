@@ -6,7 +6,7 @@ import {
   deleteProvincialOffice,
 } from "../../../api/officeLocation";
 import OfficeLocationForm from "./officeLocationForm";
-import OfficeLocationList from "./officeLocationList";
+import DesignationList from "./officeLocationList";
 import OfficeLocationDetails from "./officeLocationDetails";
 import { CardFull, CardMd } from "../../cardComponent";
 import Modal from "../../modal";
@@ -52,7 +52,7 @@ const OfficeLocationSettingsPage = () => {
   return (
     <div className=" w-[100%] flex gap-3 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem-1rem)]">
       <CardMd className="sticky h-full top-20 flex flex-col">
-        <OfficeLocationList
+        <DesignationList
           selectedOffice={selectedOffice}
           setSelectedOffice={setSelectedOffice}
           maxHeightClass="h-[28rem]"
@@ -83,7 +83,7 @@ const OfficeLocationSettingsPage = () => {
               document
                 .getElementById("office-form")
                 ?.dispatchEvent(
-                  new Event("submit", { cancelable: true, bubbles: true })
+                  new Event("submit", { cancelable: true, bubbles: true }),
                 ),
           }}
         >

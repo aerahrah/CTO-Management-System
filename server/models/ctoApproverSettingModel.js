@@ -2,9 +2,9 @@ const mongoose = require("mongoose");
 
 const ctoApproverSettingSchema = new mongoose.Schema(
   {
-    provincialOffice: {
+    designation: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "ProvincialOffice",
+      ref: "Designation",
       required: true,
       unique: true,
     },
@@ -24,7 +24,7 @@ const ctoApproverSettingSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("CtoApproverSetting", ctoApproverSettingSchema);
