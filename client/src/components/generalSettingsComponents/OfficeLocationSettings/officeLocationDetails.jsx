@@ -50,7 +50,7 @@ const OfficeLocationDetails = ({ selectedOffice, onEdit, onDelete }) => {
 
   // --- DATA STATE ---
   return (
-    <div className="flex flex-col h-full bg-white animate-in fade-in slide-in-from-right-4 duration-300">
+    <div className="flex flex-col h-full bg-white">
       {/* Header Section */}
       <div className="p-6 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start gap-4 bg-gray-50/30">
         <div className="space-y-1">

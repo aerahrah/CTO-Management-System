@@ -91,7 +91,7 @@ const EmployeeInformation = ({ selectedId }) => {
   return (
     <div className="flex flex-col p-1 h-full md:rounded-2xl overflow-hidden ">
       {/* --- Profile Header --- */}
-      <div className="bg-white pb-0 border-b border-slate-200">
+      <div className="bg-white px-6 pt-4 pb-3 border-b border-slate-200">
         <div className="flex flex-col md:flex-row justify-between items-start gap-5 mb-6">
           <div className="flex items-center gap-3 w-full">
             {/* Avatar */}
@@ -293,7 +293,7 @@ const EmployeeInformation = ({ selectedId }) => {
                       emp?.dateHired
                         ? new Date(emp?.dateHired).toLocaleDateString(
                             undefined,
-                            { dateStyle: "long" }
+                            { dateStyle: "long" },
                           )
                         : "-"
                     }

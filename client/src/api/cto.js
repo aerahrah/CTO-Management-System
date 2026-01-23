@@ -137,6 +137,14 @@ export const fetchMyCtoApplications = async (params = {}) => {
   return data;
 };
 
+export const fetchAllCtoApplications = async (params = {}) => {
+  console.log(params);
+  const { data } = await API.get(`cto/applications/all`, {
+    params,
+  });
+  console.log(data);
+  return data;
+};
 export const fetchMyCtoApplicationsApprovals = async (params = {}) => {
   const { data } = await API.get(`cto/applications/approvers/my-approvals`, {
     params,

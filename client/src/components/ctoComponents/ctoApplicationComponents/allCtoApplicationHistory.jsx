@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
-import { fetchMyCtoApplications } from "../../../api/cto";
+import { fetchAllCtoApplications } from "../../../api/cto";
 import Modal from "../../modal";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -23,7 +23,6 @@ import {
   MoreVertical,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
-import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 
 const statusOptions = ["PENDING", "APPROVED", "REJECTED"];
@@ -82,10 +81,8 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
   );
 };
 
-const MyCtoApplications = () => {
-  const formRef = useRef(null);
+const AllCtoApplicationsHistory = () => {
   const [selectedApp, setSelectedApp] = useState(null);
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
 
   const [statusFilter, setStatusFilter] = useState("");
@@ -106,9 +103,9 @@ const MyCtoApplications = () => {
   }, [searchInput]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["ctoApplications", page, limit, statusFilter, searchFilter],
+    queryKey: ["ctoAllApplications", page, limit, statusFilter, searchFilter],
     queryFn: () =>
-      fetchMyCtoApplications({
+      fetchAllCtoApplications({
         page,
         limit,
         status: statusFilter || undefined,
@@ -166,20 +163,13 @@ const MyCtoApplications = () => {
           </div>
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-gray-900">
-              My CTO Applications
+              All CTO Applications
             </h1>
             <p className="text-xs md:text-sm text-gray-500">
-              View and manage your compensatory time-off applications
+              View and manage all compensatory time-off applications
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setIsFormModalOpen(true)}
-          className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          Apply CTO
-        </button>
       </div>
 
       {/* ================= MAIN CARD ================= */}
@@ -344,6 +334,9 @@ const MyCtoApplications = () => {
                   <thead className="sticky top-0 bg-gray-100 z-10 text-[11px] uppercase tracking-[0.1em] text-gray-600 font-bold">
                     <tr>
                       <th className="px-6 py-4 border border-gray-300 text-left">
+                        Requestor
+                      </th>
+                      <th className="px-6 py-4 border border-gray-300 text-left">
                         Memo No.
                       </th>
                       <th className="px-6 py-4 border border-gray-300 text-center">
@@ -385,6 +378,10 @@ const MyCtoApplications = () => {
                               index % 2 === 0 ? "bg-white" : "bg-gray-50/50"
                             }`}
                           >
+                            <td className="px-6 py-3 border border-gray-300 text-center text-gray-600">
+                              {app?.employee?.firstName}{" "}
+                              {app?.employee?.lastName}
+                            </td>
                             <td className="px-6 py-3 border border-gray-300 font-medium text-gray-900">
                               {Array.isArray(app.memo) && app.memo.length
                                 ? app.memo
@@ -567,24 +564,6 @@ const MyCtoApplications = () => {
       )}
 
       <Modal
-        isOpen={isFormModalOpen}
-        onClose={() => setIsFormModalOpen(false)}
-        action={{
-          label: "Save",
-          variant: "save",
-          show: true,
-          onClick: () => formRef.current?.submit(),
-        }}
-      >
-        <div className="w-full max-w-lg">
-          <AddCtoApplicationForm
-            ref={formRef}
-            onClose={() => setIsFormModalOpen(false)}
-          />
-        </div>
-      </Modal>
-
-      <Modal
         isOpen={memoModal.isOpen}
         onClose={closeMemoModal}
         title="Memos Used"
@@ -617,4 +596,4 @@ const MyCtoApplications = () => {
   );
 };
 
-export default MyCtoApplications;
+export default AllCtoApplicationsHistory;

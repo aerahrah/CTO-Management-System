@@ -21,6 +21,7 @@ import ProtectedRoute from "./components/protectedRoute";
 import MyCtoCredits from "./components/ctoComponents/myCtoCredits";
 import AddEmployeeForm from "./components/employeeDashboard/forms/addEmployeeForm";
 import EmployeeInformation from "./components/employeeDashboard/employeeInformation";
+import AllCtoApplications from "./components/ctoComponents/ctoAllApplications";
 
 function App() {
   return (
@@ -44,6 +45,7 @@ function App() {
             <Route path="/dashboard/cto/credit" element={<CtoCredits />} />
           </Route>
           <Route path="cto/apply" element={<CtoApplication />} />
+          <Route path="cto/all-applications" element={<AllCtoApplications />} />
           <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
           <Route path="cto/records" element={<CtoRecords />} />
           <Route path="cto/dashboard" element={<CtoDashboard />} />

@@ -72,6 +72,11 @@ const Sidebar = ({
           icon: <ClipboardCheck size={14} />,
         },
         {
+          name: "All CTO Applications",
+          path: "/dashboard/cto/all-applications",
+          icon: <ClipboardCheck size={14} />,
+        },
+        {
           name: "Pending Approvals",
           path: "/dashboard/cto/approvals",
           icon: <ClipboardCheck size={14} />,
@@ -133,7 +138,7 @@ const Sidebar = ({
     .map((item) => ({
       ...item,
       subItems: item.subItems?.filter(
-        (sub) => !sub.roles || sub.roles.includes(role)
+        (sub) => !sub.roles || sub.roles.includes(role),
       ),
     }));
 
@@ -316,7 +321,7 @@ const Sidebar = ({
                         ))}
                       </div>
                     </div>,
-                    document.body
+                    document.body,
                   )}
               </div>
             );

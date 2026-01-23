@@ -2,7 +2,7 @@
 // Contains both: CustomButton (general use) and TableActionButton (for tables)
 
 const mainVariants = {
-  primary: "bg-neutral-800 text-white hover:bg-neutral-900",
+  primary: "bg-blue-600 text-blue-50 hover:bg-blue-700",
   secondary: "bg-gray-200 text-gray-800 hover:bg-gray-300",
   success: "bg-green-600 text-white hover:bg-green-700",
   danger: "bg-red-600 text-white hover:bg-red-700",

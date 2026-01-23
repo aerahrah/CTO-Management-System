@@ -13,8 +13,10 @@ import {
   Plus,
   Filter,
   X,
+  Eye,
   RotateCcw,
   Inbox,
+  MoreVertical,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoCreditForm from "./forms/addCtoCreditForm";
@@ -22,6 +24,68 @@ import CtoCreditDetails from "./ctoCreditfullDetails";
 
 const pageSizeOptions = [20, 50, 100];
 const statusOptions = ["CREDITED", "ROLLEDBACK"];
+
+const ActionMenu = ({ credit, onViewMemo, onViewDetails, onRollback }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handle = (cb) => {
+    cb();
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative flex justify-center" ref={menuRef}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((o) => !o);
+        }}
+        className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+      >
+        <MoreVertical size={18} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1">
+          <button
+            onClick={() => handle(onViewMemo)}
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Eye size={14} /> View Memo
+          </button>
+
+          <button
+            onClick={() => handle(onViewDetails)}
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+          >
+            <Clipboard size={14} /> View Details
+          </button>
+
+          <div className="h-px bg-gray-100 my-1" />
+
+          <button
+            disabled={credit.status !== "CREDITED"}
+            onClick={() => handle(onRollback)}
+            className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-30"
+          >
+            <RotateCcw size={14} /> Rollback
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
@@ -74,7 +138,7 @@ const CtoCreditHistory = () => {
       totalPages: Math.max(Math.ceil((data?.total || 0) / limit), 1),
       total: data?.total || 0,
     }),
-    [data, limit]
+    [data, limit],
   );
 
   /* ---------------- MUTATION ---------------- */
@@ -89,6 +153,14 @@ const CtoCreditHistory = () => {
   const formatDuration = (d) =>
     d ? `${d.hours || 0}h ${d.minutes || 0}m` : "-";
 
+  const formatDate = (iso) =>
+    iso
+      ? new Date(iso).toLocaleDateString("en-PH", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        })
+      : "-";
   const handleResetFilters = () => {
     setSearchInput("");
     setSearchFilter("");
@@ -288,17 +360,15 @@ const CtoCreditHistory = () => {
                       Duration
                     </th>
                     <th className="px-6 py-4 border border-gray-300 text-center">
+                      Date Approve
+                    </th>
+                    <th className="px-6 py-4 border border-gray-300 text-center">
                       Status
                     </th>
                     {/* INDIVIDUAL ACTION COLUMNS */}
+
                     <th className="px-4 py-4 border border-gray-300 text-center w-32">
-                      Memo
-                    </th>
-                    <th className="px-4 py-4 border border-gray-300 text-center w-32">
-                      Details
-                    </th>
-                    <th className="px-4 py-4 border border-gray-300 text-center w-32">
-                      Rollback
+                      Action
                     </th>
                   </tr>
                 </thead>
@@ -328,7 +398,7 @@ const CtoCreditHistory = () => {
                             {credit.employees
                               .map(
                                 (e) =>
-                                  `${e.employee?.firstName} ${e.employee?.lastName}`
+                                  `${e.employee?.firstName} ${e.employee?.lastName}`,
                               )
                               .join(", ")}
                           </td>
@@ -338,46 +408,28 @@ const CtoCreditHistory = () => {
                           <td className="px-6 py-3 border border-gray-300 text-center text-gray-600">
                             {formatDuration(credit.duration)}
                           </td>
+                          <td className="px-6 py-3 border border-gray-300 text-center text-gray-600">
+                            {formatDate(credit.dateApproved)}
+                          </td>
                           <td className="px-6 py-3 border border-gray-300 text-center">
                             <StatusBadge status={credit.status} />
                           </td>
 
                           {/* VIEW MEMO COLUMN */}
                           <td className="px-4 py-3 border border-gray-300 text-center">
-                            <button
-                              onClick={() =>
+                            <ActionMenu
+                              credit={credit}
+                              onViewMemo={() =>
                                 setMemoModal({ isOpen: true, memo: credit })
                               }
-                              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 uppercase tracking-wider"
-                            >
-                              View Memo
-                            </button>
-                          </td>
-
-                          {/* VIEW DETAILS COLUMN */}
-                          <td className="px-4 py-4 border border-gray-300 text-center">
-                            <button
-                              onClick={() =>
+                              onViewDetails={() =>
                                 setDetailsModal({ isOpen: true, credit })
                               }
-                              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider"
-                            >
-                              View Details
-                            </button>
-                          </td>
-
-                          {/* ROLLBACK COLUMN */}
-                          <td className="px-4 py-4 border border-gray-300 text-center">
-                            <button
-                              disabled={credit.status !== "CREDITED"}
-                              onClick={() => {
+                              onRollback={() => {
                                 setSelectedCreditId(credit._id);
                                 setIsConfirmRollback(true);
                               }}
-                              className="text-[11px] font-bold text-red-600 hover:text-red-800 uppercase tracking-wider disabled:opacity-20"
-                            >
-                              Rollback
-                            </button>
+                            />
                           </td>
                         </tr>
                       ))}
@@ -458,7 +510,7 @@ const CtoCreditHistory = () => {
           <iframe
             src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
               /\\/g,
-              "/"
+              "/",
             )}`}
             className="w-full h-96 border rounded"
             title="Memo Preview"

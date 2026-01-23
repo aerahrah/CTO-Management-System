@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 
 const variantClasses = {
-  save: "bg-neutral-800 text-white hover:bg-neutral-800/90",
+  save: "bg-blue-600 text-blue-50 hover:bg-blue-700",
   cancel: "bg-red-600 text-white hover:bg-red-700",
   delete: "bg-red-600 text-white hover:bg-red-700",
   success: "bg-green-600 text-white hover:bg-green-700",
