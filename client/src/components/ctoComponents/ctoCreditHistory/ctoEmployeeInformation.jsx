@@ -23,12 +23,10 @@ const EmployeeInfoSkeleton = () => (
 /* =========================
    MAIN COMPONENT
 ========================= */
-const CtoEmployeeInformation = ({
-  selectedId,
-  isEmployeeLoadingFromEmployeeList,
-}) => {
+const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
   const [activeTab, setActiveTab] = useState("credit");
 
+  const { id: selectedId } = useParams();
   /* ================= CREDIT TAB STATE ================= */
   const [creditPage, setCreditPage] = useState(1);
   const [creditLimit, setCreditLimit] = useState(20);
@@ -126,7 +124,9 @@ const CtoEmployeeInformation = ({
       return sum + h + m / 60;
     }, 0);
 
-  const totalUsed = 0;
+  const totalUsed = credits
+    .filter((c) => c.status === "CREDITED" || c.status === "EXHAUSTED") // include exhausted credits if needed
+    .reduce((sum, c) => sum + (c.usedHours || 0), 0);
   const balance = totalEarned - totalUsed;
 
   /* ================= LOADING / ERROR ================= */
@@ -203,7 +203,7 @@ const CtoEmployeeInformation = ({
               }}
               onNextPage={() =>
                 setCreditPage((p) =>
-                  p < creditPagination.totalPages ? p + 1 : p
+                  p < creditPagination.totalPages ? p + 1 : p,
                 )
               }
               onPrevPage={() => setCreditPage((p) => (p > 1 ? p - 1 : p))}

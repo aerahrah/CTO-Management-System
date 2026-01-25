@@ -51,7 +51,7 @@ const ApplicationCtoTable = ({
       ? true
       : Array.isArray(app.memo) &&
         app.memo.some((m) =>
-          m?.memoId?.memoNo?.toLowerCase().includes(search.toLowerCase())
+          m?.memoId?.memoNo?.toLowerCase().includes(search.toLowerCase()),
         );
 
     return matchesStatus && matchesSearch;

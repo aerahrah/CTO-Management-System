@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Search,
   X,
@@ -12,11 +13,11 @@ import {
   AlertCircle,
   LayoutGrid,
 } from "lucide-react";
-import { StatusBadge } from "../../statusUtils";
-import { useAuth } from "../../../store/authStore";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { fetchMyCtoApplicationsApprovals } from "../../../api/cto";
+import { useAuth } from "../../../store/authStore";
+import { StatusBadge } from "../../statusUtils";
 
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
@@ -27,19 +28,21 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
-const CtoApplicationsList = ({ selectedId, onSelect }) => {
+const CtoApplicationsList = () => {
   const { admin } = useAuth();
+  const navigate = useNavigate();
+  const { id: selectedId } = useParams();
 
   const [searchTerm, setSearchTerm] = useState("");
-  const debouncedSearch = useDebounce(searchTerm, 500);
-
-  // Changed default to "ALL" or empty string to show everything initially
   const [statusFilter, setStatusFilter] = useState("");
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
-  const { data, isLoading, isError } = useQuery({
+  const debouncedSearch = useDebounce(searchTerm, 500);
+
+  // --- FETCH LIST ---
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: [
       "ctoApplications",
       debouncedSearch,
@@ -60,11 +63,14 @@ const CtoApplicationsList = ({ selectedId, onSelect }) => {
     staleTime: 1000 * 60 * 2,
   });
 
+  // --- AUTO NAVIGATE TO MOST RECENT ---
+  const hasNavigatedRef = useRef(false);
   useEffect(() => {
-    if (data?.data?.length > 0 && !selectedId) {
-      onSelect(data.data[0]);
+    if (!hasNavigatedRef.current && data?.data?.length > 0 && !selectedId) {
+      navigate(`/dashboard/cto/approvals/${data.data[0]._id}`);
+      hasNavigatedRef.current = true;
     }
-  }, [data, selectedId, onSelect]);
+  }, [data, selectedId, navigate]);
 
   useEffect(() => {
     setPage(1);
@@ -74,35 +80,30 @@ const CtoApplicationsList = ({ selectedId, onSelect }) => {
     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
   };
 
-  // --- UPDATED TABS CONFIGURATION ---
   const tabs = [
     {
-      id: "", // Empty string represents 'All'
+      id: "",
       label: "All",
       icon: LayoutGrid,
       activeColor: "bg-blue-100 text-blue-700 border-blue-200",
-      countKey: "totalDocs", // uses the total count from API
     },
     {
       id: "PENDING",
       label: "Pending",
       icon: AlertCircle,
       activeColor: "bg-amber-100 text-amber-700 border-amber-200",
-      countKey: "pendingCount",
     },
     {
       id: "APPROVED",
       label: "Approved",
       icon: CheckCircle2,
       activeColor: "bg-emerald-100 text-emerald-700 border-emerald-200",
-      countKey: "approvedCount",
     },
     {
       id: "REJECTED",
       label: "Rejected",
       icon: XCircle,
       activeColor: "bg-rose-100 text-rose-700 border-rose-200",
-      countKey: "rejectedCount",
     },
   ];
 
@@ -128,36 +129,35 @@ const CtoApplicationsList = ({ selectedId, onSelect }) => {
             const isActive = statusFilter === tab.id;
             const Icon = tab.icon;
 
-            // Displays count from API metadata (e.g., data.counts.PENDING)
-            const count = data?.counts?.[tab.id || "ALL"] || 0;
+            const count =
+              tab.id === ""
+                ? Object.values(data?.statusCounts || {}).reduce(
+                    (a, b) => a + b,
+                    0,
+                  )
+                : data?.statusCounts?.[tab.id] || 0;
 
             return (
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
                 className={`
-                  flex items-center gap-1 p-1.25 rounded-lg border transition-all duration-200 whitespace-nowrap
-                  ${
-                    isActive
-                      ? `${tab.activeColor} shadow-sm ring-1 ring-inset ring-black/5`
-                      : "bg-white text-neutral-500 border-neutral-200 hover:bg-neutral-50"
-                  }
-                `}
+        flex items-center gap-1 p-1.25 rounded-lg border transition-all duration-200 whitespace-nowrap
+        ${
+          isActive
+            ? `${tab.activeColor} shadow-sm ring-1 ring-inset ring-black/5`
+            : "bg-white text-neutral-500 border-neutral-200 hover:bg-neutral-50"
+        }
+      `}
               >
-                {/* <Icon className="h-3 w-3 flex-shrink-0" /> */}
                 <span className="text-[10px] font-bold uppercase tracking-wider">
                   {tab.label}
                 </span>
 
-                {/* Count Badge */}
                 <span
                   className={`px-1.5 py-0.5 rounded text-[9px] font-black leading-none 
-                    ${
-                      isActive
-                        ? "bg-white/50"
-                        : "bg-neutral-100 text-neutral-600"
-                    }
-                  `}
+          ${isActive ? "bg-white/50" : "bg-neutral-100 text-neutral-600"}
+        `}
                 >
                   {count}
                 </span>
@@ -224,7 +224,9 @@ const CtoApplicationsList = ({ selectedId, onSelect }) => {
               return (
                 <li
                   key={app._id}
-                  onClick={() => onSelect(app)}
+                  onClick={() =>
+                    navigate(`/dashboard/cto/approvals/${app._id}`)
+                  }
                   className={`group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
                     ${
                       isActive

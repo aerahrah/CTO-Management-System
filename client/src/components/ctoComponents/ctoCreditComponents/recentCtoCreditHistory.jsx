@@ -5,6 +5,7 @@ import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import { toast } from "react-toastify";
 import {
   Clipboard,
   Search,
@@ -25,7 +26,13 @@ import CtoCreditDetails from "./ctoCreditfullDetails";
 const pageSizeOptions = [20, 50, 100];
 const statusOptions = ["CREDITED", "ROLLEDBACK"];
 
-const ActionMenu = ({ credit, onViewMemo, onViewDetails, onRollback }) => {
+const ActionMenu = ({
+  credit,
+  onViewMemo,
+  onViewDetails,
+  onRollback,
+  isPending,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -75,7 +82,7 @@ const ActionMenu = ({ credit, onViewMemo, onViewDetails, onRollback }) => {
           <div className="h-px bg-gray-100 my-1" />
 
           <button
-            disabled={credit.status !== "CREDITED"}
+            disabled={credit.status !== "CREDITED" || isPending}
             onClick={() => handle(onRollback)}
             className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-30"
           >
@@ -142,11 +149,18 @@ const CtoCreditHistory = () => {
   );
 
   /* ---------------- MUTATION ---------------- */
-  const { mutate: rollbackRequest, isLoading: isRollingBack } = useMutation({
+  const { mutate: rollbackRequest, isPending } = useMutation({
     mutationFn: rollbackCreditCto,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["allCredits"] });
       setIsConfirmRollback(false);
+      toast.success("CTO credit successfully rolled back!");
+    },
+    onError: (error) => {
+      setIsConfirmRollback(false);
+      toast.error(
+        error?.response?.data?.message || error?.message || "Rollback failed.",
+      );
     },
   });
 
@@ -374,7 +388,7 @@ const CtoCreditHistory = () => {
                 </thead>
 
                 <tbody>
-                  {isLoading || isRollingBack
+                  {isLoading || isPending
                     ? [...Array(limit)].map((_, i) => (
                         <tr key={i}>
                           {[...Array(7)].map((__, j) => (
@@ -419,6 +433,7 @@ const CtoCreditHistory = () => {
                           <td className="px-4 py-3 border border-gray-300 text-center">
                             <ActionMenu
                               credit={credit}
+                              isPending={isPending}
                               onViewMemo={() =>
                                 setMemoModal({ isOpen: true, memo: credit })
                               }

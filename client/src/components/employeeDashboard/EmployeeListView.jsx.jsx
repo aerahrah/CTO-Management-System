@@ -4,6 +4,8 @@ import { getEmployees } from "../../api/employee";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import Skeleton from "react-loading-skeleton";
+import EmployeeRoleChanger from "./employeeChangeRole";
+import Modal from "../modal";
 import {
   Users,
   Briefcase,
@@ -102,10 +104,10 @@ const ActionMenu = ({ onAction }) => {
             <User size={14} /> View Profile
           </button>
           <button
-            onClick={() => onAction("manage")}
+            onClick={() => onAction("update")}
             className="w-full text-left px-4 py-2.5 text-sm text-neutral-700 hover:bg-neutral-50 flex items-center gap-2"
           >
-            <Settings size={14} /> Manage
+            <Settings size={14} /> Update Profile
           </button>
           <div className="h-px bg-neutral-100 my-1" />
           <button
@@ -125,12 +127,15 @@ const ActionMenu = ({ onAction }) => {
 ========================= */
 const EmployeeDirectory = () => {
   const navigate = useNavigate();
-
+  const roleChangerRef = useRef(null);
   // --- State Management ---
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebounce(searchTerm, 200);
+
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
 
   const [filters, setFilters] = useState({
     division: "",
@@ -168,12 +173,13 @@ const EmployeeDirectory = () => {
   };
 
   const handleAction = (action, employee) => {
-    if (action === "view")
-      navigate(`/dashboard/employees/view/${employee._id}`);
-    else if (action === "manage")
-      navigate(`/dashboard/employees/manage/${employee._id}`);
-    else if (action === "role")
-      toast.info(`Change role for ${employee.firstName}`);
+    if (action === "view") navigate(`/dashboard/employees/${employee._id}`);
+    else if (action === "update")
+      navigate(`/dashboard/employees/${employee._id}/update`);
+    else if (action === "role") {
+      setSelectedEmployee(employee);
+      setIsRoleModalOpen(true);
+    }
   };
 
   const clearFilters = () => {
@@ -185,7 +191,7 @@ const EmployeeDirectory = () => {
     searchTerm || filters.division || filters.designation || filters.project;
 
   return (
-    <div className="p-4 md:p-8 bg-neutral-50 min-h-screen w-full font-sans text-neutral-800 space-y-8">
+    <div className="p-4 md:p-6 bg-neutral-50 min-h-screen w-full font-sans text-neutral-800 space-y-8">
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
@@ -193,7 +199,7 @@ const EmployeeDirectory = () => {
             Workforce Directory
           </h1>
           <p className="text-neutral-500 text-sm mt-1">
-            Manage your organization's hierarchy, projects, and staffing.
+            Manage your organization's staffing.
           </p>
         </div>
 
@@ -451,6 +457,30 @@ const EmployeeDirectory = () => {
           </div>
         </div>
       </div>
+      {isRoleModalOpen && selectedEmployee && (
+        <Modal
+          isOpen={isRoleModalOpen}
+          onClose={() => setIsRoleModalOpen(false)}
+          title={`Change Role - ${selectedEmployee.firstName} ${selectedEmployee.lastName}`}
+          closeLabel="Cancel"
+          action={{
+            label: "Confirm Role Change",
+            variant: "save",
+            show: true,
+            onClick: () => roleChangerRef.current?.submit(),
+          }}
+        >
+          <EmployeeRoleChanger
+            ref={roleChangerRef}
+            employeeId={selectedEmployee._id}
+            currentRole={selectedEmployee.role}
+            onRoleUpdated={() => {
+              setIsRoleModalOpen(false);
+              setSelectedEmployee(null);
+            }}
+          />
+        </Modal>
+      )}
     </div>
   );
 };

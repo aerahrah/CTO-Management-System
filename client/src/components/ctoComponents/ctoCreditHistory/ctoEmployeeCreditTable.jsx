@@ -9,7 +9,7 @@ import "react-loading-skeleton/dist/skeleton.css";
 /* =========================
    CONSTANTS
 ========================= */
-const statusOptions = ["All", "CREDITED", "ROLLEDBACK"];
+const statusOptions = ["All", "ACTIVE", "EXHAUSTED", "ROLLEDBACK"];
 const pageSizeOptions = [20, 50, 100];
 
 /* =========================
@@ -143,7 +143,7 @@ const CreditCtoTable = ({
                       : "-"}
                   </td>
                   <td className="p-3 border-r border-b border-neutral-300 text-center">
-                    <StatusBadge status={c.status} />
+                    <StatusBadge status={c.employeeStatus} />
                   </td>
                   <td className="p-3 border-r border-b border-neutral-300 text-center font-semibold text-blue-700">
                     {formatDuration(c.duration)}

@@ -1,109 +1,95 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState } from "react";
 import {
   Clock,
   FileText,
   BadgeCheck,
-  Calendar,
+  CalendarDays,
   Check,
-  BookOpen,
   User,
   ExternalLink,
   MessageCircle,
   ShieldCheck,
   AlertCircle,
   Info,
-  CalendarDays,
-  XCircle,
-  ChevronRight,
-  ArrowRight,
 } from "lucide-react";
-import { getStatusStyles, StatusIcon, StatusBadge } from "../../statusUtils";
+import { StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "../../modal";
 import {
   approveApplicationRequest,
   rejectApplicationRequest,
+  getCtoApplicationById,
 } from "../../../api/cto";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import { useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 
-// Improved Skeleton for better layout matching
 const CtoApplicationDetailsSkeleton = () => (
   <div className="max-w-5xl mx-auto p-6 space-y-6">
-    <div className="flex justify-between items-center">
-      <div className="flex gap-4">
-        <Skeleton circle width={56} height={56} />
-        <div>
-          <Skeleton width={150} height={20} />
-          <Skeleton width={100} />
-        </div>
-      </div>
-      <Skeleton width={200} height={45} borderRadius={12} />
-    </div>
     <Skeleton height={120} borderRadius={16} />
-    <div className="grid grid-cols-3 gap-6">
-      <div className="col-span-2">
-        <Skeleton height={300} borderRadius={16} />
-      </div>
-      <Skeleton height={300} borderRadius={16} />
-    </div>
+    <Skeleton height={300} borderRadius={16} />
   </div>
 );
 
-const CtoApplicationDetails = ({
-  application: appProp,
-  isLoading,
-  onSelect,
-}) => {
+const CtoApplicationDetails = () => {
   const { admin } = useAuth();
+  const { id } = useParams();
   const queryClient = useQueryClient();
 
-  const [application, setApplication] = useState(null);
+  console.log(id);
   const [isProcessed, setIsProcessed] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
 
-  useEffect(() => {
-    if (appProp?._id !== application?._id) {
-      setApplication(appProp);
-      setIsProcessed(false);
-      setRemarks("");
-    }
-  }, [appProp, application?._id]);
+  // Fetch the application by ID
+  const {
+    data: application,
+    isLoading,
+    isError,
+    error,
+  } = useQuery({
+    queryKey: ["ctoApplication", id],
+    queryFn: () => getCtoApplicationById(id),
+    enabled: !!id,
+    onSuccess: (data) => {
+      console.log("Fetched application data:", data);
+    },
+  });
 
+  // Approve mutation
   const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: (updatedApp) => {
-      setApplication(updatedApp);
-      onSelect(updatedApp);
       setIsProcessed(true);
       setIsModalOpen(false);
       toast.success("Application approved successfully.");
+      queryClient.invalidateQueries(["ctoApplication", id]);
       queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
     },
     onError: (err) => toast.error(err.message || "Failed to approve."),
   });
 
+  // Reject mutation
   const rejectMutation = useMutation({
     mutationFn: ({ applicationId, remarks }) =>
       rejectApplicationRequest(applicationId, remarks),
-    onSuccess: (updatedApp) => {
-      setApplication(updatedApp);
-      onSelect(updatedApp);
+    onSuccess: () => {
       setRemarks("");
       setIsProcessed(true);
       setIsModalOpen(false);
       toast.success("Application rejected.");
+      queryClient.invalidateQueries(["ctoApplication", id]);
       queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
     },
     onError: (err) => toast.error(err.message || "Failed to reject."),
   });
 
   const handleAction = () => {
+    if (!application) return;
     if (modalType === "approve") approveMutation.mutate(application._id);
     else {
       if (!remarks.trim()) return toast.error("Please provide a reason.");
@@ -112,17 +98,12 @@ const CtoApplicationDetails = ({
   };
 
   if (isLoading) return <CtoApplicationDetailsSkeleton />;
-
+  if (isError) return <p>Error: {error.message}</p>;
   if (!application)
     return (
       <div className="flex flex-col items-center justify-center py-40 bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-200 m-6">
-        <div className="bg-white p-5 rounded-2xl shadow-sm mb-4">
-          <FileText className="h-10 w-10 text-gray-300" />
-        </div>
-        <h3 className="text-gray-900 font-semibold">No Application Selected</h3>
-        <p className="text-gray-500 text-sm mt-1">
-          Select a request from the list to view details.
-        </p>
+        <FileText className="h-10 w-10 text-gray-300" />
+        <h3 className="text-gray-900 font-semibold">No Application Found</h3>
       </div>
     );
 
@@ -130,16 +111,16 @@ const CtoApplicationDetails = ({
     application.employee?.lastName?.[0] || ""
   }`;
   const currentStep = application.approvals?.find(
-    (step) => step.approver?._id === admin?.id
+    (step) => step.approver?._id === admin?.id,
   );
   const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
 
   return (
     <div className="flex-1 h-full flex flex-col gap-4 max-w-6xl mx-auto">
-      {/* HEADER SECTION */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white pb-2 border-b-1 border-gray-300 sticky backdrop-blur-lg px-1 top-2 bg-white/90">
+      {/* HEADER */}
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white pb-2 border-b border-gray-300 sticky top-2 bg-white/90">
         <div className="flex items-center gap-4 py-2">
-          <div className="h-12 w-12 rounded-xl bg-gradient-to-br bg-blue-600 text-blue-50 flex items-center justify-center text-white font-bold text-lg">
+          <div className="h-12 w-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg">
             {initials}
           </div>
           <div>
@@ -158,6 +139,7 @@ const CtoApplicationDetails = ({
           </div>
         </div>
 
+        {/* ACTION BUTTONS */}
         <div className="flex items-center gap-3 p-2 bg-gray-50 md:bg-transparent rounded-xl">
           {canApproveOrReject ? (
             <>
@@ -166,7 +148,7 @@ const CtoApplicationDetails = ({
                   setModalType("reject");
                   setIsModalOpen(true);
                 }}
-                className="flex-1 md:flex-none px-4 bg-gray-200 py-2 rounded-lg text-gray-600 hover:bg-gray-300 font-semibold transition-colors transition-all active:scale-95 "
+                className="flex-1 md:flex-none px-4 bg-gray-200 py-2 rounded-lg text-gray-600 hover:bg-gray-300 font-semibold"
               >
                 Reject
               </button>
@@ -176,7 +158,7 @@ const CtoApplicationDetails = ({
                   setIsModalOpen(true);
                 }}
                 disabled={approveMutation.isPending}
-                className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
+                className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center gap-2"
               >
                 {approveMutation.isPending
                   ? "Processing..."
@@ -207,7 +189,7 @@ const CtoApplicationDetails = ({
                         new Date(d).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
-                        })
+                        }),
                       )
                       .join(", ")
                   : "No dates set"}
@@ -291,8 +273,8 @@ const CtoApplicationDetails = ({
                       step.status === "APPROVED"
                         ? "bg-emerald-500"
                         : step.status === "REJECTED"
-                        ? "bg-red-500"
-                        : "bg-gray-200"
+                          ? "bg-red-500"
+                          : "bg-gray-200"
                     }`}
                     >
                       {step.status === "APPROVED" ? (

@@ -6,9 +6,9 @@ const CtoCredit = require("../models/ctoCreditModel");
 const getCtoApplicationsForApproverService = async (
   approverId,
   search = "",
-  status = "", // ✅ ADDED
+  status = "",
   page = 1,
-  limit = 10
+  limit = 10,
 ) => {
   if (!approverId) {
     const err = new Error("Approver ID is required.");
@@ -37,13 +37,12 @@ const getCtoApplicationsForApproverService = async (
 
       const steps = app.approvals;
       const userStepIndex = steps.findIndex(
-        (s) => s.approver?._id?.toString() === approverId.toString()
+        (s) => s.approver?._id?.toString() === approverId.toString(),
       );
       if (userStepIndex === -1) return false;
 
       const userStep = steps[userStepIndex];
 
-      // ❗ EXISTING LOGIC — UNTOUCHED
       if (userStep.status === "REJECTED") return true;
       if (app.overallStatus === "REJECTED") return false;
 
@@ -58,11 +57,28 @@ const getCtoApplicationsForApproverService = async (
       return isTheirTurn || alreadyActed;
     });
 
-  // ✅ STATUS FILTER (POST-LOGIC, SAFE)
+  // ✅ COUNT STATUSES (BASED ON SAME DATA SET)
+  const statusCounts = {
+    PENDING: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+  };
+
+  ctoApplications.forEach((app) => {
+    const myStep = app.approvals.find(
+      (s) => s.approver?._id?.toString() === approverId.toString(),
+    );
+
+    if (myStep?.status === "PENDING") statusCounts.PENDING++;
+    if (myStep?.status === "APPROVED") statusCounts.APPROVED++;
+    if (myStep?.status === "REJECTED") statusCounts.REJECTED++;
+  });
+
+  // ✅ STATUS FILTER (UNCHANGED)
   if (status) {
     ctoApplications = ctoApplications.filter((app) => {
       const myStep = app.approvals.find(
-        (s) => s.approver?._id?.toString() === approverId.toString()
+        (s) => s.approver?._id?.toString() === approverId.toString(),
       );
       return myStep?.status === status;
     });
@@ -89,14 +105,40 @@ const getCtoApplicationsForApproverService = async (
     data: paginatedData,
     total,
     totalPages,
+    statusCounts,
   };
+};
+
+const getCtoApplicationByIdService = async (ctoApplicationId) => {
+  if (!ctoApplicationId) {
+    const err = new Error("CTO Application ID is required.");
+    err.status = 400;
+    throw err;
+  }
+
+  const application = await CtoApplication.findById(ctoApplicationId)
+    .populate({
+      path: "employee",
+      select: "firstName lastName position department",
+    })
+    .populate({
+      path: "approvals",
+      populate: { path: "approver", select: "firstName lastName position" },
+    });
+
+  if (!application) {
+    const err = new Error("CTO Application not found");
+    err.status = 404;
+    throw err;
+  }
+
+  return application;
 };
 
 const approveCtoApplicationService = async ({ approverId, applicationId }) => {
   // 1️⃣ Fetch the application with approvals and memos
-  const application = await CtoApplication.findById(applicationId).populate(
-    "approvals"
-  );
+  const application =
+    await CtoApplication.findById(applicationId).populate("approvals");
 
   if (!application) {
     const err = new Error("CTO Application not found.");
@@ -106,7 +148,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
 
   // 2️⃣ Find the approval step for this approver
   const currentStep = application.approvals.find(
-    (s) => s.approver.toString() === approverId
+    (s) => s.approver.toString() === approverId,
   );
 
   if (!currentStep) {
@@ -117,15 +159,15 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
 
   // 3️⃣ Ensure previous levels are approved
   const previousLevels = application.approvals.filter(
-    (s) => s.level < currentStep.level
+    (s) => s.level < currentStep.level,
   );
   const unapprovedPrevious = previousLevels.find(
-    (s) => s.status !== "APPROVED"
+    (s) => s.status !== "APPROVED",
   );
 
   if (unapprovedPrevious) {
     const err = new Error(
-      `Level ${unapprovedPrevious.level} must approve first.`
+      `Level ${unapprovedPrevious.level} must approve first.`,
     );
     err.status = 400;
     throw err;
@@ -151,7 +193,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       if (!credit) continue;
 
       const empCredit = credit.employees.find(
-        (e) => e.employee.toString() === application.employee.toString()
+        (e) => e.employee.toString() === application.employee.toString(),
       );
       if (!empCredit) continue;
 
@@ -160,7 +202,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       // Move reserved → used
       empCredit.reservedHours = Math.max(
         0,
-        (empCredit.reservedHours || 0) - appliedHours
+        (empCredit.reservedHours || 0) - appliedHours,
       );
       empCredit.usedHours = (empCredit.usedHours || 0) + appliedHours;
 
@@ -169,7 +211,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
         0,
         (empCredit.creditedHours || 0) -
           empCredit.usedHours -
-          empCredit.reservedHours
+          empCredit.reservedHours,
       );
 
       // If no remaining hours, mark as EXHAUSTED
@@ -178,7 +220,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       // Update CTO credit
       await CtoCredit.updateOne(
         { _id: credit._id, "employees.employee": application.employee },
-        { $set: { "employees.$": empCredit } }
+        { $set: { "employees.$": empCredit } },
       );
     }
 
@@ -187,7 +229,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
     if (employee) {
       employee.balances.ctoHours = Math.max(
         0,
-        employee.balances.ctoHours - application.requestedHours
+        employee.balances.ctoHours - application.requestedHours,
       );
       await employee.save();
     }
@@ -202,7 +244,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
     .populate("employee", "firstName lastName position")
     .populate(
       "memo.memoId",
-      "memoNo uploadedMemo creditedHours remainingHours reservedHours usedHours"
+      "memoNo uploadedMemo creditedHours remainingHours reservedHours usedHours",
     );
 };
 
@@ -231,7 +273,7 @@ const rejectCtoApplicationService = async ({
 
   // 3️⃣ Find the approver’s step
   const currentStep = application.approvals.find(
-    (s) => s.approver.toString() === approverId
+    (s) => s.approver.toString() === approverId,
   );
 
   if (!currentStep) {
@@ -242,15 +284,15 @@ const rejectCtoApplicationService = async ({
 
   // 4️⃣ Ensure previous steps are approved
   const previousLevels = application.approvals.filter(
-    (s) => s.level < currentStep.level
+    (s) => s.level < currentStep.level,
   );
   const unapprovedPrevious = previousLevels.find(
-    (s) => s.status !== "APPROVED"
+    (s) => s.status !== "APPROVED",
   );
 
   if (unapprovedPrevious) {
     const err = new Error(
-      `Level ${unapprovedPrevious.level} must approve first.`
+      `Level ${unapprovedPrevious.level} must approve first.`,
     );
     err.status = 400;
     throw err;
@@ -262,7 +304,7 @@ const rejectCtoApplicationService = async ({
     if (!credit) continue;
 
     const empCredit = credit.employees.find(
-      (e) => e.employee.toString() === application.employee.toString()
+      (e) => e.employee.toString() === application.employee.toString(),
     );
     if (!empCredit) continue;
 
@@ -275,7 +317,7 @@ const rejectCtoApplicationService = async ({
     // Update the CTO credit
     await CtoCredit.updateOne(
       { _id: credit._id, "employees.employee": application.employee },
-      { $set: { "employees.$": empCredit } }
+      { $set: { "employees.$": empCredit } },
     );
   }
 
@@ -298,11 +340,12 @@ const rejectCtoApplicationService = async ({
     .populate("employee", "firstName lastName position")
     .populate(
       "memo.memoId",
-      "memoNo uploadedMemo creditedHours remainingHours reservedHours usedHours"
+      "memoNo uploadedMemo creditedHours remainingHours reservedHours usedHours",
     );
 };
 module.exports = {
   getCtoApplicationsForApproverService,
+  getCtoApplicationByIdService,
   approveCtoApplicationService,
   rejectCtoApplicationService,
 };

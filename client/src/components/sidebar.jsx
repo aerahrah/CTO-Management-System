@@ -91,6 +91,12 @@ const Sidebar = ({
       ],
     },
     {
+      name: "My Profile",
+      icon: <Users size={18} />,
+      path: "/dashboard/my-profile",
+      roles: ["admin", "hr", "employee", "supervisor"],
+    },
+    {
       name: "General Settings",
       icon: <Settings size={18} />,
       roles: ["admin"],

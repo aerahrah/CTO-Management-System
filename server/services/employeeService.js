@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
 const CtoCredit = require("../models/ctoCreditModel");
-
+const bcrypt = require("bcrypt");
 // Create employee with temporary password
 const createEmployeeService = async (employeeData) => {
   const { employeeId, username, email, firstName, lastName, position, role } =
@@ -38,7 +38,7 @@ const createEmployeeService = async (employeeData) => {
     await sendEmail(
       email,
       "Your HRMS Account",
-      `Hello ${firstName},\n\nYour account has been created.\nUsername: ${username}\nTemporary Password: ${tempPassword}\n\nPlease log in and change your password immediately.`
+      `Hello ${firstName},\n\nYour account has been created.\nUsername: ${username}\nTemporary Password: ${tempPassword}\n\nPlease log in and change your password immediately.`,
     );
   }
 
@@ -126,7 +126,7 @@ const signInEmployeeService = async (username, password) => {
     process.env.JWT_SECRET || "supersecretkey123",
     {
       expiresIn: process.env.JWT_EXPIRES_IN || "1d",
-    }
+    },
   );
 
   return { token, payload };
@@ -138,12 +138,10 @@ const updateEmployeeService = async (id, updateData) => {
     throw new Error(`Employee with ID ${id} not found`);
   }
 
-  // ❌ Prevent changing employeeId
   if (updateData.employeeId && updateData.employeeId !== employee.employeeId) {
     throw new Error("Employee ID cannot be changed");
   }
 
-  // ✅ Check for unique username or email only
   if (updateData.email || updateData.username) {
     const conflict = await Employee.findOne({
       $and: [
@@ -179,7 +177,7 @@ const getEmployeeCtoMemos = async (employeeId) => {
 
   const formatted = memos.map((memo) => {
     const empData = memo.employees.find(
-      (e) => e.employee._id.toString() === employeeId
+      (e) => e.employee._id.toString() === employeeId,
     );
 
     return {
@@ -202,7 +200,81 @@ const getEmployeeCtoMemos = async (employeeId) => {
 
   return formatted;
 };
+
+const validRoles = ["employee", "supervisor", "hr", "admin"];
+
+async function changeEmployeeRole(id, newRole) {
+  if (!validRoles.includes(newRole)) {
+    throw new Error(`Invalid role. Valid roles: ${validRoles.join(", ")}`);
+  }
+
+  const employee = await Employee.findById(id);
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
+
+  // Update role
+  employee.role = newRole;
+  await employee.save();
+
+  return employee;
+}
+const getProfile = async (employeeId) => {
+  const employee = await Employee.findById(employeeId).select("-password");
+  if (!employee) throw new Error("Employee not found");
+  return employee;
+};
+
+const updateProfile = async (employeeId, updateData) => {
+  // Only allow certain fields to be updated
+  const allowedUpdates = [
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "position",
+    "division",
+    "project",
+    "address",
+    "emergencyContact",
+  ];
+
+  const filteredData = {};
+  allowedUpdates.forEach((field) => {
+    if (updateData[field] !== undefined)
+      filteredData[field] = updateData[field];
+  });
+
+  const updatedEmployee = await Employee.findByIdAndUpdate(
+    employeeId,
+    filteredData,
+    { new: true, runValidators: true },
+  ).select("-password");
+
+  if (!updatedEmployee) throw new Error("Employee not found");
+  return updatedEmployee;
+};
+
+const resetPassword = async (employeeId, oldPassword, newPassword) => {
+  const employee = await Employee.findById(employeeId);
+  if (!employee) throw new Error("Employee not found");
+
+  // Verify old password
+  const isMatch = await bcrypt.compare(oldPassword, employee.password);
+  if (!isMatch) throw new Error("Old password is incorrect");
+
+  // Set new password (hashed automatically by pre-save hook)
+  employee.password = newPassword;
+  await employee.save();
+
+  return { message: "Password updated successfully" };
+};
+
 module.exports = {
+  getProfile,
+  updateProfile,
+  resetPassword,
+  changeEmployeeRole,
   updateEmployeeService,
   createEmployeeService,
   getEmployeesService,

@@ -45,6 +45,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     approver2: "",
     approver3: "",
   });
+  console.log(admin);
 
   // --- Helper: Get date after 5 working days ---
   const getMinSelectableDate = () => {
@@ -65,9 +66,9 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
   // ---------------- Queries & Mutations ----------------
   const { data: approverResponse, isLoading: isApproverLoading } = useQuery({
-    queryKey: ["approverSettings", admin?.provincialOffice],
-    queryFn: () => fetchApproverSettings(admin.provincialOffice),
-    enabled: !!admin?.provincialOffice,
+    queryKey: ["approverSettings", admin?.designation],
+    queryFn: () => fetchApproverSettings(admin.designation),
+    enabled: !!admin?.designation,
   });
 
   const { data: memoResponse, isLoading: memoLoading } = useQuery({
@@ -138,7 +139,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     // Rule 2: 5 Working Days Lead Time
     if (value < minDate) {
       toast.error(
-        "Applications must be filed at least 5 working days in advance."
+        "Applications must be filed at least 5 working days in advance.",
       );
       e.target.value = "";
       return;
@@ -153,7 +154,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
     if (formData.inclusiveDates.length >= maxSelectableDates) {
       toast.warn(
-        `You can only select up to ${maxSelectableDates} days for ${formData.requestedHours} hours.`
+        `You can only select up to ${maxSelectableDates} days for ${formData.requestedHours} hours.`,
       );
       e.target.value = "";
       return;
@@ -201,7 +202,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     if (memoResponse?.memos) {
       const totalRemaining = memoResponse.memos.reduce(
         (sum, m) => sum + (m.remainingHours || 0),
-        0
+        0,
       );
       setMaxRequestedHours(totalRemaining);
     }

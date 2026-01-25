@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const {
   getCtoApplicationsForApprover,
+  getCtoApplicationById,
   approveCtoApplication,
   rejectCtoApplication,
 } = require("../controllers/ctoApplicationApproverController.js");
@@ -35,7 +36,7 @@ router.post(
   authenticateToken,
   authorizeRoles("admin", "hr"),
   uploadCtoMemo,
-  addCtoCreditRequest
+  addCtoCreditRequest,
 );
 
 // router.patch(
@@ -56,83 +57,90 @@ router.patch(
   "/credits/:creditId/rollback",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  rollbackCreditedRequest
+  rollbackCreditedRequest,
 );
 router.get(
   "/credits/all",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getAllCreditRequests
+  getAllCreditRequests,
 );
 
 router.get(
   "/credits/:employeeId/history",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getEmployeeCredits
+  getEmployeeCredits,
 );
 
 router.get(
   "/credits/my-credits",
   authenticateToken,
   authorizeRoles("admin", "hr", "employee", "supervisor"),
-  getEmployeeCredits
+  getEmployeeCredits,
 );
 
 router.get(
   "/employee/:employeeId/details",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getEmployeeDetails
+  getEmployeeDetails,
 );
 
 router.post(
   "/applications/apply",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  addCtoApplicationRequest
+  addCtoApplicationRequest,
 );
 
 router.get(
   "/applications/all",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  getAllCtoApplicationsRequest
+  getAllCtoApplicationsRequest,
 );
 
 router.get(
   "/applications/my-application",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  getCtoApplicationsByEmployeeRequest
+  getCtoApplicationsByEmployeeRequest,
 );
 
 router.get(
   "/applications/employee/:employeeId",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  getCtoApplicationsByEmployeeRequest
+  getCtoApplicationsByEmployeeRequest,
 );
 
 router.get(
   "/applications/approvers/my-approvals",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  getCtoApplicationsForApprover
+  getCtoApplicationsForApprover,
+);
+
+router.get(
+  "/applications/approvers/my-approvals/:id",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  getCtoApplicationById,
 );
 
 router.post(
   "/applications/approver/:applicationId/approve",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  approveCtoApplication
+  approveCtoApplication,
 );
 
 router.put(
   "/applications/approver/:applicationId/reject",
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
-  rejectCtoApplication
+  rejectCtoApplication,
 );
 // router.get(
 //   "/employees/:id",

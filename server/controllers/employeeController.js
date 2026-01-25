@@ -5,6 +5,10 @@ const {
   signInEmployeeService,
   updateEmployeeService,
   getEmployeeCtoMemos,
+  changeEmployeeRole,
+  getProfile,
+  updateProfile,
+  resetPassword,
 } = require("../services/employeeService");
 
 const createEmployee = async (req, res) => {
@@ -83,7 +87,7 @@ const signInEmployee = async (req, res) => {
   try {
     const { token, payload } = await signInEmployeeService(
       req.body.username,
-      req.body.password
+      req.body.password,
     );
 
     res.json({ message: "Login successful", token, admin: payload });
@@ -132,7 +136,66 @@ const getMyCtoMemos = async (req, res) => {
   }
 };
 
+const updateRole = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role } = req.body;
+
+    if (!id || !role) {
+      return res
+        .status(400)
+        .json({ message: "Employee ID and role are required" });
+    }
+
+    const updatedEmployee = await changeEmployeeRole(id, role);
+
+    return res.status(200).json({
+      message: "Role updated successfully",
+      employee: updatedEmployee,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+const getMyProfile = async (req, res) => {
+  try {
+    const employee = await getProfile(req.user.id);
+    console.log(req.user.id);
+    res.json(employee);
+  } catch (err) {
+    res.status(404).json({ error: err.message });
+  }
+};
+
+const updateMyProfile = async (req, res) => {
+  try {
+    const updatedEmployee = await updateProfile(req.user.id, req.body);
+    res.json(updatedEmployee);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+const resetMyPassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ error: "Old and new passwords are required" });
+    }
+
+    const result = await resetPassword(req.user.id, oldPassword, newPassword);
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
 module.exports = {
+  updateRole,
   updateEmployee,
   createEmployee,
   getEmployees,
@@ -140,4 +203,7 @@ module.exports = {
   signInEmployee,
   getEmployeeCtoMemosById,
   getMyCtoMemos,
+  getMyProfile,
+  updateMyProfile,
+  resetMyPassword,
 };

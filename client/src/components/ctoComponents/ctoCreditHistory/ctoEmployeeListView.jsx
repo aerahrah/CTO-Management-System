@@ -12,7 +12,7 @@ import {
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import ErrorMessage from "../../errorComponent";
-
+import { useNavigate, useParams } from "react-router-dom";
 /* ================================
    HOOK: USE DEBOUNCE
    (Prevents API spam while typing)
@@ -29,11 +29,7 @@ function useDebounce(value, delay) {
 /* ================================
    CTO EMPLOYEE LIST VIEW
 ================================ */
-const CtoEmployeeListView = ({
-  setSelectedId,
-  selectedId,
-  setIsEmployeeLoading,
-}) => {
+const CtoEmployeeListView = ({ setIsEmployeeLoading }) => {
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-neutral-100 bg-neutral-50/50">
@@ -43,11 +39,7 @@ const CtoEmployeeListView = ({
         </p>
       </div>
 
-      <EmployeeList
-        setSelectedId={setSelectedId}
-        selectedId={selectedId}
-        setIsEmployeeLoading={setIsEmployeeLoading}
-      />
+      <EmployeeList setIsEmployeeLoading={setIsEmployeeLoading} />
     </div>
   );
 };
@@ -55,16 +47,18 @@ const CtoEmployeeListView = ({
 /* ================================
    EMPLOYEE LIST COMPONENT
 ================================ */
-const EmployeeList = ({ selectedId, setSelectedId, setIsEmployeeLoading }) => {
+const EmployeeList = ({ setIsEmployeeLoading }) => {
+  const { id: selectedId } = useParams(); // Get employee ID from URL
+  const navigate = useNavigate();
+
   const [searchTerm, setSearchTerm] = useState("");
-  const debouncedSearch = useDebounce(searchTerm, 500); // Wait 500ms before searching
+  const debouncedSearch = useDebounce(searchTerm, 500);
 
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
-  // Query uses the DEBOUNCED search term
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["employees", debouncedSearch, sortOrder, page, limit],
     queryFn: () =>
       getEmployees({
@@ -77,17 +71,16 @@ const EmployeeList = ({ selectedId, setSelectedId, setIsEmployeeLoading }) => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // Sync loading state to parent
   useEffect(() => {
     if (setIsEmployeeLoading) setIsEmployeeLoading(isLoading);
   }, [isLoading, setIsEmployeeLoading]);
 
-  // Auto-select first employee
+  // Auto-select first employee if no ID in URL
   useEffect(() => {
     if (data?.data?.length > 0 && !selectedId) {
-      setSelectedId(data.data[0]._id);
+      navigate(`/dashboard/cto/records/${data.data[0]._id}`, { replace: true });
     }
-  }, [data, selectedId, setSelectedId]);
+  }, [data, selectedId, navigate]);
 
   // Reset page on search change
   useEffect(() => {
@@ -176,13 +169,13 @@ const EmployeeList = ({ selectedId, setSelectedId, setIsEmployeeLoading }) => {
               return (
                 <li
                   key={item._id}
-                  onClick={() => setSelectedId(item._id)}
+                  onClick={() => navigate(`/dashboard/cto/records/${item._id}`)}
                   className={`group flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
-                    ${
-                      isActive
-                        ? "bg-blue-50/60 border-blue-200 shadow-sm ring-1 ring-blue-100"
-                        : "bg-white border-transparent hover:bg-neutral-50 hover:border-neutral-200"
-                    }`}
+    ${
+      selectedId === item._id
+        ? "bg-blue-50/60 border-blue-200 shadow-sm ring-1 ring-blue-100"
+        : "bg-white border-transparent hover:bg-neutral-50 hover:border-neutral-200"
+    }`}
                 >
                   {/* Avatar */}
                   <div

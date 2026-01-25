@@ -3,7 +3,10 @@ import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom"; // Assuming you use react-router
+import { useNavigate } from "react-router-dom";
+import { getEmployeeById, updateEmployeeById } from "../../../api/employee";
+import { useQuery } from "@tanstack/react-query";
+import { useParams } from "react-router-dom";
 import {
   User,
   Briefcase,
@@ -36,7 +39,7 @@ const schema = yup.object().shape({
   project: yup.string().nullable(),
   status: yup.string().required("Status is required"),
   role: yup.string().required("Role is required"),
-  provincialOffice: yup.string().required("Provincial Office is required"),
+  designation: yup.string().required("Designation is required"),
   address: yup.object().shape({
     street: yup.string().required("Street is required"),
     city: yup.string().required("City is required"),
@@ -52,23 +55,35 @@ const schema = yup.object().shape({
   }),
 });
 
-const AddEmployeeForm = ({ employee }) => {
+const AddEmployeeForm = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const { id } = useParams();
+  const isEditMode = Boolean(id);
+
+  const { data: employeeRes, isLoading } = useQuery({
+    queryKey: ["employee", id],
+    queryFn: () => getEmployeeById(id),
+    enabled: isEditMode,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const employee = employeeRes?.data;
   // --- API MUTATION ---
-  const { mutate, isPending } = useMutation({
-    mutationFn: addEmployee,
+  const mutation = useMutation({
+    mutationFn: (data) =>
+      isEditMode ? updateEmployeeById(id, data) : addEmployee(data),
     onSuccess: () => {
       queryClient.invalidateQueries(["employees"]);
-      // Optional: show a toast notification here
-      navigate(-1); // Go back after successful save
-    },
-    onError: (error) => {
-      console.error("Submission Error:", error);
+      if (isEditMode) {
+        queryClient.invalidateQueries(["employee", id]);
+      }
+      navigate(-1);
     },
   });
 
+  const { mutate, isPending } = mutation;
   const {
     register,
     handleSubmit,
@@ -89,7 +104,11 @@ const AddEmployeeForm = ({ employee }) => {
     if (employee) {
       reset({
         ...employee,
-        address: employee.address || { street: "", city: "", province: "" },
+        address: employee.address || {
+          street: "",
+          city: "",
+          province: "",
+        },
         emergencyContact: employee.emergencyContact || {
           name: "",
           phone: "",
@@ -104,7 +123,7 @@ const AddEmployeeForm = ({ employee }) => {
   };
 
   return (
-    <div className="p-8 bg-neutral-50 mx-auto">
+    <div className="p-6 bg-neutral-50 mx-auto">
       {/* === NAVIGATION & HEADER === */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
@@ -122,7 +141,7 @@ const AddEmployeeForm = ({ employee }) => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">
-                {employee ? "Update Employee" : "Add New Employee"}
+                {isEditMode ? "Update Employee" : "Add New Employee"}
               </h1>
               <p className="text-sm text-gray-500 font-medium">
                 HR Management System / Workforce
@@ -148,12 +167,12 @@ const AddEmployeeForm = ({ employee }) => {
             {isPending ? (
               <span className="flex items-center gap-2">
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Saving...
+                {isEditMode ? "Updating..." : "Saving..."}
               </span>
             ) : (
               <>
                 <Save size={18} />
-                Save Employee
+                {isEditMode ? "Update Employee" : "Save Employee"}
               </>
             )}
           </button>
@@ -242,17 +261,17 @@ const AddEmployeeForm = ({ employee }) => {
             </div>
             <div className="pt-2">
               <label className="block text-[11px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-                <Building2 size={12} /> Provincial Office{" "}
+                <Building2 size={12} /> Designation{" "}
                 <span className="text-red-500">*</span>
               </label>
               <Controller
-                name="provincialOffice"
+                name="designation"
                 control={control}
                 render={({ field }) => (
                   <ProvincialOfficeSelect
                     value={field.value}
                     onChange={field.onChange}
-                    error={errors.provincialOffice}
+                    error={errors.designation}
                   />
                 )}
               />
@@ -359,7 +378,7 @@ const InputField = React.forwardRef(
         </p>
       )}
     </div>
-  )
+  ),
 );
 
 const SelectField = React.forwardRef(
@@ -395,7 +414,7 @@ const SelectField = React.forwardRef(
         </p>
       )}
     </div>
-  )
+  ),
 );
 
 export default AddEmployeeForm;

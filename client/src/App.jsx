@@ -9,7 +9,7 @@ import Dashboard from "./pages/dashboardPage";
 import EmployeesPage from "./pages/employeePage";
 import AdminPage from "./pages/adminPage";
 import SettingsPage from "./pages/settingsPage";
-import CtoPage from "./pages/ctoPage";
+// import CtoPage from "./pages/ctoPage";
 import CtoSettings from "./components/generalSettingsComponents/ctoSettings";
 import CtoRecords from "./components/ctoComponents/ctoRecords";
 import CtoApplication from "./components/ctoComponents/ctoApplication";
@@ -22,6 +22,11 @@ import MyCtoCredits from "./components/ctoComponents/myCtoCredits";
 import AddEmployeeForm from "./components/employeeDashboard/forms/addEmployeeForm";
 import EmployeeInformation from "./components/employeeDashboard/employeeInformation";
 import AllCtoApplications from "./components/ctoComponents/ctoAllApplications";
+import CtoApplicationDetails from "./components/ctoComponents/ctoApplicationApprovalsComponents/ctoApplicationsDetails";
+import CtoEmployeeInformation from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
+import MyProfile from "./components/userProfile/myProfile";
+import UpdateProfile from "./components/userProfile/myProfileUpdate";
+import ResetPassword from "./components/userProfile/myProfileResetPassword";
 
 function App() {
   return (
@@ -32,10 +37,14 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />}>
           <Route path="employees" element={<EmployeesPage />} />
           <Route path="employees/add-employee" element={<AddEmployeeForm />} />
-          <Route path="employees/view/:id" element={<EmployeeInformation />} />
+          <Route path="employees/:id" element={<EmployeeInformation />} />
+          <Route path="employees/:id/update" element={<AddEmployeeForm />} />
           <Route path="admin" element={<AdminPage />} />
           <Route path="settings" element={<SettingsPage />} />
-          <Route path="cto" element={<CtoPage />} />
+          <Route path="my-profile" element={<MyProfile />} />
+          <Route path="my-profile/edit" element={<UpdateProfile />} />
+          <Route path="my-profile/reset-password" element={<ResetPassword />} />
+          {/* <Route path="cto" element={<CtoPage />} /> */}
           <Route path="cto-settings" element={<CtoSettings />} />
           <Route
             path="office-locations"
@@ -46,8 +55,33 @@ function App() {
           </Route>
           <Route path="cto/apply" element={<CtoApplication />} />
           <Route path="cto/all-applications" element={<AllCtoApplications />} />
-          <Route path="cto/approvals" element={<CtoApplicationApprovals />} />
-          <Route path="cto/records" element={<CtoRecords />} />
+          <Route path="cto/approvals" element={<CtoApplicationApprovals />}>
+            {/* Default content if no application is selected */}
+            <Route
+              index
+              element={
+                <div className="text-center p-10">
+                  Select an application to view details.
+                </div>
+              }
+            />
+
+            <Route path=":id" element={<CtoApplicationDetails />} />
+          </Route>
+
+          <Route path="cto/records" element={<CtoRecords />}>
+            {/* Default content if no application is selected */}
+            <Route
+              index
+              element={
+                <div className="text-center p-10">
+                  Select an employee to view details.
+                </div>
+              }
+            />
+
+            <Route path=":id" element={<CtoEmployeeInformation />} />
+          </Route>
           <Route path="cto/dashboard" element={<CtoDashboard />} />
           <Route path="cto/my-credits" element={<MyCtoCredits />} />
         </Route>

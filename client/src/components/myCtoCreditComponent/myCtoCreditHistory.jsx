@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import FilterSelect from "../filterSelect";
 
-const statusOptions = ["CREDITED", "ROLLEDBACK"];
+const statusOptions = ["ACTIVE", "EXHAUSTED", "ROLLEDBACK"];
 const pageSizeOptions = [20, 50, 100];
 
 const MyCtoCreditHistory = () => {
@@ -240,7 +240,7 @@ const MyCtoCreditHistory = () => {
                             {formatDuration(credit.duration)}
                           </td>
                           <td className="px-6 py-3 border border-gray-300 text-center">
-                            <StatusBadge status={credit.status} />
+                            <StatusBadge status={credit.employeeStatus} />
                           </td>
                           <td className="px-4 py-4 border border-gray-300 text-center">
                             <button
@@ -305,7 +305,7 @@ const MyCtoCreditHistory = () => {
           <iframe
             src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
               /\\/g,
-              "/"
+              "/",
             )}`}
             className="w-full h-96 border rounded"
             title="Memo Preview"

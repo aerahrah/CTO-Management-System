@@ -16,19 +16,19 @@ const addCtoApplicationService = async ({
   if (!requestedHours || !reason || !inclusiveDates?.length)
     throw Object.assign(
       new Error("Requested hours, reason, and inclusive dates are required."),
-      { status: 400 }
+      { status: 400 },
     );
 
   if (!approvers || approvers.length !== 3 || approvers.some((a) => !a))
     throw Object.assign(
       new Error("Three approvers (Level 1, 2, 3) are required."),
-      { status: 400 }
+      { status: 400 },
     );
 
   if (!memos || !Array.isArray(memos) || !memos.length)
     throw Object.assign(
       new Error("At least one memo with applied hours must be provided."),
-      { status: 400 }
+      { status: 400 },
     );
 
   // 2️⃣ Check employee exists
@@ -55,11 +55,11 @@ const addCtoApplicationService = async ({
 
   for (const input of memos) {
     const credit = credits.find(
-      (c) => c._id.toString() === input.memoId.toString()
+      (c) => c._id.toString() === input.memoId.toString(),
     );
 
     const empCredit = credit.employees.find(
-      (e) => e.employee.toString() === employee._id.toString()
+      (e) => e.employee.toString() === employee._id.toString(),
     );
 
     const availableHours = empCredit.remainingHours || 0;
@@ -67,9 +67,9 @@ const addCtoApplicationService = async ({
     if (input.appliedHours <= 0 || input.appliedHours > availableHours)
       throw Object.assign(
         new Error(
-          `Invalid applied hours for memo ${credit.memoNo}. Available: ${availableHours}`
+          `Invalid applied hours for memo ${credit.memoNo}. Available: ${availableHours}`,
         ),
-        { status: 400 }
+        { status: 400 },
       );
 
     // Update reservedHours and remainingHours
@@ -80,14 +80,14 @@ const addCtoApplicationService = async ({
 
     await CtoCredit.updateOne(
       { _id: credit._id, "employees.employee": employee._id },
-      { $set: { "employees.$": empCredit } }
+      { $set: { "employees.$": empCredit } },
     );
 
     memoUsage.push({
       memoId: credit._id,
       uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"),
       memoNo: credit.memoNo,
-      appliedHours: input.appliedHours, // ✅ store applied hours
+      appliedHours: input.appliedHours,
     });
 
     totalAppliedHours += input.appliedHours;
@@ -96,9 +96,9 @@ const addCtoApplicationService = async ({
   if (totalAppliedHours !== requestedHours)
     throw Object.assign(
       new Error(
-        `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${requestedHours})`
+        `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${requestedHours})`,
       ),
-      { status: 400 }
+      { status: 400 },
     );
 
   // 5️⃣ Create CTO application
@@ -121,8 +121,8 @@ const addCtoApplicationService = async ({
         approver: approverId,
         status: "PENDING",
         ctoApplication: newApplication._id,
-      })
-    )
+      }),
+    ),
   );
 
   newApplication.approvals = approvalSteps.map((step) => step._id);
@@ -152,7 +152,7 @@ const addCtoApplicationService = async ({
 const getAllCtoApplicationsService = async (
   filters = {},
   page = 1,
-  limit = 20
+  limit = 20,
 ) => {
   page = Math.max(parseInt(page) || 1, 1);
   limit = Math.min(parseInt(limit) || 20, 100);
@@ -176,7 +176,7 @@ const getAllCtoApplicationsService = async (
   const [applications, total] = await Promise.all([
     CtoApplication.find(query)
       .select(
-        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt"
+        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt",
       )
       .populate({
         path: "approvals",
@@ -222,7 +222,7 @@ const getCtoApplicationsByEmployeeService = async (
   employeeId,
   page = 1,
   limit = 20,
-  filters = {}
+  filters = {},
 ) => {
   if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
     const err = new Error("Invalid Employee ID");
@@ -237,8 +237,10 @@ const getCtoApplicationsByEmployeeService = async (
 
   const pipeline = [{ $match: { employee: employeeObjectId } }];
 
-  if (filters.status)
+  // Apply filters
+  if (filters.status) {
     pipeline.push({ $match: { overallStatus: filters.status } });
+  }
   if (filters.from && filters.to) {
     pipeline.push({
       $match: {
@@ -251,8 +253,45 @@ const getCtoApplicationsByEmployeeService = async (
   pipeline.push({
     $lookup: {
       from: "ctocredits",
-      localField: "memo.memoId",
-      foreignField: "_id",
+      let: {
+        memoIds: "$memo.memoId",
+        appEmployeeId: "$employee",
+      },
+      pipeline: [
+        {
+          $match: {
+            $expr: { $in: ["$_id", "$$memoIds"] },
+          },
+        },
+        {
+          $project: {
+            dateApproved: 1,
+            createdAt: 1,
+            memoNo: 1,
+            status: 1,
+            employees: 1,
+          },
+        },
+        // 🔑 pick ONLY the employee record matching the application employee
+        {
+          $addFields: {
+            employee: {
+              $first: {
+                $filter: {
+                  input: "$employees",
+                  as: "emp",
+                  cond: { $eq: ["$$emp.employee", "$$appEmployeeId"] },
+                },
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            employees: 0, // remove array completely
+          },
+        },
+      ],
       as: "memoDetails",
     },
   });
@@ -265,85 +304,57 @@ const getCtoApplicationsByEmployeeService = async (
     });
   }
 
-  // Populate employee info
-  pipeline.push({
-    $lookup: {
-      from: "employees",
-      localField: "employee",
-      foreignField: "_id",
-      as: "employee",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$employee", preserveNullAndEmptyArrays: true },
-  });
+  // Populate employee info but only firstName & lastName
+  // pipeline.push({
+  //   $lookup: {
+  //     from: "employees",
+  //     localField: "employee",
+  //     foreignField: "_id",
+  //     as: "employee",
+  //   },
+  // });
+  // pipeline.push({
+  //   $unwind: { path: "$employee", preserveNullAndEmptyArrays: true },
+  // });
+  // pipeline.push({
+  //   $addFields: {
+  //     employee: {
+  //       firstName: "$employee.firstName",
+  //       lastName: "$employee.lastName",
+  //     },
+  //   },
+  // });
 
-  // Populate approvals and only select firstName & lastName of approver
+  // Populate approvals with approver info directly
   pipeline.push({
     $lookup: {
       from: "approvalsteps",
-      localField: "approvals",
-      foreignField: "_id",
+      let: { approvalIds: "$approvals" },
+      pipeline: [
+        { $match: { $expr: { $in: ["$_id", "$$approvalIds"] } } },
+        {
+          $lookup: {
+            from: "employees",
+            localField: "approver",
+            foreignField: "_id",
+            as: "approver",
+          },
+        },
+        { $unwind: { path: "$approver", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            level: 1,
+            status: 1,
+            approver: {
+              _id: "$approver._id",
+              firstName: "$approver.firstName",
+              lastName: "$approver.lastName",
+              position: "$approver.position",
+            },
+          },
+        },
+      ],
       as: "approvals",
-    },
-  });
-
-  // Nested lookup for approver info (only firstName & lastName)
-  pipeline.push({
-    $lookup: {
-      from: "employees",
-      localField: "approvals.approver",
-      foreignField: "_id",
-      as: "approverDetails",
-    },
-  });
-
-  // Map approverDetails into approvals array
-  pipeline.push({
-    $addFields: {
-      approvals: {
-        $map: {
-          input: "$approvals",
-          as: "appr",
-          in: {
-            level: "$$appr.level",
-            status: "$$appr.status",
-            approver: {
-              $arrayElemAt: [
-                {
-                  $filter: {
-                    input: "$approverDetails",
-                    cond: { $eq: ["$$this._id", "$$appr.approver"] },
-                  },
-                },
-                0,
-              ],
-            },
-          },
-        },
-      },
-    },
-  });
-
-  // Only keep firstName & lastName in approver
-  pipeline.push({
-    $addFields: {
-      approvals: {
-        $map: {
-          input: "$approvals",
-          as: "a",
-          in: {
-            level: "$$a.level",
-            status: "$$a.status",
-            approver: {
-              firstName: "$$a.approver.firstName",
-              lastName: "$$a.approver.lastName",
-              position: "$$a.approver.position",
-              _id: "$$a.approver._id",
-            },
-          },
-        },
-      },
     },
   });
 
@@ -352,6 +363,7 @@ const getCtoApplicationsByEmployeeService = async (
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: limit });
 
+  // Run aggregation
   let applications = await CtoApplication.aggregate(pipeline);
 
   // Map memoDetails back to memo.memoId
@@ -370,7 +382,7 @@ const getCtoApplicationsByEmployeeService = async (
   const countPipeline = [
     { $match: { employee: employeeObjectId } },
     ...pipeline.filter(
-      (stage) => !("$skip" in stage || "$limit" in stage || "$sort" in stage)
+      (stage) => !("$skip" in stage || "$limit" in stage || "$sort" in stage),
     ),
     { $count: "total" },
   ];

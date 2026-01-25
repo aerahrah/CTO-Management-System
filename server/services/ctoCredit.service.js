@@ -41,7 +41,7 @@ const addCredit = async ({
           (employee.balances.ctoHours || 0) + totalHours;
         await employee.save();
       }
-    })
+    }),
   );
 
   return credit;
@@ -64,20 +64,50 @@ const addCredit = async ({
 async function rollbackCredit({ creditId, userId }) {
   const credit = await CtoCredit.findById(creditId);
   if (!credit) throw new Error("Credit request not found");
+
+  // Cannot rollback if credit is already rolled back or not active
   if (credit.status !== "CREDITED") {
     throw new Error("This credit is not active or already rolled back");
   }
 
-  const totalHours = credit.duration.hours + credit.duration.minutes / 60;
+  // Check if any employee has usedHours or reservedHours
+  const hasUsedOrReserved = credit.employees.some(
+    (e) => (e.usedHours || 0) > 0 || (e.reservedHours || 0) > 0,
+  );
+  if (hasUsedOrReserved) {
+    throw new Error(
+      "Cannot rollback: Some employees have already used or reserved hours",
+    );
+  }
 
-  await Employee.updateMany(
-    { _id: { $in: credit.employees } },
-    { $inc: { "balances.ctoHours": -totalHours } }
+  // Calculate total credited hours for each employee
+  const employeeHoursMap = credit.employees.reduce((acc, e) => {
+    const hours = e.creditedHours || 0;
+    acc[e.employee] = hours;
+    return acc;
+  }, {});
+
+  // Deduct hours from each employee's balance
+  await Promise.all(
+    Object.entries(employeeHoursMap).map(([empId, hours]) =>
+      Employee.updateOne(
+        { _id: empId },
+        { $inc: { "balances.ctoHours": -hours } },
+      ),
+    ),
   );
 
+  // Update status for each employee inside the credit document
+  credit.employees = credit.employees.map((e) => ({
+    ...e.toObject(),
+    status: "ROLLEDBACK",
+  }));
+
+  // Update memo-level status
   credit.status = "ROLLEDBACK";
   credit.dateRolledBack = new Date();
   credit.rolledBackBy = userId;
+
   await credit.save();
 
   return credit;
@@ -133,12 +163,11 @@ async function getEmployeeDetails(employeeId) {
 
 async function getEmployeeCredits(
   employeeId,
-  { search = "", filters = {}, page = 1, limit = 20 } = {}
+  { search = "", filters = {}, page = 1, limit = 20 } = {},
 ) {
   if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
     throw new Error("Invalid employee ID");
   }
-  console.log(employeeId);
 
   page = parseInt(page);
   limit = Math.min(Math.max(limit, 20), 100);
@@ -147,9 +176,11 @@ async function getEmployeeCredits(
   // Base query: filter only for this employee
   const query = { "employees.employee": employeeId };
 
-  // Status filter
+  // Employee-specific status filter: ACTIVE / EXHAUSTED / ROLLEDBACK
   if (filters.status) {
-    query.status = filters.status;
+    query.employees = {
+      $elemMatch: { employee: employeeId, status: filters.status },
+    };
   }
 
   // Search filter: only search by memoNo
@@ -170,24 +201,30 @@ async function getEmployeeCredits(
     .limit(limit)
     .lean();
 
-  // Format each credit for the employee
   const formattedCredits = credits.map((credit) => {
     const empData = credit.employees.find(
-      (e) => e.employee._id.toString() === employeeId
+      (e) => e.employee._id.toString() === employeeId,
     );
+
+    // Calculate remaining hours
+    const totalHours = credit.duration.hours + credit.duration.minutes / 60;
+    const usedHours = empData?.usedHours || 0;
+    const reservedHours = empData?.reservedHours || 0;
+    const remainingHours = totalHours - usedHours - reservedHours;
 
     return {
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
       uploadedMemo: credit.uploadedMemo,
       duration: credit.duration,
-      appliedHours: empData?.appliedHours || 0,
-      remainingHours:
-        credit.duration.hours +
-        credit.duration.minutes / 60 -
-        (empData?.appliedHours || 0),
+      appliedHours: usedHours,
+      reservedHours: reservedHours,
+      remainingHours: remainingHours,
       status: credit.status,
+      usedHours: empData?.usedHours,
+      employeeStatus: empData?.status || "ACTIVE",
       creditedBy: credit.creditedBy,
+      rolledBackBy: credit.rolledBackBy,
     };
   });
 

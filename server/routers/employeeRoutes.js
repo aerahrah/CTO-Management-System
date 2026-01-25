@@ -8,6 +8,10 @@ const {
   updateEmployee,
   getEmployeeCtoMemosById,
   getMyCtoMemos,
+  updateRole,
+  getMyProfile,
+  updateMyProfile,
+  resetMyPassword,
 } = require("../controllers/employeeController");
 
 const {
@@ -15,42 +19,60 @@ const {
   authorizeRoles,
 } = require("../middlewares/authMiddleware");
 
-router.post(
-  "/",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  createEmployee
-);
-router.get("/", authenticateToken, authorizeRoles("admin", "hr"), getEmployees);
+/* =======================
+   AUTH & SELF ROUTES FIRST
+   ======================= */
+router.post("/login", signInEmployee);
 
-router.get(
-  "/:id",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  getEmployeeById
-);
-
-router.put(
-  "/:id",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  updateEmployee
-);
+router.get("/my-profile", authenticateToken, getMyProfile);
+router.put("/my-profile", authenticateToken, updateMyProfile);
+router.put("/my-profile/reset-password", authenticateToken, resetMyPassword);
 
 router.get(
   "/memos/me",
   authenticateToken,
   authorizeRoles("admin", "hr", "employee"),
-  getMyCtoMemos
+  getMyCtoMemos,
+);
+
+/* =======================
+   ADMIN / HR ROUTES
+   ======================= */
+router.post(
+  "/",
+  authenticateToken,
+  authorizeRoles("admin", "hr"),
+  createEmployee,
+);
+
+router.get("/", authenticateToken, authorizeRoles("admin", "hr"), getEmployees);
+
+router.put(
+  "/:id",
+  authenticateToken,
+  authorizeRoles("admin", "hr"),
+  updateEmployee,
+);
+
+router.post(
+  "/:id/role",
+  authenticateToken,
+  authorizeRoles("admin"),
+  updateRole,
 );
 
 router.get(
   "/memos/:id",
   authenticateToken,
   authorizeRoles("admin", "hr"),
-  getEmployeeCtoMemosById
+  getEmployeeCtoMemosById,
 );
 
-router.post("/login", signInEmployee);
+router.get(
+  "/:id",
+  authenticateToken,
+  authorizeRoles("admin", "hr"),
+  getEmployeeById,
+);
 
 module.exports = router;

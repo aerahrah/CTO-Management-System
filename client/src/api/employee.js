@@ -34,3 +34,26 @@ export const updateEmployeeById = async (id, updateData) => {
   const res = await API.put(`/employee/${id}`, updateData);
   return res.data;
 };
+
+export const updateEmployeeRole = async (id, updateData) => {
+  console.log(id, updateData);
+  const res = await API.post(`/employee/${id}/role`, updateData);
+  return res.data;
+};
+
+export const getMyProfile = async () => {
+  const res = await API.get(`/employee/my-profile`);
+  console.log(res.data);
+  return res.data;
+};
+
+export const updateMyProfile = async (updateData) => {
+  console.log(updateData);
+  const res = await API.put(`/employee/my-profile`, updateData);
+  return res.data;
+};
+
+export const resetMyPassword = async (updateData) => {
+  const res = await API.put(`/employee/my-profile/reset-password`, updateData);
+  return res.data;
+};

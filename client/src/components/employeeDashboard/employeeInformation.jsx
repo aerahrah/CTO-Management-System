@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployeeById, updateEmployeeById } from "../../api/employee";
 import { StatusBadge, RoleBadge } from "../statusUtils";
 import { useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import Modal from "../modal";
 import AddEmployeeForm from "./forms/addEmployeeForm";
 import { toast } from "react-toastify";
@@ -13,6 +14,7 @@ import {
   MapPin,
   Calendar,
   Briefcase,
+  ChevronLeft,
   ShieldCheck,
   Clock,
   Edit3,
@@ -25,10 +27,11 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx"; // standard utility, or just use template literals if you don't have it
 
-const EmployeeInformation = ({ selectedId }) => {
+const EmployeeInformation = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'personal' | 'job'
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const { id } = useParams();
   const {
@@ -94,6 +97,16 @@ const EmployeeInformation = ({ selectedId }) => {
       <div className="bg-white px-6 pt-4 pb-3 border-b border-slate-200">
         <div className="flex flex-col md:flex-row justify-between items-start gap-5 mb-6">
           <div className="flex items-center gap-3 w-full">
+            {/* Back Button */}
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600"
+              title="Go Back"
+            >
+              <ChevronLeft size={24} />
+            </button>
+
             {/* Avatar */}
             <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br text-blue-50 bg-blue-600 flex items-center justify-center text-xl font-bold">
               {emp?.firstName?.[0]}
@@ -123,12 +136,14 @@ const EmployeeInformation = ({ selectedId }) => {
             </div>
 
             {/* Edit Button (Desktop) */}
+
             <button
-              onClick={() => setIsOpen(true)}
+              onClick={() =>
+                navigate(`/dashboard/employees/${emp?._id}/update`)
+              }
               className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
             >
-              <Edit3 size={16} />
-              Update Information
+              Update Profile
             </button>
           </div>
         </div>
@@ -327,15 +342,7 @@ const EmployeeInformation = ({ selectedId }) => {
           disabled: updateEmployeeMutation.isPending,
         }}
       >
-        <AddEmployeeForm
-          mode="edit"
-          employee={emp}
-          onCancel={() => setIsOpen(false)}
-          onSubmit={(formData) => {
-            const { employeeId, ...cleanData } = formData;
-            updateEmployeeMutation.mutate({ id, data: cleanData });
-          }}
-        />
+        <AddEmployeeForm employeeId={id} onCancel={() => setIsOpen(false)} />
       </Modal>
     </div>
   );

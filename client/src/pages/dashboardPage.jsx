@@ -1,12 +1,13 @@
 import { useEffect, useState, useRef } from "react";
-import { useNavigate, Outlet } from "react-router-dom";
+import { useNavigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../store/authStore";
 import Sidebar from "../components/sidebar";
 import { LogOut, ChevronDown, Menu } from "lucide-react";
 import { RoleBadge } from "../components/statusUtils";
-
+// import Breadcrumbs from "../components/breadCrumbs";
 const Dashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token, admin, logout } = useAuth();
 
   const [collapsed, setCollapsed] = useState(false);
@@ -41,7 +42,6 @@ const Dashboard = () => {
       .toUpperCase() || "A";
 
   return (
-    /* h-screen and overflow-hidden here prevents the whole body from scrolling */
     <div className="flex h-screen bg-neutral-100 w-full overflow-hidden">
       <Sidebar
         admin={admin}
@@ -51,17 +51,26 @@ const Dashboard = () => {
         setMobileOpen={setMobileOpen}
       />
 
-      {/* Main Content Area: flex-col with h-full and overflow-hidden */}
+      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
-        {/* Top Navbar: flex-shrink-0 ensures it stays at 16 (h-16) */}
-        <nav className="flex-shrink-0 z-30 flex justify-between lg:justify-end items-center bg-white/80 backdrop-blur-md border-b border-gray-200 h-14 px-4 lg:px-10">
-          <button
-            onClick={() => setMobileOpen(true)}
-            className="p-2 mr-4 rounded-lg hover:bg-gray-100 lg:hidden text-gray-600"
-          >
-            <Menu size={24} />
-          </button>
+        {/* Top Navbar */}
+        <nav className="flex-shrink-0 z-30 flex justify-between items-center bg-white/80 backdrop-blur-md border-b border-gray-200 h-14 px-4 lg:px-10">
+          {/* Left Side: Mobile Menu + Breadcrumbs */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="p-2 mr-4 rounded-lg hover:bg-gray-100 lg:hidden text-gray-600"
+            >
+              <Menu size={24} />
+            </button>
 
+            {/* Breadcrumbs (only visible on large screens) */}
+            {/* <div className="hidden lg:flex">
+              <Breadcrumbs />
+            </div> */}
+          </div>
+
+          {/* Right Side: User Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((prev) => !prev)}
@@ -112,7 +121,7 @@ const Dashboard = () => {
           </div>
         </nav>
 
-        {/* Main Content Area: flex-1 and overflow-y-auto enables scrolling ONLY here */}
+        {/* Main Content */}
         <main className="flex-1 overflow-y-auto md:py-2 md:px-3 custom-scrollbar">
           <div className="max-w-full mx-auto">
             <Outlet />
