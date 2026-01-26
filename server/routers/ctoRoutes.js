@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const {
+  getApproverOptions,
   getCtoApplicationsForApprover,
   getCtoApplicationById,
   approveCtoApplication,
@@ -113,6 +114,13 @@ router.get(
   authenticateToken,
   authorizeRoles("admin", "hr", "supervisor", "employee"),
   getCtoApplicationsByEmployeeRequest,
+);
+
+router.get(
+  "/applications/approvers/",
+  authenticateToken,
+  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  getApproverOptions,
 );
 
 router.get(

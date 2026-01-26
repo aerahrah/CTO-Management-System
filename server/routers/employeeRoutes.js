@@ -57,7 +57,7 @@ router.put(
 router.post(
   "/:id/role",
   authenticateToken,
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "hr"),
   updateRole,
 );
 

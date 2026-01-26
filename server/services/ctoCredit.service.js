@@ -2,7 +2,6 @@
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
 const mongoose = require("mongoose");
-
 const addCredit = async ({
   employees,
   duration,
@@ -11,7 +10,8 @@ const addCredit = async ({
   userId,
   filePath,
 }) => {
-  const totalHours = duration.hours + duration.minutes / 60;
+  const totalHours =
+    Number(duration.hours || 0) + Number(duration.minutes || 0) / 60;
 
   const employeeObjs = employees.map((id) => ({
     employee: id,
@@ -29,10 +29,9 @@ const addCredit = async ({
     duration,
     employees: employeeObjs,
     creditedBy: userId,
-    status: "CREDITED", // memo-level
+    status: "CREDITED",
   });
 
-  // ✅ Update each employee's CTO balance
   await Promise.all(
     employees.map(async (employeeId) => {
       const employee = await Employee.findById(employeeId);
@@ -216,6 +215,7 @@ async function getEmployeeCredits(
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
       uploadedMemo: credit.uploadedMemo,
+      creditedHours: empData?.creditedHours,
       duration: credit.duration,
       appliedHours: usedHours,
       reservedHours: reservedHours,

@@ -1,8 +1,8 @@
 // controllers/ctoCredit.controller.js
 const ctoCreditService = require("../services/ctoCredit.service");
 
-const fs = require("fs");
 const path = require("path");
+const fsPromises = require("fs").promises;
 
 const addCtoCreditRequest = async (req, res) => {
   try {
@@ -12,15 +12,20 @@ const addCtoCreditRequest = async (req, res) => {
     let filePath = req.file?.path;
 
     if (filePath) {
-      const extension = path.extname(req.file.originalname);
-      const cleanMemoNo = memoNo
-        .replace(/\s+/g, "_")
-        .replace(/[^a-zA-Z0-9_]/g, "");
-      const cleanDate = dateApproved.replace(/-/g, "");
-      const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
-      const newPath = path.join(path.dirname(filePath), newFileName);
-      fs.renameSync(filePath, newPath);
-      filePath = newPath;
+      try {
+        const extension = path.extname(req.file.originalname);
+        const cleanMemoNo = memoNo
+          .replace(/\s+/g, "_")
+          .replace(/[^a-zA-Z0-9_]/g, "");
+        const cleanDate = dateApproved.replace(/-/g, "");
+        const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
+        const newPath = path.join(path.dirname(filePath), newFileName);
+
+        await fsPromises.rename(filePath, newPath);
+        filePath = newPath;
+      } catch (err) {
+        console.warn("File rename failed, keeping original path", err);
+      }
     }
 
     const employeesArray = JSON.parse(employees);
@@ -35,12 +40,13 @@ const addCtoCreditRequest = async (req, res) => {
       filePath,
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "CTO credit request created",
       creditRequest,
     });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    console.error("Add CTO credit error:", error);
+    return res.status(400).json({ message: error.message });
   }
 };
 

@@ -6,8 +6,18 @@ const CtoCredit = require("../models/ctoCreditModel");
 const bcrypt = require("bcrypt");
 // Create employee with temporary password
 const createEmployeeService = async (employeeData) => {
-  const { employeeId, username, email, firstName, lastName, position, role } =
-    employeeData;
+  const {
+    employeeId,
+    username,
+    email,
+    firstName,
+    lastName,
+    position,
+    designation,
+    division,
+    project,
+    role,
+  } = employeeData;
 
   // Check for existing employee
   const existing = await Employee.findOne({
@@ -26,6 +36,9 @@ const createEmployeeService = async (employeeData) => {
     email,
     firstName,
     lastName,
+    division,
+    project,
+    designation,
     position,
     role,
     password: tempPassword,
@@ -35,11 +48,49 @@ const createEmployeeService = async (employeeData) => {
 
   // Send email if email is provided
   if (email) {
-    await sendEmail(
-      email,
-      "Your HRMS Account",
-      `Hello ${firstName},\n\nYour account has been created.\nUsername: ${username}\nTemporary Password: ${tempPassword}\n\nPlease log in and change your password immediately.`,
-    );
+    try {
+      const htmlBody = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+        <!-- Header -->
+        <div style="background-color: #2563eb; padding: 20px; text-align: center;">
+          <img src="https://yourdomain.com/logo.png" alt="DICT Logo" style="height: 50px;" />
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 20px; color: #1f2937;">
+          <h2 style="color: #2563eb; margin-top: 0;">Welcome to DICT HRMS, ${firstName}!</h2>
+          <p>Your account has been successfully created.</p>
+
+          <table style="width: 100%; margin: 20px 0; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 8px; font-weight: bold; width: 40%;">Username:</td>
+              <td style="padding: 8px;">${username}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; font-weight: bold;">Temporary Password:</td>
+              <td style="padding: 8px;">${tempPassword}</td>
+            </tr>
+          </table>
+
+          <p style="margin-top: 20px;">Please log in and change your password immediately to secure your account.</p>
+
+          <a href="https://your-hrms-domain.com/login" 
+            style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 4px; margin-top: 10px;">
+            Login to HRMS
+          </a>
+        </div>
+
+        <!-- Footer -->
+        <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280;">
+          DICT HRMS &copy; ${new Date().getFullYear()}. All rights reserved.
+        </div>
+      </div>
+    `;
+
+      await sendEmail(email, "Your DICT HRMS Account", htmlBody);
+    } catch (err) {
+      console.error("Failed to send email:", err.message);
+    }
   }
 
   return {

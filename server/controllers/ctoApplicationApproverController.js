@@ -3,7 +3,26 @@ const {
   approveCtoApplicationService,
   rejectCtoApplicationService,
   getCtoApplicationByIdService,
+  getApproverOptionsService,
 } = require("../services/ctoApplicationApprover.service");
+
+const getApproverOptions = async (req, res) => {
+  try {
+    const data = await getApproverOptionsService();
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      data,
+    });
+  } catch (err) {
+    console.error("Failed to fetch approver options:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load approver options",
+    });
+  }
+};
 
 const getCtoApplicationsForApprover = async (req, res, next) => {
   try {
@@ -95,6 +114,7 @@ const rejectCtoApplication = async (req, res, next) => {
 };
 
 module.exports = {
+  getApproverOptions,
   getCtoApplicationsForApprover,
   getCtoApplicationById,
   approveCtoApplication,

@@ -3,6 +3,8 @@ const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const mongoose = require("mongoose");
+const sendEmail = require("../utils/sendEmail");
+const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
 
 const addCtoApplicationService = async ({
   userId,
@@ -130,10 +132,13 @@ const addCtoApplicationService = async ({
 
   // 7️⃣ Populate for frontend
   const populatedApp = await CtoApplication.findById(newApplication._id)
-    .populate("employee", "firstName lastName position")
+    .populate("employee", "firstName lastName position email")
     .populate({
       path: "approvals",
-      populate: { path: "approver", select: "firstName lastName position" },
+      populate: {
+        path: "approver",
+        select: "firstName lastName position email",
+      },
     })
     .populate("memo.memoId", "memoNo uploadedMemo duration");
 
@@ -146,8 +151,36 @@ const addCtoApplicationService = async ({
     });
   }
 
+  // 8️⃣ Notify FIRST approver only (best practice)
+  try {
+    const firstApproval = approvalSteps.find((a) => a.level === 1);
+    const approverUser = await Employee.findById(firstApproval.approver);
+    const applicant = employee;
+
+    console.log(approverUser.email);
+    if (approverUser?.email) {
+      await sendEmail(
+        approverUser.email, // string
+        "CTO Approval Request", // subject
+        ctoApprovalEmail({
+          // html content
+          approverName: `${approverUser.firstName} ${approverUser.lastName}`,
+          employeeName: `${applicant.firstName} ${applicant.lastName}`,
+          requestedHours,
+          reason,
+          level: 1,
+          link: `${process.env.FRONTEND_URL}/app/cto/approvals/${newApplication._id}`,
+        }),
+      );
+    }
+  } catch (err) {
+    console.error("Failed to send CTO approval email:", err);
+  }
+
   return populatedApp;
 };
+
+module.exports = { addCtoApplicationService };
 
 const getAllCtoApplicationsService = async (
   filters = {},

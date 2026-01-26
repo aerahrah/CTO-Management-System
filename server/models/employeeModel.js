@@ -27,11 +27,11 @@ const employeeSchema = new mongoose.Schema(
 
     firstName: { type: String, required: true, trim: true },
     lastName: { type: String, required: true, trim: true },
-    email: { type: String, lowercase: true },
+    email: { type: String, required: true, lowercase: true },
     phone: { type: String },
     position: { type: String, required: true },
-    division: { type: String },
-    project: { type: String },
+    division: { type: String, required: true },
+    project: { type: String, required: true },
     dateHired: { type: Date, default: Date.now },
     status: {
       type: String,
@@ -56,7 +56,7 @@ const employeeSchema = new mongoose.Schema(
       relation: { type: String, trim: true },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 employeeSchema.pre("save", async function (next) {
