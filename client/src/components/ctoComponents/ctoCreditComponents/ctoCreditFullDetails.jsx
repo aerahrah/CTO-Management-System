@@ -70,7 +70,7 @@ const CtoCreditDetails = ({ credit }) => {
 
   const PDF_URL = `http://localhost:3000/${credit.uploadedMemo?.replace(
     /\\/g,
-    "/"
+    "/",
   )}`;
 
   return (
@@ -112,7 +112,15 @@ const CtoCreditDetails = ({ credit }) => {
               <p className="text-[10px] uppercase font-bold text-slate-400 leading-none mb-1">
                 Status
               </p>
-              <p className="text-emerald-600 font-semibold text-xs">
+              <p
+                className={`font-semibold text-xs ${
+                  credit.status === "ROLLEDBACK"
+                    ? "text-rose-600"
+                    : credit.status === "CREDITED"
+                      ? "text-emerald-600"
+                      : "text-gray-600"
+                }`}
+              >
                 {credit.status}
               </p>
             </div>

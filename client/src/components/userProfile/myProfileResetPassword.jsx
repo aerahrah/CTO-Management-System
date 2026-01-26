@@ -13,14 +13,37 @@ import {
 import { resetMyPassword } from "../../api/employee";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useForm } from "react-hook-form";
+import { yupResolver } from "@hookform/resolvers/yup";
+import * as yup from "yup";
+
+/** Yup Schema */
+const schema = yup.object().shape({
+  oldPassword: yup.string().required("Current password is required"),
+  newPassword: yup
+    .string()
+    .required("New password is required")
+    .min(8, "Password must be at least 8 characters")
+    .matches(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .matches(/[a-z]/, "Password must contain at least one lowercase letter")
+    .matches(/[0-9]/, "Password must contain at least one number"),
+  confirmPassword: yup
+    .string()
+    .required("Please confirm your new password")
+    .oneOf([yup.ref("newPassword")], "Passwords must match"),
+});
 
 const ResetPassword = () => {
   const navigate = useNavigate();
   const [showPasswords, setShowPasswords] = useState(false);
-  const [formData, setFormData] = useState({
-    oldPassword: "",
-    newPassword: "",
-    confirmPassword: "",
+
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm({
+    resolver: yupResolver(schema),
   });
 
   const mutation = useMutation({
@@ -29,9 +52,6 @@ const ResetPassword = () => {
       toast.success(data.message || "Password updated successfully!", {
         position: "top-right",
         autoClose: 3000,
-        hideProgressBar: false,
-        pauseOnHover: true,
-        draggable: true,
       });
       navigate("/dashboard/my-profile");
     },
@@ -39,35 +59,20 @@ const ResetPassword = () => {
       toast.error(err.response?.data?.error || "Failed to reset password", {
         position: "top-right",
         autoClose: 3000,
-        hideProgressBar: false,
-        pauseOnHover: true,
-        draggable: true,
       });
     },
   });
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (formData.newPassword !== formData.confirmPassword) {
-      toast.error("New passwords do not match!", {
-        position: "top-right",
-        autoClose: 3000,
-      });
-      return;
-    }
+  const onSubmit = (data) => {
     mutation.mutate({
-      oldPassword: formData.oldPassword,
-      newPassword: formData.newPassword,
+      oldPassword: data.oldPassword,
+      newPassword: data.newPassword,
     });
   };
 
-  const isMismatch =
-    formData.confirmPassword &&
-    formData.newPassword !== formData.confirmPassword;
-
   return (
-    <div className="bg-gray-50  h-[calc(100vh-3.5rem-1rem)] p-6">
-      <ToastContainer /> {/* Toast container */}
+    <div className="bg-gray-50 h-[calc(100vh-3.5rem-1rem)] p-6">
+      <ToastContainer />
       <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -87,7 +92,7 @@ const ResetPassword = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          {/* Left: Guide/Description */}
+          {/* Left: Guide */}
           <div className="md:col-span-2 space-y-4">
             <div className="bg-blue-600 rounded-2xl p-6 text-white shadow-lg shadow-blue-100">
               <ShieldCheck className="w-8 h-8 mb-4 text-blue-200" />
@@ -120,7 +125,11 @@ const ResetPassword = () => {
           {/* Right: Form */}
           <div className="md:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-              <form onSubmit={handleSubmit} className="space-y-5">
+              <form
+                onSubmit={handleSubmit(onSubmit)}
+                className="space-y-5"
+                noValidate
+              >
                 {/* Old Password */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-slate-500 uppercase">
@@ -130,18 +139,20 @@ const ResetPassword = () => {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type={showPasswords ? "text" : "password"}
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       placeholder="Enter current password"
-                      value={formData.oldPassword}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          oldPassword: e.target.value,
-                        })
-                      }
-                      required
+                      {...register("oldPassword")}
+                      className={`w-full pl-10 pr-4 py-2.5 bg-gray-50 border rounded-xl text-sm focus:ring-2 outline-none transition-all ${
+                        errors.oldPassword
+                          ? "border-red-300 focus:ring-red-500"
+                          : "border-gray-200 focus:ring-blue-500"
+                      }`}
                     />
                   </div>
+                  {errors.oldPassword && (
+                    <p className="text-[11px] text-red-500 font-medium">
+                      {errors.oldPassword.message}
+                    </p>
+                  )}
                 </div>
 
                 <hr className="border-gray-100" />
@@ -155,18 +166,20 @@ const ResetPassword = () => {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type={showPasswords ? "text" : "password"}
-                      className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                       placeholder="Minimum 8 characters"
-                      value={formData.newPassword}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          newPassword: e.target.value,
-                        })
-                      }
-                      required
+                      {...register("newPassword")}
+                      className={`w-full pl-10 pr-4 py-2.5 bg-gray-50 border rounded-xl text-sm focus:ring-2 outline-none transition-all ${
+                        errors.newPassword
+                          ? "border-red-300 focus:ring-red-500"
+                          : "border-gray-200 focus:ring-blue-500"
+                      }`}
                     />
                   </div>
+                  {errors.newPassword && (
+                    <p className="text-[11px] text-red-500 font-medium">
+                      {errors.newPassword.message}
+                    </p>
+                  )}
                 </div>
 
                 {/* Confirm Password */}
@@ -178,25 +191,18 @@ const ResetPassword = () => {
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                     <input
                       type={showPasswords ? "text" : "password"}
+                      placeholder="Repeat new password"
+                      {...register("confirmPassword")}
                       className={`w-full pl-10 pr-4 py-2.5 bg-gray-50 border rounded-xl text-sm focus:ring-2 outline-none transition-all ${
-                        isMismatch
+                        errors.confirmPassword
                           ? "border-red-300 focus:ring-red-500"
                           : "border-gray-200 focus:ring-blue-500"
                       }`}
-                      placeholder="Repeat new password"
-                      value={formData.confirmPassword}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          confirmPassword: e.target.value,
-                        })
-                      }
-                      required
                     />
                   </div>
-                  {isMismatch && (
+                  {errors.confirmPassword && (
                     <p className="text-[11px] text-red-500 font-medium">
-                      Passwords do not match
+                      {errors.confirmPassword.message}
                     </p>
                   )}
                 </div>
@@ -220,7 +226,7 @@ const ResetPassword = () => {
 
                 <button
                   type="submit"
-                  disabled={mutation.isPending || isMismatch}
+                  disabled={isSubmitting || mutation.isPending}
                   className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50 disabled:shadow-none"
                 >
                   {mutation.isPending

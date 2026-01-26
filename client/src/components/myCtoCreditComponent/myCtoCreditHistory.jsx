@@ -4,6 +4,7 @@ import { fetchMyCreditRequests } from "../../api/cto";
 import { StatusBadge } from "../statusUtils";
 import Modal from "../modal";
 import Skeleton from "react-loading-skeleton";
+import SelectCtoMemoModal from "../ctoComponents/ctoMemoModal";
 import "react-loading-skeleton/dist/skeleton.css";
 import {
   Clipboard,
@@ -13,6 +14,9 @@ import {
   Filter,
   RotateCcw,
   Inbox,
+  FileText,
+  ExternalLink,
+  Calendar,
 } from "lucide-react";
 import FilterSelect from "../filterSelect";
 
@@ -298,21 +302,160 @@ const MyCtoCreditHistory = () => {
       <Modal
         isOpen={memoModal.isOpen}
         onClose={() => setMemoModal({ isOpen: false, memo: null })}
-        title={`Memo: ${memoModal.memo?.memoNo || ""}`}
+        title="CTO Memo"
         closeLabel="Close"
       >
-        {memoModal.memo?.uploadedMemo?.endsWith(".pdf") ? (
-          <iframe
-            src={`http://localhost:3000/${memoModal.memo.uploadedMemo.replace(
-              /\\/g,
-              "/",
-            )}`}
-            className="w-full h-96 border rounded"
-            title="Memo Preview"
-          />
+        {!memoModal.memo ? (
+          <div className="h-64 flex flex-col items-center justify-center text-gray-400 text-sm bg-gray-50 border border-dashed rounded-lg">
+            <FileText size={28} className="mb-2 opacity-40" />
+            No memo selected
+          </div>
         ) : (
-          <div className="w-full h-96 flex items-center justify-center bg-gray-50 border rounded text-gray-400">
-            No preview available for this file type.
+          <div className="h-[calc()] overflow-y-auto p-2 space-y-2">
+            {/* Compact Description Banner */}
+            <div className="mb-4 bg-gray-50 border border-gray-200 rounded-md p-3 flex items-center gap-3 text-sm text-gray-600">
+              <Clipboard size={16} className="text-gray-400" />
+              <span>
+                Read-only view. Status updates automatically based on usage.
+              </span>
+            </div>
+
+            {/* Memo Card */}
+            <div className="bg-white border border-gray-300 rounded-lg shadow-md flex flex-col overflow-hidden">
+              {/* Card Header */}
+              <div className="p-3 pb-2">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <div className="flex items-center gap-1.5 text-gray-800 font-semibold text-sm">
+                      <FileText size={14} className="text-gray-400" />
+                      {memoModal.memo.memoNo || "-"}
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5 ml-0.5">
+                      <Calendar size={10} />
+                      {memoModal.memo.dateApproved
+                        ? new Date(
+                            memoModal.memo.dateApproved,
+                          ).toLocaleDateString()
+                        : "-"}
+                    </div>
+                  </div>
+                  {/* Status Badge */}
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wide font-bold border ${
+                      memoModal.memo.remainingHours <= 0
+                        ? "bg-red-50 text-red-600 border-red-100"
+                        : memoModal.memo.usedHours > 0
+                          ? memoModal.memo.usedHours ===
+                            memoModal.memo.creditedHours
+                            ? "bg-yellow-50 text-yellow-700 border-yellow-100"
+                            : "bg-orange-50 text-orange-700 border-orange-100"
+                          : memoModal.memo.reservedHours > 0
+                            ? "bg-blue-50 text-blue-700 border-blue-100"
+                            : "bg-green-50 text-green-700 border-green-100"
+                    }`}
+                  >
+                    {memoModal.memo.remainingHours <= 0
+                      ? "Exhausted"
+                      : memoModal.memo.usedHours > 0
+                        ? memoModal.memo.usedHours ===
+                          memoModal.memo.creditedHours
+                          ? "Used in this request"
+                          : "Partially used"
+                        : memoModal.memo.reservedHours > 0
+                          ? "Used in Application"
+                          : "Active"}
+                  </span>
+                </div>
+
+                {/* Hours Grid */}
+                <div className="flex items-stretch border border-gray-100 rounded bg-gray-50/50 mt-2">
+                  <div className="flex-1 py-1.5 px-2 text-center border-r border-gray-100">
+                    <span className="block text-[10px] text-gray-500 uppercase">
+                      Credited
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {memoModal.memo.creditedHours || 0}h
+                    </span>
+                  </div>
+                  <div className="flex-1 py-1.5 px-2 text-center border-r border-gray-100 bg-white">
+                    <span className="block text-[10px] text-gray-500 uppercase">
+                      Used
+                    </span>
+                    <span className="text-sm font-medium text-amber-600">
+                      {memoModal.memo.usedHours || 0}h
+                    </span>
+                  </div>
+                  <div className="flex-1 py-1.5 px-2 text-center bg-white">
+                    <span className="block text-[10px] text-gray-500 uppercase">
+                      Remaining
+                    </span>
+                    <span
+                      className={`text-sm font-bold ${
+                        memoModal.memo.remainingHours > 0
+                          ? "text-green-600"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {memoModal.memo.remainingHours || 0}h
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* PDF Preview */}
+              <div className="relative bg-gray-100 border-y border-gray-100 group">
+                {memoModal.memo.uploadedMemo?.endsWith(".pdf") ? (
+                  <div className="h-48 w-full relative">
+                    <iframe
+                      src={`http://localhost:3000/${memoModal.memo.uploadedMemo}#toolbar=0&view=FitH`}
+                      className="w-full h-full"
+                      title={memoModal.memo.memoNo}
+                      loading="lazy"
+                    />
+                    <a
+                      href={`http://localhost:3000${memoModal.memo.uploadedMemo}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute inset-0 bg-white/0 group-hover:bg-white/60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"
+                    >
+                      <span className="flex items-center gap-1 text-xs font-semibold bg-white border border-gray-300 px-2 py-1 rounded shadow-sm text-gray-700">
+                        <ExternalLink size={12} /> Open PDF
+                      </span>
+                    </a>
+                  </div>
+                ) : (
+                  <div className="h-36 flex flex-col items-center justify-center text-gray-400">
+                    <span className="text-xs">No Preview</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer Warnings */}
+              {memoModal.memo.usedHours > 0 ||
+              memoModal.memo.reservedHours > 0 ? (
+                <div className="bg-yellow-50 px-3 py-2 border-t border-yellow-100">
+                  {memoModal.memo.usedHours > 0 && (
+                    <div className="flex justify-between text-xs text-yellow-800">
+                      <span>Used in request:</span>
+                      <span className="font-bold">
+                        {memoModal.memo.usedHours} hrs
+                      </span>
+                    </div>
+                  )}
+                  {memoModal.memo.reservedHours > 0 &&
+                    memoModal.memo.usedHours === 0 && (
+                      <div className="flex justify-between text-xs text-blue-700">
+                        <span>Reserved in a pending Application:</span>
+                        <span className="font-medium">
+                          {memoModal.memo.reservedHours} hrs
+                        </span>
+                      </div>
+                    )}
+                </div>
+              ) : (
+                <div className="h-2 bg-white"></div>
+              )}
+            </div>
           </div>
         )}
       </Modal>

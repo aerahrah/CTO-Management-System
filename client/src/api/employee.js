@@ -1,6 +1,7 @@
 import API from "./api";
 
 export const addEmployee = async (credentials) => {
+  console.log(credentials);
   const res = await API.post("/employee/", credentials);
   return res.data;
 };

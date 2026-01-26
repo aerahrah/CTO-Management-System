@@ -11,7 +11,11 @@ import {
   Save,
 } from "lucide-react";
 import Select from "react-select";
-import { fetchApproverSettings, upsertApproverSetting } from "../../api/cto";
+import {
+  fetchApproverSettings,
+  upsertApproverSetting,
+  fetchApprovers,
+} from "../../api/cto";
 import { getEmployees } from "../../api/employee";
 
 const ApproverSettings = ({ selectedOffice }) => {
@@ -24,14 +28,14 @@ const ApproverSettings = ({ selectedOffice }) => {
   });
 
   // Fetch employees
-  const { data: employeesResponse } = useQuery({
-    queryKey: ["employees"],
-    queryFn: getEmployees,
+  const { data: approversResponse } = useQuery({
+    queryKey: ["approvers"],
+    queryFn: fetchApprovers,
     staleTime: Infinity,
   });
 
-  const employeesData = Array.isArray(employeesResponse?.data)
-    ? employeesResponse.data
+  const approversData = Array.isArray(approversResponse?.data)
+    ? approversResponse.data
     : [];
 
   // Fetch approver settings
@@ -95,7 +99,7 @@ const ApproverSettings = ({ selectedOffice }) => {
     );
   }
 
-  const employeeOptions = employeesData.map((emp) => ({
+  const employeeOptions = approversData.map((emp) => ({
     value: emp._id,
     label: `${emp.firstName} ${emp.lastName}`,
     subLabel: emp.position || "Staff",
@@ -124,7 +128,7 @@ const ApproverSettings = ({ selectedOffice }) => {
           <div className="flex items-center gap-2 mb-1">
             <ShieldCheck className="w-5 h-5 text-blue-600" />
             <h2 className="text-xl font-bold text-neutral-800">
-              Workflow Settings
+              Routing Settings
             </h2>
           </div>
           <div className="flex items-center gap-2">
@@ -142,8 +146,8 @@ const ApproverSettings = ({ selectedOffice }) => {
           className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-sm
             ${
               isEditing
-                ? "bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50"
-                : "bg-neutral-900 text-white hover:bg-neutral-800 active:scale-95"
+                ? "bg-white border border-blue-200 text-blue-600 hover:bg-neutral-50"
+                : "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
             }`}
         >
           {isEditing ? (
@@ -152,7 +156,7 @@ const ApproverSettings = ({ selectedOffice }) => {
             </>
           ) : (
             <>
-              <Edit2 size={16} /> Edit Workflow
+              <Edit2 size={16} /> Edit Routing
             </>
           )}
         </button>

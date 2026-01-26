@@ -33,9 +33,15 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
       queryClient.invalidateQueries(["ctoCredits"]);
       onClose?.();
     },
-    onError: () => toast.error("Failed to submit credit request"),
+    onError: (err) => {
+      console.log("Mutation error:", err);
+      toast.error(
+        err.response?.data?.error ||
+          err.message ||
+          "Failed to submit credit request",
+      );
+    },
   });
-
   const handleChange = (e) => {
     const { name, value, files } = e.target;
 
@@ -65,7 +71,7 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
       JSON.stringify({
         hours: Number(formData.duration.hours) || 0,
         minutes: Number(formData.duration.minutes) || 0,
-      })
+      }),
     );
 
     addCreditMutation.mutate(payload);
@@ -136,8 +142,8 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
                   isSelected
                     ? "bg-blue-600 text-white"
                     : isFocused
-                    ? "bg-gray-100"
-                    : "bg-white"
+                      ? "bg-gray-100"
+                      : "bg-white"
                 } px-3 py-2 cursor-pointer`,
               multiValue: () =>
                 "bg-blue-100 text-blue-900 rounded-md px-2 py-1",
@@ -191,6 +197,7 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
               name="dateApproved"
               value={formData.dateApproved}
               onChange={handleChange}
+              max={new Date().toISOString().split("T")[0]} // <-- prevents future dates
               className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             />
           </div>

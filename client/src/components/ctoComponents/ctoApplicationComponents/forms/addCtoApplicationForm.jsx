@@ -106,18 +106,25 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
         inclusiveDates: [],
       }));
 
+      const validMemos = (memoResponse?.memos || []).filter(
+        (memo) =>
+          memo.status?.toLowerCase() !== "rolledback" &&
+          Number(memo.remainingHours) > 0,
+      );
+
+      console.log(memoResponse);
       let remaining = val;
       const newSelectedMemos = [];
       const newFormMemos = [];
-      for (let memo of memoResponse?.memos || []) {
+
+      for (let memo of validMemos) {
         if (remaining <= 0) break;
-        const availableHours = memo.remainingHours || 0;
-        if (availableHours <= 0) continue;
-        const applied = Math.min(availableHours, remaining);
+        const applied = Math.min(memo.remainingHours, remaining);
         remaining -= applied;
         newSelectedMemos.push({ ...memo, appliedHours: applied });
         newFormMemos.push({ memoId: memo.id, appliedHours: applied });
       }
+
       setSelectedMemos(newSelectedMemos);
       setFormData((prev) => ({ ...prev, memos: newFormMemos }));
       return;
@@ -200,10 +207,13 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
   useEffect(() => {
     if (memoResponse?.memos) {
-      const totalRemaining = memoResponse.memos.reduce(
-        (sum, m) => sum + (m.remainingHours || 0),
-        0,
-      );
+      const totalRemaining = (memoResponse.memos || [])
+        .filter(
+          (memo) =>
+            memo.status?.toLowerCase() !== "rolledback" &&
+            Number(memo.remainingHours) > 0,
+        )
+        .reduce((sum, m) => sum + Number(m.remainingHours), 0);
       setMaxRequestedHours(totalRemaining);
     }
   }, [memoResponse]);
@@ -380,7 +390,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
               onClick={() => setIsMemoModalOpen(true)}
               className="text-xs font-semibold text-blue-600 hover:underline"
             >
-              View Ledgers
+              View Memos
             </button>
           </div>
 

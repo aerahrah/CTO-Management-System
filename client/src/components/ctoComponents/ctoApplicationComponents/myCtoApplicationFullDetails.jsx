@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { StatusBadge, StatusIcon, getStatusStyles } from "../../statusUtils";
 import Modal from "../../modal";
+import MemoList from "../ctoMemoModal";
 
 const FILE_BASE_URL = "http://localhost:3000";
 
@@ -69,7 +70,7 @@ const CtoApplicationDetails = ({ app }) => {
           {/* Decorative background circle */}
           <div
             className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 ${getStatusStyles(
-              app.overallStatus
+              app.overallStatus,
             ).replace("bg-", "bg-")}`}
           />
 
@@ -210,7 +211,7 @@ const CtoApplicationDetails = ({ app }) => {
                         {/* Status Icon Node */}
                         <div
                           className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm shrink-0 transition-transform group-hover:scale-105 ${getStatusStyles(
-                            a.status
+                            a.status,
                           )}`}
                         >
                           <StatusIcon status={a.status} size={16} />
@@ -275,64 +276,16 @@ const CtoApplicationDetails = ({ app }) => {
         closeLabel="Done"
         maxWidth="max-w-xl"
       >
-        <div className="p-1 max-h-[60vh] overflow-y-auto custom-scrollbar">
-          {memoModal.memos.length > 0 ? (
-            <div className="space-y-2">
-              {memoModal.memos.map((memo, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between p-3 border border-slate-200 rounded-xl bg-white hover:border-indigo-300 hover:shadow-sm transition-all group"
-                >
-                  <div className="flex items-center gap-4 overflow-hidden">
-                    <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors shrink-0">
-                      <FileText size={20} />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">
-                        Memo #{memo.memoId?.memoNo || "---"}
-                      </p>
-                      <p className="text-sm font-medium text-slate-900 truncate">
-                        Document Attachment {i + 1}
-                      </p>
-                    </div>
-                  </div>
+        <div className="h-[calc(100vh-12rem)] overflow-y-auto p-1">
+          {/* Info Banner */}
 
-                  <div className="flex items-center gap-2 pl-2">
-                    <a
-                      href={`${FILE_BASE_URL}${memo.uploadedMemo}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                      title="View File"
-                    >
-                      <Eye size={18} />
-                    </a>
-                    <div className="w-px h-4 bg-slate-200"></div>
-                    <a
-                      href={`${FILE_BASE_URL}${memo.uploadedMemo}`}
-                      download
-                      className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                      title="Download"
-                    >
-                      <Download size={18} />
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-12 flex flex-col items-center justify-center text-center">
-              <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-3">
-                <FileStack size={32} className="text-slate-300" />
-              </div>
-              <p className="text-slate-500 font-medium">
-                No documents attached
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                This request was submitted without supporting files.
-              </p>
-            </div>
-          )}
+          {/* Memo List */}
+          <MemoList
+            memos={memoModal.memos}
+            description={
+              "Read-only view of CTO memos attached to this request."
+            }
+          />
         </div>
       </Modal>
     </div>

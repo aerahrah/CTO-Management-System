@@ -67,7 +67,7 @@ const CtoApplicationsList = () => {
   const hasNavigatedRef = useRef(false);
   useEffect(() => {
     if (!hasNavigatedRef.current && data?.data?.length > 0 && !selectedId) {
-      navigate(`/dashboard/cto/approvals/${data.data[0]._id}`);
+      navigate(`/app/cto/approvals/${data.data[0]._id}`);
       hasNavigatedRef.current = true;
     }
   }, [data, selectedId, navigate]);
@@ -224,9 +224,7 @@ const CtoApplicationsList = () => {
               return (
                 <li
                   key={app._id}
-                  onClick={() =>
-                    navigate(`/dashboard/cto/approvals/${app._id}`)
-                  }
+                  onClick={() => navigate(`/app/cto/approvals/${app._id}`)}
                   className={`group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
                     ${
                       isActive

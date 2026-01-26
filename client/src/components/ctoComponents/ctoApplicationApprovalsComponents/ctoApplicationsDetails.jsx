@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   CalendarDays,
   Check,
+  Calendar,
   User,
   ExternalLink,
   MessageCircle,
@@ -25,6 +26,7 @@ import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { useParams } from "react-router-dom";
 import { toast } from "react-toastify";
+import MemoList from "../ctoMemoModal";
 
 const CtoApplicationDetailsSkeleton = () => (
   <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -44,6 +46,8 @@ const CtoApplicationDetails = () => {
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+
+  const isEmbeddable = (url) => /\.(pdf|png|jpg|jpeg|webp)$/i.test(url);
 
   // Fetch the application by ID
   const {
@@ -87,6 +91,7 @@ const CtoApplicationDetails = () => {
     },
     onError: (err) => toast.error(err.message || "Failed to reject."),
   });
+  const isPdf = (url) => /\.pdf$/i.test(url);
 
   const handleAction = () => {
     if (!application) return;
@@ -116,7 +121,7 @@ const CtoApplicationDetails = () => {
   const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
 
   return (
-    <div className="flex-1 h-full flex flex-col gap-4 max-w-6xl mx-auto">
+    <div className="flex-1 h-full w-full flex flex-col gap-4 max-w-6xl mx-auto">
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white pb-2 border-b border-gray-300 sticky top-2 bg-white/90">
         <div className="flex items-center gap-4 py-2">
@@ -365,7 +370,7 @@ const CtoApplicationDetails = () => {
             </div>
 
             {/* SYSTEM ADVISORY */}
-            <div className="bg-gray-900 rounded-xl p-6 text-white shadow-2xl shadow-blue-200/20 relative overflow-hidden">
+            {/* <div className="bg-gray-900 rounded-xl p-6 text-white shadow-2xl shadow-blue-200/20 relative overflow-hidden">
               <div className="relative z-10">
                 <div className="flex items-center gap-2 text-blue-400 mb-3">
                   <Info size={16} />
@@ -382,7 +387,7 @@ const CtoApplicationDetails = () => {
                 </p>
               </div>
               <div className="absolute -bottom-4 -right-4 h-24 w-24 bg-blue-500/10 rounded-full blur-2xl"></div>
-            </div>
+            </div> */}
           </aside>
         </div>
 
@@ -391,80 +396,98 @@ const CtoApplicationDetails = () => {
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
           title={
-            modalType === "approve" ? "Confirm Approval" : "Rejection Reason"
+            modalType === "approve" ? "Confirm Approval" : "Decline Request"
           }
           action={{
             show: true,
-            label:
-              modalType === "approve"
-                ? "Confirm & Approve"
-                : "Reject Application",
-            variant: modalType === "approve" ? "save" : "cancel",
+            label: modalType === "approve" ? "Approve" : "Reject",
+
+            variant: modalType === "approve" ? "save" : "delete",
             onClick: handleAction,
+
+            disabled: modalType === "reject" && !remarks.trim(),
           }}
         >
-          <div className="p-4">
-            {modalType === "approve" ? (
-              <div className="text-center space-y-4">
-                <div className="mx-auto h-16 w-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center">
-                  <Check size={32} />
-                </div>
-                <p className="text-gray-600 font-medium">
-                  You are about to approve this request for{" "}
-                  <span className="text-gray-900 font-bold">
-                    {application.employee?.firstName}
-                  </span>
-                  . The employee will be notified immediately.
+          <div className="p-2">
+            {/* --- Shared Summary Card --- */}
+            <div className="mb-6 flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+              <div className="mt-0.5 p-1.5 bg-white rounded-lg border border-slate-200 shadow-sm text-slate-400">
+                <Info size={16} />
+              </div>
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Reviewing Request For
                 </p>
+                <p className="text-sm font-bold text-slate-900">
+                  {application.employee?.firstName}{" "}
+                  {application.employee?.lastName}
+                </p>
+              </div>
+            </div>
+
+            {modalType === "approve" ? (
+              <div className="text-center py-4 max-w-sm">
+                <div className="mx-auto h-20 w-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mb-4 border-4 border-emerald-100/50 shadow-inner">
+                  <Check size={40} strokeWidth={3} />
+                </div>
+                <h2 className="text-lg font-semibold text-slate-900">
+                  Are you sure you want to approve this CTO Request?
+                </h2>
               </div>
             ) : (
               <div className="space-y-4">
-                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                  Why is this being rejected?
-                </label>
-                <textarea
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="e.g. Insufficient credits, incorrect dates provided..."
-                  className="w-full p-4 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-red-200 focus:ring-0 outline-none min-h-[120px] text-gray-700 transition-all"
-                />
+                <div className="flex items-center gap-2 text-rose-600">
+                  <AlertCircle size={18} />
+                  <h3 className="font-bold text-sm">Reason for Rejection</h3>
+                </div>
+
+                <div className="relative">
+                  <textarea
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Please explain why this request is being declined (e.g., overlapping schedules, insufficient credits)..."
+                    className={`
+              w-full p-4 bg-white border-2 rounded-2xl outline-none min-h-[140px] text-sm text-slate-700 transition-all
+              ${
+                remarks.trim()
+                  ? "border-slate-200 focus:border-blue-500"
+                  : "border-rose-100 focus:border-rose-300 placeholder:text-rose-300"
+              }
+            `}
+                  />
+                  <div className="absolute bottom-3 right-4 flex items-center gap-1.5">
+                    <span
+                      className={`text-[10px] font-bold uppercase ${remarks.trim() ? "text-slate-400" : "text-rose-400"}`}
+                    >
+                      {remarks.length > 0
+                        ? `${remarks.length} chars`
+                        : "Required"}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-400 bg-slate-50 p-2.5 rounded-lg border border-slate-100 italic">
+                  Tip: Providing a clear reason helps employees correct future
+                  applications.
+                </p>
               </div>
             )}
           </div>
         </Modal>
-
         {/* DOCUMENT MODAL */}
         <Modal
           isOpen={memoModal.isOpen}
           onClose={() => setMemoModal({ isOpen: false, memos: [] })}
-          title="Verification Documents"
+          title="Attached Memos"
         >
-          <div className="grid gap-4 p-2 max-h-[60vh] overflow-y-auto">
-            {memoModal.memos.map((memo, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-2xl hover:shadow-lg hover:shadow-gray-100 transition-all group"
-              >
-                <div className="h-12 w-12 bg-red-50 text-red-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <FileText size={24} />
-                </div>
-                <div className="flex-1">
-                  <p className="font-bold text-gray-900">
-                    Memo #{memo.memoId?.memoNo}
-                  </p>
-                  <p className="text-xs text-gray-500 font-bold uppercase">
-                    {memo.memoId?.totalHours} Credits Attached
-                  </p>
-                </div>
-                <a
-                  href={`http://localhost:3000${memo.uploadedMemo}`}
-                  target="_blank"
-                  className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-sm font-bold hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2"
-                >
-                  Open <ExternalLink size={14} />
-                </a>
-              </div>
-            ))}
+          <div className="h-[calc(100vh-12rem)] overflow-y-auto p-1">
+            {/* Memo List */}
+            <MemoList
+              memos={memoModal.memos}
+              description={
+                "Read-only view of CTO memos attached to this request."
+              }
+            />
           </div>
         </Modal>
       </div>

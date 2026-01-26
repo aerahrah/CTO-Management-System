@@ -97,11 +97,9 @@ const OfficeLocationList = ({ selectedOffice, setSelectedOffice }) => {
     <div className="flex flex-col h-full bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
       {/* --- HEADER --- */}
       <div className="px-4 py-3 border-b border-neutral-100 bg-neutral-50/50">
-        <h1 className="text-lg font-bold text-neutral-800">
-          Provincial Offices
-        </h1>
+        <h1 className="text-lg font-bold text-neutral-800">Designations</h1>
         <p className="text-xs text-neutral-500">
-          Manage and select office locations
+          Manage and select designation's approver
         </p>
       </div>
 
@@ -207,7 +205,7 @@ const OfficeLocationList = ({ selectedOffice, setSelectedOffice }) => {
                       </span>
                       <div className="flex items-center gap-1 text-xs text-neutral-500 truncate group-hover:text-neutral-600">
                         <MapPin className="h-3 w-3" />
-                        <span>Provincial Office</span>
+                        <span>Designation</span>
                       </div>
                     </div>
 

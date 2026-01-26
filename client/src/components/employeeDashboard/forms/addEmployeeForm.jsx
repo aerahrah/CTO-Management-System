@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 import * as yup from "yup";
@@ -7,11 +7,14 @@ import { useNavigate } from "react-router-dom";
 import { getEmployeeById, updateEmployeeById } from "../../../api/employee";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
+import { toast } from "react-toastify";
+import Select from "react-select";
 import {
   User,
   Briefcase,
   MapPin,
   Phone,
+  Loader2,
   AlertCircle,
   UserPlus,
   ShieldCheck,
@@ -22,7 +25,84 @@ import {
 import ProvincialOfficeSelect from "./selectProvincialOffice";
 import { addEmployee } from "../../../api/employee";
 
+const projectOptions = [
+  "Cybersecurity/PNPKI",
+  "FPIAP",
+  "ILCDB",
+  "ILCDB - Tech4ED",
+  "DigiGov",
+  "GECS",
+  "NIPPSB",
+  "GovNet",
+  "MISS",
+  "IIDB",
+];
+
+const divisionOptions = ["AFD", "TOD", "ORD"];
+
+const SelectInput = ({ label, options, value, onChange, error, required }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const handleMenuOpen = () => setMenuOpen(true);
+  const handleMenuClose = () => setMenuOpen(false);
+
+  const selectOptions = options.map((opt) => ({ value: opt, label: opt }));
+
+  const customStyles = {
+    control: (base, state) => ({
+      ...base,
+      minHeight: "38px",
+      borderRadius: "0.5rem",
+      borderColor: state.isFocused ? "#2563eb" : error ? "#f87171" : "#d1d5db",
+      boxShadow: "none",
+      "&:hover": { borderColor: state.isFocused ? "#2563eb" : "#9ca3af" },
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+    }),
+    singleValue: (base) => ({
+      ...base,
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      maxWidth: "100%",
+    }),
+    menu: (base) => ({
+      ...base,
+      zIndex: 9999,
+    }),
+  };
+
+  return (
+    <div className="pt-2">
+      <label className="block text-[11px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+
+      <Select
+        styles={customStyles}
+        options={selectOptions}
+        value={selectOptions.find((opt) => opt.value === value) || null}
+        onChange={(selected) => onChange(selected?.value || "")}
+        placeholder={`Select ${label}`}
+        isClearable
+        onMenuOpen={handleMenuOpen}
+        onMenuClose={handleMenuClose}
+      />
+
+      {error && (
+        <p className="text-red-500 text-[10px] mt-1.5 flex items-center gap-1 font-semibold">
+          <AlertCircle size={10} /> {error.message}
+        </p>
+      )}
+    </div>
+  );
+};
+
 const schema = yup.object().shape({
+  employeeId: yup
+    .string()
+    .required("Employee ID is required")
+    .min(4, "Employee ID is too short"),
   username: yup
     .string()
     .required("Username is required")
@@ -37,21 +117,18 @@ const schema = yup.object().shape({
   position: yup.string().required("Position is required"),
   division: yup.string().nullable(),
   project: yup.string().nullable(),
-  status: yup.string().required("Status is required"),
+  status: yup.string(),
   role: yup.string().required("Role is required"),
   designation: yup.string().required("Designation is required"),
   address: yup.object().shape({
-    street: yup.string().required("Street is required"),
-    city: yup.string().required("City is required"),
-    province: yup.string().required("Province is required"),
+    street: yup.string(),
+    city: yup.string(),
+    province: yup.string(),
   }),
   emergencyContact: yup.object().shape({
-    name: yup.string().required("Contact name is required"),
-    phone: yup
-      .string()
-      .matches(/^[0-9]{10,15}$/, "Invalid phone format")
-      .required("Phone is required"),
-    relation: yup.string().required("Relation is required"),
+    name: yup.string(),
+    // phone: yup.string().matches(/^[0-9]{10,15}$/, "Invalid phone format"),
+    relation: yup.string(),
   }),
 });
 
@@ -78,11 +155,20 @@ const AddEmployeeForm = () => {
       queryClient.invalidateQueries(["employees"]);
       if (isEditMode) {
         queryClient.invalidateQueries(["employee", id]);
+        toast.success("Employee updated successfully!");
+      } else {
+        toast.success("Employee created successfully!");
       }
       navigate(-1);
     },
+    onError: (error) => {
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Something went wrong";
+      toast.error(`Error: ${msg}`);
+    },
   });
-
   const { mutate, isPending } = mutation;
   const {
     register,
@@ -93,6 +179,7 @@ const AddEmployeeForm = () => {
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
+      employeeId: "",
       status: "Active",
       role: "employee",
       address: { street: "", city: "", province: "" },
@@ -187,6 +274,13 @@ const AddEmployeeForm = () => {
         {/* LEFT COLUMN */}
         <div className="space-y-8">
           <Section title="Personal Details" icon={User}>
+            <InputField
+              label="Employee ID"
+              required
+              {...register("employeeId")}
+              error={errors.employeeId}
+              disabled={isEditMode}
+            />
             <div className="grid grid-cols-2 gap-4">
               <InputField
                 label="First Name"
@@ -226,19 +320,34 @@ const AddEmployeeForm = () => {
 
           <Section title="Work Information" icon={Briefcase}>
             <div className="grid grid-cols-2 gap-4">
-              <SelectField
-                label="System Role"
-                {...register("role")}
-                options={["employee", "supervisor", "hr", "admin"]}
-                required
-                error={errors.role}
+              <Controller
+                name="role"
+                control={control}
+                render={({ field }) => (
+                  <SelectInput
+                    label="System Role"
+                    options={["employee", "supervisor", "hr", "admin"]}
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.role}
+                    required
+                  />
+                )}
               />
-              <SelectField
-                label="Status"
-                {...register("status")}
-                options={["Active", "Inactive", "Resigned", "Terminated"]}
-                required
-                error={errors.status}
+
+              <Controller
+                name="status"
+                control={control}
+                render={({ field }) => (
+                  <SelectInput
+                    label="Status"
+                    options={["Active", "Inactive", "Resigned", "Terminated"]}
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.status}
+                    required
+                  />
+                )}
               />
             </div>
             <InputField
@@ -248,15 +357,35 @@ const AddEmployeeForm = () => {
               error={errors.position}
             />
             <div className="grid grid-cols-2 gap-4">
-              <InputField
-                label="Division"
-                {...register("division")}
-                error={errors.division}
+              <Controller
+                name="division"
+                control={control}
+                render={({ field }) => (
+                  <SelectInput
+                    label="Division"
+                    options={divisionOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.division}
+                    required
+                  />
+                )}
               />
-              <InputField
-                label="Project"
-                {...register("project")}
-                error={errors.project}
+
+              {/* Project */}
+              <Controller
+                name="project"
+                control={control}
+                render={({ field }) => (
+                  <SelectInput
+                    label="Project"
+                    options={projectOptions}
+                    value={field.value}
+                    onChange={field.onChange}
+                    error={errors.project}
+                    required
+                  />
+                )}
               />
             </div>
             <div className="pt-2">
@@ -285,7 +414,6 @@ const AddEmployeeForm = () => {
             <div className="bg-gray-50/50 p-5 rounded-xl border border-gray-100 space-y-4">
               <InputField
                 label="Street / Building"
-                required
                 {...register("address.street")}
                 error={errors.address?.street}
                 className="bg-white"
@@ -293,14 +421,12 @@ const AddEmployeeForm = () => {
               <div className="grid grid-cols-2 gap-4">
                 <InputField
                   label="City"
-                  required
                   {...register("address.city")}
                   error={errors.address?.city}
                   className="bg-white"
                 />
                 <InputField
                   label="Province"
-                  required
                   {...register("address.province")}
                   error={errors.address?.province}
                   className="bg-white"
@@ -313,7 +439,6 @@ const AddEmployeeForm = () => {
             <div className="bg-red-50/30 p-5 rounded-xl border border-red-100 space-y-4">
               <InputField
                 label="Contact Person"
-                required
                 {...register("emergencyContact.name")}
                 error={errors.emergencyContact?.name}
                 className="bg-white"
@@ -321,14 +446,12 @@ const AddEmployeeForm = () => {
               <div className="grid grid-cols-2 gap-4">
                 <InputField
                   label="Relationship"
-                  required
                   {...register("emergencyContact.relation")}
                   error={errors.emergencyContact?.relation}
                   className="bg-white"
                 />
                 <InputField
                   label="Contact Phone"
-                  required
                   {...register("emergencyContact.phone")}
                   error={errors.emergencyContact?.phone}
                   className="bg-white"

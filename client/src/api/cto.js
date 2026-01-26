@@ -4,7 +4,9 @@ export const addCreditRequest = async (formData) => {
   formData.forEach((value, key) => {
     console.log(key, value);
   });
-  const res = await API.post("/cto/credits", formData);
+  const res = await API.post("/cto/credits", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
 
   return res.data;
 };
@@ -90,6 +92,12 @@ export const fetchProvincialOffices = async () => {
 export const fetchApproverSettings = async (designationId) => {
   console.log(designationId);
   const res = await API.get(`/cto/settings/${designationId}`);
+  console.log(res.data);
+  return res.data;
+};
+
+export const fetchApprovers = async () => {
+  const res = await API.get(`/cto/applications/approvers`);
   console.log(res.data);
   return res.data;
 };

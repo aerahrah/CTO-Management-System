@@ -38,12 +38,12 @@ const Login = () => {
     mutationFn: loginEmployee,
     onSuccess: (data) => {
       login(data);
-      navigate("/dashboard");
+      navigate("/app/cto/dashboard");
     },
     onError: (err) => {
       toast.error(
         err?.response?.data?.message || "Invalid username or password.",
-        { toastId: "login-error" }
+        { toastId: "login-error" },
       );
     },
   });

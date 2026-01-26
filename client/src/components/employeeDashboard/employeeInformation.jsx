@@ -138,9 +138,7 @@ const EmployeeInformation = () => {
             {/* Edit Button (Desktop) */}
 
             <button
-              onClick={() =>
-                navigate(`/dashboard/employees/${emp?._id}/update`)
-              }
+              onClick={() => navigate(`/app/employees/${emp?._id}/update`)}
               className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
             >
               Update Profile

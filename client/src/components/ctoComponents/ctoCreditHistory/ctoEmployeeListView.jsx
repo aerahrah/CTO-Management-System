@@ -78,7 +78,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
   // Auto-select first employee if no ID in URL
   useEffect(() => {
     if (data?.data?.length > 0 && !selectedId) {
-      navigate(`/dashboard/cto/records/${data.data[0]._id}`, { replace: true });
+      navigate(`/app/cto/records/${data.data[0]._id}`, { replace: true });
     }
   }, [data, selectedId, navigate]);
 
@@ -169,7 +169,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
               return (
                 <li
                   key={item._id}
-                  onClick={() => navigate(`/dashboard/cto/records/${item._id}`)}
+                  onClick={() => navigate(`/app/cto/records/${item._id}`)}
                   className={`group flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
     ${
       selectedId === item._id

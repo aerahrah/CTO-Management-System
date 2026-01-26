@@ -226,7 +226,7 @@ const DesignationList = ({ selectedOffice, setSelectedOffice }) => {
                       </span>
                       <div className="flex items-center gap-1 text-xs text-neutral-500 truncate group-hover:text-neutral-600">
                         <MapPin className="h-3 w-3" />
-                        <span>Provincial Office</span>
+                        <span>Designations</span>
                       </div>
                     </div>
 

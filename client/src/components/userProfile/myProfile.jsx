@@ -108,14 +108,14 @@ const MyProfile = () => {
 
           <div className="flex gap-3">
             <button
-              onClick={() => navigate("/dashboard/my-profile/reset-password")}
+              onClick={() => navigate("/app/my-profile/reset-password")}
               className="flex items-center px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-sm"
             >
               <KeyRound className="w-4 h-4 mr-2" />
               Reset Password
             </button>
             <button
-              onClick={() => navigate("/dashboard/my-profile/edit")}
+              onClick={() => navigate("/app/my-profile/edit")}
               className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm"
             >
               <Edit3 className="w-4 h-4 mr-2" />

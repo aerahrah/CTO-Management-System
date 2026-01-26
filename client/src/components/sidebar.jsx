@@ -5,18 +5,23 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../api/employee";
 import {
   X,
-  Users,
+  UserRound, // For Employee Management
   Settings,
-  Clock3,
+  Timer, // For CTO Service Parent
   ChevronsLeft,
   ChevronsRight,
   LayoutDashboard,
   ChevronDown,
-  PlusCircle,
-  History,
-  ClipboardCheck,
-  Building2,
-  Sliders,
+  CirclePlus, // For Credit CTO
+  FileClock, // For My Records
+  PenLine, // For Apply Leave
+  Files, // For All Applications
+  UserCheck, // For Pending Approvals
+  Archive, // For All Records
+  ShieldCheck, // For Audit Logs
+  UserCircle, // For My Profile
+  MapPin, // For Office Locations
+  SlidersHorizontal, // For CTO Settings
 } from "lucide-react";
 
 const Sidebar = ({
@@ -31,7 +36,6 @@ const Sidebar = ({
   const location = useLocation();
   const role = admin?.role;
 
-  // Roles where the submenu is ALWAYS open and cannot be toggled
   const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);
 
   const [hoveredItem, setHoveredItem] = useState(null);
@@ -40,76 +44,84 @@ const Sidebar = ({
 
   const menuItems = [
     {
-      name: "Employee Management",
-      icon: <Users size={18} />,
-      path: "/dashboard/employees",
-      roles: ["admin", "hr"],
-    },
-    {
       name: "CTO Service",
-      icon: <Clock3 size={18} />,
+      icon: <Timer size={18} />,
       roles: ["admin", "hr", "supervisor", "employee"],
       subItems: [
         {
           name: "Dashboard",
-          path: "/dashboard/cto/dashboard",
+          path: "/app/cto/dashboard",
           icon: <LayoutDashboard size={14} />,
         },
         {
           name: "Credit CTO",
-          path: "/dashboard/cto/credit",
-          icon: <PlusCircle size={14} />,
+          path: "/app/cto/credit",
+          icon: <CirclePlus size={14} />,
           roles: ["admin", "hr"],
         },
         {
           name: "My CTO Records",
-          path: "/dashboard/cto/my-credits",
-          icon: <History size={14} />,
+          path: "/app/cto/my-credits",
+          icon: <FileClock size={14} />,
         },
         {
           name: "Apply CTO Leave",
-          path: "/dashboard/cto/apply",
-          icon: <ClipboardCheck size={14} />,
+          path: "/app/cto/apply",
+          icon: <PenLine size={14} />,
         },
         {
           name: "All CTO Applications",
-          path: "/dashboard/cto/all-applications",
-          icon: <ClipboardCheck size={14} />,
+          path: "/app/cto/all-applications",
+          icon: <Files size={14} />,
+          roles: ["admin", "hr"],
         },
+
         {
           name: "Pending Approvals",
-          path: "/dashboard/cto/approvals",
-          icon: <ClipboardCheck size={14} />,
+          path: "/app/cto/approvals",
+          icon: <UserCheck size={14} />,
           roles: ["admin", "supervisor"],
         },
+
         {
           name: "All CTO Records",
-          path: "/dashboard/cto/records",
-          icon: <History size={14} />,
+          path: "/app/cto/records",
+          icon: <Archive size={14} />,
           roles: ["admin", "hr"],
         },
       ],
     },
     {
+      name: "Employee Management",
+      icon: <UserRound size={18} />,
+      path: "/app/employees",
+      roles: ["admin", "hr"],
+    },
+    {
       name: "My Profile",
-      icon: <Users size={18} />,
-      path: "/dashboard/my-profile",
-      roles: ["admin", "hr", "employee", "supervisor"],
+      icon: <UserCircle size={18} />,
+      path: "/app/my-profile",
+    },
+    {
+      name: "Audit Logs",
+      icon: <ShieldCheck size={18} />,
+      path: "/app/audit-logs",
+      roles: ["admin", "hr"],
     },
     {
       name: "General Settings",
       icon: <Settings size={18} />,
-      roles: ["admin"],
+      roles: ["admin", "hr"],
       subItems: [
         {
           name: "CTO Settings",
-          path: "/dashboard/cto-settings",
-          icon: <Sliders size={14} />,
+          path: "/app/cto-settings",
+          icon: <SlidersHorizontal size={14} />,
         },
         {
           name: "Office Locations",
-          path: "/dashboard/office-locations",
-          icon: <Building2 size={14} />,
+          path: "/app/office-locations",
+          icon: <MapPin size={14} />,
         },
       ],
     },

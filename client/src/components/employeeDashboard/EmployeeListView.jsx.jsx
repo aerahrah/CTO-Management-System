@@ -3,6 +3,7 @@ import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
+import { RoleBadge } from "../statusUtils";
 import Skeleton from "react-loading-skeleton";
 import EmployeeRoleChanger from "./employeeChangeRole";
 import Modal from "../modal";
@@ -28,9 +29,20 @@ import {
 ========================= */
 // In a real app, you might fetch these from a /metadata endpoint
 const FILTER_OPTIONS = {
-  divisions: ["AFD", "TOD", "STAFF"],
+  divisions: ["AFD", "TOD", "ORD"],
   designations: ["Engineer", "Manager", "Analyst", "Intern", "HR Specialist"],
-  projects: ["Alpha", "Beta", "Gamma", "Internal"],
+  projects: [
+    "Cybersecurity/PNPKI",
+    "FPIAP",
+    "ILCDB",
+    "ILCDB - Tech4ED",
+    "DigiGov",
+    "GECS",
+    "NIPPSB",
+    "GovNet",
+    "MISS",
+    "IIDB",
+  ],
 };
 
 /* =========================
@@ -169,13 +181,13 @@ const EmployeeDirectory = () => {
 
   // --- Handlers ---
   const handleAddEmployee = () => {
-    navigate("/dashboard/employees/add-employee");
+    navigate("/app/employees/add-employee");
   };
 
   const handleAction = (action, employee) => {
-    if (action === "view") navigate(`/dashboard/employees/${employee._id}`);
+    if (action === "view") navigate(`/app/employees/${employee._id}`);
     else if (action === "update")
-      navigate(`/dashboard/employees/${employee._id}/update`);
+      navigate(`/app/employees/${employee._id}/update`);
     else if (action === "role") {
       setSelectedEmployee(employee);
       setIsRoleModalOpen(true);
@@ -196,7 +208,7 @@ const EmployeeDirectory = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">
-            Workforce Directory
+            Employee Management
           </h1>
           <p className="text-neutral-500 text-sm mt-1">
             Manage your organization's staffing.
@@ -315,6 +327,7 @@ const EmployeeDirectory = () => {
                 <th className="px-6 py-4">Designation</th>
                 <th className="px-6 py-4">Division</th>
                 <th className="px-6 py-4">Project</th>
+                <th className="px-6 py-4">Role</th>
                 <th className="px-6 py-4">Status</th>
                 <th className="px-6 py-4 text-right">Actions</th>
               </tr>
@@ -366,12 +379,14 @@ const EmployeeDirectory = () => {
                         "—"
                       )}
                     </td>
-
+                    <td className="px-6 py-4 text-sm text-neutral-600">
+                      {emp.role ? <RoleBadge role={emp.role} /> : "—"}
+                    </td>
                     {/* Status */}
                     <td className="px-6 py-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100">
                         <span className="w-1.5 h-1.5 rounded-full bg-green-600"></span>
-                        Active
+                        {emp.status}
                       </span>
                     </td>
 

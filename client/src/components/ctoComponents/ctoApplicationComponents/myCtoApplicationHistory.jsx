@@ -25,6 +25,7 @@ import {
 import FilterSelect from "../../filterSelect";
 import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
+import MemoList from "../ctoMemoModal";
 
 const statusOptions = ["PENDING", "APPROVED", "REJECTED"];
 const pageSizeOptions = [20, 50, 100];
@@ -590,27 +591,16 @@ const MyCtoApplications = () => {
         title="Memos Used"
         closeLabel="Close"
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-2 bg-neutral-100 rounded-md">
-          {memoModal.memos.map((memo, i) => (
-            <div
-              key={i}
-              className="bg-white border border-gray-300 rounded-md shadow-sm overflow-hidden"
-            >
-              <div className="p-4">
-                <p className="text-sm font-semibold mb-3 truncate">
-                  Memo: {memo.memoId?.memoNo || "—"}
-                </p>
-                <a
-                  href={`http://localhost:3000/${memo?.uploadedMemo}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:underline flex items-center gap-1 text-sm font-medium"
-                >
-                  <Eye size={16} /> View Original
-                </a>
-              </div>
-            </div>
-          ))}
+        <div className="h-[calc(100vh-12rem)] overflow-y-auto p-1">
+          {/* Info Banner */}
+
+          {/* Memo List */}
+          <MemoList
+            memos={memoModal.memos}
+            description={
+              "Read-only view of CTO memos attached to this request."
+            }
+          />
         </div>
       </Modal>
     </div>
