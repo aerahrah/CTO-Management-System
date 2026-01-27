@@ -102,6 +102,12 @@ export const fetchApprovers = async () => {
   return res.data;
 };
 
+export const fetchCtoApplicationsPendingRequest = async () => {
+  const res = await API.get(`/cto/applications/pending-count`);
+  console.log(res.data.pending);
+  return res.data.pending;
+};
+
 export const upsertApproverSetting = async (payload) => {
   console.log(payload);
   const res = await API.post("/cto/settings", payload);
@@ -162,6 +168,15 @@ export const fetchMyCtoApplicationsApprovals = async (params = {}) => {
 };
 
 export const getCtoApplicationById = async (id) => {
+  console.log(id);
+  const { data } = await API.get(
+    `cto/applications/approvers/my-approvals/${id}`,
+  );
+  console.log(data);
+  return data.data;
+};
+
+export const getCtoApplicationPendingCount = async (id) => {
   console.log(id);
   const { data } = await API.get(
     `cto/applications/approvers/my-approvals/${id}`,

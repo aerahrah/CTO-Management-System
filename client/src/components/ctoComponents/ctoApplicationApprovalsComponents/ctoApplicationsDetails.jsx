@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Clock,
   FileText,
@@ -73,6 +73,7 @@ const CtoApplicationDetails = () => {
       toast.success("Application approved successfully.");
       queryClient.invalidateQueries(["ctoApplication", id]);
       queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+      queryClient.invalidateQueries(["ctoPendingCount"]);
     },
     onError: (err) => toast.error(err.message || "Failed to approve."),
   });
@@ -88,6 +89,7 @@ const CtoApplicationDetails = () => {
       toast.success("Application rejected.");
       queryClient.invalidateQueries(["ctoApplication", id]);
       queryClient.invalidateQueries(["ctoApplicationsApprovals"]);
+      queryClient.invalidateQueries(["ctoPendingCount"]);
     },
     onError: (err) => toast.error(err.message || "Failed to reject."),
   });
@@ -101,6 +103,11 @@ const CtoApplicationDetails = () => {
       rejectMutation.mutate({ applicationId: application._id, remarks });
     }
   };
+
+  useEffect(() => {
+    setIsProcessed(false);
+    setRemarks("");
+  }, [application]);
 
   if (isLoading) return <CtoApplicationDetailsSkeleton />;
   if (isError) return <p>Error: {error.message}</p>;
@@ -480,15 +487,12 @@ const CtoApplicationDetails = () => {
           onClose={() => setMemoModal({ isOpen: false, memos: [] })}
           title="Attached Memos"
         >
-          <div className="h-[calc(100vh-12rem)] overflow-y-auto p-1">
-            {/* Memo List */}
-            <MemoList
-              memos={memoModal.memos}
-              description={
-                "Read-only view of CTO memos attached to this request."
-              }
-            />
-          </div>
+          <MemoList
+            memos={memoModal.memos}
+            description={
+              "Read-only view of CTO memos attached to this request."
+            }
+          />
         </Modal>
       </div>
     </div>

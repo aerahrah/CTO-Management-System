@@ -182,7 +182,7 @@ const SelectCtoMemoModal = ({
                       )}
                       {memo.reservedHours > 0 && appliedInRequest === 0 && (
                         <div className="flex justify-between text-xs text-blue-700">
-                          <span>Reserved elsewhere:</span>
+                          <span>Reserved in a pending application:</span>
                           <span className="font-medium">
                             {memo.reservedHours} hrs
                           </span>

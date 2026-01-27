@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../api/employee";
+import { fetchCtoApplicationsPendingRequest } from "../api/cto";
 import {
   X,
   UserRound, // For Employee Management
@@ -35,6 +36,12 @@ const Sidebar = ({
   const navigate = useNavigate();
   const location = useLocation();
   const role = admin?.role;
+
+  const { data: pendingCount = 0, isPending } = useQuery({
+    queryKey: ["ctoPendingCount"],
+    queryFn: fetchCtoApplicationsPendingRequest,
+    staleTime: 5 * 60 * 1000, // optional caching
+  });
 
   const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);
 
@@ -81,6 +88,8 @@ const Sidebar = ({
           path: "/app/cto/approvals",
           icon: <UserCheck size={14} />,
           roles: ["admin", "supervisor"],
+          // Only show badge if count > 0 or it's still loading
+          badge: isPending ? "..." : pendingCount > 0 ? pendingCount : null,
         },
 
         {
@@ -271,11 +280,11 @@ const Sidebar = ({
                           if (window.innerWidth < 1024) setMobileOpen(false);
                         }}
                         className={`px-3 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
-                          ${
-                            isActive(sub.path)
-                              ? "text-blue-600 bg-blue-50"
-                              : "text-slate-500 hover:text-blue-600 hover:bg-slate-50"
-                          }`}
+      ${
+        isActive(sub.path)
+          ? "text-blue-600 bg-blue-50"
+          : "text-slate-500 hover:text-blue-600 hover:bg-slate-50"
+      }`}
                       >
                         <span
                           className={
@@ -286,7 +295,18 @@ const Sidebar = ({
                         >
                           {sub.icon}
                         </span>
-                        {sub.name}
+                        <span className="flex-1">{sub.name}</span>
+                        {sub.badge !== undefined && sub.badge !== null && (
+                          <span
+                            className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              sub.badge === "..."
+                                ? "bg-gray-300 text-gray-800 animate-pulse"
+                                : "bg-red-500 text-white"
+                            }`}
+                          >
+                            {sub.badge}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>

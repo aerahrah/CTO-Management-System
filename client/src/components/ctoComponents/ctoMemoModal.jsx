@@ -6,7 +6,7 @@ const isPdf = (url) => url?.toLowerCase().endsWith(".pdf");
 
 const MemoList = ({ memos = [], description }) => {
   return (
-    <div className="h-[calc(100vh-12rem)] overflow-y-auto  ">
+    <div className="h-[calc(100vh-12rem)] overflow-y-auto ">
       {/* Info Banner */}
       <div className="mb-4 bg-gray-50 border border-gray-200 rounded-md p-3 flex items-center gap-3 text-sm text-gray-600">
         <Info size={16} className="text-gray-400" />
@@ -53,7 +53,7 @@ const MemoList = ({ memos = [], description }) => {
                   {/* HOURS */}
                   <div className="flex items-stretch border border-gray-100 rounded bg-gray-50/50 mt-2">
                     <div className="flex-1 py-1.5 px-2 text-center border-r border-gray-100 bg-gray-50">
-                      <span className="block text-[11px] text-gray-500 uppercase">
+                      <span className="block text-[11px] text-blue-500 uppercase">
                         Applied Hours
                       </span>
                       <span className="text-md font-medium text-blue-700">

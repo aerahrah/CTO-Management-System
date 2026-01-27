@@ -44,7 +44,7 @@ const getAllCtoApplicationsRequest = async (req, res) => {
     const result = await getAllCtoApplicationsService(
       { status, from, to, search, employeeId },
       page,
-      limit
+      limit,
     );
 
     res.status(200).json({
@@ -68,7 +68,7 @@ const getCtoApplicationsByEmployeeRequest = async (req, res) => {
       employeeId,
       page,
       limit,
-      { status, from, to, search }
+      { status, from, to, search },
     );
 
     res.status(200).json({

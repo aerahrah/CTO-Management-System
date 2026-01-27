@@ -276,17 +276,10 @@ const CtoApplicationDetails = ({ app }) => {
         closeLabel="Done"
         maxWidth="max-w-xl"
       >
-        <div className="h-[calc(100vh-12rem)] overflow-y-auto p-1">
-          {/* Info Banner */}
-
-          {/* Memo List */}
-          <MemoList
-            memos={memoModal.memos}
-            description={
-              "Read-only view of CTO memos attached to this request."
-            }
-          />
-        </div>
+        <MemoList
+          memos={memoModal.memos}
+          description={"Read-only view of CTO memos attached to this request."}
+        />
       </Modal>
     </div>
   );

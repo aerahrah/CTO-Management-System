@@ -5,6 +5,49 @@ const CtoCredit = require("../models/ctoCreditModel");
 const sendEmail = require("../utils/sendEmail");
 const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
 
+const fetchPendingCtoCountService = async (approverId) => {
+  if (!approverId) throw new Error("Approver ID is required");
+
+  // Fetch all approval steps for this approver
+  const approvalSteps = await ApprovalStep.find({
+    approver: approverId,
+  }).populate({
+    path: "ctoApplication",
+    populate: [
+      { path: "approvals", populate: { path: "approver", select: "_id" } },
+    ],
+  });
+
+  // Filter applications relevant to this approver
+  const pendingCount = approvalSteps.reduce((count, step) => {
+    const app = step.ctoApplication;
+    if (!app || !app.approvals || app.approvals.length === 0) return count;
+
+    const steps = app.approvals;
+    const userStepIndex = steps.findIndex(
+      (s) => s.approver?._id?.toString() === approverId.toString(),
+    );
+    if (userStepIndex === -1) return count;
+
+    const userStep = steps[userStepIndex];
+
+    // Skip rejected applications (unless you want to count them)
+    if (userStep.status === "REJECTED") return count;
+    if (app.overallStatus === "REJECTED") return count;
+
+    const pendingStep = steps.find((s) => s.status === "PENDING");
+    const isTheirTurn =
+      pendingStep?.approver?._id?.toString() === approverId.toString();
+
+    // Only count if it’s their turn and status is PENDING
+    if (userStep.status === "PENDING" && isTheirTurn) return count + 1;
+
+    return count;
+  }, 0);
+
+  return pendingCount;
+};
+
 const getApproverOptionsService = async () => {
   const query = {
     // role: { $in: ["supervisor", "hr", "manager"] },
@@ -392,6 +435,7 @@ const rejectCtoApplicationService = async ({
     );
 };
 module.exports = {
+  fetchPendingCtoCountService,
   getApproverOptionsService,
   getCtoApplicationsForApproverService,
   getCtoApplicationByIdService,

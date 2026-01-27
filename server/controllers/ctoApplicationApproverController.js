@@ -4,7 +4,18 @@ const {
   rejectCtoApplicationService,
   getCtoApplicationByIdService,
   getApproverOptionsService,
+  fetchPendingCtoCountService,
 } = require("../services/ctoApplicationApprover.service");
+
+const getPendingCountForApproverController = async (req, res, next) => {
+  try {
+    const approverId = req.user.id;
+    const pendingCount = await fetchPendingCtoCountService(approverId); // updated service
+    res.status(200).json({ pending: pendingCount });
+  } catch (err) {
+    next(err);
+  }
+};
 
 const getApproverOptions = async (req, res) => {
   try {
@@ -114,6 +125,7 @@ const rejectCtoApplication = async (req, res, next) => {
 };
 
 module.exports = {
+  getPendingCountForApproverController,
   getApproverOptions,
   getCtoApplicationsForApprover,
   getCtoApplicationById,

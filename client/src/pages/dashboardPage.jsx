@@ -1,11 +1,13 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, Outlet, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../store/authStore";
 import Sidebar from "../components/sidebar";
 import { LogOut, ChevronDown, Menu } from "lucide-react";
 import { RoleBadge } from "../components/statusUtils";
 // import Breadcrumbs from "../components/breadCrumbs";
 const Dashboard = () => {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { token, admin, logout } = useAuth();
@@ -31,6 +33,7 @@ const Dashboard = () => {
 
   const handleLogout = () => {
     logout();
+    queryClient.clear();
     navigate("/");
   };
 
