@@ -29,7 +29,7 @@ import { toast } from "react-toastify";
 import MemoList from "../ctoMemoModal";
 
 const CtoApplicationDetailsSkeleton = () => (
-  <div className="max-w-5xl mx-auto p-6 space-y-6">
+  <div className="max-w-5xl mx-auto p-6 h-full space-y-6">
     <Skeleton height={120} borderRadius={16} />
     <Skeleton height={300} borderRadius={16} />
   </div>
@@ -55,13 +55,11 @@ const CtoApplicationDetails = () => {
     isLoading,
     isError,
     error,
+    isFetching,
   } = useQuery({
-    queryKey: ["ctoApplication", id],
+    queryKey: ["ctoApplication", admin?.id, id],
     queryFn: () => getCtoApplicationById(id),
-    enabled: !!id,
-    onSuccess: (data) => {
-      console.log("Fetched application data:", data);
-    },
+    enabled: !!admin?.id && !!id,
   });
 
   // Approve mutation
@@ -95,12 +93,20 @@ const CtoApplicationDetails = () => {
   });
   const isPdf = (url) => /\.pdf$/i.test(url);
 
+  const isMutating = approveMutation.isPending || rejectMutation.isPending;
+
   const handleAction = () => {
     if (!application) return;
-    if (modalType === "approve") approveMutation.mutate(application._id);
-    else {
+    if (approveMutation.isPending || rejectMutation.isPending) return;
+
+    if (modalType === "approve") {
+      approveMutation.mutate(application._id);
+    } else {
       if (!remarks.trim()) return toast.error("Please provide a reason.");
-      rejectMutation.mutate({ applicationId: application._id, remarks });
+      rejectMutation.mutate({
+        applicationId: application._id,
+        remarks,
+      });
     }
   };
 
@@ -109,6 +115,7 @@ const CtoApplicationDetails = () => {
     setRemarks("");
   }, [application]);
 
+  console.log(isLoading);
   if (isLoading) return <CtoApplicationDetailsSkeleton />;
   if (isError) return <p>Error: {error.message}</p>;
   if (!application)
@@ -407,12 +414,19 @@ const CtoApplicationDetails = () => {
           }
           action={{
             show: true,
-            label: modalType === "approve" ? "Approve" : "Reject",
+            label:
+              modalType === "approve"
+                ? approveMutation.isPending
+                  ? "Approving..."
+                  : "Approve"
+                : rejectMutation.isPending
+                  ? "Rejecting..."
+                  : "Reject",
 
             variant: modalType === "approve" ? "save" : "delete",
             onClick: handleAction,
 
-            disabled: modalType === "reject" && !remarks.trim(),
+            disabled: isMutating || (modalType === "reject" && !remarks.trim()),
           }}
         >
           <div className="p-2">
