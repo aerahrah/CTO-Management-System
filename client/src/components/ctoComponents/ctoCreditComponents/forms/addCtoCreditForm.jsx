@@ -2,7 +2,7 @@ import { useState, useRef, forwardRef, useImperativeHandle } from "react";
 import { Upload, Users, Clock, FileText, Calendar } from "lucide-react";
 import Select from "react-select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getEmployees } from "../../../../api/employee";
+import { fetchApprovers } from "../../../../api/cto";
 import { addCreditRequest } from "../../../../api/cto";
 import { toast } from "react-toastify";
 
@@ -21,12 +21,12 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
 
   const { data: employeesData, isLoading } = useQuery({
     queryKey: ["employees"],
-    queryFn: getEmployees,
+    queryFn: fetchApprovers,
     staleTime: Infinity,
     enabled: menuOpen,
   });
 
-  const addCreditMutation = useMutation({
+  const { mutate, isPending } = useMutation({
     mutationFn: addCreditRequest,
     onSuccess: () => {
       toast.success("CTO credit added successfully");
@@ -61,6 +61,8 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
   const handleSubmit = (e) => {
     e?.preventDefault();
 
+    if (isPending) return;
+
     const payload = new FormData();
     payload.append("memoFile", formData.memoFile);
     payload.append("memoNo", formData.memoNo);
@@ -74,11 +76,15 @@ const AddCtoCreditForm = forwardRef(({ onClose }, ref) => {
       }),
     );
 
-    addCreditMutation.mutate(payload);
+    mutate(payload);
   };
 
   useImperativeHandle(ref, () => ({
-    submit: handleSubmit,
+    submit() {
+      if (isPending) return;
+      handleSubmit();
+    },
+    isPending,
   }));
 
   const employeeOptions =

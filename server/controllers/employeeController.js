@@ -38,15 +38,13 @@ const getEmployees = async (req, res) => {
       project,
       search,
       page = 1,
-      limit = 10,
+      limit = 20,
     } = req.query;
 
-    // Allowed page size options
-    const allowedLimits = [10, 20, 50, 100];
+    const allowedLimits = [20, 50, 100];
     const parsedLimit = allowedLimits.includes(Number(limit))
       ? Number(limit)
-      : 10;
-
+      : 20;
     const parsedPage = Number(page) > 0 ? Number(page) : 1;
 
     const result = await getEmployeesService({
@@ -67,9 +65,16 @@ const getEmployees = async (req, res) => {
       data: result.data,
     });
   } catch (err) {
-    res.status(500).json({
+    console.error(
+      "Error fetching employees:",
+      err.originalMessage || err.message,
+    );
+
+    res.status(err.statusCode || 500).json({
       success: false,
+      errorCode: err.statusCode || 500,
       message: err.message,
+      detail: err.originalMessage || null,
     });
   }
 };

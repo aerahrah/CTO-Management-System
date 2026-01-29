@@ -64,7 +64,6 @@ const SelectCtoMemoModal = ({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {sortedMemos.map((memo) => {
-              console.log(selectedMemos);
               const appliedInRequest =
                 selectedMemos.find((m) => {
                   return m.id === memo.id;

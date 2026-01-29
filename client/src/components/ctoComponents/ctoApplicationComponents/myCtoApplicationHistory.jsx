@@ -88,6 +88,7 @@ const MyCtoApplications = () => {
   const [selectedApp, setSelectedApp] = useState(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -566,15 +567,23 @@ const MyCtoApplications = () => {
           <CtoApplicationDetails app={selectedApp} loading={!selectedApp} />
         </Modal>
       )}
-
       <Modal
         isOpen={isFormModalOpen}
-        onClose={() => setIsFormModalOpen(false)}
+        onClose={() => {
+          setIsFormModalOpen(false);
+          setIsSubmitting(false);
+        }}
         action={{
-          label: "Save",
+          label: isSubmitting ? "Saving..." : "Save",
           variant: "save",
           show: true,
-          onClick: () => formRef.current?.submit(),
+          disabled: isSubmitting,
+          onClick: () => {
+            if (!formRef.current || formRef.current.isPending) return;
+
+            setIsSubmitting(true);
+            formRef.current.submit();
+          },
         }}
       >
         <div className="w-full max-w-lg">

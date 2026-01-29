@@ -180,8 +180,6 @@ const addCtoApplicationService = async ({
   return populatedApp;
 };
 
-module.exports = { addCtoApplicationService };
-
 const getAllCtoApplicationsService = async (
   filters = {},
   page = 1,

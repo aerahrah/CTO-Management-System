@@ -142,7 +142,7 @@ const EmployeeDirectory = () => {
   const roleChangerRef = useRef(null);
   // --- State Management ---
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(20);
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebounce(searchTerm, 200);
 
@@ -164,7 +164,8 @@ const EmployeeDirectory = () => {
         limit,
         search: debouncedSearch,
         division: filters.division === "All" ? "" : filters.division,
-        designation: filters.designation === "All" ? "" : filters.designation,
+        designation:
+          filters.designation === "All" ? "" : filters.designation.name,
         project: filters.project === "All" ? "" : filters.project,
       }),
     placeholderData: keepPreviousData, // Keeps table populated while fetching next page
@@ -200,7 +201,10 @@ const EmployeeDirectory = () => {
   };
 
   const hasActiveFilters =
-    searchTerm || filters.division || filters.designation || filters.project;
+    searchTerm ||
+    filters.division ||
+    filters.designation.name ||
+    filters.project;
 
   return (
     <div className="p-4 md:p-6 bg-neutral-50 min-h-screen w-full font-sans text-neutral-800 space-y-8">
@@ -288,7 +292,7 @@ const EmployeeDirectory = () => {
             />
             <FilterSelect
               label="Designation"
-              value={filters.designation}
+              value={filters.designation.name}
               options={["All", ...FILTER_OPTIONS.designations]}
               onChange={(val) =>
                 setFilters({
@@ -361,7 +365,7 @@ const EmployeeDirectory = () => {
 
                     {/* Designation */}
                     <td className="px-6 py-4 text-sm text-neutral-600">
-                      {emp.designation || "—"}
+                      {emp?.designation?.name || "—"}
                     </td>
 
                     {/* Division */}
@@ -435,9 +439,9 @@ const EmployeeDirectory = () => {
               onChange={(e) => setLimit(Number(e.target.value))}
               className="border border-neutral-200 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
             >
-              <option value={10}>10</option>
               <option value={20}>20</option>
               <option value={50}>50</option>
+              <option value={100}>100</option>
             </select>
           </div>
 

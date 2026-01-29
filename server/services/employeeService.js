@@ -108,44 +108,57 @@ const getEmployeesService = async ({
   page,
   limit,
 }) => {
-  const query = {};
+  try {
+    const query = {};
 
-  // Filters
-  if (division) {
-    query.division = division;
+    // Filters
+    if (division) query.division = division;
+    if (designation) query.designation = designation;
+    if (project) query.project = project;
+
+    // Search by name or email
+    if (search) {
+      query.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+
+    const projection = {
+      firstName: 1,
+      lastName: 1,
+      email: 1,
+      designation: 1,
+      division: 1,
+      project: 1,
+      role: 1,
+      status: 1,
+    };
+
+    const [data, total] = await Promise.all([
+      Employee.find(query, projection)
+        .skip(skip)
+        .limit(limit)
+        .sort({ lastName: 1, firstName: 1 })
+        .populate("designation", "name")
+        .lean(),
+      Employee.countDocuments(query),
+    ]);
+
+    return {
+      data,
+      total,
+      totalPages: Math.ceil(total / limit),
+    };
+  } catch (err) {
+    const error = new Error("Failed to fetch employees");
+    error.statusCode = 500;
+    error.originalMessage = err.message;
+    throw error;
   }
-
-  if (designation) {
-    query.designation = designation;
-  }
-
-  if (project) {
-    query.project = project;
-  }
-
-  // Search by name (firstName or lastName)
-  if (search) {
-    query.$or = [
-      { firstName: { $regex: search, $options: "i" } },
-      { lastName: { $regex: search, $options: "i" } },
-    ];
-  }
-
-  const skip = (page - 1) * limit;
-
-  const [data, total] = await Promise.all([
-    Employee.find(query)
-      .skip(skip)
-      .limit(limit)
-      .sort({ lastName: 1, firstName: 1 }),
-    Employee.countDocuments(query),
-  ]);
-
-  return {
-    data,
-    total,
-    totalPages: Math.ceil(total / limit),
-  };
 };
 
 // Get employee by ID

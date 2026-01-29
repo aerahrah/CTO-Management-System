@@ -104,6 +104,7 @@ const CtoCreditHistory = () => {
   const [searchFilter, setSearchFilter] = useState("");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modal States
   const [memoModal, setMemoModal] = useState({ isOpen: false, memo: null });
@@ -547,12 +548,21 @@ const CtoCreditHistory = () => {
       </Modal>
       <Modal
         isOpen={isAddCtoOpen}
-        onClose={() => setIsAddCtoOpen(false)}
+        onClose={() => {
+          setIsAddCtoOpen(false);
+          setIsSubmitting(false);
+        }}
         action={{
-          label: "Submit",
+          label: isSubmitting ? "Saving..." : "Save",
           variant: "save",
           show: true,
-          onClick: () => formRef.current?.submit(),
+          disabled: isSubmitting,
+          onClick: () => {
+            if (!formRef.current || formRef.current.isPending) return;
+
+            setIsSubmitting(true);
+            formRef.current.submit();
+          },
         }}
       >
         <div className="w-[30rem]">

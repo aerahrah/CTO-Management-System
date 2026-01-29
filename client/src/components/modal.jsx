@@ -16,6 +16,7 @@ const Modal = ({
   title,
   action = {
     show: false,
+    disabled: false,
   },
   closeLabel,
 }) => {
@@ -69,6 +70,7 @@ const Modal = ({
                 {action.show && (
                   <button
                     onClick={action.onClick}
+                    disabled={action.disabled}
                     className={`px-4 py-2 w-full rounded max-w-64 cursor-pointer ${actionClass}`}
                   >
                     {action.label}

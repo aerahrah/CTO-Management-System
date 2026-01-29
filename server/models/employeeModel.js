@@ -21,7 +21,7 @@ const employeeSchema = new mongoose.Schema(
 
     designation: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "designation",
+      ref: "Designation",
       required: false,
     },
 

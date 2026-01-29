@@ -56,7 +56,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
 
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit, setLimit] = useState(20);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["employees", debouncedSearch, sortOrder, page, limit],
@@ -240,7 +240,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
             }}
             className="bg-white border border-neutral-200 rounded px-1 py-1 text-neutral-700 focus:ring-1 focus:ring-blue-400 outline-none cursor-pointer"
           >
-            {[10, 20, 50, 100].map((l) => (
+            {[20, 50, 100].map((l) => (
               <option key={l} value={l}>
                 {l}
               </option>

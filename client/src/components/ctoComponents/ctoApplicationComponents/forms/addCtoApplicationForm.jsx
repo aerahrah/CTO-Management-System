@@ -76,7 +76,7 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
     queryFn: fetchMyCtoMemos,
   });
 
-  const mutation = useMutation({
+  const { mutate, isPending } = useMutation({
     mutationFn: addApplicationRequest,
     onSuccess: () => {
       toast.success("CTO application submitted successfully!");
@@ -89,8 +89,10 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
 
   useImperativeHandle(ref, () => ({
     submit: () => handleSubmit(),
+    get isPending() {
+      return isPending;
+    },
   }));
-
   // ---------------- Handlers ----------------
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -182,17 +184,20 @@ const AddCtoApplicationForm = forwardRef(({ onClose }, ref) => {
   };
 
   const handleSubmit = () => {
+    if (isPending) return;
+
     if (!formData.requestedHours || formData.requestedHours <= 0) {
       toast.error("Please enter requested hours");
       return;
     }
+
     if (formData.inclusiveDates.length === 0) {
       toast.error("Please select inclusive dates");
       return;
     }
-    mutation.mutate(formData);
-  };
 
+    mutate(formData);
+  };
   useEffect(() => {
     if (approverResponse?.data) {
       const a = approverResponse.data;
