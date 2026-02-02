@@ -7,6 +7,8 @@ const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
 const mongoose = require("mongoose");
 const ctoRejectionEmail = require("../emails/ctoRejectionRequest");
 const ctoFinalApprovalEmail = require("../emails/ctoFinalApprovalEmail");
+const buildAuditDetails = require("../utils/auditActionBuilder");
+const auditLogService = require("./auditLog.service");
 
 const fetchPendingCtoCountService = async (approverId) => {
   if (!approverId) throw new Error("Approver ID is required");
@@ -199,11 +201,16 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
 
   return application;
 };
-const approveCtoApplicationService = async ({ approverId, applicationId }) => {
+const approveCtoApplicationService = async ({
+  approverId,
+  applicationId,
+  req,
+}) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
+    // 1️⃣ Fetch application with approvals
     const application = await CtoApplication.findById(applicationId)
       .populate("approvals")
       .populate("employee")
@@ -215,6 +222,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       throw err;
     }
 
+    // 2️⃣ Find current approver step
     const currentStep = application.approvals.find(
       (s) => s.approver.toString() === approverId,
     );
@@ -225,7 +233,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       throw err;
     }
 
-    // Ensure previous approvals
+    // 3️⃣ Ensure previous steps approved
     const unapprovedPrevious = application.approvals.find(
       (s) => s.level < currentStep.level && s.status !== "APPROVED",
     );
@@ -238,26 +246,26 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       throw err;
     }
 
-    // ✅ Approve current step
+    // 4️⃣ Approve current step
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
-      { status: "APPROVED" },
+      { status: "APPROVED", reviewedAt: new Date() },
       { session },
     );
 
-    // 🔁 Re-fetch updated steps
+    // 5️⃣ Re-fetch updated steps
     const updatedSteps = await ApprovalStep.find({
       _id: { $in: application.approvals },
     }).session(session);
 
     const allApproved = updatedSteps.every((s) => s.status === "APPROVED");
 
-    // 🎉 FINAL APPROVAL LOGIC
+    // 6️⃣ If all approved, finalize application
     if (allApproved) {
       application.overallStatus = "APPROVED";
       await application.save({ session });
 
-      // Update credits
+      // Update CTO credits
       for (const memoItem of application.memo) {
         const credit = await CtoCredit.findById(memoItem.memoId._id).session(
           session,
@@ -287,17 +295,49 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
         );
       }
 
+      // Deduct employee CTO balance
       application.employee.balances.ctoHours -= application.requestedHours;
       await application.employee.save({ session });
     }
 
-    // Commit transaction first
+    // 7️⃣ Commit transaction
     await session.commitTransaction();
     session.endSession();
 
-    // =========================
-    // Send emails AFTER commit
-    // =========================
+    // 8️⃣ Build audit log (manual, avoids double logging)
+    const approver = await Employee.findById(approverId);
+
+    const auditBody = {
+      approverId,
+      applicationId,
+      level: currentStep.level,
+      approverName: `${approver.username} (id: ${approver._id})`,
+      approverUsername: approver.username,
+      employeeName: `${application.employee.username} (id: ${application.employee._id})`,
+    };
+
+    const auditDetails = buildAuditDetails({
+      endpoint: "Approve CTO Application",
+      actor: auditBody.approverName,
+      targetUser: auditBody.employeeName,
+      body: auditBody,
+      params: { id: application._id },
+      before: { status: currentStep.status },
+    });
+
+    await auditLogService.createAuditLog({
+      userId: approverId,
+      username: auditBody.approverUsername,
+      method: "POST",
+      endpoint: "Approve CTO Application",
+      url: `/cto/applications/approver/${application._id}/approve`,
+      statusCode: 200,
+      ip: req?.headers["x-forwarded-for"] || req?.socket?.remoteAddress,
+      summary: auditDetails.summary,
+      timestamp: new Date(),
+    });
+
+    // 9️⃣ Send emails
     if (!allApproved) {
       const nextStep = updatedSteps.find(
         (s) => s.level === currentStep.level + 1,
@@ -332,7 +372,7 @@ const approveCtoApplicationService = async ({ approverId, applicationId }) => {
       }
     }
 
-    // Return updated application
+    // 10️⃣ Return updated application
     return await CtoApplication.findById(applicationId)
       .populate({
         path: "approvals",
@@ -357,6 +397,7 @@ const rejectCtoApplicationService = async ({
   approverId,
   applicationId,
   remarks,
+  req,
 }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -366,7 +407,7 @@ const rejectCtoApplicationService = async ({
     const application = await CtoApplication.findById(applicationId)
       .populate("approvals")
       .populate("memo.memoId")
-      .populate("employee", "firstName lastName email")
+      .populate("employee", "username firstName lastName email")
       .session(session);
 
     if (!application) {
@@ -448,6 +489,38 @@ const rejectCtoApplicationService = async ({
     session.endSession();
 
     // 7️⃣ Send rejection email after DB commit
+
+    const approver = await Employee.findById(approverId); // get username
+
+    const auditBody = {
+      approverId,
+      applicationId,
+      level: currentStep.level,
+      approverName: `${approver.username} (id: ${approver._id})`,
+      approverUsername: approver.username,
+      employeeName: `${application.employee.username} (id: ${application.employee._id})`,
+    };
+
+    const auditDetails = buildAuditDetails({
+      endpoint: "Reject CTO Application",
+      actor: auditBody.approverName,
+      targetUser: auditBody.employeeName,
+      body: auditBody,
+      params: { id: application._id },
+      before: { status: currentStep.status },
+    });
+
+    await auditLogService.createAuditLog({
+      userId: approverId,
+      username: approver.username,
+      method: "POST",
+      endpoint: "Reject CTO Application",
+      url: `/cto/applications/approver/${application._id}/reject`,
+      statusCode: 200,
+      ip: req?.headers["x-forwarded-for"] || req?.socket?.remoteAddress,
+      summary: auditDetails.summary,
+      timestamp: new Date(),
+    });
 
     if (application.employee.email) {
       await sendEmail(

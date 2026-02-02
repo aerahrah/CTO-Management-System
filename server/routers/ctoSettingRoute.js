@@ -22,7 +22,7 @@ router.get(
 router.get(
   "/:designationId",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorizeRoles("admin", "hr", "employee", "supervisor"),
   getApproversByDesignation,
 );
 router.post(

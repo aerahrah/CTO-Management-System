@@ -31,15 +31,15 @@ const getStatusColor = (code) => {
 const getMethodColor = (method) => {
   switch (method) {
     case "GET":
-      return "text-blue-600 bg-blue-50 border-blue-200";
+      return "text-blue-700 bg-blue-50 border-blue-200";
     case "POST":
-      return "text-green-600 bg-green-50 border-green-200";
+      return "text-green-700 bg-green-50 border-green-200";
     case "PUT":
-      return "text-orange-600 bg-orange-50 border-orange-200";
+      return "text-orange-700 bg-orange-50 border-orange-200";
     case "DELETE":
-      return "text-red-600 bg-red-50 border-red-200";
+      return "text-red-700 bg-red-50 border-red-200";
     default:
-      return "text-gray-600 bg-gray-50 border-gray-200";
+      return "text-gray-700 bg-gray-50 border-gray-200";
   }
 };
 
@@ -104,7 +104,7 @@ const AuditLogTable = () => {
   const totalPages = Math.ceil((data?.total || 0) / limit);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen font-sans">
+    <div className="p-6 bg-white/70 rounded-xl min-h-screen font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -120,7 +120,9 @@ const AuditLogTable = () => {
             <button
               onClick={() => refetch()}
               disabled={isFetching}
-              className={`p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition-colors ${isFetching ? "animate-spin" : ""}`}
+              className={`p-2 rounded-lg border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition-colors ${
+                isFetching ? "animate-spin" : ""
+              }`}
             >
               <RefreshCw size={18} />
             </button>
@@ -263,14 +265,14 @@ const AuditLogTable = () => {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-gray-50/50 border-b border-gray-200 text-xs uppercase tracking-wider text-gray-500 font-semibold">
-                  <th className="px-6 py-4">Timestamp</th>
-                  <th className="px-6 py-4">User</th>
-                  <th className="px-6 py-4">Method</th>
-                  <th className="px-6 py-4">Endpoint / URL</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4">IP Address</th>
+              <thead className="bg-gray-50/50 sticky top-0 z-10 border-b border-gray-200">
+                <tr className="text-xs uppercase tracking-wider text-gray-500 font-semibold">
+                  <th className="px-6 py-4 w-40">Timestamp</th>
+                  <th className="px-6 py-4 w-48">User</th>
+                  {/* Merged Column Header */}
+                  <th className="px-6 py-4">Request Details</th>
+                  <th className="px-6 py-4">Summary</th>
+                  <th className="px-6 py-4 w-32">IP Address</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -279,19 +281,21 @@ const AuditLogTable = () => {
                   [...Array(5)].map((_, i) => (
                     <tr key={i} className="animate-pulse">
                       <td className="px-6 py-4">
-                        <div className="h-4 bg-gray-200 rounded w-24"></div>
+                        <div className="h-4 bg-gray-200 rounded w-24 mb-1"></div>
+                        <div className="h-3 bg-gray-100 rounded w-16"></div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="h-4 bg-gray-200 rounded w-32"></div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="h-6 bg-gray-200 rounded w-16"></div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="h-5 bg-gray-200 rounded w-12"></div>
+                          <div className="h-4 bg-gray-200 rounded w-48"></div>
+                        </div>
+                        <div className="h-3 bg-gray-100 rounded w-24"></div>
                       </td>
                       <td className="px-6 py-4">
-                        <div className="h-4 bg-gray-200 rounded w-48"></div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="h-6 bg-gray-200 rounded w-12"></div>
+                        <div className="h-4 bg-gray-200 rounded w-32"></div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="h-4 bg-gray-200 rounded w-24"></div>
@@ -304,65 +308,103 @@ const AuditLogTable = () => {
                       key={log._id}
                       className="hover:bg-blue-50/30 transition-colors group"
                     >
+                      {/* Timestamp */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-col">
                           <span className="text-gray-900 font-medium">
                             {new Date(log.timestamp).toLocaleDateString()}
                           </span>
-                          <span className="text-xs">
+                          <span className="text-xs text-gray-400">
                             {new Date(log.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
                       </td>
+
+                      {/* User */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {log.username}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`px-2.5 py-1 rounded-md text-xs font-bold border ${getMethodColor(log.method)}`}
-                        >
-                          {log.method}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate font-mono">
-                        <div
-                          className="truncate"
-                          title={log.url || log.endpoint}
-                        >
-                          {log.endpoint}
-                        </div>
-                        {log.url && log.url !== log.endpoint && (
-                          <div className="text-xs text-gray-400 mt-0.5 truncate">
-                            {log.url}
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center text-xs text-gray-500 font-bold uppercase">
+                            {log.username.charAt(0)}
                           </div>
-                        )}
+                          {log.username}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(log.statusCode)}`}
-                        >
-                          {log.statusCode}
-                        </span>
+
+                      {/* Merged Request Details Column */}
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1.5 ">
+                          {/* Top Row: Method & Endpoint */}
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider shadow-sm ${getMethodColor(
+                                log.method,
+                              )}`}
+                            >
+                              {log.method}
+                            </span>
+                            <span
+                              className="font-mono text-sm text-gray-700 font-medium"
+                              title={log.endpoint}
+                            >
+                              {log.endpoint}
+                            </span>
+                          </div>
+
+                          {/* Bottom Row: Status & URL (if different) */}
+                          <div className="flex items-center gap-3 pl-1">
+                            <span
+                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${getStatusColor(
+                                log.statusCode,
+                              )}`}
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60"></span>
+                              {log.statusCode}
+                            </span>
+
+                            {log.url && log.url !== log.endpoint && (
+                              <span
+                                className="text-xs text-gray-400 font-mono "
+                                title={log.url}
+                              >
+                                {log.url}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
+
+                      {/* Summary */}
+                      <td className="px-6 py-4 text-xs min-w-xs text-gray-600">
+                        <div className="" title={log?.summary || ""}>
+                          {log?.summary || (
+                            <span className="text-gray-300 italic">
+                              No summary
+                            </span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* IP Address */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
                         {log.ip}
                       </td>
                     </tr>
                   ))
                 ) : (
+                  // Empty State
                   <tr>
                     <td
-                      colSpan={6}
-                      className="px-6 py-12 text-center text-gray-500"
+                      colSpan={5}
+                      className="px-6 py-16 text-center text-gray-500"
                     >
                       <div className="flex flex-col items-center justify-center">
-                        <div className="bg-gray-100 p-3 rounded-full mb-3">
+                        <div className="bg-gray-100 p-4 rounded-full mb-3">
                           <Search size={24} className="text-gray-400" />
                         </div>
                         <p className="text-lg font-medium text-gray-900">
                           No logs found
                         </p>
-                        <p className="text-sm">
+                        <p className="text-sm text-gray-500 mt-1">
                           Try adjusting your filters or search terms.
                         </p>
                       </div>

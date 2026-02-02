@@ -141,7 +141,7 @@ const Sidebar = ({
     onSuccess: (data) => queryClient.setQueryData(["employees"], data),
   });
 
-  const isActive = (path) => location.pathname === path;
+  const isActive = (path) => location.pathname.startsWith(path);
 
   const toggleMenu = (name) => {
     if (isLockedOpenRole) return;
@@ -180,10 +180,10 @@ const Sidebar = ({
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:h-screen flex-shrink-0
-        ${collapsed ? "lg:w-20" : "lg:w-64"}
+        ${collapsed ? "lg:w-20" : "lg:w-68"}
         ${
           mobileOpen
-            ? "translate-x-0 w-64"
+            ? "translate-x-0 w-72"
             : "-translate-x-full lg:translate-x-0"
         }`}
       >
@@ -234,7 +234,7 @@ const Sidebar = ({
                     }
                   }}
                   onMouseLeave={() => setHoveredItem(null)}
-                  className={`flex items-center p-3 rounded-xl cursor-pointer transition-all duration-200
+                  className={`flex items-center py-2.5  px-3 rounded-xl cursor-pointer transition-all duration-200
                     ${collapsed && !mobileOpen ? "justify-center" : "gap-3"}
                     ${
                       isMainItemActive || (isSubItemActive && collapsed)
@@ -271,7 +271,7 @@ const Sidebar = ({
                 </div>
 
                 {(!collapsed || mobileOpen) && hasSubItems && isOpen && (
-                  <div className="ml-6 mt-1 border-l-2 border-slate-100 pl-4 space-y-1">
+                  <div className="ml-3 mt-1 border-l-2 border-slate-100 pl-2 space-y-1">
                     {item.subItems.map((sub) => (
                       <div
                         key={sub.name}
@@ -279,7 +279,7 @@ const Sidebar = ({
                           navigate(sub.path);
                           if (window.innerWidth < 1024) setMobileOpen(false);
                         }}
-                        className={`px-3 py-2 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
+                        className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
       ${
         isActive(sub.path)
           ? "text-blue-600 bg-blue-50"
@@ -289,8 +289,8 @@ const Sidebar = ({
                         <span
                           className={
                             isActive(sub.path)
-                              ? "text-blue-600"
-                              : "text-slate-400"
+                              ? "text-blue-600 bg-slate-50 border-slate-100 p-1.5 rounded-md"
+                              : "text-slate-400 bg-slate-50 p-1.5 rounded-md"
                           }
                         >
                           {sub.icon}
