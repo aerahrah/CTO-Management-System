@@ -207,12 +207,12 @@ const EmployeeDirectory = () => {
     filters.project;
 
   return (
-    <div className="p-4 md:p-6 bg-neutral-50 min-h-screen w-full font-sans text-neutral-800 space-y-8">
+    <div className="p-4 md:p-6 bg-white/70 rounded-xl min-h-screen w-full font-sans text-neutral-800 space-y-8">
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-neutral-900 tracking-tight">
-            Employee Management
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
+            Employee Directory
           </h1>
           <p className="text-neutral-500 text-sm mt-1">
             Manage your organization's staffing.

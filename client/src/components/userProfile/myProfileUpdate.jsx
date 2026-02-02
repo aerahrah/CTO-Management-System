@@ -119,7 +119,7 @@ const UpdateProfile = () => {
     `${formData.firstName?.charAt(0) || ""}${formData.lastName?.charAt(0) || ""}`.toUpperCase();
 
   return (
-    <div className="bg-slate-50 min-h-screen p-6 font-sans">
+    <div className="bg-white/70 rounded-xl min-h-screen p-6 font-sans">
       <form onSubmit={handleSubmit} className="max-w-5xl mx-auto">
         {/* Header Actions */}
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">

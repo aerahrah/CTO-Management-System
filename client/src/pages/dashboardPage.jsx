@@ -73,7 +73,6 @@ const Dashboard = () => {
             </div> */}
           </div>
 
-          {/* Right Side: User Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               onClick={() => setDropdownOpen((prev) => !prev)}
@@ -125,7 +124,7 @@ const Dashboard = () => {
         </nav>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto md:py-2 md:px-3 custom-scrollbar">
+        <main className="flex-1 overflow-y-auto md:py-2 md:px-3 custom-scrollbar bg-neutral-100">
           <div className="max-w-full mx-auto">
             <Outlet />
           </div>

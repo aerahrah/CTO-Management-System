@@ -93,7 +93,7 @@ const MyProfile = () => {
     .join(", ");
 
   return (
-    <div className="bg-gray-50 p-6">
+    <div className="bg-white/70 h-[calc(100vh-4.5rem)] rounded-xl p-6">
       <div className="max-w-5xl mx-auto">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">

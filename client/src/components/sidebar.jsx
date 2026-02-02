@@ -123,12 +123,12 @@ const Sidebar = ({
       roles: ["admin", "hr"],
       subItems: [
         {
-          name: "CTO Settings",
+          name: "CTO Routing Settings",
           path: "/app/cto-settings",
           icon: <SlidersHorizontal size={14} />,
         },
         {
-          name: "Office Locations",
+          name: "Designations Settings",
           path: "/app/office-locations",
           icon: <MapPin size={14} />,
         },

@@ -137,7 +137,7 @@ const CtoApplicationDetails = () => {
   return (
     <div className="flex-1 h-full w-full flex flex-col gap-4 max-w-6xl mx-auto">
       {/* HEADER */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white pb-2 border-b border-gray-300 sticky top-2 bg-white/90">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-gray-300 sticky top-2">
         <div className="flex items-center gap-4 py-2">
           <div className="h-12 w-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg">
             {initials}
@@ -201,13 +201,14 @@ const CtoApplicationDetails = () => {
               <p className="text-blue-50 text-xs font-bold uppercase tracking-widest mb-1">
                 Requested Dates
               </p>
-              <h3 className="text-2xl md:text-3xl font-bold">
+              <h3 className="text-xl md:text-2xl max-w-xs font-bold">
                 {application.inclusiveDates?.length > 0
                   ? application.inclusiveDates
                       .map((d) =>
                         new Date(d).toLocaleDateString("en-US", {
                           month: "short",
                           day: "numeric",
+                          year: "numeric",
                         }),
                       )
                       .join(", ")

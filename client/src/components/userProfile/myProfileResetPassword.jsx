@@ -53,7 +53,7 @@ const ResetPassword = () => {
         position: "top-right",
         autoClose: 3000,
       });
-      navigate("/dashboard/my-profile");
+      navigate("/app/my-profile");
     },
     onError: (err) => {
       toast.error(err.response?.data?.error || "Failed to reset password", {
@@ -71,7 +71,7 @@ const ResetPassword = () => {
   };
 
   return (
-    <div className="bg-gray-50 h-[calc(100vh-3.5rem-1rem)] p-6">
+    <div className="bg-white/70 rounded-xl h-[calc(100vh-3.5rem-1rem)] p-6">
       <ToastContainer />
       <div className="max-w-3xl mx-auto">
         {/* Header */}
