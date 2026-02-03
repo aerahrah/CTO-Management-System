@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   Clock,
   Calendar,
@@ -51,6 +51,7 @@ const CtoApplicationDetails = ({ app }) => {
 
   if (!app) return null;
 
+  // --- Helper: Format date/time ---
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleDateString("en-US", {
@@ -61,6 +62,12 @@ const CtoApplicationDetails = ({ app }) => {
       minute: "2-digit",
     });
   };
+
+  // --- Sort approvals by level ---
+  const sortedApprovals = useMemo(() => {
+    if (!Array.isArray(app.approvals)) return [];
+    return [...app.approvals].sort((a, b) => a.level - b.level);
+  }, [app.approvals]);
 
   return (
     <div className="h-full flex flex-col bg-slate-50/30">
@@ -156,9 +163,11 @@ const CtoApplicationDetails = ({ app }) => {
                 {app.inclusiveDates?.length || 0})
               </h4>
               <div className="flex flex-wrap gap-3">
-                {app.inclusiveDates?.map((d, i) => (
-                  <DateLeaf key={i} dateString={d} />
-                )) || (
+                {app.inclusiveDates?.length > 0 ? (
+                  app.inclusiveDates.map((d, i) => (
+                    <DateLeaf key={i} dateString={d} />
+                  ))
+                ) : (
                   <div className="p-4 w-full bg-slate-100 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm flex items-center gap-2">
                     <AlertCircle size={16} /> No dates selected
                   </div>
@@ -197,52 +206,55 @@ const CtoApplicationDetails = ({ app }) => {
                 <Users size={14} /> Approval Timeline
               </h4>
 
-              {app.approvals?.length > 0 ? (
+              {sortedApprovals.length > 0 ? (
                 <div className="relative pl-2">
                   {/* Continuous Vertical Line */}
                   <div className="absolute left-[19px] top-2 bottom-6 w-0.5 bg-slate-100" />
 
                   <div className="space-y-8">
-                    {app.approvals.map((a, idx) => (
-                      <div
-                        key={a._id}
-                        className="relative flex gap-4 items-start group"
-                      >
-                        {/* Status Icon Node */}
+                    {sortedApprovals.map((a, idx) => {
+                      const isFirst = idx === 0;
+                      const isLast = idx === sortedApprovals.length - 1;
+                      return (
                         <div
-                          className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm shrink-0 transition-transform group-hover:scale-105 ${getStatusStyles(
-                            a.status,
-                          )}`}
+                          key={a._id}
+                          className="relative flex gap-4 items-start group"
                         >
-                          <StatusIcon status={a.status} size={16} />
-                        </div>
-
-                        {/* Text Content */}
-                        <div className="flex-1 pt-1 min-w-0">
-                          <div className="flex flex-col">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
-                              {idx === 0 ? "First Approval" : "Final Approval"}
-                            </span>
-                            <span
-                              className="text-sm font-bold text-slate-800 truncate"
-                              title={`${a.approver?.firstName} ${a.approver?.lastName}`}
-                            >
-                              {a.approver?.firstName} {a.approver?.lastName}
-                            </span>
-                            <span className="text-xs text-indigo-600 font-medium truncate">
-                              {a.approver?.position || "Approver"}
-                            </span>
+                          {/* Status Icon Node */}
+                          <div
+                            className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm shrink-0 transition-transform group-hover:scale-105 ${getStatusStyles(
+                              a.status,
+                            )}`}
+                          >
+                            <StatusIcon status={a.status} size={16} />
                           </div>
 
-                          {/* Optional: Add Approval Timestamp if data existed */}
-                          {/* <div className="mt-2 text-[10px] text-slate-400 bg-slate-50 inline-block px-2 py-0.5 rounded-full">
-                            Jan 12 • 2:30 PM
-                          </div> */}
+                          {/* Text Content */}
+                          <div className="flex-1 pt-1 min-w-0">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
+                                {isFirst
+                                  ? "First Approval"
+                                  : isLast
+                                    ? "Final Approval"
+                                    : `Approval Step ${idx + 1}`}
+                              </span>
+                              <span
+                                className="text-sm font-bold text-slate-800 truncate"
+                                title={`${a.approver?.firstName} ${a.approver?.lastName}`}
+                              >
+                                {a.approver?.firstName} {a.approver?.lastName}
+                              </span>
+                              <span className="text-xs text-indigo-600 font-medium truncate">
+                                {a.approver?.position || "Approver"}
+                              </span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
 
-                    {/* Final Success State Node (Visual only) */}
+                    {/* Final Success State Node */}
                     {app.overallStatus === "Approved" && (
                       <div className="relative flex gap-4 items-center">
                         <div className="relative z-10 w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border-4 border-white shadow-sm shrink-0">
@@ -268,7 +280,7 @@ const CtoApplicationDetails = ({ app }) => {
         </div>
       </div>
 
-      {/* 3. Refined Modal */}
+      {/* Memo Modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={() => setMemoModal({ isOpen: false, memos: [] })}

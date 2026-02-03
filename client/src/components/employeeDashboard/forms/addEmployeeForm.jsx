@@ -210,7 +210,7 @@ const AddEmployeeForm = () => {
   };
 
   return (
-    <div className="p-6 bg-neutral-50 mx-auto">
+    <div className="p-6 bg-white/70 rounded-xl mx-auto">
       {/* === NAVIGATION & HEADER === */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">

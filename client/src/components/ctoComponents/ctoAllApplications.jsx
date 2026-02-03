@@ -2,7 +2,7 @@ import AllCtoApplicationsHistory from "./ctoApplicationComponents/allCtoApplicat
 import { CardFull, CardLg } from "../cardComponent";
 const AllCtoApplications = () => {
   return (
-    <div className=" w-[100%] flex gap-3 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem-1rem)]">
+    <div className=" w-[100%] flex gap-3 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem-1.5rem)]">
       <CardFull className="flex flex-col">
         <AllCtoApplicationsHistory />
       </CardFull>

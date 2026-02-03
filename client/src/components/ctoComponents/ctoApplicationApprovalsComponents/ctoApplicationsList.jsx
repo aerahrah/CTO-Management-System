@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+// ctoApplicationsList.jsx
+import React, { useEffect, useRef, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Search,
@@ -7,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  ArrowUpDown,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -19,6 +19,9 @@ import { fetchMyCtoApplicationsApprovals } from "../../../api/cto";
 import { useAuth } from "../../../store/authStore";
 import { StatusBadge } from "../../statusUtils";
 
+/* ================================
+   HOOK: DEBOUNCE
+================================ */
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
   useEffect(() => {
@@ -28,57 +31,207 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
+/* ================================
+   HOOK: MEDIA QUERY (xl and up)
+   - We only auto-navigate on xl screens (2-pane layout)
+================================ */
+function useIsXlUp() {
+  const [isXlUp, setIsXlUp] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 1280px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const onChange = (e) => setIsXlUp(e.matches);
+
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+
+  return isXlUp;
+}
+
+/* ================================
+   PAGINATION (same Next/Prev UI as your basis)
+================================ */
+const CompactPagination = ({
+  page,
+  totalPages,
+  total, // can be undefined
+  startItem, // can be null
+  endItem, // can be null
+  onPrev,
+  onNext,
+  label = "items",
+}) => {
+  const hasTotal = typeof total === "number";
+
+  return (
+    <div className="px-4 py-3 border-t border-neutral-100 bg-neutral-50/50">
+      {/* Mobile */}
+      <div className="flex md:hidden items-center justify-between gap-3">
+        <button
+          onClick={onPrev}
+          disabled={page === 1 || totalPages <= 1}
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-neutral-200 bg-white text-sm font-bold text-neutral-700 disabled:opacity-30"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Prev
+        </button>
+
+        <div className="text-center min-w-0">
+          <div className="text-xs font-mono font-semibold text-neutral-700">
+            {page} / {Math.max(totalPages, 1)}
+          </div>
+          <div className="text-[11px] text-neutral-500 truncate">
+            {hasTotal
+              ? total === 0
+                ? `0 ${label}`
+                : `${startItem}-${endItem} of ${total}`
+              : " "}
+          </div>
+        </div>
+
+        <button
+          onClick={onNext}
+          disabled={page >= totalPages || totalPages <= 1}
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-neutral-200 bg-white text-sm font-bold text-neutral-700 disabled:opacity-30"
+        >
+          Next
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Desktop */}
+      <div className="hidden md:flex items-center justify-between gap-4">
+        <div className="text-xs text-neutral-500 font-medium">
+          {hasTotal ? (
+            <>
+              Showing{" "}
+              <span className="font-bold text-neutral-900">
+                {total === 0 ? 0 : `${startItem}-${endItem}`}
+              </span>{" "}
+              of <span className="font-bold text-neutral-900">{total}</span>{" "}
+              {label}
+            </>
+          ) : (
+            <>
+              Page <span className="font-bold text-neutral-900">{page}</span> of{" "}
+              <span className="font-bold text-neutral-900">
+                {Math.max(totalPages, 1)}
+              </span>
+            </>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-neutral-200">
+          <button
+            onClick={onPrev}
+            disabled={page === 1 || totalPages <= 1}
+            className="p-1.5 rounded-md hover:bg-neutral-50 hover:shadow-sm disabled:opacity-30 transition-all text-neutral-600"
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <span className="text-xs font-mono font-semibold px-3 text-neutral-700">
+            {page} / {Math.max(totalPages, 1)}
+          </span>
+
+          <button
+            onClick={onNext}
+            disabled={page >= totalPages || totalPages <= 1}
+            className="p-1.5 rounded-md hover:bg-neutral-50 hover:shadow-sm disabled:opacity-30 transition-all text-neutral-600"
+            aria-label="Next page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LIMIT_OPTIONS = [10, 20, 50];
+
 const CtoApplicationsList = () => {
   const { admin } = useAuth();
   const navigate = useNavigate();
   const { id: selectedId } = useParams();
 
+  const isXlUp = useIsXlUp();
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
-  const debouncedSearch = useDebounce(searchTerm, 500);
+  const debouncedSearch = useDebounce(searchTerm, 450);
 
-  // --- FETCH LIST ---
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: [
-      "ctoApplications",
-      debouncedSearch,
-      sortOrder,
-      page,
-      limit,
-      statusFilter,
-    ],
+  const { data, isLoading, isError, isFetching } = useQuery({
+    queryKey: ["ctoApplications", debouncedSearch, page, limit, statusFilter],
     queryFn: () =>
       fetchMyCtoApplicationsApprovals({
         search: debouncedSearch,
         page,
         limit,
-        sortOrder,
-        status: statusFilter,
+        status: statusFilter || undefined,
+        // sort removed
       }),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
     staleTime: 1000 * 60 * 2,
   });
 
-  // --- AUTO NAVIGATE TO MOST RECENT ---
+  // Auto navigate to first item ONLY on xl screens (2-pane)
   const hasNavigatedRef = useRef(false);
   useEffect(() => {
+    if (!isXlUp) return; // IMPORTANT: do not auto-open on mobile/tablet
     if (!hasNavigatedRef.current && data?.data?.length > 0 && !selectedId) {
-      navigate(`/app/cto/approvals/${data.data[0]._id}`);
+      navigate(`/app/cto/approvals/${data.data[0]._id}`, { replace: true });
       hasNavigatedRef.current = true;
     }
-  }, [data, selectedId, navigate]);
+  }, [data, selectedId, navigate, isXlUp]);
 
+  // Reset page on filters/limit
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, limit]);
 
-  const handleSortToggle = () => {
-    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-  };
+  const apps = data?.data || [];
+  const totalPages = Math.max(
+    data?.totalPages || data?.pagination?.totalPages || 1,
+    1,
+  );
+
+  // Try to infer a total if backend provides one
+  const total =
+    typeof data?.total === "number"
+      ? data.total
+      : typeof data?.pagination?.total === "number"
+        ? data.pagination.total
+        : undefined;
+
+  const startItem =
+    typeof total === "number"
+      ? total === 0
+        ? 0
+        : (page - 1) * limit + 1
+      : null;
+
+  const endItem =
+    typeof total === "number"
+      ? total === 0
+        ? 0
+        : Math.min(page * limit, total)
+      : null;
 
   const tabs = [
     {
@@ -107,27 +260,27 @@ const CtoApplicationsList = () => {
     },
   ];
 
-  if (isError)
+  if (isError) {
     return (
       <div className="flex items-center justify-center h-full p-4 text-neutral-500 text-sm">
         Failed to load applications
       </div>
     );
+  }
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
-      {/* --- HEADER --- */}
+    <div className="flex flex-col h-full min-h-0 bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden min-w-0">
+      {/* HEADER */}
       <div className="px-4 py-3 border-b border-neutral-100 bg-neutral-50/50">
         <h1 className="text-lg font-bold text-neutral-800">CTO Requests</h1>
         <p className="text-xs text-neutral-500">Review and approve time off</p>
       </div>
 
-      {/* --- MOBILE FRIENDLY STATUS FILTER PILLS --- */}
+      {/* STATUS FILTER PILLS (keep concept) */}
       <div className="px-3 pt-2 bg-white">
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide no-scrollbar">
           {tabs.map((tab) => {
             const isActive = statusFilter === tab.id;
-            const Icon = tab.icon;
 
             const count =
               tab.id === ""
@@ -141,23 +294,19 @@ const CtoApplicationsList = () => {
               <button
                 key={tab.id}
                 onClick={() => setStatusFilter(tab.id)}
-                className={`
-        flex items-center gap-1 p-1.25 rounded-lg border transition-all duration-200 whitespace-nowrap
-        ${
-          isActive
-            ? `${tab.activeColor} shadow-sm ring-1 ring-inset ring-black/5`
-            : "bg-white text-neutral-500 border-neutral-200 hover:bg-neutral-50"
-        }
-      `}
+                className={`flex items-center gap-1 p-1.5 rounded-lg border transition-all duration-200 whitespace-nowrap
+                  ${
+                    isActive
+                      ? `${tab.activeColor} shadow-sm ring-1 ring-inset ring-black/5`
+                      : "bg-white text-neutral-500 border-neutral-200 hover:bg-neutral-50"
+                  }`}
               >
                 <span className="text-[10px] font-bold uppercase tracking-wider">
                   {tab.label}
                 </span>
-
                 <span
                   className={`px-1.5 py-0.5 rounded text-[9px] font-black leading-none 
-          ${isActive ? "bg-white/50" : "bg-neutral-100 text-neutral-600"}
-        `}
+                    ${isActive ? "bg-white/50" : "bg-neutral-100 text-neutral-600"}`}
                 >
                   {count}
                 </span>
@@ -167,10 +316,11 @@ const CtoApplicationsList = () => {
         </div>
       </div>
 
-      {/* --- SEARCH & SORT --- */}
+      {/* SEARCH + SHOW (top) */}
       <div className="flex flex-col gap-2 px-3 py-2 border-b border-neutral-100 bg-white">
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1 group">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
+          {/* Search */}
+          <div className="relative flex-1 group min-w-0">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400 group-focus-within:text-blue-600 transition-colors" />
             <input
               type="text"
@@ -186,37 +336,56 @@ const CtoApplicationsList = () => {
               <button
                 onClick={() => setSearchTerm("")}
                 className="absolute right-2.5 top-2.5 p-0.5 rounded-full hover:bg-neutral-100 text-neutral-400"
+                aria-label="Clear search"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
 
-          <button
-            onClick={handleSortToggle}
-            className="flex items-center justify-center h-10 w-10 border border-neutral-200 rounded-lg 
-                       bg-white text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300 transition-all"
-          >
-            <ArrowUpDown className="h-4 w-4" />
-          </button>
+          {/* Show */}
+          <div className="flex items-center justify-between sm:justify-end gap-2 sm:pl-2 sm:border-l sm:border-neutral-200">
+            <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
+              Show
+            </span>
+            <select
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+              className="bg-white border border-neutral-200 rounded-lg px-2 py-2 text-xs font-semibold text-neutral-700 outline-none cursor-pointer hover:bg-neutral-50"
+            >
+              {LIMIT_OPTIONS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* {isFetching && (
+          // <div className="text-[11px] text-neutral-400 font-medium px-1">
+          //   Updating…
+          // </div>
+        )} */}
       </div>
 
-      {/* --- SCROLLABLE LIST --- */}
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      {/* LIST */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
         <ul className="flex flex-col gap-1">
           {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => (
+            Array.from({ length: 6 }).map((_, i) => (
               <li key={i} className="p-3">
                 <Skeleton height={60} borderRadius={12} />
               </li>
             ))
-          ) : data?.data?.length > 0 ? (
-            data.data.map((app) => {
+          ) : apps?.length > 0 ? (
+            apps.map((app) => {
               const isActive = selectedId === app._id;
-              const initials = `${app.employee?.firstName?.[0] || ""}${
-                app.employee?.lastName?.[0] || ""
-              }`;
+              const initials = `${app.employee?.firstName?.[0] || ""}${app.employee?.lastName?.[0] || ""}`;
+
               const status =
                 app.approvals?.find((step) => step.approver?._id === admin?.id)
                   ?.status || app.overallStatus;
@@ -234,39 +403,38 @@ const CtoApplicationsList = () => {
                 >
                   <div
                     className={`h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full text-sm font-bold shadow-sm transition-colors
-                      ${
-                        isActive
-                          ? "bg-blue-600 text-white"
-                          : "bg-neutral-100 text-neutral-600"
-                      }`}
+                      ${isActive ? "bg-blue-600 text-white" : "bg-neutral-100 text-neutral-600"}`}
                   >
-                    {initials}
+                    {initials || "?"}
                   </div>
 
-                  <div className="flex flex-col flex-1 min-w-0 ">
-                    <div className="flex justify-between items-start">
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="flex justify-between items-start gap-2">
                       <span
-                        className={`text-sm font-semibold truncate pr-2 ${
+                        className={`text-sm font-semibold truncate ${
                           isActive ? "text-blue-900" : "text-neutral-800"
                         }`}
                       >
                         {app.employee?.firstName} {app.employee?.lastName}
                       </span>
-                      <div className="transform scale-[0.8] origin-top-right">
+
+                      <div className="transform scale-[0.85] origin-top-right flex-none">
                         <StatusBadge status={status} />
                       </div>
                     </div>
+
                     <span className="text-xs text-neutral-500 truncate">
                       {app.employee?.position || "No position"}
                     </span>
+
                     <div className="flex items-center gap-3 mt-1">
                       <div
                         className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border
-                        ${
-                          isActive
-                            ? "bg-blue-100/50 border-blue-200 text-blue-700"
-                            : "bg-neutral-50 border-neutral-200 text-neutral-600"
-                        }`}
+                          ${
+                            isActive
+                              ? "bg-blue-100/50 border-blue-200 text-blue-700"
+                              : "bg-neutral-50 border-neutral-200 text-neutral-600"
+                          }`}
                       >
                         <Clock className="h-3 w-3" />
                         <span className="font-medium">
@@ -289,48 +457,17 @@ const CtoApplicationsList = () => {
         </ul>
       </div>
 
-      {/* --- FOOTER --- */}
-      <div className="flex items-center justify-between px-4 py-3 border-t border-neutral-100 bg-neutral-50/50 text-[10px] font-bold text-neutral-500 uppercase">
-        <div className="flex items-center gap-2">
-          <span>Show</span>
-          <select
-            value={limit}
-            onChange={(e) => {
-              setLimit(Number(e.target.value));
-              setPage(1);
-            }}
-            className="bg-white border border-neutral-200 rounded p-1 outline-none"
-          >
-            {[10, 20, 50].map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {data?.totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <button
-              disabled={page === 1}
-              onClick={() => setPage((prev) => prev - 1)}
-              className="p-1 disabled:opacity-30"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span>
-              {page} / {data.totalPages}
-            </span>
-            <button
-              disabled={page === data.totalPages}
-              onClick={() => setPage((prev) => prev + 1)}
-              className="p-1 disabled:opacity-30"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </div>
+      {/* PAGINATION */}
+      <CompactPagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        startItem={startItem}
+        endItem={endItem}
+        label="requests"
+        onPrev={() => setPage((p) => Math.max(p - 1, 1))}
+        onNext={() => setPage((p) => Math.min(p + 1, totalPages))}
+      />
     </div>
   );
 };

@@ -95,6 +95,7 @@ const approveCtoApplication = async (req, res, next) => {
     const data = await approveCtoApplicationService({
       approverId,
       applicationId,
+      req,
     });
 
     res.json({ success: true, data });
@@ -113,6 +114,7 @@ const rejectCtoApplication = async (req, res, next) => {
       approverId,
       applicationId,
       remarks,
+      req,
     });
 
     res.status(200).json({

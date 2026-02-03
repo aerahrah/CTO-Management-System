@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+// ctoEmployeeInformation.jsx
+import React, { useMemo, useState, useEffect } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   fetchEmployeeCredits,
   fetchEmployeeDetails,
@@ -9,37 +10,138 @@ import CreditCtoTable from "./ctoEmployeeCreditTable";
 import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  Layers,
+  Clock as ClockIcon,
+  Archive,
+  CheckCircle2,
+  ChevronLeft,
+} from "lucide-react";
+
+/* =========================
+   HOOK: DEBOUNCE
+========================= */
+function useDebounce(value, delay) {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
+/* ================================
+   HOOK: MEDIA QUERY (xl and up)
+================================ */
+function useIsXlUp() {
+  const [isXlUp, setIsXlUp] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 1280px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const onChange = (e) => setIsXlUp(e.matches);
+
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+
+  return isXlUp;
+}
+
 /* =========================
    SKELETON
 ========================= */
 const EmployeeInfoSkeleton = () => (
   <div className="space-y-4">
     <Skeleton height={120} />
-    <Skeleton height={400} />
+    <Skeleton height={420} />
   </div>
+);
+
+/* =========================
+   UI: StatCard + Tabs
+   - More responsive: clamp + truncation + tighter layout on small
+========================= */
+const StatCard = ({ title, value, icon: Icon, hint }) => (
+  <div className="w-full bg-white border border-neutral-200 rounded-xl shadow-sm p-3 flex items-start gap-3 min-w-0">
+    {/* <div className="p-2 rounded-lg bg-neutral-50 flex items-center justify-center flex-none border border-neutral-100">
+      <Icon className="w-5 h-5 text-neutral-700" />
+    </div> */}
+
+    <div className="flex-1 min-w-0">
+      <div className="text-[10px] text-neutral-400 uppercase font-bold tracking-wide truncate">
+        {title}
+      </div>
+
+      <div className="mt-0.5 font-bold text-neutral-900 truncate text-base sm:text-lg">
+        {value}
+      </div>
+
+      {hint && (
+        <div
+          className="text-[11px] text-neutral-500 overflow-hidden text-ellipsis"
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+          }}
+          title={hint}
+        >
+          {hint}
+        </div>
+      )}
+    </div>
+  </div>
+);
+
+const TabButton = ({ active, onClick, label }) => (
+  <button
+    onClick={onClick}
+    className={`px-4 sm:px-6 py-3 text-sm font-semibold transition border-b-2 whitespace-nowrap
+      ${
+        active
+          ? "border-blue-600 text-blue-700"
+          : "border-transparent text-neutral-500 hover:text-neutral-800"
+      }`}
+  >
+    {label}
+  </button>
 );
 
 /* =========================
    MAIN COMPONENT
 ========================= */
 const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("credit");
-
   const { id: selectedId } = useParams();
-  /* ================= CREDIT TAB STATE ================= */
+  const isXlUp = useIsXlUp();
+
+  /* ===== CREDIT TAB STATE ===== */
   const [creditPage, setCreditPage] = useState(1);
   const [creditLimit, setCreditLimit] = useState(20);
   const [creditStatus, setCreditStatus] = useState("");
-  const [creditSearch, setCreditSearch] = useState("");
+  const [creditSearchInput, setCreditSearchInput] = useState("");
+  const creditSearch = useDebounce(creditSearchInput, 350);
 
-  /* ================= APPLICATION TAB STATE ================= */
+  /* ===== APPLICATION TAB STATE ===== */
   const [appPage, setAppPage] = useState(1);
   const [appLimit, setAppLimit] = useState(20);
   const [appStatus, setAppStatus] = useState("");
-  const [appSearch, setAppSearch] = useState("");
+  const [appSearchInput, setAppSearchInput] = useState("");
+  const appSearch = useDebounce(appSearchInput, 350);
 
-  /* ================= EMPLOYEE DETAILS ================= */
+  /* ===== EMPLOYEE DETAILS ===== */
   const {
     data: employeeData,
     isLoading: isEmployeeLoading,
@@ -48,13 +150,15 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     queryKey: ["employeeDetails", selectedId],
     queryFn: () => fetchEmployeeDetails(selectedId),
     enabled: !!selectedId,
+    staleTime: 1000 * 60 * 5,
   });
 
-  /* ================= CREDIT QUERY (SERVER-SIDE) ================= */
+  /* ===== CREDIT QUERY ===== */
   const {
     data: creditData,
     isLoading: isCreditLoading,
     isError: isCreditError,
+    isFetching: isCreditFetching,
   } = useQuery({
     queryKey: [
       "employeeCredits",
@@ -71,15 +175,17 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
         status: creditStatus,
         search: creditSearch,
       }),
-    keepPreviousData: true,
-    enabled: !!selectedId && activeTab === "credit",
+    placeholderData: keepPreviousData,
+    enabled: !!selectedId,
+    staleTime: 1000 * 30,
   });
 
-  /* ================= APPLICATION QUERY (SERVER-SIDE) ================= */
+  /* ===== APPLICATION QUERY ===== */
   const {
     data: applicationData,
     isLoading: isApplicationLoading,
     isError: isApplicationError,
+    isFetching: isApplicationFetching,
   } = useQuery({
     queryKey: [
       "employeeApplications",
@@ -96,40 +202,60 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
         status: appStatus,
         search: appSearch,
       }),
-    keepPreviousData: true,
+    placeholderData: keepPreviousData,
     enabled: !!selectedId && activeTab === "application",
+    staleTime: 1000 * 30,
   });
 
-  /* ================= DATA ================= */
-  const employee = employeeData?.employee;
-
+  /* ===== DATA SHAPING ===== */
+  const employee = employeeData?.employee || {};
   const credits = creditData?.credits || [];
-  const creditPagination = creditData?.pagination || {
-    page: 1,
-    totalPages: 1,
-  };
+  const creditPagination = creditData?.pagination || { page: 1, totalPages: 1 };
+  const creditTotal =
+    creditPagination?.total ??
+    creditPagination?.totalItems ??
+    creditPagination?.totalDocs ??
+    creditData?.total;
 
   const applications = applicationData?.data || [];
   const appPagination = applicationData?.pagination || {
     page: 1,
     totalPages: 1,
   };
+  const appTotal =
+    appPagination?.total ??
+    appPagination?.totalItems ??
+    appPagination?.totalDocs ??
+    applicationData?.total;
 
-  /* ================= COMPUTATIONS ================= */
-  const totalEarned = credits
-    .filter((c) => c.status === "CREDITED")
-    .reduce((sum, c) => {
-      const h = c?.duration?.hours || 0;
-      const m = c?.duration?.minutes || 0;
-      return sum + h + m / 60;
-    }, 0);
+  /* ===== SUMMARY ===== */
+  const summary = useMemo(() => {
+    const totals = credits.reduce(
+      (acc, c) => {
+        acc.totalCredited += Number(c.creditedHours || 0);
+        acc.usedHours += Number(c.usedHours || 0);
+        acc.reservedHours += Number(c.reservedHours || 0);
 
-  const totalUsed = credits
-    .filter((c) => c.status === "CREDITED" || c.status === "EXHAUSTED") // include exhausted credits if needed
-    .reduce((sum, c) => sum + (c.usedHours || 0), 0);
-  const balance = totalEarned - totalUsed;
+        if (typeof c.remainingHours === "number") {
+          acc.remainingHours += Number(c.remainingHours || 0);
+        } else {
+          acc.remainingHours +=
+            Number(c.creditedHours || 0) -
+            Number(c.usedHours || 0) -
+            Number(c.reservedHours || 0);
+        }
+        return acc;
+      },
+      { totalCredited: 0, usedHours: 0, reservedHours: 0, remainingHours: 0 },
+    );
+    return totals;
+  }, [credits]);
 
-  /* ================= LOADING / ERROR ================= */
+  // ✅ SAFE hide (AFTER all hooks)
+  const shouldHideInfoOnSmall = !isXlUp && !selectedId;
+  if (shouldHideInfoOnSmall) return null;
+
+  /* ===== LOADING / ERROR ===== */
   if (!selectedId || isEmployeeLoadingFromEmployeeList || isEmployeeLoading) {
     return <EmployeeInfoSkeleton />;
   }
@@ -142,31 +268,113 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     );
   }
 
-  /* ================= RENDER ================= */
-  return (
-    <div className="space-y-4 h-full flex flex-col">
-      {/* ================= HEADER ================= */}
-      <div className="bg-white border-b border-neutral-300 pb-4 flex flex-col lg:flex-row justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-semibold text-gray-800">
-            {employee.firstName} {employee.lastName}
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {employee.position} • {employee.department}
-          </p>
-          <p className="text-sm text-gray-500">{employee.email}</p>
-        </div>
+  const fullName =
+    `${employee.firstName || ""} ${employee.lastName || ""}`.trim();
 
-        <div className="grid grid-cols-3 gap-4">
-          <SummaryCard label="Earned CTO" value={totalEarned} type="success" />
-          <SummaryCard label="Used CTO" value={totalUsed} type="danger" />
-          <SummaryCard label="Balance" value={balance} type="primary" />
+  return (
+    <div className="h-full min-h-0 flex flex-col gap-4 min-w-0">
+      {/* TOP BACK (mobile/tablet only) */}
+      {!isXlUp && selectedId && (
+        <div className="sticky top-2 z-10">
+          <button
+            onClick={() => navigate("/app/cto/records")}
+            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white text-xs font-bold text-neutral-700 hover:bg-neutral-50 shadow-sm"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back to list
+          </button>
+        </div>
+      )}
+
+      {/* HEADER */}
+      <div className="bg-white border border-neutral-200 rounded-xl shadow-sm p-4">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 min-w-0">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 truncate">
+              {fullName || "Employee"}
+            </h2>
+            <p className="text-sm text-neutral-500 mt-1 truncate">
+              {(employee.position || "—") +
+                " • " +
+                (employee.department || "—")}
+            </p>
+            <p className="text-sm text-neutral-500 truncate">
+              {employee.email || "—"}
+            </p>
+          </div>
+
+          {/* Stats */}
+          <div className="w-full lg:w-auto min-w-0">
+            {/* Tablet/Desktop */}
+            <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              <StatCard
+                title="Balance"
+                value={`${summary.remainingHours}h`}
+                icon={Layers}
+                hint="Remaining hours"
+              />
+              <StatCard
+                title="Used Hours"
+                value={`${summary.usedHours}h`}
+                icon={ClockIcon}
+                hint="Total used"
+              />
+              <StatCard
+                title="Reserved"
+                value={`${summary.reservedHours}h`}
+                icon={Archive}
+                hint="Reserved in apps"
+              />
+              <StatCard
+                title="Total Credited"
+                value={`${summary.totalCredited}h`}
+                icon={CheckCircle2}
+                hint={`${credits.length} memos (page)`}
+              />
+            </div>
+
+            {/* Mobile compact */}
+            <div className="sm:hidden grid grid-cols-2 gap-2">
+              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
+                  Balance
+                </div>
+                <div className="text-sm font-bold text-neutral-900 truncate">
+                  {summary.remainingHours}h
+                </div>
+              </div>
+              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
+                  Used
+                </div>
+                <div className="text-sm font-bold text-amber-600 truncate">
+                  {summary.usedHours}h
+                </div>
+              </div>
+              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
+                  Reserved
+                </div>
+                <div className="text-sm font-bold text-neutral-700 truncate">
+                  {summary.reservedHours}h
+                </div>
+              </div>
+              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
+                  Credited
+                </div>
+                <div className="text-sm font-bold text-neutral-900 truncate">
+                  {summary.totalCredited}h
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* ================= TABS ================= */}
-      <div className="bg-white border border-neutral-300 rounded-lg flex-1 min-h-0 flex flex-col">
-        <div className="flex border-b border-neutral-300">
+      {/* TABS + CONTENT */}
+      <div className="bg-white border border-neutral-200 rounded-xl shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
+        <div className="flex border-b border-neutral-100 overflow-x-auto no-scrollbar">
           <TabButton
             active={activeTab === "credit"}
             onClick={() => setActiveTab("credit")}
@@ -179,19 +387,20 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
           />
         </div>
 
-        <div className="p-3 flex-1 min-h-0">
+        <div className="p-3 sm:pt-4 flex-1 min-h-0 overflow-hidden">
           {activeTab === "credit" ? (
             <CreditCtoTable
               credits={credits}
               page={creditPage}
               limit={creditLimit}
               status={creditStatus}
-              search={creditSearch}
-              totalPages={creditPagination.totalPages}
+              search={creditSearchInput}
+              totalPages={creditPagination.totalPages || 1}
+              total={creditTotal}
               isLoading={isCreditLoading}
               onSearchChange={(val) => {
                 setCreditPage(1);
-                setCreditSearch(val);
+                setCreditSearchInput(val);
               }}
               onStatusChange={(val) => {
                 setCreditPage(1);
@@ -203,7 +412,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
               }}
               onNextPage={() =>
                 setCreditPage((p) =>
-                  p < creditPagination.totalPages ? p + 1 : p,
+                  p < (creditPagination.totalPages || 1) ? p + 1 : p,
                 )
               }
               onPrevPage={() => setCreditPage((p) => (p > 1 ? p - 1 : p))}
@@ -214,12 +423,13 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
               page={appPage}
               limit={appLimit}
               status={appStatus}
-              search={appSearch}
-              totalPages={appPagination.totalPages}
+              search={appSearchInput}
+              totalPages={appPagination.totalPages || 1}
+              total={appTotal}
               isLoading={isApplicationLoading}
               onSearchChange={(val) => {
                 setAppPage(1);
-                setAppSearch(val);
+                setAppSearchInput(val);
               }}
               onStatusChange={(val) => {
                 setAppPage(1);
@@ -230,7 +440,9 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                 setAppLimit(val);
               }}
               onNextPage={() =>
-                setAppPage((p) => (p < appPagination.totalPages ? p + 1 : p))
+                setAppPage((p) =>
+                  p < (appPagination.totalPages || 1) ? p + 1 : p,
+                )
               }
               onPrevPage={() => setAppPage((p) => (p > 1 ? p - 1 : p))}
             />
@@ -240,36 +452,5 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     </div>
   );
 };
-
-/* =========================
-   SMALL COMPONENTS
-========================= */
-const SummaryCard = ({ label, value, type }) => {
-  const colorMap = {
-    success: "text-green-700 bg-green-50 border-green-200",
-    danger: "text-red-700 bg-red-50 border-red-200",
-    primary: "text-blue-700 bg-blue-50 border-blue-200",
-  };
-
-  return (
-    <div className={`rounded-xl border p-4 text-center ${colorMap[type]}`}>
-      <p className="text-xs font-medium">{label}</p>
-      <p className="text-lg font-bold mt-1">{value.toFixed(2)} hrs</p>
-    </div>
-  );
-};
-
-const TabButton = ({ active, onClick, label }) => (
-  <button
-    onClick={onClick}
-    className={`px-6 py-3 text-sm font-medium transition border-b-2 ${
-      active
-        ? "border-neutral-900 text-neutral-900"
-        : "border-transparent text-neutral-500 hover:text-neutral-700"
-    }`}
-  >
-    {label}
-  </button>
-);
 
 export default CtoEmployeeInformation;

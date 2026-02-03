@@ -16,7 +16,7 @@ export const fetchAllCreditRequests = async (params = {}) => {
     params,
     withCredentials: true,
   });
-  console.log(res.data.credits);
+  console.log(res.data);
   return res.data;
 };
 

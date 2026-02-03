@@ -2,9 +2,7 @@ import React from "react";
 
 export const CardFull = ({ height = "120", children, className = "" }) => {
   return (
-    <div
-      className={`bg-white ${height}  rounded-xl py-3 px-4 shadow-md w-full ${className}`}
-    >
+    <div className={`${height}   w-full ${className}`}>
       {children || <p className="text-gray-400 text-center">Card Full</p>}
     </div>
   );
@@ -12,9 +10,7 @@ export const CardFull = ({ height = "120", children, className = "" }) => {
 
 export const CardLg = ({ height = "142", children, className = "" }) => {
   return (
-    <div
-      className={`bg-white ${height} p-4 rounded-md shadow-md w-180 ${className}`}
-    >
+    <div className={`bg-white ${height} p-4 rounded-md  w-180 ${className}`}>
       {children || <p className="text-gray-400 text-center">Card Medium</p>}
     </div>
   );
@@ -22,7 +18,7 @@ export const CardLg = ({ height = "142", children, className = "" }) => {
 
 export const CardMd = ({ height = "142", children, className = "" }) => {
   return (
-    <div className={` ${height} w-112 ${className}`}>
+    <div className={` ${height} min-w-92 ${className}`}>
       {children || <p className="text-gray-400 text-center">Card Medium</p>}
     </div>
   );
@@ -30,9 +26,7 @@ export const CardMd = ({ height = "142", children, className = "" }) => {
 
 export const CardSm = ({ height = "142", children, className = "" }) => {
   return (
-    <div
-      className={`bg-white ${height} p-4  rounded-md shadow-md w-96 ${className}`}
-    >
+    <div className={`bg-white ${height} p-4  rounded-md w-96 ${className}`}>
       {children || <p className="text-gray-400 text-center">Card Small</p>}
     </div>
   );

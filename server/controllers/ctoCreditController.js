@@ -80,7 +80,6 @@ const getEmployeeDetails = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 const getAllCreditRequests = async (req, res) => {
   try {
     const { page, limit, search, status } = req.query;
@@ -98,6 +97,7 @@ const getAllCreditRequests = async (req, res) => {
       limit: parseInt(limit) || 20,
       total: credits.totalCount,
       credits: credits.items,
+      grandTotals: credits.grandTotals,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

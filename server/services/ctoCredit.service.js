@@ -111,7 +111,6 @@ async function rollbackCredit({ creditId, userId }) {
 
   return credit;
 }
-
 async function getAllCredits({
   page = 1,
   limit = 20,
@@ -123,12 +122,10 @@ async function getAllCredits({
   const skip = (page - 1) * limit;
 
   const query = {};
-
   if (filters.status) query.status = filters.status;
 
-  // If search is provided, find employees that match firstName or lastName
+  // Search by employee name
   if (search) {
-    // Use $lookup style: find credits where at least one employee's name matches
     const employees = await Employee.find({
       $or: [
         { firstName: { $regex: search, $options: "i" } },
@@ -137,13 +134,11 @@ async function getAllCredits({
     }).select("_id");
 
     const employeeIds = employees.map((e) => e._id);
-
-    // Match any CTO credit where at least one employee is in employeeIds
     query["employees.employee"] = { $in: employeeIds };
   }
 
+  // Pagination query
   const totalCount = await CtoCredit.countDocuments(query);
-
   const items = await CtoCredit.find(query)
     .populate("employees.employee", "firstName lastName position")
     .populate("rolledBackBy", "firstName lastName position role")
@@ -152,14 +147,29 @@ async function getAllCredits({
     .skip(skip)
     .limit(limit);
 
-  return { totalCount, items };
+  // GRAND COUNTS: not affected by pagination or filters
+  const totalCreditedCount = await CtoCredit.countDocuments({
+    status: "CREDITED",
+  });
+  const totalRolledBackCount = await CtoCredit.countDocuments({
+    status: "ROLLEDBACK",
+  });
+
+  return {
+    totalCount,
+    items,
+    grandTotals: {
+      credited: totalCreditedCount,
+      rolledBack: totalRolledBackCount,
+    },
+  };
 }
+
 async function getEmployeeDetails(employeeId) {
   return Employee.findById(employeeId)
     .select("firstName lastName position department email")
     .lean();
 }
-
 async function getEmployeeCredits(
   employeeId,
   { search = "", filters = {}, page = 1, limit = 20 } = {},
@@ -168,30 +178,83 @@ async function getEmployeeCredits(
     throw new Error("Invalid employee ID");
   }
 
-  page = parseInt(page);
-  limit = Math.min(Math.max(limit, 20), 100);
+  const employeeObjId = new mongoose.Types.ObjectId(employeeId);
+
+  page = parseInt(page, 10);
+  limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
   const skip = (page - 1) * limit;
 
-  // Base query: filter only for this employee
-  const query = { "employees.employee": employeeId };
+  // -----------------------------
+  // 1) Totals (IGNORE search/filters)
+  // -----------------------------
+  const [totalsAgg] = await CtoCredit.aggregate([
+    // Narrow docs quickly
+    { $match: { "employees.employee": employeeObjId } },
+    { $unwind: "$employees" },
+    { $match: { "employees.employee": employeeObjId } },
 
-  // Employee-specific status filter: ACTIVE / EXHAUSTED / ROLLEDBACK
-  if (filters.status) {
-    query.employees = {
-      $elemMatch: { employee: employeeId, status: filters.status },
-    };
-  }
+    // Compute per-credit total hours (duration) and remaining
+    {
+      $addFields: {
+        _durationHours: {
+          $add: [
+            { $ifNull: ["$duration.hours", 0] },
+            {
+              $divide: [{ $ifNull: ["$duration.minutes", 0] }, 60],
+            },
+          ],
+        },
+        _usedHours: { $ifNull: ["$employees.usedHours", 0] },
+        _reservedHours: { $ifNull: ["$employees.reservedHours", 0] },
+        _creditedHours: { $ifNull: ["$employees.creditedHours", 0] },
+      },
+    },
+    {
+      $addFields: {
+        _remainingHours: {
+          $subtract: [
+            "$_durationHours",
+            { $add: ["$_usedHours", "$_reservedHours"] },
+          ],
+        },
+      },
+    },
 
-  // Search filter: only search by memoNo
-  if (search) {
-    query.memoNo = { $regex: search, $options: "i" };
-  }
+    // Sum totals for employee across ALL credits
+    {
+      $group: {
+        _id: null,
+        totalUsedHours: { $sum: "$_usedHours" },
+        totalReservedHours: { $sum: "$_reservedHours" },
+        totalRemainingHours: { $sum: "$_remainingHours" },
+        totalCreditedHours: { $sum: "$_creditedHours" }, // optional but handy
+      },
+    },
+  ]);
 
-  // Total count for pagination
-  const totalCount = await CtoCredit.countDocuments(query);
+  const totals = {
+    totalUsedHours: totalsAgg?.totalUsedHours ?? 0,
+    totalReservedHours: totalsAgg?.totalReservedHours ?? 0,
+    totalRemainingHours: totalsAgg?.totalRemainingHours ?? 0,
+    totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0, // optional
+  };
 
-  // Fetch credits with pagination
-  const credits = await CtoCredit.find(query)
+  // -----------------------------
+  // 2) List query (APPLY search/filters)
+  // -----------------------------
+  const listMatch = {
+    employees: {
+      $elemMatch: {
+        employee: employeeObjId,
+        ...(filters.status ? { status: filters.status } : {}),
+      },
+    },
+    ...(search ? { memoNo: { $regex: search, $options: "i" } } : {}),
+  };
+
+  const totalCount = await CtoCredit.countDocuments(listMatch);
+
+  const credits = await CtoCredit.find(listMatch)
     .populate("employees.employee", "firstName lastName position")
     .populate("rolledBackBy", "firstName lastName position role")
     .populate("creditedBy", "firstName lastName position role")
@@ -202,35 +265,57 @@ async function getEmployeeCredits(
 
   const formattedCredits = credits.map((credit) => {
     const empData = credit.employees.find(
-      (e) => e.employee._id.toString() === employeeId,
+      (e) => e.employee?._id?.toString() === employeeId,
     );
 
-    // Calculate remaining hours
-    const totalHours = credit.duration.hours + credit.duration.minutes / 60;
+    const totalHours =
+      (credit.duration?.hours || 0) + (credit.duration?.minutes || 0) / 60;
+
     const usedHours = empData?.usedHours || 0;
     const reservedHours = empData?.reservedHours || 0;
-    const remainingHours = totalHours - usedHours - reservedHours;
 
     return {
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
       uploadedMemo: credit.uploadedMemo,
-      creditedHours: empData?.creditedHours,
+
+      creditedHours: empData?.creditedHours ?? 0,
       duration: credit.duration,
-      appliedHours: usedHours,
-      reservedHours: reservedHours,
-      remainingHours: remainingHours,
+
+      usedHours,
+      reservedHours,
+      remainingHours: totalHours - usedHours - reservedHours,
+
       status: credit.status,
-      usedHours: empData?.usedHours,
       employeeStatus: empData?.status || "ACTIVE",
+
       creditedBy: credit.creditedBy,
       rolledBackBy: credit.rolledBackBy,
     };
   });
 
-  return { totalCount, credits: formattedCredits, page, limit };
-}
+  // Status counts (this is overall for the employee; also ignores search/filters)
+  const statusAggregation = await CtoCredit.aggregate([
+    { $match: { "employees.employee": employeeObjId } },
+    { $unwind: "$employees" },
+    { $match: { "employees.employee": employeeObjId } },
+    { $group: { _id: "$employees.status", count: { $sum: 1 } } },
+  ]);
 
+  const statusCounts = { ACTIVE: 0, EXHAUSTED: 0, ROLLEDBACK: 0 };
+  statusAggregation.forEach((s) => {
+    statusCounts[s._id] = s.count;
+  });
+
+  return {
+    total: totalCount,
+    credits: formattedCredits,
+    page,
+    limit,
+    statusCounts,
+    totals, // ✅ totals unaffected by search/filters
+  };
+}
 // async function createCreditRequest({
 //   employees,
 //   hours,

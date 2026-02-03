@@ -45,7 +45,7 @@ const Dashboard = () => {
       .toUpperCase() || "A";
 
   return (
-    <div className="flex h-screen bg-neutral-100 w-full overflow-hidden">
+    <div className="flex h-screen bg-neutral-100/80 w-full overflow-hidden">
       <Sidebar
         admin={admin}
         collapsed={collapsed}
@@ -124,7 +124,7 @@ const Dashboard = () => {
         </nav>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto md:py-2 md:px-3 custom-scrollbar bg-neutral-100">
+        <main className="flex-1 overflow-y-auto md:py-3 md:px-4 custom-scrollbar bg-neutral-0">
           <div className="max-w-full mx-auto">
             <Outlet />
           </div>

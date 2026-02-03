@@ -187,7 +187,11 @@ const getAllCtoApplicationsService = async (
 ) => {
   page = Math.max(parseInt(page) || 1, 1);
   limit = Math.min(parseInt(limit) || 20, 100);
+  const skip = (page - 1) * limit;
 
+  // -----------------------------
+  // FILTERED QUERY (for table)
+  // -----------------------------
   const query = {};
 
   if (filters.employeeId) query.employee = filters.employeeId;
@@ -199,11 +203,15 @@ const getAllCtoApplicationsService = async (
     };
   }
   if (filters.search) {
-    query["memo.memoId.memoNo"] = { $regex: filters.search, $options: "i" };
+    query["memo.memoId.memoNo"] = {
+      $regex: filters.search,
+      $options: "i",
+    };
   }
 
-  const skip = (page - 1) * limit;
-
+  // -----------------------------
+  // FETCH DATA + PAGINATION TOTAL
+  // -----------------------------
   const [applications, total] = await Promise.all([
     CtoApplication.find(query)
       .select(
@@ -211,7 +219,7 @@ const getAllCtoApplicationsService = async (
       )
       .populate({
         path: "approvals",
-        options: { sort: { level: 1 } }, // ensure Level 1 → Level 3 order
+        options: { sort: { level: 1 } },
         populate: {
           path: "approver",
           select: "firstName lastName position _id",
@@ -227,25 +235,57 @@ const getAllCtoApplicationsService = async (
     CtoApplication.countDocuments(query),
   ]);
 
-  // Transform approvals into approver1, approver2, approver3 for easier frontend consumption
+  // -----------------------------
+  // TRANSFORM APPROVERS
+  // -----------------------------
   const transformed = applications.map((app) => {
-    const sortedApprovals = app.approvals || [];
+    const approvals = app.approvals || [];
     return {
       ...app,
-      approver1: sortedApprovals[0]?.approver || null,
-      approver2: sortedApprovals[1]?.approver || null,
-      approver3: sortedApprovals[2]?.approver || null,
+      approver1: approvals[0]?.approver || null,
+      approver2: approvals[1]?.approver || null,
+      approver3: approvals[2]?.approver || null,
     };
   });
 
+  // -----------------------------
+  // GLOBAL STATUS COUNTS (NO FILTERS)
+  // -----------------------------
+  const statusAgg = await CtoApplication.aggregate([
+    {
+      $group: {
+        _id: "$overallStatus",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  // Global total (ALL applications)
+  const totalAll = await CtoApplication.countDocuments({});
+
+  const statusCounts = {
+    PENDING: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+    total: totalAll,
+  };
+
+  statusAgg.forEach((s) => {
+    if (s._id) statusCounts[s._id] = s.count;
+  });
+
+  // -----------------------------
+  // RESPONSE
+  // -----------------------------
   return {
     data: transformed,
     pagination: {
       page,
       limit,
-      total,
+      total, // filtered total (table)
       totalPages: Math.ceil(total / limit),
     },
+    statusCounts, // global counts (dashboard)
   };
 };
 
@@ -266,34 +306,35 @@ const getCtoApplicationsByEmployeeService = async (
   limit = Math.min(parseInt(limit) || 20, 100);
   const skip = (page - 1) * limit;
 
+  // ---------- Build pipeline for the DATA (this one respects filters/search/pagination) ----------
   const pipeline = [{ $match: { employee: employeeObjectId } }];
 
-  // Apply filters
+  // Apply status filter (if provided)
   if (filters.status) {
-    pipeline.push({ $match: { overallStatus: filters.status } });
+    pipeline.push({
+      $match: { overallStatus: filters.status.toUpperCase() },
+    });
   }
+
+  // Apply date range filter (if provided)
   if (filters.from && filters.to) {
     pipeline.push({
       $match: {
-        createdAt: { $gte: new Date(filters.from), $lte: new Date(filters.to) },
+        createdAt: {
+          $gte: new Date(filters.from),
+          $lte: new Date(filters.to),
+        },
       },
     });
   }
 
-  // Lookup memo info
+  // Lookup memo details (we keep this even if search is not present because we use memoDetails later)
   pipeline.push({
     $lookup: {
       from: "ctocredits",
-      let: {
-        memoIds: "$memo.memoId",
-        appEmployeeId: "$employee",
-      },
+      let: { memoIds: "$memo.memoId", appEmployeeId: "$employee" },
       pipeline: [
-        {
-          $match: {
-            $expr: { $in: ["$_id", "$$memoIds"] },
-          },
-        },
+        { $match: { $expr: { $in: ["$_id", "$$memoIds"] } } },
         {
           $project: {
             dateApproved: 1,
@@ -303,7 +344,6 @@ const getCtoApplicationsByEmployeeService = async (
             employees: 1,
           },
         },
-        // 🔑 pick ONLY the employee record matching the application employee
         {
           $addFields: {
             employee: {
@@ -317,16 +357,13 @@ const getCtoApplicationsByEmployeeService = async (
             },
           },
         },
-        {
-          $project: {
-            employees: 0, // remove array completely
-          },
-        },
+        { $project: { employees: 0 } },
       ],
       as: "memoDetails",
     },
   });
 
+  // Apply search on memoNo (if provided)
   if (filters.search) {
     pipeline.push({
       $match: {
@@ -335,28 +372,7 @@ const getCtoApplicationsByEmployeeService = async (
     });
   }
 
-  // Populate employee info but only firstName & lastName
-  // pipeline.push({
-  //   $lookup: {
-  //     from: "employees",
-  //     localField: "employee",
-  //     foreignField: "_id",
-  //     as: "employee",
-  //   },
-  // });
-  // pipeline.push({
-  //   $unwind: { path: "$employee", preserveNullAndEmptyArrays: true },
-  // });
-  // pipeline.push({
-  //   $addFields: {
-  //     employee: {
-  //       firstName: "$employee.firstName",
-  //       lastName: "$employee.lastName",
-  //     },
-  //   },
-  // });
-
-  // Populate approvals with approver info directly
+  // Lookup approvals with approver info
   pipeline.push({
     $lookup: {
       from: "approvalsteps",
@@ -389,45 +405,87 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
-  // Sort, skip, limit
+  // Sort and paginate for data
   pipeline.push({ $sort: { createdAt: -1 } });
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: limit });
 
-  // Run aggregation
+  // ---------- Run aggregation to fetch paginated applications ----------
   let applications = await CtoApplication.aggregate(pipeline);
 
-  // Map memoDetails back to memo.memoId
+  // Map memoDetails back to memo memoId (match by id to be safe)
   applications = applications.map((app) => {
     if (app.memo && Array.isArray(app.memo)) {
-      app.memo = app.memo.map((m, i) => ({
-        ...m,
-        memoId: app.memoDetails[i] || null,
-      }));
+      // make a lookup map for memoDetails by id string
+      const memoMap = (app.memoDetails || []).reduce((acc, md) => {
+        if (md && md._id) acc[md._id.toString()] = md;
+        return acc;
+      }, {});
+      app.memo = app.memo.map((m) => {
+        const memoIdStr = m?.memoId ? m.memoId.toString() : null;
+        return {
+          ...m,
+          memoId: memoMap[memoIdStr] || null,
+        };
+      });
     }
+    // remove the helper field
     delete app.memoDetails;
     return app;
   });
 
-  // Total count
+  // ---------- Total count for pagination (RESPECTS filters/search) ----------
+  // Build countPipeline by removing skip/limit/sort from the data pipeline
   const countPipeline = [
     { $match: { employee: employeeObjectId } },
     ...pipeline.filter(
-      (stage) => !("$skip" in stage || "$limit" in stage || "$sort" in stage),
+      (stage) =>
+        !("$skip" in stage) && !("$limit" in stage) && !("$sort" in stage),
     ),
     { $count: "total" },
   ];
   const totalResult = await CtoApplication.aggregate(countPipeline);
   const total = totalResult[0]?.total || 0;
 
+  // ---------- Status counts (IGNORES filters/search/limit) ----------
+  // Only filter by employee so status counts are global for the employee
+  const statusCountsAgg = await CtoApplication.aggregate([
+    { $match: { employee: employeeObjectId } },
+    {
+      $group: {
+        _id: "$overallStatus",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  // Get total across all statuses (not limited/paginated/filtered)
+  // Using countDocuments is efficient and straightforward
+  const totalAll = await CtoApplication.countDocuments({
+    employee: employeeObjectId,
+  });
+
+  const statusCounts = {
+    PENDING: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+    total: totalAll,
+  };
+
+  statusCountsAgg.forEach((s) => {
+    if (s._id) statusCounts[s._id] = s.count;
+  });
+
+  // ---------- Return payload ----------
   return {
     data: applications,
     pagination: {
       page,
       limit,
-      total,
+      total, // <-- pagination total (RESPECTS filters/search)
       totalPages: Math.ceil(total / limit),
     },
+    statusCounts, // <-- global counts (IGNORE filters/search/limit)
   };
 };
 

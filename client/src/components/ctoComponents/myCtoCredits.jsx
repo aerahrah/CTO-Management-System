@@ -1,8 +1,8 @@
 import MyCtoCreditHistory from "../myCtoCreditComponent/myCtoCreditHistory";
 import { CardFull, CardLg } from "../cardComponent";
-const CtoCredits = () => {
+const MyCtoCredits = () => {
   return (
-    <div className=" w-[100%] flex gap-3 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem-1rem)]">
+    <div className=" w-[100%] flex gap-3 h-[calc(100vh-3.5rem)] md:h-[calc(100vh-3.5rem-1.5rem)]">
       <CardFull className="flex flex-col">
         <MyCtoCreditHistory />
       </CardFull>
@@ -10,4 +10,4 @@ const CtoCredits = () => {
   );
 };
 
-export default CtoCredits;
+export default MyCtoCredits;
