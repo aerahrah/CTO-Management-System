@@ -432,6 +432,7 @@ const ApplicationCtoTable = ({
         onClose={closeMemoModal}
         title="Memos Used in CTO Application"
         closeLabel="Close"
+        maxWidth="max-w-5xl"
       >
         <MemoList
           memos={memoModal.memos}

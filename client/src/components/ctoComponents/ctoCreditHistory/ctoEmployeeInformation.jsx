@@ -72,37 +72,67 @@ const EmployeeInfoSkeleton = () => (
    UI: StatCard + Tabs
    - More responsive: clamp + truncation + tighter layout on small
 ========================= */
-const StatCard = ({ title, value, icon: Icon, hint }) => (
-  <div className="w-full bg-white border border-neutral-200 rounded-xl shadow-sm p-3 flex items-start gap-3 min-w-0">
-    {/* <div className="p-2 rounded-lg bg-neutral-50 flex items-center justify-center flex-none border border-neutral-100">
-      <Icon className="w-5 h-5 text-neutral-700" />
-    </div> */}
+const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
+  const tones = {
+    blue: {
+      wrap: "bg-blue-50/60 border-blue-100",
+      iconWrap: "bg-blue-100/70",
+      icon: "text-blue-600",
+      value: "text-blue-700",
+    },
+    green: {
+      wrap: "bg-green-50/60 border-green-100",
+      iconWrap: "bg-green-100/70",
+      icon: "text-green-600",
+      value: "text-green-700",
+    },
+    red: {
+      wrap: "bg-red-50/60 border-red-100",
+      iconWrap: "bg-red-100/70",
+      icon: "text-red-600",
+      value: "text-red-700",
+    },
+    amber: {
+      wrap: "bg-amber-50/60 border-amber-100",
+      iconWrap: "bg-amber-100/70",
+      icon: "text-amber-600",
+      value: "text-amber-700",
+    },
+    neutral: {
+      wrap: "bg-white border-gray-100",
+      iconWrap: "bg-gray-50",
+      icon: "text-gray-600",
+      value: "text-gray-900",
+    },
+  };
 
-    <div className="flex-1 min-w-0">
-      <div className="text-[10px] text-neutral-400 uppercase font-bold tracking-wide truncate">
-        {title}
-      </div>
+  const t = tones[tone] || tones.neutral;
 
-      <div className="mt-0.5 font-bold text-neutral-900 truncate text-base sm:text-lg">
-        {value}
-      </div>
+  return (
+    <div
+      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${tones.neutral.wrap}`}
+      role="status"
+    >
+      {/* <div
+        className={`p-2 rounded-md flex items-center justify-center flex-none ${t.iconWrap}`}
+      >
+        <Icon className={`w-5 h-5 ${t.icon}`} />
+      </div> */}
 
-      {hint && (
-        <div
-          className="text-[11px] text-neutral-500 overflow-hidden text-ellipsis"
-          style={{
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-          }}
-          title={hint}
-        >
-          {hint}
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
+          {title}
         </div>
-      )}
+        <div className={`mt-0.5 text-lg font-bold truncate ${t.value}`}>
+          {value}
+        </div>
+        {hint && (
+          <div className="text-[11px] text-gray-500 truncate">{hint}</div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const TabButton = ({ active, onClick, label }) => (
   <button

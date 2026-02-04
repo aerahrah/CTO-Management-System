@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
 import { fetchMyCtoApplications } from "../../../api/cto";
@@ -30,30 +30,14 @@ import MemoList from "../ctoMemoModal";
 
 const pageSizeOptions = [20, 50, 100];
 
-// --- Subcomponents for Cleaner Code ---
-const Breadcrumbs = () => (
-  <div className="flex items-center gap-2 text-[10px] md:text-[11px] font-bold tracking-[0.12em] text-gray-400 uppercase mb-2 font-sans">
-    <span className="hover:text-blue-600 cursor-pointer transition-colors">
-      Dashboard
-    </span>
-    <span className="text-gray-300">/</span>
-    <span className="hover:text-blue-600 cursor-pointer transition-colors">
-      HR
-    </span>
-    <span className="text-gray-300">/</span>
-    <span className="text-blue-600">CTO Management</span>
-  </div>
-);
-
 const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
+      if (menuRef.current && !menuRef.current.contains(e.target))
         setIsOpen(false);
-      }
     };
     const handleEsc = (e) => {
       if (e.key === "Escape") setIsOpen(false);
@@ -108,7 +92,6 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
   );
 };
 
-/* ------------------ Compact Pagination (same pattern as CTO Credit) ------------------ */
 const CompactPagination = ({
   page,
   totalPages,
@@ -118,80 +101,73 @@ const CompactPagination = ({
   onPrev,
   onNext,
   label = "items",
-}) => {
-  return (
-    <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
-      {/* Mobile/tablet: compact */}
-      <div className="flex md:hidden items-center justify-between gap-3">
+}) => (
+  <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
+    <div className="flex md:hidden items-center justify-between gap-3">
+      <button
+        onClick={onPrev}
+        disabled={page === 1 || total === 0}
+        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+      >
+        <ChevronLeft className="w-4 h-4" />
+        Prev
+      </button>
+
+      <div className="text-center min-w-0">
+        <div className="text-xs font-mono font-semibold text-gray-700">
+          {page} / {totalPages}
+        </div>
+        <div className="text-[11px] text-gray-500 truncate">
+          {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
+        </div>
+      </div>
+
+      <button
+        onClick={onNext}
+        disabled={page >= totalPages || total === 0}
+        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+      >
+        Next
+        <ChevronRight className="w-4 h-4" />
+      </button>
+    </div>
+
+    <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
+      <div className="text-xs text-gray-500 font-medium">
+        Showing{" "}
+        <span className="font-bold text-gray-900">
+          {total === 0 ? 0 : `${startItem}-${endItem}`}
+        </span>{" "}
+        of <span className="font-bold text-gray-900">{total}</span> {label}
+      </div>
+
+      <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
         <button
           onClick={onPrev}
           disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
         >
           <ChevronLeft className="w-4 h-4" />
-          Prev
         </button>
-
-        <div className="text-center min-w-0">
-          <div className="text-xs font-mono font-semibold text-gray-700">
-            {page} / {totalPages}
-          </div>
-          <div className="text-[11px] text-gray-500 truncate">
-            {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
-          </div>
-        </div>
-
+        <span className="text-xs font-mono font-medium px-3 text-gray-600">
+          {page} / {totalPages}
+        </span>
         <button
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
         >
-          Next
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
-
-      {/* Desktop: original layout */}
-      <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="text-xs text-gray-500 font-medium">
-          Showing{" "}
-          <span className="font-bold text-gray-900">
-            {total === 0 ? 0 : `${startItem}-${endItem}`}
-          </span>{" "}
-          of <span className="font-bold text-gray-900">{total}</span> {label}
-        </div>
-
-        <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
-          <button
-            onClick={onPrev}
-            disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-xs font-mono font-medium px-3 text-gray-600">
-            {page} / {totalPages}
-          </span>
-          <button
-            onClick={onNext}
-            disabled={page >= totalPages || total === 0}
-            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
     </div>
-  );
-};
+  </div>
+);
 
 const MyCtoApplications = () => {
-  const formRef = useRef(null);
-
   const [selectedApp, setSelectedApp] = useState(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -199,7 +175,7 @@ const MyCtoApplications = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  // debounce search (logic unchanged)
+  // debounce search
   const searchTimeout = useRef(null);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
@@ -219,7 +195,7 @@ const MyCtoApplications = () => {
         status: statusFilter || undefined,
         search: searchFilter || undefined,
       }),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const applications = useMemo(() => data?.data || [], [data]);
@@ -233,7 +209,6 @@ const MyCtoApplications = () => {
     [data],
   );
 
-  // keep page within range if results shrink
   useEffect(() => {
     setPage((p) => {
       if (p > pagination.totalPages) return pagination.totalPages;
@@ -316,7 +291,6 @@ const MyCtoApplications = () => {
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
       <div className="pt-2 pb-6 px-1">
-        {/* <Breadcrumbs /> */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
@@ -337,7 +311,7 @@ const MyCtoApplications = () => {
         </div>
       </div>
 
-      {/* MAIN CONTENT SURFACE */}
+      {/* MAIN */}
       <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
@@ -439,7 +413,6 @@ const MyCtoApplications = () => {
             </div>
           </div>
 
-          {/* Active filters summary */}
           {isFiltered && (
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap items-center gap-2">
@@ -467,7 +440,7 @@ const MyCtoApplications = () => {
           )}
         </div>
 
-        {/* DATA VIEW */}
+        {/* DATA */}
         <div className="flex-1 overflow-y-auto bg-white min-h-[300px]">
           {!isLoading && applications.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
@@ -492,7 +465,7 @@ const MyCtoApplications = () => {
             </div>
           ) : (
             <>
-              {/* DESKTOP TABLE VIEW */}
+              {/* DESKTOP TABLE */}
               <div className="hidden md:block w-full align-middle">
                 <table className="w-full text-left">
                   <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
@@ -522,6 +495,7 @@ const MyCtoApplications = () => {
                             Array.isArray(app.memo) && app.memo.length
                               ? app.memo
                                   .map((m) => m?.memoId?.memoNo)
+                                  .filter(Boolean)
                                   .join(", ")
                               : "No Memo Attached";
 
@@ -586,7 +560,7 @@ const MyCtoApplications = () => {
                 </table>
               </div>
 
-              {/* MOBILE CARD VIEW (kept as-is) */}
+              {/* MOBILE CARDS */}
               <div className="md:hidden flex flex-col p-3 gap-3 bg-gray-50">
                 {isLoading
                   ? [...Array(5)].map((_, i) => (
@@ -616,6 +590,7 @@ const MyCtoApplications = () => {
                               {Array.isArray(app.memo) && app.memo.length
                                 ? app.memo
                                     .map((m) => m?.memoId?.memoNo)
+                                    .filter(Boolean)
                                     .join(", ")
                                 : "No Memo Reference"}
                             </h4>
@@ -634,7 +609,7 @@ const MyCtoApplications = () => {
                                 {app.requestedHours} hrs
                               </span>
                             </div>
-                            <div className="w-px h-6 bg-gray-200"></div>
+                            <div className="w-px h-6 bg-gray-200" />
                             <div className="flex-1 pl-2">
                               <span className="block text-[10px] uppercase font-bold text-gray-400">
                                 Dates
@@ -674,7 +649,6 @@ const MyCtoApplications = () => {
           )}
         </div>
 
-        {/* PAGINATION (now matches CTO Credit compact style) */}
         <CompactPagination
           page={pagination.page}
           totalPages={pagination.totalPages}
@@ -687,7 +661,7 @@ const MyCtoApplications = () => {
         />
       </div>
 
-      {/* MODALS */}
+      {/* Details Modal */}
       {selectedApp && (
         <Modal
           isOpen={!!selectedApp}
@@ -698,48 +672,39 @@ const MyCtoApplications = () => {
         </Modal>
       )}
 
+      {/* ✅ Form Modal: no action button; form owns Submit/Close */}
+
       <Modal
         isOpen={isFormModalOpen}
-        onClose={() => {
-          setIsFormModalOpen(false);
-          setIsSubmitting(false);
-        }}
-        action={{
-          label: isSubmitting ? "Submitting..." : "Submit Application",
-          variant: "save",
-          show: true,
-          disabled: isSubmitting,
-          onClick: () => {
-            if (!formRef.current || formRef.current.isPending) return;
-            setIsSubmitting(true);
-            formRef.current.submit();
-          },
-        }}
+        onClose={() => setIsFormModalOpen(false)}
+        title="New CTO Application"
+        closeLabel={null} // optional (since form has its own footer)
+        maxWidth=" max-w-lg"
       >
-        <div className="w-full max-w-lg">
+        <div className="w-full">
           <AddCtoApplicationForm
-            ref={formRef}
             onClose={() => setIsFormModalOpen(false)}
             onSuccess={() => {
-              setIsSubmitting(false);
               setIsFormModalOpen(false);
               refetch();
             }}
-            onError={() => setIsSubmitting(false)}
           />
         </div>
       </Modal>
-
+      {/* Memo Modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={closeMemoModal}
         title="Attached Memos"
         closeLabel="Close"
+        maxWidth="max-w-5xl"
       >
-        <MemoList
-          memos={memoModal.memos}
-          description={"References used for this compensation request."}
-        />
+        <div className="w-full">
+          <MemoList
+            memos={memoModal.memos}
+            description={"References used for this compensation request."}
+          />
+        </div>
       </Modal>
     </div>
   );

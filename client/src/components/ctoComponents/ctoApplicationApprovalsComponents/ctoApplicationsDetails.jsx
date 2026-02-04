@@ -214,7 +214,7 @@ const CtoApplicationDetails = () => {
   const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
 
   return (
-    <div className="flex-1 h-full bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0">
+    <div className="flex-1 h-full border border-gray-200  bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border-b-26 border-neutral-50/50">
       {/* HEADER */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-300 sticky top-2 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/70 px-3 sm:px-4 py-2 z-10">
         {/* Mobile/Tablet back */}

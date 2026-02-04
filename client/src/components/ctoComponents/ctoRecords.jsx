@@ -2,11 +2,11 @@
 import { useState } from "react";
 import { CardFull, CardMd } from "../cardComponent";
 import CtoEmployeeInformation from "./ctoCreditHistory/ctoEmployeeInformation";
+import { Outlet } from "react-router-dom";
 import CtoEmployeeListView from "./ctoCreditHistory/ctoEmployeeListView";
 import { useParams } from "react-router-dom";
 
 const CtoRecords = () => {
-  const [isEmployeeLoading, setIsEmployeeLoading] = useState(false);
   const { id } = useParams();
   const hasSelection = Boolean(id);
 
@@ -21,7 +21,7 @@ const CtoRecords = () => {
           "min-w-0",
         ].join(" ")}
       >
-        <CtoEmployeeListView setIsEmployeeLoading={setIsEmployeeLoading} />
+        <CtoEmployeeListView />
       </CardMd>
 
       {/* RIGHT CARD (Info) */}
@@ -31,9 +31,7 @@ const CtoRecords = () => {
           "flex-col w-full flex-1 min-w-0",
         ].join(" ")}
       >
-        <CtoEmployeeInformation
-          isEmployeeLoadingFromEmployeeList={isEmployeeLoading}
-        />
+        <Outlet />
       </CardFull>
     </div>
   );

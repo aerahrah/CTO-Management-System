@@ -22,6 +22,8 @@ import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationAp
 import CtoApplicationDetails from "./components/ctoComponents/ctoApplicationApprovalsComponents/ctoApplicationsDetails";
 import CtoRecords from "./components/ctoComponents/ctoRecords";
 import CtoEmployeeInformation from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
+import EmployeePlaceholder from "./components/ctoComponents/ctoApplicationApprovalsComponents/ctoEmployeePlaceholder";
+import EmployeeRecordsPlaceholder from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeRecordPlaceholder";
 
 /* Employee Components */
 import AddEmployeeForm from "./components/employeeDashboard/forms/addEmployeeForm";
@@ -69,14 +71,7 @@ function App() {
             />
 
             <Route path="cto/records" element={<CtoRecords />}>
-              <Route
-                index
-                element={
-                  <div className="text-center p-10">
-                    Select an employee to view details.
-                  </div>
-                }
-              />
+              <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
 
@@ -94,14 +89,7 @@ function App() {
             element={<ProtectedRoute allowedRoles={["admin", "supervisor"]} />}
           >
             <Route path="cto/approvals" element={<CtoApplicationApprovals />}>
-              <Route
-                index
-                element={
-                  <div className="text-center p-10">
-                    Select an application to view details.
-                  </div>
-                }
-              />
+              <Route index element={<EmployeePlaceholder />} />
               <Route path=":id" element={<CtoApplicationDetails />} />
             </Route>
           </Route>

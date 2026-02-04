@@ -5,9 +5,11 @@ import { useNavigate } from "react-router-dom";
 import { RoleBadge } from "../statusUtils";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+
 import EmployeeRoleChanger from "./employeeChangeRole";
 import Modal from "../modal";
 import FilterSelect from "../filterSelect";
+
 import {
   Search,
   MoreVertical,
@@ -60,9 +62,9 @@ function useDebounce(value, delay) {
 }
 
 /* =========================
-   ACTION MENU (CTO-style)
+   ACTION MENU (hardened)
 ========================= */
-const ActionMenu = ({ onAction }) => {
+const ActionMenu = ({ onAction, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -91,11 +93,16 @@ const ActionMenu = ({ onAction }) => {
   return (
     <div className="relative inline-flex justify-center" ref={menuRef}>
       <button
+        type="button"
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
+          if (disabled) return;
           setIsOpen((o) => !o);
         }}
-        className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+        className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 ${
+          disabled ? "opacity-50 cursor-not-allowed" : ""
+        }`}
         aria-haspopup="true"
         aria-expanded={isOpen}
         title="Actions"
@@ -103,24 +110,27 @@ const ActionMenu = ({ onAction }) => {
         <MoreVertical size={18} />
       </button>
 
-      {isOpen && (
+      {isOpen && !disabled && (
         <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1">
           <button
+            type="button"
             onClick={() => handle(() => onAction("view"))}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-left"
           >
             <User size={14} /> View Profile
           </button>
           <button
+            type="button"
             onClick={() => handle(() => onAction("update"))}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-left"
           >
             <Settings size={14} /> Update Profile
           </button>
           <div className="h-px bg-gray-100 my-1" />
           <button
+            type="button"
             onClick={() => handle(() => onAction("role"))}
-            className="w-full px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2 text-left"
           >
             <Shield size={14} /> Change Role
           </button>
@@ -131,7 +141,7 @@ const ActionMenu = ({ onAction }) => {
 };
 
 /* =========================
-   Pagination (CTO-credit style)
+   Pagination
 ========================= */
 const CompactPagination = ({
   page,
@@ -148,6 +158,7 @@ const CompactPagination = ({
       {/* Mobile */}
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
+          type="button"
           onClick={onPrev}
           disabled={page === 1 || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
@@ -166,6 +177,7 @@ const CompactPagination = ({
         </div>
 
         <button
+          type="button"
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
@@ -187,6 +199,7 @@ const CompactPagination = ({
 
         <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
           <button
+            type="button"
             onClick={onPrev}
             disabled={page === 1 || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
@@ -197,6 +210,7 @@ const CompactPagination = ({
             {page} / {totalPages}
           </span>
           <button
+            type="button"
             onClick={onNext}
             disabled={page >= totalPages || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
@@ -233,9 +247,19 @@ const DivisionBadge = ({ division }) => {
 const initials = (firstName, lastName) =>
   `${(firstName || " ")[0] || ""}${(lastName || " ")[0] || ""}`.toUpperCase();
 
+/* =========================
+   MAIN COMPONENT (SECURE)
+========================= */
 const EmployeeDirectory = () => {
   const navigate = useNavigate();
-  const roleChangerRef = useRef(null);
+
+  // Role modal (secure)
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
+  const [roleBusy, setRoleBusy] = useState(false);
+
+  // Hard lock to prevent rapid re-opening / multiple modals
+  const openRoleLockRef = useRef(false);
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
@@ -243,35 +267,62 @@ const EmployeeDirectory = () => {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, 400);
 
-  const [selectedEmployee, setSelectedEmployee] = useState(null);
-  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
-
-  // filters are strings (include "All")
   const [filters, setFilters] = useState({
     division: "All",
     designation: "All",
     project: "All",
   });
 
+  // sanitize filter values to allowed lists (defense-in-depth)
+  const safeFilters = useMemo(() => {
+    const safeDivision = ["All", ...FILTER_OPTIONS.divisions].includes(
+      filters.division,
+    )
+      ? filters.division
+      : "All";
+
+    const safeDesignation = ["All", ...FILTER_OPTIONS.designations].includes(
+      filters.designation,
+    )
+      ? filters.designation
+      : "All";
+
+    const safeProject = ["All", ...FILTER_OPTIONS.projects].includes(
+      filters.project,
+    )
+      ? filters.project
+      : "All";
+
+    return {
+      division: safeDivision,
+      designation: safeDesignation,
+      project: safeProject,
+    };
+  }, [filters]);
+
   const { data, isLoading, isPlaceholderData } = useQuery({
-    queryKey: ["employees", page, limit, filters, debouncedSearch],
+    queryKey: ["employees", page, limit, safeFilters, debouncedSearch],
     queryFn: () =>
       getEmployees({
         page,
         limit,
         search: debouncedSearch || undefined,
-        division: filters.division === "All" ? undefined : filters.division,
+        division:
+          safeFilters.division === "All" ? undefined : safeFilters.division,
         designation:
-          filters.designation === "All" ? undefined : filters.designation,
-        project: filters.project === "All" ? undefined : filters.project,
+          safeFilters.designation === "All"
+            ? undefined
+            : safeFilters.designation,
+        project:
+          safeFilters.project === "All" ? undefined : safeFilters.project,
       }),
     placeholderData: keepPreviousData,
   });
 
-  // reset page on filter change
+  // reset page on filter/search/limit change
   useEffect(() => {
     setPage(1);
-  }, [filters, debouncedSearch, limit]);
+  }, [safeFilters, debouncedSearch, limit]);
 
   const employees = data?.data || [];
   const totalItems = data?.total || 0;
@@ -291,14 +342,39 @@ const EmployeeDirectory = () => {
 
   const handleAddEmployee = () => navigate("/app/employees/add-employee");
 
-  const handleAction = (action, employee) => {
-    if (action === "view") navigate(`/app/employees/${employee._id}`);
-    if (action === "update") navigate(`/app/employees/${employee._id}/update`);
-    if (action === "role") {
-      setSelectedEmployee(employee);
-      setIsRoleModalOpen(true);
-    }
-  };
+  const closeRoleModal = useCallback(() => {
+    setIsRoleModalOpen(false);
+    setSelectedEmployee(null);
+    setRoleBusy(false);
+    openRoleLockRef.current = false;
+  }, []);
+
+  const openRoleModal = useCallback((employee) => {
+    // Hard-block multiple opens from rapid clicks
+    if (openRoleLockRef.current) return;
+    openRoleLockRef.current = true;
+
+    setSelectedEmployee(employee);
+    setRoleBusy(false);
+    setIsRoleModalOpen(true);
+
+    // release lock after first paint; modal stays single-instance
+    requestAnimationFrame(() => {
+      openRoleLockRef.current = false;
+    });
+  }, []);
+
+  const handleAction = useCallback(
+    (action, employee) => {
+      if (!employee?._id) return;
+
+      if (action === "view") navigate(`/app/employees/${employee._id}`);
+      if (action === "update")
+        navigate(`/app/employees/${employee._id}/update`);
+      if (action === "role") openRoleModal(employee);
+    },
+    [navigate, openRoleModal],
+  );
 
   const clearFilters = useCallback(() => {
     setFilters({ division: "All", designation: "All", project: "All" });
@@ -308,14 +384,14 @@ const EmployeeDirectory = () => {
 
   const hasActiveFilters = Boolean(
     debouncedSearch ||
-    filters.division !== "All" ||
-    filters.designation !== "All" ||
-    filters.project !== "All",
+    safeFilters.division !== "All" ||
+    safeFilters.designation !== "All" ||
+    safeFilters.project !== "All",
   );
 
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
-      {/* HEADER (no dashboard/statcards) */}
+      {/* HEADER */}
       <div className="pt-2 pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -328,6 +404,7 @@ const EmployeeDirectory = () => {
           </div>
 
           <button
+            type="button"
             onClick={handleAddEmployee}
             className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full md:w-auto"
           >
@@ -337,18 +414,18 @@ const EmployeeDirectory = () => {
         </div>
       </div>
 
-      {/* MAIN SURFACE */}
+      {/* MAIN */}
       <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* TOOLBAR (fixed filters layout + dropdown clipping) */}
+        {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {/* Left: filters (NO overflow container -> prevents layout breaking + dropdown clipping) */}
+            {/* Filters */}
             <div className="w-full md:w-auto">
               <div className="flex flex-wrap md:flex-nowrap items-center gap-2 overflow-visible">
                 <div className="min-w-[140px] w-[140px] md:w-auto">
                   <FilterSelect
                     label="Division"
-                    value={filters.division}
+                    value={safeFilters.division}
                     onChange={(v) => setFilters((p) => ({ ...p, division: v }))}
                     options={["All", ...FILTER_OPTIONS.divisions]}
                     className="w-full"
@@ -358,7 +435,7 @@ const EmployeeDirectory = () => {
                 <div className="min-w-[160px] w-[160px] md:w-auto">
                   <FilterSelect
                     label="Designation"
-                    value={filters.designation}
+                    value={safeFilters.designation}
                     onChange={(v) =>
                       setFilters((p) => ({ ...p, designation: v }))
                     }
@@ -370,7 +447,7 @@ const EmployeeDirectory = () => {
                 <div className="min-w-[180px] w-full sm:w-[220px] md:w-auto">
                   <FilterSelect
                     label="Project"
-                    value={filters.project}
+                    value={safeFilters.project}
                     onChange={(v) => setFilters((p) => ({ ...p, project: v }))}
                     options={["All", ...FILTER_OPTIONS.projects]}
                     className="w-full"
@@ -379,7 +456,7 @@ const EmployeeDirectory = () => {
               </div>
             </div>
 
-            {/* Right: search + rows */}
+            {/* Search + rows */}
             <div className="flex items-center gap-3 w-full md:w-auto">
               <div className="relative flex-1 md:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -392,6 +469,7 @@ const EmployeeDirectory = () => {
                 />
                 {searchInput && (
                   <button
+                    type="button"
                     onClick={() => setSearchInput("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear search"
@@ -424,7 +502,7 @@ const EmployeeDirectory = () => {
             </div>
           </div>
 
-          {/* Active filters row (CTO pattern) */}
+          {/* Active filters row */}
           {hasActiveFilters && (
             <div className="flex items-center justify-between">
               <div className="flex flex-wrap items-center gap-2">
@@ -436,24 +514,25 @@ const EmployeeDirectory = () => {
                     "{debouncedSearch}"
                   </span>
                 )}
-                {filters.division !== "All" && (
+                {safeFilters.division !== "All" && (
                   <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {filters.division}
+                    {safeFilters.division}
                   </span>
                 )}
-                {filters.designation !== "All" && (
+                {safeFilters.designation !== "All" && (
                   <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {filters.designation}
+                    {safeFilters.designation}
                   </span>
                 )}
-                {filters.project !== "All" && (
+                {safeFilters.project !== "All" && (
                   <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {filters.project}
+                    {safeFilters.project}
                   </span>
                 )}
               </div>
 
               <button
+                type="button"
                 onClick={clearFilters}
                 className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
               >
@@ -463,7 +542,7 @@ const EmployeeDirectory = () => {
           )}
         </div>
 
-        {/* CONTENT AREA */}
+        {/* CONTENT */}
         <div className="flex-1 overflow-y-auto bg-white min-h-[300px]">
           {/* Desktop table */}
           <div className="hidden md:block overflow-auto">
@@ -539,7 +618,7 @@ const EmployeeDirectory = () => {
 
                       <td className="px-6 py-4">
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-600"></span>
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
                           {emp.status || "ACTIVE"}
                         </span>
                       </td>
@@ -547,6 +626,7 @@ const EmployeeDirectory = () => {
                       <td className="px-6 py-4 text-right">
                         <div className="flex justify-end">
                           <ActionMenu
+                            disabled={isRoleModalOpen} // prevent chaos while modal open
                             onAction={(action) => handleAction(action, emp)}
                           />
                         </div>
@@ -568,6 +648,7 @@ const EmployeeDirectory = () => {
                         </p>
                         {hasActiveFilters && (
                           <button
+                            type="button"
                             onClick={clearFilters}
                             className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
                           >
@@ -582,7 +663,7 @@ const EmployeeDirectory = () => {
             </table>
           </div>
 
-          {/* Mobile / Tablet cards (shorter height) */}
+          {/* Mobile cards */}
           <div className="md:hidden flex flex-col p-3 gap-2 bg-gray-50">
             {isLoading ? (
               [...Array(6)].map((_, i) => (
@@ -607,7 +688,7 @@ const EmployeeDirectory = () => {
                       #{emp._id ? emp._id.slice(-6).toUpperCase() : "—"}
                     </span>
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-50 text-green-700 border border-green-100">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-600"></span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
                       {emp.status || "ACTIVE"}
                     </span>
                   </div>
@@ -630,6 +711,7 @@ const EmployeeDirectory = () => {
                       </div>
                       <div className="flex-none -mt-1">
                         <ActionMenu
+                          disabled={isRoleModalOpen}
                           onAction={(action) => handleAction(action, emp)}
                         />
                       </div>
@@ -679,6 +761,7 @@ const EmployeeDirectory = () => {
 
                   <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         navigate(`/app/employees/${emp._id}`);
@@ -688,10 +771,10 @@ const EmployeeDirectory = () => {
                       <User size={14} /> View
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedEmployee(emp);
-                        setIsRoleModalOpen(true);
+                        openRoleModal(emp);
                       }}
                       className="py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-2"
                     >
@@ -713,6 +796,7 @@ const EmployeeDirectory = () => {
                 </p>
                 {hasActiveFilters && (
                   <button
+                    type="button"
                     onClick={clearFilters}
                     className="mt-4 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
                   >
@@ -739,27 +823,26 @@ const EmployeeDirectory = () => {
         />
       </div>
 
-      {/* Role modal */}
       {isRoleModalOpen && selectedEmployee && (
         <Modal
           isOpen={isRoleModalOpen}
-          onClose={() => setIsRoleModalOpen(false)}
           title={`Change Role - ${selectedEmployee.firstName} ${selectedEmployee.lastName}`}
-          closeLabel="Cancel"
-          action={{
-            label: "Confirm Role Change",
-            variant: "save",
-            show: true,
-            onClick: () => roleChangerRef.current?.submit(),
+          showFooter={false}
+          maxWidth="max-w-lg"
+          canClose={!roleBusy} // blocks overlay/ESC close while busy
+          onClose={() => {
+            if (roleBusy) return; // extra guard
+            closeRoleModal();
           }}
         >
           <EmployeeRoleChanger
-            ref={roleChangerRef}
+            key={selectedEmployee._id} // ensures clean reset per employee
             employeeId={selectedEmployee._id}
             currentRole={selectedEmployee.role}
+            onPendingChange={(v) => setRoleBusy(!!v)}
+            onCancel={closeRoleModal} // ALWAYS closes even while busy
             onRoleUpdated={() => {
-              setIsRoleModalOpen(false);
-              setSelectedEmployee(null);
+              closeRoleModal();
             }}
           />
         </Modal>

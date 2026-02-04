@@ -56,27 +56,69 @@ const useDebouncedValue = (value, delay = 500) => {
  * StatCard
  * - responsive: full width on mobile, min width on md
  * - uses h-full so all cards align to same height in the grid
- */
-const StatCard = ({ title, value, icon: Icon, hint, colorClass = "" }) => (
-  <div
-    className={`w-full flex-shrink-0 bg-white border border-gray-100 rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${colorClass}`}
-    role="status"
-  >
-    <div className="p-2 rounded-md bg-gray-50 flex items-center justify-center flex-none">
-      <Icon className="w-5 h-5 text-gray-600" />
-    </div>
-    <div className="flex-1 min-w-0">
-      <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
-        {title}
-      </div>
-      <div className="mt-0.5 text-lg font-bold text-gray-900 truncate">
-        {value}
-      </div>
-      {hint && <div className="text-[11px] text-gray-500 truncate">{hint}</div>}
-    </div>
-  </div>
-);
+ */ const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
+  const tones = {
+    blue: {
+      wrap: "bg-blue-50/60 border-blue-100",
+      iconWrap: "bg-blue-100/70",
+      icon: "text-blue-600",
+      value: "text-blue-700",
+    },
+    green: {
+      wrap: "bg-green-50/60 border-green-100",
+      iconWrap: "bg-green-100/70",
+      icon: "text-green-600",
+      value: "text-green-700",
+    },
+    red: {
+      wrap: "bg-red-50/60 border-red-100",
+      iconWrap: "bg-red-100/70",
+      icon: "text-red-600",
+      value: "text-red-700",
+    },
+    amber: {
+      wrap: "bg-amber-50/60 border-amber-100",
+      iconWrap: "bg-amber-100/70",
+      icon: "text-amber-600",
+      value: "text-amber-700",
+    },
+    neutral: {
+      wrap: "bg-white border-gray-100",
+      iconWrap: "bg-gray-50",
+      icon: "text-gray-600",
+      value: "text-gray-900",
+    },
+  };
 
+  const t = tones[tone] || tones.neutral;
+
+  return (
+    <div
+      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${tones.neutral.wrap}`}
+      role="status"
+    >
+      <div
+        className={`p-2 rounded-md flex items-center justify-center flex-none ${t.iconWrap}`}
+      >
+        <Icon className={`w-5 h-5 ${t.icon}`} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
+          {title}
+        </div>
+        <div
+          className={`mt-0.5 text-lg font-bold truncate ${tones.neutral.value}`}
+        >
+          {value}
+        </div>
+        {hint && (
+          <div className="text-[11px] text-gray-500 truncate">{hint}</div>
+        )}
+      </div>
+    </div>
+  );
+};
 /* ------------------ Mobile/Tablet Card Row ------------------ */
 const CreditCard = ({ credit, onViewMemo, formatDuration }) => {
   const dateLabel = credit?.dateApproved
@@ -371,28 +413,33 @@ const MyCtoCreditHistory = () => {
           <div className="w-full md:w-auto flex flex-col gap-3 md:ml-4">
             <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
               <StatCard
-                title="Balance"
-                value={`${fmtHours(summary.remainingHours)}h`}
-                icon={Layers}
-                hint="Remaining hours"
+                title="Total Credited"
+                value={`${fmtHours(summary.totalCredited)}h`}
+                icon={CheckCircle2}
+                hint={`${totalMemosOverall} memos`}
+                tone="green"
               />
               <StatCard
                 title="Used Hours"
                 value={`${fmtHours(summary.usedHours)}h`}
                 icon={ClockIcon}
                 hint="Total used"
+                tone="red"
               />
+
               <StatCard
                 title="Reserved"
                 value={`${fmtHours(summary.reservedHours)}h`}
                 icon={Archive}
                 hint="Reserved in apps"
+                tone="amber"
               />
               <StatCard
-                title="Total Credited"
-                value={`${fmtHours(summary.totalCredited)}h`}
-                icon={CheckCircle2}
-                hint={`${totalMemosOverall} memos`}
+                title="Balance"
+                value={`${fmtHours(summary.remainingHours)}h`}
+                icon={Layers}
+                hint="Remaining hours"
+                tone="blue"
               />
             </div>
 
@@ -668,15 +715,19 @@ const MyCtoCreditHistory = () => {
               </div>
 
               {/* Desktop table */}
-              <div className="hidden lg:block overflow-auto">
+              <div className="hidden lg:block w-full align-middle">
                 <table className="w-full text-left">
                   <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
                     <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
-                      <th className="px-6 py-4 font-bold">Memo No.</th>
-                      <th className="px-6 py-4 font-bold">Date Credited</th>
-                      <th className="px-6 py-4 text-center">Duration</th>
-                      <th className="px-6 py-4 text-center">Status</th>
-                      <th className="px-6 py-4 text-right">Memo</th>
+                      <th className="px-6 py-4 font-bold bg-white">Memo No.</th>
+                      <th className="px-6 py-4 font-bold bg-white">
+                        Date Credited
+                      </th>
+                      <th className="px-6 py-4 text-center bg-white">
+                        Duration
+                      </th>
+                      <th className="px-6 py-4 text-center bg-white">Status</th>
+                      <th className="px-6 py-4 text-right bg-white">Memo</th>
                     </tr>
                   </thead>
 
@@ -756,6 +807,7 @@ const MyCtoCreditHistory = () => {
         onClose={() => setMemoModal({ isOpen: false, memo: null })}
         title="CTO Memo"
         closeLabel="Close"
+        maxWidth="max-w-xl"
       >
         <CtoMemoModalContent
           memo={memoModal.memo}

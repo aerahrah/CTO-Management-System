@@ -124,7 +124,7 @@ const Dashboard = () => {
         </nav>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto md:py-3 md:px-4 custom-scrollbar bg-neutral-0">
+        <main className="flex-1 overflow-y-auto py-1 px-1.5 md:py-3 md:px-5 custom-scrollbar bg-neutral-0">
           <div className="max-w-full mx-auto">
             <Outlet />
           </div>

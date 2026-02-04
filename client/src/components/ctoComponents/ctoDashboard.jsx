@@ -212,7 +212,7 @@ const CtoDashboard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white/70 rounded-xl p-6 lg:p-10 font-sans text-slate-800">
+    <div className="min-h-screen  rounded-xl p-6 font-sans text-slate-800">
       {/* 1. HEADER */}
       <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>

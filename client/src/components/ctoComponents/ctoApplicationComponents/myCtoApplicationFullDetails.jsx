@@ -286,7 +286,7 @@ const CtoApplicationDetails = ({ app }) => {
         onClose={() => setMemoModal({ isOpen: false, memos: [] })}
         title="Attached Reference Documents"
         closeLabel="Done"
-        maxWidth="max-w-xl"
+        maxWidth="max-w-5xl"
       >
         <MemoList
           memos={memoModal.memos}

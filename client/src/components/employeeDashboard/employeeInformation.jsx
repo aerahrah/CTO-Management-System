@@ -1,18 +1,22 @@
-import React, { useState } from "react";
+import React, {
+  useMemo,
+  useState,
+  useRef,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployeeById, updateEmployeeById } from "../../api/employee";
 import { StatusBadge, RoleBadge } from "../statusUtils";
-import { useParams } from "react-router-dom";
-import { useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import Modal from "../modal";
-import AddEmployeeForm from "./forms/addEmployeeForm";
 import { toast } from "react-toastify";
 import {
   User,
   Mail,
   Phone,
   MapPin,
-  Calendar,
   Briefcase,
   ChevronLeft,
   ShieldCheck,
@@ -24,16 +28,289 @@ import {
   Check,
   MoreHorizontal,
   Layers,
+  AlertCircle,
 } from "lucide-react";
-import { clsx } from "clsx"; // standard utility, or just use template literals if you don't have it
 
+/* =========================
+   SECURE EDIT FORM (CTO-style locks)
+========================= */
+const isEmail = (v) =>
+  typeof v === "string" &&
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim().toLowerCase());
+
+const normalize = (v) => String(v ?? "").trim();
+
+const EmployeeEditForm = forwardRef(
+  (
+    { employeeId, initialEmployee, onPendingChange, onDirtyChange, onSaved },
+    ref,
+  ) => {
+    const queryClient = useQueryClient();
+
+    // hard locks
+    const submitLockRef = useRef(false);
+    const submittedSuccessRef = useRef(false);
+
+    const [lockAfterSuccess, setLockAfterSuccess] = useState(false);
+
+    const initial = useMemo(() => {
+      const e = initialEmployee || {};
+      return {
+        firstName: normalize(e.firstName),
+        lastName: normalize(e.lastName),
+        email: normalize(e.email),
+        phone: normalize(e.phone),
+        department: normalize(e.department),
+        position: normalize(e.position),
+        employeeId: normalize(e.employeeId),
+        addressStreet: normalize(e.address?.street),
+        addressCity: normalize(e.address?.city),
+        addressProvince: normalize(e.address?.province),
+      };
+    }, [initialEmployee]);
+
+    const [form, setForm] = useState(initial);
+
+    useEffect(() => {
+      // reset when opening for a different employee / refreshed employee
+      setForm(initial);
+      submitLockRef.current = false;
+      submittedSuccessRef.current = false;
+      setLockAfterSuccess(false);
+    }, [initial]);
+
+    const dirty = useMemo(() => {
+      const keys = Object.keys(initial);
+      return keys.some((k) => normalize(form[k]) !== normalize(initial[k]));
+    }, [form, initial]);
+
+    useEffect(() => {
+      onDirtyChange?.(dirty);
+    }, [dirty, onDirtyChange]);
+
+    const mutation = useMutation({
+      mutationFn: (payload) => updateEmployeeById(employeeId, payload),
+      retry: 0,
+      onSuccess: () => {
+        toast.success("Profile updated successfully");
+        queryClient.invalidateQueries({ queryKey: ["employee", employeeId] });
+        queryClient.invalidateQueries({ queryKey: ["employees"] });
+
+        submittedSuccessRef.current = true;
+        setLockAfterSuccess(true);
+
+        onSaved?.();
+      },
+      onError: (error) => {
+        toast.error(
+          error?.response?.data?.message ||
+            error?.message ||
+            "Failed to update profile",
+        );
+      },
+      onSettled: () => {
+        submitLockRef.current = false;
+        onPendingChange?.(false);
+      },
+    });
+
+    const busy =
+      mutation.isPending || submitLockRef.current || lockAfterSuccess;
+
+    useEffect(() => {
+      onPendingChange?.(busy);
+    }, [busy, onPendingChange]);
+
+    const setField = (name) => (e) => {
+      const value = e?.target?.value ?? "";
+      setForm((p) => ({ ...p, [name]: value }));
+    };
+
+    const sanitizeAndValidate = () => {
+      const payload = {
+        firstName: normalize(form.firstName),
+        lastName: normalize(form.lastName),
+        email: normalize(form.email).toLowerCase(),
+        phone: normalize(form.phone),
+        department: normalize(form.department),
+        position: normalize(form.position),
+        employeeId: normalize(form.employeeId),
+        address: {
+          street: normalize(form.addressStreet),
+          city: normalize(form.addressCity),
+          province: normalize(form.addressProvince),
+        },
+      };
+
+      if (!payload.firstName || !payload.lastName) {
+        toast.error("First name and last name are required.");
+        return { ok: false };
+      }
+
+      if (payload.email && !isEmail(payload.email)) {
+        toast.error("Please enter a valid email address.");
+        return { ok: false };
+      }
+
+      return { ok: true, payload };
+    };
+
+    const submit = async () => {
+      if (submittedSuccessRef.current) return;
+      if (busy) return;
+
+      if (submitLockRef.current) return;
+      submitLockRef.current = true;
+      onPendingChange?.(true);
+
+      if (!dirty) {
+        toast.info("No changes to save.");
+        submitLockRef.current = false;
+        onPendingChange?.(false);
+        return;
+      }
+
+      const { ok, payload } = sanitizeAndValidate();
+      if (!ok) {
+        submitLockRef.current = false;
+        onPendingChange?.(false);
+        return;
+      }
+
+      try {
+        await mutation.mutateAsync(payload);
+      } catch {
+        // handled by mutation
+      }
+    };
+
+    useImperativeHandle(ref, () => ({
+      submit,
+      isLoading: busy,
+      isDirty: dirty,
+      reset: () => setForm(initial),
+    }));
+
+    return (
+      <div className="max-w-3xl">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+            Edit Fields
+          </div>
+          <div className="text-[11px] text-gray-400 flex items-center gap-1">
+            <AlertCircle size={12} />
+            {dirty ? "Unsaved changes" : "No changes"}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field
+            label="First Name"
+            value={form.firstName}
+            onChange={setField("firstName")}
+            disabled={busy}
+          />
+          <Field
+            label="Last Name"
+            value={form.lastName}
+            onChange={setField("lastName")}
+            disabled={busy}
+          />
+
+          <Field
+            label="Email"
+            value={form.email}
+            onChange={setField("email")}
+            disabled={busy}
+          />
+          <Field
+            label="Phone"
+            value={form.phone}
+            onChange={setField("phone")}
+            disabled={busy}
+          />
+
+          <Field
+            label="Department"
+            value={form.department}
+            onChange={setField("department")}
+            disabled={busy}
+          />
+          <Field
+            label="Position"
+            value={form.position}
+            onChange={setField("position")}
+            disabled={busy}
+          />
+
+          <Field
+            label="Employee ID"
+            value={form.employeeId}
+            onChange={setField("employeeId")}
+            disabled={busy}
+          />
+
+          <div className="md:col-span-2">
+            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">
+              Address
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <Field
+                label="Street"
+                value={form.addressStreet}
+                onChange={setField("addressStreet")}
+                disabled={busy}
+              />
+              <Field
+                label="City"
+                value={form.addressCity}
+                onChange={setField("addressCity")}
+                disabled={busy}
+              />
+              <Field
+                label="Province"
+                value={form.addressProvince}
+                onChange={setField("addressProvince")}
+                disabled={busy}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  },
+);
+
+const Field = ({ label, value, onChange, disabled }) => (
+  <label className="block">
+    <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+      {label}
+    </div>
+    <input
+      value={value}
+      onChange={onChange}
+      disabled={disabled}
+      className="w-full h-10 px-3 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition disabled:opacity-70"
+    />
+  </label>
+);
+
+/* =========================
+   MAIN: EmployeeInformation
+========================= */
 const EmployeeInformation = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview"); // 'overview' | 'personal' | 'job'
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-
   const { id } = useParams();
+
+  const [activeTab, setActiveTab] = useState("overview");
+  const [isEditOpen, setIsEditOpen] = useState(false);
+
+  // edit modal (secure)
+  const editFormRef = useRef(null);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editDirty, setEditDirty] = useState(false);
+
   const {
     data: employee,
     isLoading,
@@ -45,29 +322,14 @@ const EmployeeInformation = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  const updateEmployeeMutation = useMutation({
-    mutationFn: ({ id, data }) => updateEmployeeById(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(["employee", id]);
-      queryClient.invalidateQueries(["employees"]);
-      setIsOpen(false);
-      toast.success("Profile updated successfully");
-    },
-    onError: (error) => {
-      toast.error(error.response?.data?.message || "Failed to update profile");
-    },
-  });
-
   const emp = employee?.data;
 
-  // --- Helpers ---
   const calculateTenure = (dateString) => {
     if (!dateString) return "";
     const start = new Date(dateString);
     const now = new Date();
     const diffTime = Math.abs(now - start);
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
     if (diffDays < 30) return `${diffDays} Days`;
     if (diffDays < 365) return `${Math.floor(diffDays / 30)} Months`;
     return `${(diffDays / 365).toFixed(1)} Years`;
@@ -86,18 +348,19 @@ const EmployeeInformation = () => {
   if (isError)
     return (
       <ErrorState
-        onRetry={() => queryClient.refetchQueries(["employee", id])}
+        onRetry={() =>
+          queryClient.refetchQueries({ queryKey: ["employee", id] })
+        }
       />
     );
   if (isLoading || !emp) return <EmployeeSkeleton />;
 
   return (
-    <div className="flex flex-col p-1 h-full md:rounded-2xl overflow-hidden ">
-      {/* --- Profile Header --- */}
+    <div className="flex flex-col p-1 h-full md:rounded-2xl overflow-hidden">
+      {/* Header */}
       <div className="bg-white px-6 pt-4 pb-3 border-b border-slate-200">
         <div className="flex flex-col md:flex-row justify-between items-start gap-5 mb-6">
           <div className="flex items-center gap-3 w-full">
-            {/* Back Button */}
             <button
               type="button"
               onClick={() => navigate(-1)}
@@ -107,13 +370,11 @@ const EmployeeInformation = () => {
               <ChevronLeft size={24} />
             </button>
 
-            {/* Avatar */}
-            <div className="shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br text-blue-50 bg-blue-600 flex items-center justify-center text-xl font-bold">
+            <div className="shrink-0 w-12 h-12 rounded-xl bg-blue-600 text-blue-50 flex items-center justify-center text-xl font-bold">
               {emp?.firstName?.[0]}
               {emp?.lastName?.[0]}
             </div>
 
-            {/* Name & Titles */}
             <div className="flex-1 min-w-0">
               <div className="flex flex-wrap items-center gap-2 mb-1">
                 <h1 className="text-2xl font-bold text-slate-900 truncate">
@@ -135,18 +396,17 @@ const EmployeeInformation = () => {
               </div>
             </div>
 
-            {/* Edit Button (Desktop) */}
-
             <button
+              type="button"
               onClick={() => navigate(`/app/employees/${emp?._id}/update`)}
-              className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center   transition-all active:scale-95  gap-2"
+              className="bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium w-full md:w-auto flex items-center gap-2 active:scale-95"
             >
               Update Profile
             </button>
           </div>
         </div>
 
-        {/* --- Tabs Navigation --- */}
+        {/* Tabs */}
         <div className="flex gap-6 overflow-x-auto no-scrollbar">
           <TabButton
             active={activeTab === "overview"}
@@ -169,13 +429,11 @@ const EmployeeInformation = () => {
         </div>
       </div>
 
-      {/* --- Main Content Area --- */}
+      {/* Body */}
       <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50/50">
         <div className="max-w-4xl mx-auto space-y-6">
-          {/* Overview Tab */}
           {activeTab === "overview" && (
             <div className="space-y-6 fade-in">
-              {/* Leave Balance Section (High Priority) */}
               <section>
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
                   Leave Balances
@@ -202,7 +460,6 @@ const EmployeeInformation = () => {
                 </div>
               </section>
 
-              {/* Quick Contact Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <InfoCard title="Quick Contact">
                   <ContactRow
@@ -248,7 +505,6 @@ const EmployeeInformation = () => {
             </div>
           )}
 
-          {/* Personal Tab */}
           {activeTab === "personal" && (
             <div className="grid grid-cols-1 gap-6 fade-in">
               <InfoCard title="Identity & Address">
@@ -261,7 +517,13 @@ const EmployeeInformation = () => {
                   <div className="col-span-1 md:col-span-2 border-t border-slate-100 pt-4">
                     <DataBlock
                       label="Permanent Address"
-                      value={`${emp?.address?.street}, ${emp?.address?.city}, ${emp?.address?.province}`}
+                      value={
+                        `${emp?.address?.street || ""}${
+                          emp?.address?.street ? ", " : ""
+                        }${emp?.address?.city || ""}${
+                          emp?.address?.city ? ", " : ""
+                        }${emp?.address?.province || ""}`.trim() || "-"
+                      }
                       icon={<MapPin size={14} />}
                     />
                   </div>
@@ -289,7 +551,6 @@ const EmployeeInformation = () => {
             </div>
           )}
 
-          {/* Job Tab */}
           {activeTab === "job" && (
             <div className="space-y-6 fade-in">
               <InfoCard title="Employment Details">
@@ -306,7 +567,9 @@ const EmployeeInformation = () => {
                       emp?.dateHired
                         ? new Date(emp?.dateHired).toLocaleDateString(
                             undefined,
-                            { dateStyle: "long" },
+                            {
+                              dateStyle: "long",
+                            },
                           )
                         : "-"
                     }
@@ -318,38 +581,56 @@ const EmployeeInformation = () => {
         </div>
       </div>
 
-      {/* Floating Action Button (Mobile Only) */}
+      {/* Mobile FAB */}
       <button
-        onClick={() => setIsOpen(true)}
+        type="button"
+        onClick={() => {
+          setEditBusy(false);
+          setEditDirty(false);
+          setIsEditOpen(true);
+        }}
         className="md:hidden absolute bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-xl flex items-center justify-center hover:bg-blue-700 active:scale-95 transition-transform z-10"
       >
         <Edit3 size={24} />
       </button>
 
-      {/* Edit Modal */}
+      {/* Edit Modal (SECURE) */}
       <Modal
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        title="Edit Profile"
-        action={{
-          label: updateEmployeeMutation.isPending
-            ? "Saving..."
-            : "Save Changes",
-          onClick: () =>
-            document.getElementById("employeeForm")?.requestSubmit(),
-          disabled: updateEmployeeMutation.isPending,
+        isOpen={isEditOpen}
+        onClose={() => {
+          if (editBusy) return;
+          setIsEditOpen(false);
         }}
+        title="Edit Profile"
+        closeLabel="Cancel"
+        isBusy={editBusy}
+        preventCloseWhenBusy={true}
+        action={{
+          show: true,
+          variant: "save",
+          label: editBusy ? "Saving..." : "Save Changes",
+          disabled: editBusy || !editDirty,
+          onClick: () => editFormRef.current?.submit?.(),
+        }}
+        // NOTE: do NOT change width here; pass maxWidth from where you call it if needed
       >
-        <AddEmployeeForm employeeId={id} onCancel={() => setIsOpen(false)} />
+        <EmployeeEditForm
+          ref={editFormRef}
+          employeeId={id}
+          initialEmployee={emp}
+          onPendingChange={(v) => setEditBusy(!!v)}
+          onDirtyChange={(v) => setEditDirty(!!v)}
+          onSaved={() => setIsEditOpen(false)}
+        />
       </Modal>
     </div>
   );
 };
 
 /* --- Sub-Components --- */
-
 const TabButton = ({ active, onClick, label, icon }) => (
   <button
+    type="button"
     onClick={onClick}
     className={`flex items-center gap-2 pb-3 text-sm font-medium transition-all whitespace-nowrap border-b-2 ${
       active
@@ -436,6 +717,7 @@ const ContactRow = ({ icon, label, value, onCopy, isLink, href }) => {
       </div>
       {value && (
         <button
+          type="button"
           onClick={handleCopy}
           className="p-1.5 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
           title="Copy"
@@ -466,7 +748,6 @@ const DataBlock = ({ label, value, icon }) => (
 );
 
 // --- States ---
-
 const EmptyState = () => (
   <div className="flex flex-col items-center justify-center h-full bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200 text-center p-8">
     <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-4">
@@ -486,6 +767,7 @@ const ErrorState = ({ onRetry }) => (
     </div>
     <p className="font-semibold text-slate-900">Failed to load profile</p>
     <button
+      type="button"
       onClick={onRetry}
       className="mt-4 px-4 py-2 bg-white border border-slate-300 text-sm font-medium rounded-lg hover:bg-slate-50 text-slate-700"
     >
