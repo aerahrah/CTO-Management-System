@@ -64,13 +64,13 @@ function App() {
 
             <Route path="audit-logs" element={<AuditLogTable />} />
 
-            <Route path="cto/credit" element={<CtoCredits />} />
+            <Route path="cto-credit" element={<CtoCredits />} />
             <Route
-              path="cto/all-applications"
+              path="cto-all-applications"
               element={<AllCtoApplications />}
             />
 
-            <Route path="cto/records" element={<CtoRecords />}>
+            <Route path="cto-records" element={<CtoRecords />}>
               <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
@@ -88,7 +88,7 @@ function App() {
           <Route
             element={<ProtectedRoute allowedRoles={["admin", "supervisor"]} />}
           >
-            <Route path="cto/approvals" element={<CtoApplicationApprovals />}>
+            <Route path="cto-approvals" element={<CtoApplicationApprovals />}>
               <Route index element={<EmployeePlaceholder />} />
               <Route path=":id" element={<CtoApplicationDetails />} />
             </Route>
@@ -99,9 +99,9 @@ function App() {
           {/* admin | hr | supervisor | employee */}
           {/* ===================== */}
           <Route element={<ProtectedRoute />}>
-            <Route path="cto/dashboard" element={<CtoDashboard />} />
-            <Route path="cto/apply" element={<CtoApplication />} />
-            <Route path="cto/my-credits" element={<MyCtoCredits />} />
+            <Route path="cto-dashboard" element={<CtoDashboard />} />
+            <Route path="cto-apply" element={<CtoApplication />} />
+            <Route path="cto-my-credits" element={<MyCtoCredits />} />
 
             <Route path="my-profile" element={<MyProfile />} />
             <Route path="my-profile/edit" element={<UpdateProfile />} />

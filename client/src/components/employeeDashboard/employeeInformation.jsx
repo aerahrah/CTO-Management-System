@@ -11,6 +11,7 @@ import { getEmployeeById, updateEmployeeById } from "../../api/employee";
 import { StatusBadge, RoleBadge } from "../statusUtils";
 import { useParams, useNavigate } from "react-router-dom";
 import Modal from "../modal";
+import Breadcrumbs from "../breadCrumbs";
 import { toast } from "react-toastify";
 import {
   User,
@@ -361,38 +362,36 @@ const EmployeeInformation = () => {
       <div className="bg-white px-6 pt-4 pb-3 border-b border-slate-200">
         <div className="flex flex-col md:flex-row justify-between items-start gap-5 mb-6">
           <div className="flex items-center gap-3 w-full">
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600"
-              title="Go Back"
-            >
-              <ChevronLeft size={24} />
-            </button>
-
-            <div className="shrink-0 w-12 h-12 rounded-xl bg-blue-600 text-blue-50 flex items-center justify-center text-xl font-bold">
-              {emp?.firstName?.[0]}
-              {emp?.lastName?.[0]}
-            </div>
-
             <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h1 className="text-2xl font-bold text-slate-900 truncate">
-                  {emp?.firstName} {emp?.lastName}
-                </h1>
-                <StatusBadge status={emp?.status} />
-              </div>
+              {/* Breadcrumbs above the title */}
+              <Breadcrumbs rootLabel="home" rootTo="/app" />
 
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
-                <span className="flex items-center gap-1.5">
-                  <Building2 size={14} className="text-slate-400" />
-                  {emp?.department}
-                </span>
-                <span className="hidden sm:inline text-slate-300">|</span>
-                <span className="flex items-center gap-1.5">
-                  <Briefcase size={14} className="text-slate-400" />
-                  {emp?.position}
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="shrink-0 w-12 h-12 rounded-xl bg-blue-600 text-blue-50 flex items-center justify-center text-xl font-bold">
+                  {emp?.firstName?.[0]}
+                  {emp?.lastName?.[0]}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
+                    <h1 className="text-2xl font-bold text-slate-900 truncate">
+                      {emp?.firstName} {emp?.lastName}
+                    </h1>
+                    <StatusBadge status={emp?.status} />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
+                    <span className="flex items-center gap-1.5">
+                      <Building2 size={14} className="text-slate-400" />
+                      {emp?.department}
+                    </span>
+                    <span className="hidden sm:inline text-slate-300">|</span>
+                    <span className="flex items-center gap-1.5">
+                      <Briefcase size={14} className="text-slate-400" />
+                      {emp?.position}
+                    </span>
+                  </div>
+                </div>
               </div>
             </div>
 

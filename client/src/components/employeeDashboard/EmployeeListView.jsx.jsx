@@ -5,7 +5,7 @@ import { useNavigate } from "react-router-dom";
 import { RoleBadge } from "../statusUtils";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-
+import Breadcrumbs from "../breadCrumbs";
 import EmployeeRoleChanger from "./employeeChangeRole";
 import Modal from "../modal";
 import FilterSelect from "../filterSelect";
@@ -392,9 +392,12 @@ const EmployeeDirectory = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
-      <div className="pt-2 pb-6 px-1">
+      <div className="pt-2 pb-3 sm:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="flex-1 min-w-0">
+            {/* Breadcrumbs above the title */}
+            <Breadcrumbs rootLabel="home" rootTo="/app" />
+
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
               Employee Directory
             </h1>

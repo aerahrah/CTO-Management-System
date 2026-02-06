@@ -6,6 +6,7 @@ import Modal from "../../modal";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { toast } from "react-toastify";
+import Breadcrumbs from "../../breadCrumbs";
 import {
   Clipboard,
   Search,
@@ -435,9 +436,10 @@ const CtoCreditHistory = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0">
       {/* HEADER */}
-      <div className="pt-2 pb-6 px-1">
+      <div className="pt-2 pb-3 sm:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
+            <Breadcrumbs rootLabel="home" rootTo="/app" />
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
               CTO Credit History
             </h1>

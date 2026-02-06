@@ -5,6 +5,7 @@ import { StatusBadge } from "../statusUtils";
 import Modal from "../modal";
 import CtoMemoModalContent from "../ctoComponents/ctoCreditComponents/CtoMemoModalContent";
 import Skeleton from "react-loading-skeleton";
+import Breadcrumbs from "../breadCrumbs";
 import "react-loading-skeleton/dist/skeleton.css";
 import {
   Clipboard,
@@ -26,21 +27,6 @@ import {
 import FilterSelect from "../filterSelect";
 
 const pageSizeOptions = [20, 50, 100];
-
-/* ------------------ Small Breadcrumbs-like header ------------------ */
-const Breadcrumbs = () => (
-  <div className="flex items-center gap-2 text-[10px] md:text-[11px] font-bold tracking-[0.12em] text-gray-400 uppercase mb-2 font-sans">
-    <span className="hover:text-blue-600 cursor-pointer transition-colors">
-      Dashboard
-    </span>
-    <span className="text-gray-300">/</span>
-    <span className="hover:text-blue-600 cursor-pointer transition-colors">
-      HR
-    </span>
-    <span className="text-gray-300">/</span>
-    <span className="text-blue-600">My CTO Credits</span>
-  </div>
-);
 
 /* ------------------ Small hook: debounce ------------------ */
 const useDebouncedValue = (value, delay = 500) => {
@@ -395,11 +381,13 @@ const MyCtoCreditHistory = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
-      <div className="pt-2 pb-6 px-1">
+      <div className="pt-2 pb-3 sm:pb-6 px-1">
         {/* <Breadcrumbs /> */}
+
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="flex items-start gap-4 flex-1 min-w-0">
             <div>
+              <Breadcrumbs rootLabel="home" rootTo="/app" />
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
                 My CTO Credit History
               </h1>

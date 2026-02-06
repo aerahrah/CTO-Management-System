@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 import { toast } from "react-toastify";
-
+import Breadcrumbs from "../../breadCrumbs";
 import {
   getEmployeeById,
   updateEmployeeById,
@@ -496,29 +496,30 @@ const AddEmployeeForm = () => {
   }
 
   return (
-    <div className="p-6 bg-neutral-50 mx-auto">
+    <div className="py-2 px-1 mx-auto">
       {/* === NAVIGATION & HEADER === */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-600"
-            title="Go Back"
-          >
-            <ChevronLeft size={24} />
-          </button>
+        <div className="min-w-0">
+          {/* Breadcrumbs above the header title */}
+          <Breadcrumbs
+            rootLabel="home"
+            rootTo="/app"
+            // grey part after "/" (matches screenshot style)
+            // You can tweak this to your route naming preference
+            currentPathText={`Employees/${isEditMode ? "Update" : "Add"}`}
+          />
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mt-2">
             <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white">
               <UserPlus size={20} />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-900">
+
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-gray-900 truncate">
                 {isEditMode ? "Update Employee" : "Add New Employee"}
               </h1>
               <p className="text-sm text-gray-500 font-medium">
-                HR Management System / Workforce
+                Manage employee records and assignment details.
               </p>
             </div>
           </div>

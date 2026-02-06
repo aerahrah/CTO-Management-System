@@ -195,7 +195,7 @@ const CtoApplicationsList = () => {
   useEffect(() => {
     if (!isXlUp) return; // IMPORTANT: do not auto-open on mobile/tablet
     if (!hasNavigatedRef.current && data?.data?.length > 0 && !selectedId) {
-      navigate(`/app/cto/approvals/${data.data[0]._id}`, { replace: true });
+      navigate(`/app/cto-approvals/${data.data[0]._id}`, { replace: true });
       hasNavigatedRef.current = true;
     }
   }, [data, selectedId, navigate, isXlUp]);
@@ -393,7 +393,7 @@ const CtoApplicationsList = () => {
               return (
                 <li
                   key={app._id}
-                  onClick={() => navigate(`/app/cto/approvals/${app._id}`)}
+                  onClick={() => navigate(`/app/cto-approvals/${app._id}`)}
                   className={`group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
                     ${
                       isActive

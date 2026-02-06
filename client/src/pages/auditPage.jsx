@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getAuditLogs } from "../api/audit";
+import Breadcrumbs from "../components/breadCrumbs";
 import {
   Search,
   Filter,
@@ -250,6 +251,7 @@ const AuditLogTable = () => {
       <div className=" pt-4 pb-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0">
+            <Breadcrumbs rootLabel="home" rootTo="/app" />
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
               System Audit Logs
             </h2>

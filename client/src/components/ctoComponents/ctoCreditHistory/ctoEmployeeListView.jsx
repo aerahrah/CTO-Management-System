@@ -198,7 +198,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
   useEffect(() => {
     if (!isXlUp) return;
     if (!hasNavigatedRef.current && data?.data?.length > 0 && !selectedId) {
-      navigate(`/app/cto/records/${data.data[0]._id}`, { replace: true });
+      navigate(`/app/cto-records/${data.data[0]._id}`, { replace: true });
       hasNavigatedRef.current = true;
     }
   }, [data, selectedId, navigate, isXlUp]);
@@ -317,7 +317,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
               return (
                 <li
                   key={item._id}
-                  onClick={() => navigate(`/app/cto/records/${item._id}`)}
+                  onClick={() => navigate(`/app/cto-records/${item._id}`)}
                   className={`group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
                     ${
                       isActive

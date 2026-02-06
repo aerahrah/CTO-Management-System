@@ -57,35 +57,35 @@ const Sidebar = ({
       subItems: [
         {
           name: "Dashboard",
-          path: "/app/cto/dashboard",
+          path: "/app/cto-dashboard",
           icon: <LayoutDashboard size={14} />,
         },
         {
           name: "Credit CTO",
-          path: "/app/cto/credit",
+          path: "/app/cto-credit",
           icon: <CirclePlus size={14} />,
           roles: ["admin", "hr"],
         },
         {
           name: "My CTO Records",
-          path: "/app/cto/my-credits",
+          path: "/app/cto-my-credits",
           icon: <FileClock size={14} />,
         },
         {
           name: "Apply CTO Leave",
-          path: "/app/cto/apply",
+          path: "/app/cto-apply",
           icon: <PenLine size={14} />,
         },
         {
           name: "All CTO Applications",
-          path: "/app/cto/all-applications",
+          path: "/app/cto-all-applications",
           icon: <Files size={14} />,
           roles: ["admin", "hr"],
         },
 
         {
           name: "Pending Approvals",
-          path: "/app/cto/approvals",
+          path: "/app/cto-approvals",
           icon: <UserCheck size={14} />,
           roles: ["admin", "supervisor"],
           // Only show badge if count > 0 or it's still loading
@@ -94,7 +94,7 @@ const Sidebar = ({
 
         {
           name: "All CTO Records",
-          path: "/app/cto/records",
+          path: "/app/cto-records",
           icon: <Archive size={14} />,
           roles: ["admin", "hr"],
         },

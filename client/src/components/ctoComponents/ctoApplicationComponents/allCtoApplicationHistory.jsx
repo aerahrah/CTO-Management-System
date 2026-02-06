@@ -1,10 +1,11 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
 import { fetchAllCtoApplications } from "../../../api/cto";
 import Modal from "../../modal";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import Breadcrumbs from "../../breadCrumbs";
 import MemoList from "../ctoMemoModal";
 import {
   Search,
@@ -29,22 +30,74 @@ import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 
 const pageSizeOptions = [20, 50, 100];
 
-// ---------- Breadcrumbs ----------
-const Breadcrumbs = () => (
-  <div className="flex items-center gap-2 text-[10px] md:text-[11px] font-bold tracking-[0.12em] text-gray-400 uppercase mb-2 font-sans">
-    <span className="hover:text-blue-600 cursor-pointer transition-colors">
-      Dashboard
-    </span>
-    <span className="text-gray-300">/</span>
-    <span className="hover:text-blue-600 cursor-pointer transition-colors">
-      HR
-    </span>
-    <span className="text-gray-300">/</span>
-    <span className="text-blue-600">CTO Management</span>
-  </div>
-);
+/* =========================
+   StatCard (same pattern as MyCtoCreditHistory)
+========================= */
+const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
+  const tones = {
+    blue: {
+      wrap: "bg-blue-50/60 border-blue-100",
+      iconWrap: "bg-blue-100/70",
+      icon: "text-blue-600",
+      value: "text-blue-700",
+    },
+    green: {
+      wrap: "bg-green-50/60 border-green-100",
+      iconWrap: "bg-green-100/70",
+      icon: "text-green-600",
+      value: "text-green-700",
+    },
+    red: {
+      wrap: "bg-red-50/60 border-red-100",
+      iconWrap: "bg-red-100/70",
+      icon: "text-red-600",
+      value: "text-red-700",
+    },
+    amber: {
+      wrap: "bg-amber-50/60 border-amber-100",
+      iconWrap: "bg-amber-100/70",
+      icon: "text-amber-600",
+      value: "text-amber-700",
+    },
+    neutral: {
+      wrap: "bg-white border-gray-100",
+      iconWrap: "bg-gray-50",
+      icon: "text-gray-600",
+      value: "text-gray-900",
+    },
+  };
 
-// ---------- Per-row action menu ----------
+  const t = tones[tone] || tones.neutral;
+
+  return (
+    <div
+      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${tones.neutral.wrap}`}
+      role="status"
+    >
+      <div
+        className={`p-2 rounded-md flex items-center justify-center flex-none ${t.iconWrap}`}
+      >
+        <Icon className={`w-5 h-5 ${t.icon}`} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
+          {title}
+        </div>
+        <div className={`mt-0.5 text-lg font-bold truncate ${t.value}`}>
+          {value}
+        </div>
+        {hint && (
+          <div className="text-[11px] text-gray-500 truncate">{hint}</div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* =========================
+   Per-row action menu
+========================= */
 const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
@@ -82,6 +135,7 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
         }}
         className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800"
         title="Actions"
+        type="button"
       >
         <MoreVertical size={18} />
       </button>
@@ -89,6 +143,7 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
       {isOpen && (
         <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1">
           <button
+            type="button"
             onClick={() => handle(onViewDetails)}
             className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
           >
@@ -96,6 +151,7 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
           </button>
 
           <button
+            type="button"
             disabled={!app.memo || app.memo.length === 0}
             onClick={() => handle(onViewMemos)}
             className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -108,7 +164,9 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
   );
 };
 
-// ---------- Status tabs factory ----------
+/* =========================
+   Status tabs factory
+========================= */
 const statusTabs = (statusCounts = {}) => [
   {
     id: "",
@@ -140,7 +198,9 @@ const statusTabs = (statusCounts = {}) => [
   },
 ];
 
-/* ------------------ Compact Pagination (same design as CTO Credit) ------------------ */
+/* =========================
+   Compact Pagination
+========================= */
 const CompactPagination = ({
   page,
   totalPages,
@@ -153,9 +213,10 @@ const CompactPagination = ({
 }) => {
   return (
     <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
-      {/* Mobile / Tablet (compact, low height) */}
+      {/* Mobile / Tablet */}
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
+          type="button"
           onClick={onPrev}
           disabled={page === 1 || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
@@ -174,6 +235,7 @@ const CompactPagination = ({
         </div>
 
         <button
+          type="button"
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
@@ -183,7 +245,7 @@ const CompactPagination = ({
         </button>
       </div>
 
-      {/* Desktop (matches your existing CTA style) */}
+      {/* Desktop */}
       <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="text-xs text-gray-500 font-medium">
           Showing{" "}
@@ -195,6 +257,7 @@ const CompactPagination = ({
 
         <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
           <button
+            type="button"
             onClick={onPrev}
             disabled={page === 1 || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
@@ -205,6 +268,7 @@ const CompactPagination = ({
             {page} / {totalPages}
           </span>
           <button
+            type="button"
             onClick={onNext}
             disabled={page >= totalPages || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
@@ -283,12 +347,12 @@ const AllCtoApplicationsHistory = () => {
   const openMemoModal = (memos) => setMemoModal({ isOpen: true, memos });
   const closeMemoModal = () => setMemoModal({ isOpen: false, memos: [] });
 
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setSearchInput("");
     setSearchFilter("");
     setStatusFilter("");
     setPage(1);
-  };
+  }, []);
 
   const isFiltered = statusFilter !== "" || searchFilter !== "";
 
@@ -307,14 +371,30 @@ const AllCtoApplicationsHistory = () => {
 
   const statusCounts = data?.statusCounts || {};
 
+  /* =========================
+     Stats for header
+     - Total request, pending, approved, reject
+========================= */
+  const totalRequests =
+    statusCounts.total ??
+    statusCounts.TOTAL ??
+    pagination.total ??
+    (statusCounts.PENDING || 0) +
+      (statusCounts.APPROVED || 0) +
+      (statusCounts.REJECTED || 0);
+
+  const statPending = statusCounts.PENDING || 0;
+  const statApproved = statusCounts.APPROVED || 0;
+  const statRejected = statusCounts.REJECTED || 0;
+
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* Header */}
       <div className="pt-2 pb-6 px-1">
-        {/* <Breadcrumbs /> */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div>
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="flex items-start gap-4 flex-1 min-w-0">
+            <div className="min-w-0">
+              <Breadcrumbs rootLabel="home" rootTo="/app" />
               <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
                 All CTO Applications
               </h1>
@@ -323,6 +403,79 @@ const AllCtoApplicationsHistory = () => {
               </p>
             </div>
           </div>
+
+          {/* ✅ 4 Stat Cards (like MyCtoCreditHistory) */}
+          <div className="w-full md:w-auto flex flex-col gap-3 md:ml-4">
+            <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
+              <StatCard
+                title="Total Requests"
+                value={String(totalRequests || 0)}
+                icon={LayoutGrid}
+                hint="All applications"
+                tone="blue"
+              />
+              <StatCard
+                title="Total Pending"
+                value={String(statPending || 0)}
+                icon={AlertCircle}
+                hint="Awaiting action"
+                tone="amber"
+              />
+              <StatCard
+                title="Total Approved"
+                value={String(statApproved || 0)}
+                icon={CheckCircle2}
+                hint="Approved requests"
+                tone="green"
+              />
+              <StatCard
+                title="Total Rejected"
+                value={String(statRejected || 0)}
+                icon={XCircle}
+                hint="Rejected requests"
+                tone="red"
+              />
+            </div>
+
+            {/* Mobile compact (matches your pattern) */}
+            <div className="flex md:hidden flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                  <div className="text-[10px] text-gray-400 uppercase font-bold">
+                    Total
+                  </div>
+                  <div className="text-sm font-bold text-gray-900">
+                    {totalRequests || 0}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                  <div className="text-[10px] text-gray-400 uppercase font-bold">
+                    Pending
+                  </div>
+                  <div className="text-sm font-bold text-amber-600">
+                    {statPending || 0}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                  <div className="text-[10px] text-gray-400 uppercase font-bold">
+                    Approved
+                  </div>
+                  <div className="text-sm font-bold text-emerald-600">
+                    {statApproved || 0}
+                  </div>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                  <div className="text-[10px] text-gray-400 uppercase font-bold">
+                    Rejected
+                  </div>
+                  <div className="text-sm font-bold text-rose-600">
+                    {statRejected || 0}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* end stats */}
         </div>
       </div>
 
@@ -338,6 +491,7 @@ const AllCtoApplicationsHistory = () => {
                 return (
                   <button
                     key={tab.id || "all-status"}
+                    type="button"
                     onClick={() => {
                       setStatusFilter(tab.id);
                       setPage(1);
@@ -379,6 +533,7 @@ const AllCtoApplicationsHistory = () => {
                 />
                 {searchInput && (
                   <button
+                    type="button"
                     onClick={() => setSearchInput("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear search"
@@ -446,6 +601,7 @@ const AllCtoApplicationsHistory = () => {
                 )}
               </div>
               <button
+                type="button"
                 onClick={handleResetFilters}
                 className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase"
               >
@@ -471,6 +627,7 @@ const AllCtoApplicationsHistory = () => {
               </p>
               {isFiltered && (
                 <button
+                  type="button"
                   onClick={handleResetFilters}
                   className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
@@ -612,6 +769,8 @@ const AllCtoApplicationsHistory = () => {
                         className={`bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border-l-4 ${getStatusColor(
                           app.overallStatus,
                         )} border-y border-r border-gray-100 overflow-hidden active:scale-[0.99] transition-transform`}
+                        role="button"
+                        tabIndex={0}
                       >
                         <div className="px-4 py-3 flex justify-between items-center border-b border-gray-50">
                           <span className="text-xs font-mono text-gray-400">
@@ -659,6 +818,7 @@ const AllCtoApplicationsHistory = () => {
 
                         <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               openMemoModal(app.memo);
@@ -668,6 +828,7 @@ const AllCtoApplicationsHistory = () => {
                             <FileText size={14} /> Memos
                           </button>
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedApp(app);
@@ -684,7 +845,7 @@ const AllCtoApplicationsHistory = () => {
           )}
         </div>
 
-        {/* Pagination (NEW: same compact design as CTO Credit) */}
+        {/* Pagination */}
         <CompactPagination
           page={pagination.page}
           totalPages={pagination.totalPages}

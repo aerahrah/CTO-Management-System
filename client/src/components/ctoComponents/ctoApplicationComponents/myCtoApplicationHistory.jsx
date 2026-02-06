@@ -1,9 +1,13 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
-import { fetchMyCtoApplications } from "../../../api/cto";
+import {
+  fetchMyCtoApplications,
+  fetchMyCreditRequests,
+} from "../../../api/cto";
 import Modal from "../../modal";
 import Skeleton from "react-loading-skeleton";
+import Breadcrumbs from "../../breadCrumbs";
 import "react-loading-skeleton/dist/skeleton.css";
 import {
   Search,
@@ -22,6 +26,7 @@ import {
   AlertCircle,
   LayoutGrid,
   ArrowRight,
+  Layers,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
@@ -29,6 +34,43 @@ import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 import MemoList from "../ctoMemoModal";
 
 const pageSizeOptions = [20, 50, 100];
+
+const fmtHours = (h) => {
+  const n = Number(h ?? 0);
+  return Number.isFinite(n)
+    ? Number.isInteger(n)
+      ? String(n)
+      : n.toFixed(2)
+    : "0";
+};
+
+/* =========================
+   Balance Card (1 card)
+========================= */
+const BalanceHoursCard = ({ hours, loading }) => {
+  const showValue =
+    hours === null || hours === undefined ? "0h" : `${fmtHours(hours)}h`;
+
+  return (
+    <div className="w-full bg-white/90 border border-gray-200 rounded-lg px-4 py-1.5 flex items-center gap-3 shadow-xs">
+      <div className="p-2 rounded-lg bg-blue-50 text-blue-600 flex-none">
+        <Layers className="w-5 h-5" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] uppercase tracking-widest font-bold text-gray-400 truncate">
+          Balance Hours
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="leading-tight text-[15px] sm:text-base font-extrabold text-blue-700 truncate ">
+            {loading ? <Skeleton width={70} /> : showValue}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -66,6 +108,7 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
         aria-haspopup="true"
         aria-expanded={isOpen}
         title="Actions"
+        type="button"
       >
         <MoreVertical size={16} />
       </button>
@@ -75,6 +118,7 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
           <button
             onClick={() => handle(onViewDetails)}
             className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 transition-colors text-left"
+            type="button"
           >
             <Eye size={14} /> View Details
           </button>
@@ -83,6 +127,7 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
             disabled={!app.memo || app.memo.length === 0}
             onClick={() => handle(onViewMemos)}
             className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left"
+            type="button"
           >
             <FileText size={14} /> View Memos
           </button>
@@ -108,6 +153,7 @@ const CompactPagination = ({
         onClick={onPrev}
         disabled={page === 1 || total === 0}
         className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+        type="button"
       >
         <ChevronLeft className="w-4 h-4" />
         Prev
@@ -126,6 +172,7 @@ const CompactPagination = ({
         onClick={onNext}
         disabled={page >= totalPages || total === 0}
         className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+        type="button"
       >
         Next
         <ChevronRight className="w-4 h-4" />
@@ -146,6 +193,7 @@ const CompactPagination = ({
           onClick={onPrev}
           disabled={page === 1 || total === 0}
           className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
+          type="button"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -156,6 +204,7 @@ const CompactPagination = ({
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
           className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
+          type="button"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -196,6 +245,17 @@ const MyCtoApplications = () => {
         search: searchFilter || undefined,
       }),
     placeholderData: (prev) => prev,
+  });
+
+  // ✅ Balance hours (tries app endpoint first, falls back to credit summary totals)
+  const { data: creditSummaryData, isLoading: isBalanceLoading } = useQuery({
+    queryKey: ["myCtoBalanceHours"],
+    queryFn: () =>
+      fetchMyCreditRequests({
+        page: 1,
+        limit: 1,
+      }),
+    staleTime: 1000 * 60,
   });
 
   const applications = useMemo(() => data?.data || [], [data]);
@@ -287,12 +347,21 @@ const MyCtoApplications = () => {
       )
       .join(", ");
 
+  const balanceHours =
+    data?.balanceHours ??
+    data?.totals?.totalRemainingHours ??
+    data?.totals?.remainingHours ??
+    creditSummaryData?.totals?.totalRemainingHours ??
+    creditSummaryData?.totals?.totalRemainingHours ??
+    null;
+
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
-      <div className="pt-2 pb-6 px-1">
+      <div className="pt-2 pb-3 sm:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
+            <Breadcrumbs rootLabel="home" rootTo="/app" />
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
               My Applications
             </h1>
@@ -301,13 +370,20 @@ const MyCtoApplications = () => {
               and file new requests.
             </p>
           </div>
-          <button
-            onClick={() => setIsFormModalOpen(true)}
-            className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full md:w-auto"
-          >
-            <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-            New Application
-          </button>
+
+          {/* ✅ Balance card + New Application (right side) */}
+          <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 sm:bg-neutral-200/50 sm:p-3 rounded-xl">
+            <BalanceHoursCard hours={balanceHours} loading={isBalanceLoading} />
+
+            <button
+              onClick={() => setIsFormModalOpen(true)}
+              className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-3.5 text-sm font-semibold text-white shadow-md  transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
+              type="button"
+            >
+              <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+              New Application
+            </button>
+          </div>
         </div>
       </div>
 
@@ -335,6 +411,7 @@ const MyCtoApplications = () => {
                           : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                       }`}
                     aria-pressed={isActive}
+                    type="button"
                   >
                     <Icon className="w-3.5 h-3.5" />
                     <span>{tab.label}</span>
@@ -369,6 +446,7 @@ const MyCtoApplications = () => {
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear search"
                     title="Clear"
+                    type="button"
                   >
                     <RotateCcw size={14} />
                   </button>
@@ -433,6 +511,7 @@ const MyCtoApplications = () => {
               <button
                 onClick={handleResetFilters}
                 className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase"
+                type="button"
               >
                 <RotateCcw size={10} /> Reset
               </button>
@@ -458,6 +537,7 @@ const MyCtoApplications = () => {
                 <button
                   onClick={handleResetFilters}
                   className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  type="button"
                 >
                   <RotateCcw size={12} /> Clear Filters
                 </button>
@@ -576,6 +656,8 @@ const MyCtoApplications = () => {
                         key={app._id}
                         onClick={() => setSelectedApp(app)}
                         className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden active:scale-[0.99] transition-transform"
+                        role="button"
+                        tabIndex={0}
                       >
                         <div className="px-4 py-3 flex justify-between items-center border-b border-gray-50">
                           <span className="text-xs font-mono text-gray-400">
@@ -629,6 +711,7 @@ const MyCtoApplications = () => {
                               openMemoModal(app.memo);
                             }}
                             className="py-3 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2"
+                            type="button"
                           >
                             <FileText size={14} /> Memos
                           </button>
@@ -638,6 +721,7 @@ const MyCtoApplications = () => {
                               setSelectedApp(app);
                             }}
                             className="py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
+                            type="button"
                           >
                             View Details <ArrowRight size={14} />
                           </button>
@@ -672,13 +756,12 @@ const MyCtoApplications = () => {
         </Modal>
       )}
 
-      {/* ✅ Form Modal: no action button; form owns Submit/Close */}
-
+      {/* Form Modal */}
       <Modal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
         title="New CTO Application"
-        closeLabel={null} // optional (since form has its own footer)
+        closeLabel={null}
         maxWidth=" max-w-lg"
       >
         <div className="w-full">
@@ -691,6 +774,7 @@ const MyCtoApplications = () => {
           />
         </div>
       </Modal>
+
       {/* Memo Modal */}
       <Modal
         isOpen={memoModal.isOpen}

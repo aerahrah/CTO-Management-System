@@ -10,6 +10,7 @@ import CreditCtoTable from "./ctoEmployeeCreditTable";
 import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
+import Breadcrumbs from "../../breadCrumbs";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Layers,
@@ -303,19 +304,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
 
   return (
     <div className="h-full min-h-0 flex flex-col gap-4 min-w-0">
-      {/* TOP BACK (mobile/tablet only) */}
-      {!isXlUp && selectedId && (
-        <div className="sticky top-2 z-10">
-          <button
-            onClick={() => navigate("/app/cto/records")}
-            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-neutral-200 bg-white text-xs font-bold text-neutral-700 hover:bg-neutral-50 shadow-sm"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back to list
-          </button>
-        </div>
-      )}
-
       {/* HEADER */}
       <div className="bg-white border border-neutral-200 rounded-xl shadow-sm p-4">
         <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 min-w-0">
@@ -338,11 +326,12 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
             {/* Tablet/Desktop */}
             <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
               <StatCard
-                title="Balance"
-                value={`${summary.remainingHours}h`}
-                icon={Layers}
-                hint="Remaining hours"
+                title="Total Credited"
+                value={`${summary.totalCredited}h`}
+                icon={CheckCircle2}
+                hint={`${credits.length} memos (page)`}
               />
+
               <StatCard
                 title="Used Hours"
                 value={`${summary.usedHours}h`}
@@ -356,10 +345,10 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                 hint="Reserved in apps"
               />
               <StatCard
-                title="Total Credited"
-                value={`${summary.totalCredited}h`}
-                icon={CheckCircle2}
-                hint={`${credits.length} memos (page)`}
+                title="Balance"
+                value={`${summary.remainingHours}h`}
+                icon={Layers}
+                hint="Remaining hours"
               />
             </div>
 
