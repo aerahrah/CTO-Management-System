@@ -390,7 +390,7 @@ const AllCtoApplicationsHistory = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* Header */}
-      <div className="pt-2 pb-6 px-1">
+      <div className="pt-2 pb-3 sm:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="flex items-start gap-4 flex-1 min-w-0">
             <div className="min-w-0">

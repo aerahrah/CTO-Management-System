@@ -143,6 +143,7 @@ const CreditCard = ({
   onRollback,
   formatDuration,
   formatDate,
+  leftStripClassName,
 }) => {
   const employeesLabel = useMemo(() => {
     const names =
@@ -155,7 +156,9 @@ const CreditCard = ({
   const shortId = credit?._id ? credit._id.slice(-6).toUpperCase() : "-";
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div
+      className={`bg-white rounded-xl shadow-sm overflow-hidden border-y border-r border-gray-200 ${leftStripClassName}`}
+    >
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -340,6 +343,18 @@ const CtoCreditHistory = () => {
     credit: null,
   });
 
+  // ✅ left strip class based on status (for mobile/tablet cards)
+  const getStatusStripClass = useCallback((status) => {
+    switch (status) {
+      case "CREDITED":
+        return "border-l-4 border-l-emerald-500";
+      case "ROLLEDBACK":
+        return "border-l-4 border-l-rose-500";
+      default:
+        return "border-l-4 border-l-slate-300";
+    }
+  }, []);
+
   useEffect(() => {
     const handler = setTimeout(() => {
       setSearchFilter(searchInput);
@@ -489,7 +504,11 @@ const CtoCreditHistory = () => {
                     <span>{tab.label}</span>
                     <span
                       className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold
-                        ${isActive ? "bg-white/80 text-gray-900" : "bg-gray-100 text-gray-600"}`}
+                        ${
+                          isActive
+                            ? "bg-white/80 text-gray-900"
+                            : "bg-gray-100 text-gray-600"
+                        }`}
                     >
                       {tab.count}
                     </span>
@@ -644,6 +663,7 @@ const CtoCreditHistory = () => {
                         isPending={isPending}
                         formatDuration={formatDuration}
                         formatDate={formatDate}
+                        leftStripClassName={getStatusStripClass(credit.status)} // ✅ left color strip
                         onViewMemo={() =>
                           setMemoModal({ isOpen: true, memo: credit })
                         }
@@ -798,7 +818,7 @@ const CtoCreditHistory = () => {
         />
       </Modal>
 
-      {/* Details modal (if you use it) */}
+      {/* Details modal */}
       <Modal
         isOpen={detailsModal.isOpen}
         onClose={() => setDetailsModal((p) => ({ ...p, isOpen: false }))}

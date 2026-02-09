@@ -11,6 +11,7 @@ import EmployeesPage from "./pages/employeePage";
 import AdminPage from "./pages/adminPage";
 import SettingsPage from "./pages/settingsPage";
 import AuditLogTable from "./pages/auditPage";
+// import AppOverviewPage from "./pages/appOverviewPage"; // ✅ HOME (/app)
 
 /* CTO Components */
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
@@ -50,6 +51,32 @@ function App() {
 
         {/* APP LAYOUT */}
         <Route path="/app" element={<Dashboard />}>
+          {/* ===================== */}
+          {/* ALL AUTHENTICATED USERS (HOME lives here) */}
+          {/* ===================== */}
+          <Route element={<ProtectedRoute />}>
+            {/* ✅ DEFAULT HOME: /app */}
+            <Route index element={<CtoDashboard />} />
+
+            {/* Optional: keep /app/overview as an alias (safe to keep)
+            <Route path="overview" element={<AppOverviewPage />} /> */}
+            {/* 
+            <Route path="cto-dashboard" element={<CtoDashboard />} /> */}
+            <Route path="cto-apply" element={<CtoApplication />} />
+            <Route path="cto-my-credits" element={<MyCtoCredits />} />
+
+            <Route path="my-profile" element={<MyProfile />} />
+            <Route path="my-profile/edit" element={<UpdateProfile />} />
+            <Route
+              path="my-profile/reset-password"
+              element={<ResetPassword />}
+            />
+
+            {/* Optional admin page if you still need it */}
+            <Route path="admin" element={<AdminPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+
           {/* ===================== */}
           {/* ADMIN + HR ROUTES */}
           {/* ===================== */}
@@ -92,27 +119,6 @@ function App() {
               <Route index element={<EmployeePlaceholder />} />
               <Route path=":id" element={<CtoApplicationDetails />} />
             </Route>
-          </Route>
-
-          {/* ===================== */}
-          {/* ALL AUTHENTICATED USERS */}
-          {/* admin | hr | supervisor | employee */}
-          {/* ===================== */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="cto-dashboard" element={<CtoDashboard />} />
-            <Route path="cto-apply" element={<CtoApplication />} />
-            <Route path="cto-my-credits" element={<MyCtoCredits />} />
-
-            <Route path="my-profile" element={<MyProfile />} />
-            <Route path="my-profile/edit" element={<UpdateProfile />} />
-            <Route
-              path="my-profile/reset-password"
-              element={<ResetPassword />}
-            />
-
-            {/* Optional admin page if you still need it */}
-            <Route path="admin" element={<AdminPage />} />
-            <Route path="settings" element={<SettingsPage />} />
           </Route>
         </Route>
 

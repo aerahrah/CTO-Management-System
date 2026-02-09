@@ -248,9 +248,9 @@ const AuditLogTable = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col">
       {/* HEADER */}
-      <div className=" pt-4 pb-4">
+      <div className="pb-4">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div className="min-w-0">
+          <div className="min-w-0 pt-2 px-1">
             <Breadcrumbs rootLabel="home" rootTo="/app" />
             <h2 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
               System Audit Logs

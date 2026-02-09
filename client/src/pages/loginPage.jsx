@@ -42,7 +42,7 @@ const Login = () => {
     onSuccess: (data) => {
       login(data);
       toast.dismiss("login-error"); // Clear any previous errors
-      navigate("/app/cto/dashboard");
+      navigate("/app");
     },
     onError: (err) => {
       toast.error(

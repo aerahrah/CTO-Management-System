@@ -7,12 +7,10 @@ import Breadcrumbs from "../breadCrumbs";
 import {
   Clock,
   CheckCircle,
-  XCircle,
   AlertCircle,
   TrendingUp,
   Briefcase,
   ArrowUpRight,
-  LayoutGrid,
   ChevronRight,
   Activity,
   History,
@@ -88,7 +86,11 @@ const ActionButton = ({ label, link, icon: Icon, variant = "default" }) => (
     `}
   >
     <div
-      className={`p-2 rounded-lg ${variant === "urgent" ? "bg-rose-200/50" : "bg-white border border-slate-200 group-hover:border-indigo-100 group-hover:text-indigo-600 transition-colors"}`}
+      className={`p-2 rounded-lg ${
+        variant === "urgent"
+          ? "bg-rose-200/50"
+          : "bg-white border border-slate-200 group-hover:border-indigo-100 group-hover:text-indigo-600 transition-colors"
+      }`}
     >
       <Icon size={18} />
     </div>
@@ -129,33 +131,239 @@ const getStatusStyles = (status) => {
   }
 };
 
-// Loading Skeleton Component for better UX
-const LoadingSkeleton = () => (
-  <div className="min-h-screen bg-[#fcfcfd] p-6 lg:p-10 font-sans text-slate-800 animate-pulse">
-    <div className="max-w-7xl mx-auto space-y-10">
-      <div className="h-10 bg-slate-200 rounded-xl"></div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-24 bg-slate-200 rounded-2xl"></div>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-8 space-y-8">
-          <div className="h-64 bg-slate-200 rounded-2xl"></div>
-          <div className="grid grid-cols-2 gap-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-24 bg-slate-200 rounded-2xl"></div>
-            ))}
+// --- BETTER SKELETON BUILDING BLOCKS ---
+
+const Skeleton = ({ className = "", rounded = "rounded-xl" }) => (
+  <div
+    className={`relative overflow-hidden bg-slate-200/70 ${rounded} ${className}`}
+    aria-hidden="true"
+  >
+    <div className="absolute inset-0 -translate-x-full motion-reduce:hidden animate-shimmer bg-gradient-to-r from-transparent via-white/70 to-transparent" />
+  </div>
+);
+
+const SkeletonLine = ({ className = "" }) => (
+  <Skeleton className={`h-3 ${className}`} rounded="rounded-lg" />
+);
+const SkeletonCircle = ({ className = "" }) => (
+  <Skeleton className={`rounded-full ${className}`} rounded="rounded-full" />
+);
+
+const SkeletonCard = ({ className = "", children }) => (
+  <div
+    className={`bg-white rounded-2xl border border-slate-200/60 shadow-sm ${className}`}
+  >
+    {children}
+  </div>
+);
+
+// Loading Skeleton Component (layout-matched + shimmer)
+const LoadingSkeleton = ({ role }) => {
+  const showOrg = role === "admin" || role === "hr";
+
+  return (
+    <div
+      className="min-h-screen font-sans text-slate-800"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+    >
+      <style>{`
+        @keyframes shimmer { 100% { transform: translateX(100%); } }
+        .animate-shimmer { animation: shimmer 1.6s infinite linear; }
+      `}</style>
+
+      <span className="sr-only">Loading dashboard…</span>
+
+      <div className="max-w-7xl mx-auto space-y-10">
+        {/* HEADER */}
+        <header className="pb-3 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-3">
+            <SkeletonLine className="w-40" />
+            <Skeleton className="h-9 w-56" rounded="rounded-xl" />
           </div>
+
+          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
+            <SkeletonCircle className="w-2 h-2" />
+            <SkeletonLine className="w-20" />
+          </div>
+        </header>
+
+        {/* ORG INSIGHTS (only if admin/hr) */}
+        {showOrg && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <SkeletonCircle className="w-7 h-7" />
+              <SkeletonLine className="w-56" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonCard key={i} className="p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-3">
+                      <SkeletonLine className="w-28" />
+                      <Skeleton className="h-7 w-16" rounded="rounded-lg" />
+                    </div>
+                    <Skeleton className="w-12 h-12" rounded="rounded-xl" />
+                  </div>
+                </SkeletonCard>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* URGENT + RECENT PENDING */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="relative overflow-hidden rounded-2xl p-5 bg-white border border-slate-200/60 shadow-sm">
+            <div className="space-y-4">
+              <Skeleton className="h-5 w-28" rounded="rounded-md" />
+              <Skeleton className="h-12 w-20" rounded="rounded-lg" />
+              <SkeletonLine className="w-56" />
+              <Skeleton className="h-10 w-full" rounded="rounded-lg" />
+            </div>
+          </div>
+
+          <SkeletonCard className="p-5">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+              <div className="space-y-2">
+                <SkeletonLine className="w-44" />
+                <SkeletonLine className="w-28" />
+              </div>
+              <Skeleton className="h-5 w-12" rounded="rounded-full" />
+            </div>
+
+            <div className="pt-4 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0"
+                >
+                  <SkeletonCircle className="w-10 h-10" />
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <SkeletonLine className="w-36" />
+                      <Skeleton className="h-4 w-10" rounded="rounded-md" />
+                    </div>
+                    <SkeletonLine className="w-40" />
+                  </div>
+                  <Skeleton className="h-7 w-16" rounded="rounded-lg" />
+                </div>
+              ))}
+            </div>
+          </SkeletonCard>
         </div>
-        <div className="lg:col-span-4 space-y-8">
-          <div className="h-48 bg-slate-200 rounded-2xl"></div>
-          <div className="h-64 bg-slate-200 rounded-2xl"></div>
+
+        {/* CORE GRID */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* LEFT */}
+          <div className="lg:col-span-8 space-y-8">
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <SkeletonCircle className="w-7 h-7" />
+                <SkeletonLine className="w-48" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <SkeletonCard className="p-6">
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <SkeletonLine className="w-28" />
+                      <SkeletonLine className="w-40" />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-baseline gap-2">
+                        <Skeleton className="h-12 w-28" rounded="rounded-lg" />
+                        <SkeletonLine className="w-20" />
+                      </div>
+                      <Skeleton className="h-6 w-24" rounded="rounded-md" />
+                    </div>
+
+                    <Skeleton className="h-4 w-full" rounded="rounded-full" />
+                    <div className="flex justify-between">
+                      <SkeletonLine className="w-28" />
+                      <SkeletonLine className="w-28" />
+                    </div>
+                  </div>
+                </SkeletonCard>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <SkeletonCard key={i} className="p-6">
+                      <div className="space-y-3">
+                        <SkeletonLine className="w-24" />
+                        <Skeleton className="h-7 w-14" rounded="rounded-lg" />
+                      </div>
+                    </SkeletonCard>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <SkeletonCircle className="w-7 h-7" />
+                <SkeletonLine className="w-40" />
+              </div>
+
+              <SkeletonCard className="p-6">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-50">
+                  <div className="space-y-2">
+                    <SkeletonLine className="w-40" />
+                    <SkeletonLine className="w-32" />
+                  </div>
+                  <Skeleton className="h-7 w-28" rounded="rounded-lg" />
+                </div>
+
+                <div className="pt-4 space-y-3">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 py-3 border-b border-slate-50 last:border-0"
+                    >
+                      <SkeletonCircle className="w-10 h-10" />
+                      <div className="flex-1 space-y-2">
+                        <SkeletonLine className="w-48" />
+                        <SkeletonLine className="w-36" />
+                      </div>
+                      <Skeleton className="h-6 w-20" rounded="rounded-lg" />
+                    </div>
+                  ))}
+                </div>
+              </SkeletonCard>
+            </section>
+          </div>
+
+          {/* RIGHT */}
+          <div className="lg:col-span-4 space-y-8">
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <SkeletonCircle className="w-7 h-7" />
+                <SkeletonLine className="w-36" />
+              </div>
+
+              <div className="space-y-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <SkeletonCard key={i} className="p-3">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="w-9 h-9" rounded="rounded-lg" />
+                      <div className="flex-1 space-y-2">
+                        <SkeletonLine className="w-40" />
+                        <SkeletonLine className="w-24" />
+                      </div>
+                      <Skeleton className="h-4 w-4" rounded="rounded-md" />
+                    </div>
+                  </SkeletonCard>
+                ))}
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // --- MAIN DASHBOARD ---
 
@@ -168,7 +376,8 @@ const CtoDashboard = () => {
   const { admin } = useAuth();
   const role = admin?.role;
 
-  if (isLoading) return <LoadingSkeleton />;
+  if (isLoading) return <LoadingSkeleton role={role} />;
+
   if (isError || !data)
     return (
       <div className="p-10 text-center text-rose-500 font-medium">
@@ -184,7 +393,7 @@ const CtoDashboard = () => {
     rejectedRequests,
     quickActions,
     quickLinks,
-    totalCreditedCount,
+    totalCreditedCount, // (kept from payload, not used currently)
     totalRolledBackCount,
     totalPendingRequests,
     pendingRequests = [],
@@ -198,8 +407,6 @@ const CtoDashboard = () => {
 
   const formatDate = (dateString) => {
     if (!dateString) return "Date N/A";
-
-    // Returns: "Mon, Jan 30 • 10:48 AM"
     return new Intl.DateTimeFormat("en-US", {
       weekday: "short",
       month: "short",
@@ -209,7 +416,7 @@ const CtoDashboard = () => {
       hour12: true,
     })
       .format(new Date(dateString))
-      .replace(",", " •"); // Replaces the comma after the date with a dot
+      .replace(",", " •");
   };
 
   return (
@@ -266,21 +473,19 @@ const CtoDashboard = () => {
                 colorClass="bg-rose-50 text-rose-600"
               />
             </div>
-
-            {/* Moved Team Approval and Recent Inbound to Organization Section */}
           </section>
         )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* CARD 1: URGENT APPROVALS */}
           <div
-            className={`relative overflow-hidden rounded-2xl p-5 opacity-h-70 flex flex-col justify-between transition-all duration-300 shadow-lg 
-    ${
-      teamPendingApprovals > 0
-        ? "bg-slate-900 text-white shadow-slate-200"
-        : "bg-slate-50 border border-slate-200 text-slate-500 shadow-none"
-    }`}
+            className={`relative overflow-hidden rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 shadow-lg 
+              ${
+                teamPendingApprovals > 0
+                  ? "bg-slate-900 text-white shadow-slate-200"
+                  : "bg-slate-50 border border-slate-200 text-slate-500 shadow-none"
+              }`}
           >
-            {/* Subtle Background Icon - Scaled down for h-60 */}
             <div className="absolute -right-2 -top-2 opacity-10 rotate-12">
               <AlertCircle size={120} />
             </div>
@@ -289,14 +494,20 @@ const CtoDashboard = () => {
               <div className="flex items-center gap-2 mb-3">
                 <span
                   className={`px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider
-          ${teamPendingApprovals > 0 ? "bg-amber-500 text-white" : "bg-slate-200 text-slate-500"}`}
+                    ${
+                      teamPendingApprovals > 0
+                        ? "bg-amber-500 text-white"
+                        : "bg-slate-200 text-slate-500"
+                    }`}
                 >
                   {teamPendingApprovals > 0 ? "Pending Request" : "Cleared"}
                 </span>
               </div>
 
               <p
-                className={`text-5xl font-black leading-none mb-2 ${teamPendingApprovals > 0 ? "text-white" : "text-slate-300"}`}
+                className={`text-5xl font-black leading-none mb-2 ${
+                  teamPendingApprovals > 0 ? "text-white" : "text-slate-300"
+                }`}
               >
                 {teamPendingApprovals}
               </p>
@@ -310,16 +521,15 @@ const CtoDashboard = () => {
             <button
               disabled={teamPendingApprovals === 0}
               onClick={() => {
-                if (teamPendingApprovals > 0) {
+                if (teamPendingApprovals > 0)
                   window.location.href = "/app/cto/approvals";
-                }
               }}
               className={`w-full py-2.5 rounded-lg text-[11px] font-bold transition-all transform active:scale-95
-    ${
-      teamPendingApprovals > 0
-        ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20"
-        : "bg-slate-200 text-slate-400 cursor-not-allowed"
-    }`}
+                ${
+                  teamPendingApprovals > 0
+                    ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20"
+                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                }`}
             >
               {teamPendingApprovals > 0 ? "Process Approvals" : "Complete"}
             </button>
@@ -332,23 +542,23 @@ const CtoDashboard = () => {
             action={
               <span
                 className={`px-2 py-0.5 rounded-full text-[10px] font-bold
-        ${pendingRequests.length > 0 ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-400"}`}
+                  ${
+                    pendingRequests.length > 0
+                      ? "bg-amber-100 text-amber-700"
+                      : "bg-slate-100 text-slate-400"
+                  }`}
               >
                 {pendingRequests.length} New
               </span>
             }
           >
             <div className="flex flex-col h-50">
-              {" "}
-              {/* Precise height to prevent overflow */}
               {pendingRequests.length > 0 ? (
-                <>
-                  <div className="space-y-1 overflow-y-auto pr-1 flex-1 custom-scrollbar">
-                    {pendingRequests.map((req) => (
-                      <PendingRequestItem key={req.id} request={req} />
-                    ))}
-                  </div>
-                </>
+                <div className="space-y-1 overflow-y-auto pr-1 flex-1 custom-scrollbar">
+                  {pendingRequests.map((req) => (
+                    <PendingRequestItem key={req.id} request={req} />
+                  ))}
+                </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                   <p className="text-[11px] font-medium text-slate-400">
@@ -394,7 +604,7 @@ const CtoDashboard = () => {
                         <div
                           className="bg-indigo-500 h-full rounded-full shadow-[0_0_10px_rgba(99,102,241,0.4)] transition-all duration-1000 ease-out"
                           style={{ width: `${usagePercentage}%` }}
-                        ></div>
+                        />
                       </div>
                       <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider">
                         <span className="text-slate-400">
@@ -443,42 +653,40 @@ const CtoDashboard = () => {
                       Pending
                     </p>
                     <p className="text-2xl font-black text-indigo-600">
-                      {myCtoSummary.pending || 0}
+                      {myCtoSummary?.pending || 0}
                     </p>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* Additional UX Improvement: Recent Activity Section */}
+            {/* Recent Activity */}
             <section>
               <SectionHeader title="Recent Activity" icon={Calendar} />
               <DashboardCard
                 title="My Recent Requests"
-                subtitle={`Last ${myCtoSummary.recentRequests.length} submissions`}
+                subtitle={`Last ${myCtoSummary?.recentRequests?.length || 0} submissions`}
                 action={
                   <Link
                     to={`/app/cto/apply/`}
                     className="flex-shrink-0 translate-x-1 group-hover:translate-x-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700 transition-all duration-200"
                   >
-                    ({myCtoSummary.totalRequests}) View all my request
+                    ({myCtoSummary?.totalRequests || 0}) View all my request
                   </Link>
                 }
               >
                 <div className="space-y-1">
-                  {myCtoSummary.recentRequests &&
+                  {myCtoSummary?.recentRequests &&
                   myCtoSummary.recentRequests.length > 0 ? (
                     myCtoSummary.recentRequests.map((request) => (
                       <div
                         key={request._id}
                         className="flex items-center gap-3 py-3 group hover:bg-slate-50 rounded-xl px-2 transition-all duration-200 border-b border-slate-50 last:border-0"
                       >
-                        {/* ICON/AVATAR CIRCLE */}
                         <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm group-hover:border-blue-200 transition-colors">
                           <User size={18} className="text-blue-600" />
                         </div>
 
-                        {/* REQUEST DETAILS */}
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
                             <p className="font-bold text-slate-800 text-[13px] truncate leading-none">
@@ -499,10 +707,11 @@ const CtoDashboard = () => {
                           </div>
                         </div>
 
-                        {/* STATUS BADGE - Styled like the 'Review' action but non-clickable */}
                         <div className="flex-shrink-0">
                           <span
-                            className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-sm transition-all duration-200 ${getStatusStyles(request.overallStatus)}`}
+                            className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-sm transition-all duration-200 ${getStatusStyles(
+                              request.overallStatus,
+                            )}`}
                           >
                             {request.overallStatus}
                           </span>
@@ -521,7 +730,7 @@ const CtoDashboard = () => {
             </section>
           </div>
 
-          {/* RIGHT COLUMN: ACTIONS & TEAM */}
+          {/* RIGHT COLUMN: ACTIONS */}
           <div className="lg:col-span-4 space-y-8">
             <section>
               <SectionHeader title="Action Center" icon={TrendingUp} />
@@ -557,7 +766,6 @@ const CtoDashboard = () => {
 const PendingRequestItem = ({ request }) => {
   const initial = request.employeeName?.charAt(0).toUpperCase() || "?";
 
-  // Format: "Mon, Jan 30 • 10:48 AM"
   const formattedDate = request.createdAt
     ? new Intl.DateTimeFormat("en-US", {
         weekday: "short",
@@ -571,12 +779,10 @@ const PendingRequestItem = ({ request }) => {
 
   return (
     <div className="flex items-center gap-3 py-3 group hover:bg-slate-50 rounded-xl px-2 transition-all duration-200 border-b border-slate-50 last:border-0">
-      {/* AVATAR */}
       <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm group-hover:border-blue-200 transition-colors">
         <span className="text-blue-600 font-bold text-sm">{initial}</span>
       </div>
 
-      {/* CONTENT */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="font-bold text-slate-800 text-[13px] truncate leading-none">
@@ -597,7 +803,6 @@ const PendingRequestItem = ({ request }) => {
         </div>
       </div>
 
-      {/* ACTION */}
       <Link
         to={`/app/cto/approvals/${request.id}`}
         className="flex-shrink-0 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all duration-200"

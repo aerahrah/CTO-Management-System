@@ -5,42 +5,128 @@ import {
   FileText,
   Users,
   FileStack,
-  Eye,
-  Download,
   CalendarDays,
-  ChevronRight,
-  Quote,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
+  CornerDownRight,
+  StickyNote,
+  History,
+  FileX,
 } from "lucide-react";
 import { StatusBadge, StatusIcon, getStatusStyles } from "../../statusUtils";
 import Modal from "../../modal";
 import MemoList from "../ctoMemoModal";
 
-const FILE_BASE_URL = "http://localhost:3000";
-
-// --- Helper: Calendar Leaf Component ---
+// --- Helper: Date Leaf (Compact) ---
 const DateLeaf = ({ dateString }) => {
   const date = new Date(dateString);
   const month = date.toLocaleDateString("en-US", { month: "short" });
   const day = date.toLocaleDateString("en-US", { day: "numeric" });
-  const weekday = date.toLocaleDateString("en-US", { weekday: "short" });
 
   return (
-    <div className="flex flex-col items-center bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm min-w-[70px] shrink-0">
-      <div className="w-full bg-slate-50 border-b border-slate-100 py-1 text-center">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+    <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-lg p-2 shadow-sm">
+      <div className="bg-slate-100 rounded md:w-10 md:h-10 w-8 h-8 flex flex-col items-center justify-center shrink-0">
+        <span className="text-[8px] font-bold text-slate-500 uppercase leading-none">
           {month}
         </span>
-      </div>
-      <div className="px-2 py-1 flex flex-col items-center">
-        <span className="text-xl font-bold text-slate-800 tabular-nums leading-none">
+        <span className="text-sm font-bold text-slate-800 leading-none">
           {day}
         </span>
-        <span className="text-[10px] text-slate-400 font-medium uppercase mt-0.5">
-          {weekday}
+      </div>
+      <div className="flex flex-col">
+        <span className="text-xs font-medium text-slate-600">
+          {date.toLocaleDateString("en-US", { weekday: "long" })}
         </span>
+        <span className="text-[10px] text-slate-400">{date.getFullYear()}</span>
+      </div>
+    </div>
+  );
+};
+
+// --- Helper: Timeline Card (Wide Version) ---
+const TimelineCard = ({ approval, index, isLast }) => {
+  const isDenied = approval.status === "REJECTED";
+  const isPending = approval.status === "PENDING";
+  const isApproved = approval.status === "APPROVED";
+
+  return (
+    <div className="relative pl-8 md:pl-12 pb-8 last:pb-0">
+      {/* Connector Line */}
+      {!isLast && (
+        <div className="absolute left-[15px] md:left-[19px] top-10 bottom-0 w-0.5 bg-slate-200" />
+      )}
+
+      {/* Status Node */}
+      <div
+        className={`absolute left-0 top-0 z-10 w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center border-4  border-slate-50 shadow-sm transition-transform hover:scale-110 ${getStatusStyles(
+          approval.status,
+        )}`}
+      >
+        <StatusIcon status={approval.status} size={16} />
+      </div>
+
+      {/* Card Body */}
+      <div
+        className={`bg-slate-50/50 border rounded-xl p-4 md:p-5  transition-all ${isPending ? "border-slate-100 opacity-80" : "border-slate-200"}`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                Step {index + 1}
+              </span>
+              {approval.updatedAt && (
+                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                  {new Date(approval.updatedAt).toLocaleString()}
+                </span>
+              )}
+            </div>
+            <h4 className="font-bold text-slate-800 text-sm md:text-base mt-1">
+              {approval.approver?.firstName} {approval.approver?.lastName}
+            </h4>
+            <p className="text-xs text-indigo-600 font-medium">
+              {approval.approver?.position || "Approver"}
+            </p>
+          </div>
+
+          <div className="shrink-0">
+            <StatusBadge
+              status={approval.status}
+              className="text-xs px-2 py-1"
+            />
+          </div>
+        </div>
+
+        {/* Remarks Section - Handles Long Text Gracefully */}
+        {approval.remarks && approval.remarks.trim() !== "" && (
+          <div
+            className={`mt-4 rounded-lg p-4 text-sm leading-relaxed border ${
+              isDenied
+                ? "bg-rose-50 border-rose-100 text-rose-800"
+                : "bg-slate-50 border-slate-100 text-slate-700"
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              {isDenied ? (
+                <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              ) : (
+                <StickyNote
+                  size={18}
+                  className="mt-0.5 shrink-0 text-slate-400"
+                />
+              )}
+              <div className="w-full">
+                <p className="font-bold text-xs uppercase opacity-70 mb-1">
+                  {isDenied ? "Rejection Reason" : "Approver Remarks"}
+                </p>
+                <p className="whitespace-pre-wrap break-words">
+                  {approval.remarks}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -51,227 +137,180 @@ const CtoApplicationDetails = ({ app }) => {
 
   if (!app) return null;
 
-  // --- Helper: Format date/time ---
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  // --- Sort approvals by level ---
   const sortedApprovals = useMemo(() => {
     if (!Array.isArray(app.approvals)) return [];
     return [...app.approvals].sort((a, b) => a.level - b.level);
   }, [app.approvals]);
 
+  const hasDocuments = app.memo && app.memo.length > 0;
+
   return (
-    <div className="h-full flex flex-col bg-slate-50/30">
-      <div className="max-h-[80vh] overflow-y-auto px-1 pb-10 custom-scrollbar">
-        {/* 1. High-Impact Header Card */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6 relative overflow-hidden">
-          {/* Decorative background circle */}
-          <div
-            className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 ${getStatusStyles(
-              app.overallStatus,
-            ).replace("bg-", "bg-")}`}
-          />
+    <div className="h-full flex flex-col bg-slate-50/50">
+      <div className="max-h-[75vh] overflow-y-auto custom-scrollbar p-2 md:p-6">
+        {/* 1. Top Header: High-Level Stats */}
+        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">
+              Current Status
+            </p>
+            <StatusBadge
+              status={app.overallStatus}
+              className="text-lg px-4 py-1.5"
+              showIcon
+            />
+          </div>
 
-          <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 relative z-10">
-            <div>
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
-                Application Status
+          <div className="flex gap-6 divide-x divide-slate-100">
+            <div className="px-4 text-center">
+              <p className="text-[10px] text-slate-400 font-bold uppercase">
+                Requested
               </p>
-              <div className="flex items-center gap-3">
-                <StatusBadge
-                  status={app.overallStatus}
-                  className="text-lg px-3 py-1"
-                  showIcon={true}
-                />
-              </div>
+              <p className="text-xl font-bold text-slate-700">
+                {app.requestedHours}{" "}
+                <span className="text-xs font-normal text-slate-400">hrs</span>
+              </p>
             </div>
-
-            <div className="flex items-center gap-6 md:gap-12">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
-                  <Clock size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">
-                    Requested
-                  </p>
-                  <p className="text-xl font-black text-slate-800 tabular-nums leading-none">
-                    {app.requestedHours}
-                    <span className="text-sm font-medium text-slate-500 ml-1">
-                      hrs
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="hidden md:flex items-center gap-3">
-                <div className="p-2 bg-slate-100 rounded-lg text-slate-500">
-                  <Calendar size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">
-                    Submitted
-                  </p>
-                  <p className="text-sm font-bold text-slate-700">
-                    {new Date(app.createdAt).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </p>
-                  <p className="text-[10px] text-slate-400">
-                    {new Date(app.createdAt).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </p>
-                </div>
-              </div>
+            <div className="px-4 text-center">
+              <p className="text-[10px] text-slate-400 font-bold uppercase">
+                Date Filed
+              </p>
+              <p className="text-sm font-bold text-slate-700 mt-1">
+                {new Date(app.createdAt).toLocaleDateString()}
+              </p>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Details & Reason (8 cols) */}
-          <div className="lg:col-span-7 xl:col-span-8 space-y-6">
-            {/* Reason Section */}
-            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
-              <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-4">
-                Reason for Request
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* LEFT COLUMN: Context (Dates, Docs, Reason) - Takes 1/3 width */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Reason Card (Moved to side for context) */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
+                <FileText size={14} /> Purpose
               </h4>
-              <p className="text-slate-700 leading-relaxed text-[15px] whitespace-pre-wrap font-medium">
+              <p className="text-sm text-slate-600 leading-relaxed font-medium">
                 {app.reason || (
-                  <span className="text-slate-400 italic">
-                    No specific reason provided.
+                  <span className="italic text-slate-400">
+                    No reason provided.
                   </span>
                 )}
               </p>
             </div>
 
-            {/* Dates Grid */}
-            <div>
-              <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 ml-1">
-                <CalendarDays size={14} /> Selected Dates (
-                {app.inclusiveDates?.length || 0})
+            {/* Selected Dates */}
+            <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+                <CalendarDays size={14} /> Dates Included
               </h4>
-              <div className="flex flex-wrap gap-3">
+              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
                 {app.inclusiveDates?.length > 0 ? (
                   app.inclusiveDates.map((d, i) => (
                     <DateLeaf key={i} dateString={d} />
                   ))
                 ) : (
-                  <div className="p-4 w-full bg-slate-100 rounded-lg border border-dashed border-slate-300 text-slate-500 text-sm flex items-center gap-2">
-                    <AlertCircle size={16} /> No dates selected
+                  <div className="text-center py-4 text-slate-400 text-sm border border-dashed rounded-lg">
+                    No dates selected
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Documents Trigger */}
-            <button
-              onClick={() => setMemoModal({ isOpen: true, memos: app.memo })}
-              className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:shadow-md transition-all group text-left"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <FileStack size={20} />
-                </div>
-                <div>
-                  <h4 className="font-bold text-slate-700 text-sm">
-                    Reference Documents
-                  </h4>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {app.memo?.length || 0} attached files available
-                  </p>
-                </div>
-              </div>
-              <div className="bg-slate-50 p-2 rounded-full text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
-                <ArrowRight size={16} />
-              </div>
-            </button>
-          </div>
-
-          {/* Right Column: Workflow Timeline (4 cols) */}
-          <div className="lg:col-span-5 xl:col-span-4">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 h-full">
-              <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400 mb-6 border-b border-slate-100 pb-4">
-                <Users size={14} /> Approval Timeline
-              </h4>
-
-              {sortedApprovals.length > 0 ? (
-                <div className="relative pl-2">
-                  {/* Continuous Vertical Line */}
-                  <div className="absolute left-[19px] top-2 bottom-6 w-0.5 bg-slate-100" />
-
-                  <div className="space-y-8">
-                    {sortedApprovals.map((a, idx) => {
-                      const isFirst = idx === 0;
-                      const isLast = idx === sortedApprovals.length - 1;
-                      return (
-                        <div
-                          key={a._id}
-                          className="relative flex gap-4 items-start group"
-                        >
-                          {/* Status Icon Node */}
-                          <div
-                            className={`relative z-10 w-10 h-10 rounded-full flex items-center justify-center border-4 border-white shadow-sm shrink-0 transition-transform group-hover:scale-105 ${getStatusStyles(
-                              a.status,
-                            )}`}
-                          >
-                            <StatusIcon status={a.status} size={16} />
-                          </div>
-
-                          {/* Text Content */}
-                          <div className="flex-1 pt-1 min-w-0">
-                            <div className="flex flex-col">
-                              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
-                                {isFirst
-                                  ? "First Approval"
-                                  : isLast
-                                    ? "Final Approval"
-                                    : `Approval Step ${idx + 1}`}
-                              </span>
-                              <span
-                                className="text-sm font-bold text-slate-800 truncate"
-                                title={`${a.approver?.firstName} ${a.approver?.lastName}`}
-                              >
-                                {a.approver?.firstName} {a.approver?.lastName}
-                              </span>
-                              <span className="text-xs text-indigo-600 font-medium truncate">
-                                {a.approver?.position || "Approver"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Final Success State Node */}
-                    {app.overallStatus === "Approved" && (
-                      <div className="relative flex gap-4 items-center">
-                        <div className="relative z-10 w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border-4 border-white shadow-sm shrink-0">
-                          <CheckCircle2 size={20} />
-                        </div>
-                        <span className="text-sm font-bold text-emerald-700">
-                          Request Completed
-                        </span>
-                      </div>
+            {/* Documents Button */}
+            <div className="bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+              <button
+                onClick={() =>
+                  hasDocuments &&
+                  setMemoModal({ isOpen: true, memos: app.memo })
+                }
+                disabled={!hasDocuments}
+                className={`w-full flex items-center justify-between p-4 rounded-lg transition-all ${
+                  hasDocuments
+                    ? "hover:bg-indigo-50 group cursor-pointer"
+                    : "opacity-60 cursor-not-allowed"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-2 rounded-lg ${hasDocuments ? "bg-indigo-100 text-indigo-600" : "bg-slate-100 text-slate-400"}`}
+                  >
+                    {hasDocuments ? (
+                      <FileStack size={18} />
+                    ) : (
+                      <FileX size={18} />
                     )}
                   </div>
+                  <div className="text-left">
+                    <span className="block text-sm font-bold text-slate-700">
+                      Attachments
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {hasDocuments
+                        ? `${app.memo.length} documents available`
+                        : "No files attached"}
+                    </span>
+                  </div>
+                </div>
+                {hasDocuments && (
+                  <ArrowRight
+                    size={16}
+                    className="text-slate-300 group-hover:text-indigo-600"
+                  />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: The Narrative (Timeline) - Takes 2/3 width */}
+          <div className="lg:col-span-2">
+            <div className="bg-white shadow-sm p-3 rounded-xl">
+              <div className="flex items-center gap-2 mb-6 ml-1">
+                <History size={18} className="text-slate-400" />
+                <h3 className="text-sm font-bold text-slate-600 uppercase tracking-widest">
+                  Processing Timeline
+                </h3>
+              </div>
+
+              {sortedApprovals.length > 0 ? (
+                <div className="space-y-0">
+                  {sortedApprovals.map((approval, idx) => (
+                    <TimelineCard
+                      key={approval._id}
+                      approval={approval}
+                      index={idx}
+                      isLast={
+                        idx === sortedApprovals.length - 1 &&
+                        app.overallStatus !== "Approved"
+                      }
+                    />
+                  ))}
+
+                  {/* Success State End of Timeline */}
+                  {app.overallStatus === "Approved" && (
+                    <div className="relative pl-8 md:pl-12 pt-2">
+                      <div className="absolute left-[15px] md:left-[19px] -top-4 h-6 w-0.5 bg-slate-200" />
+                      <div className="absolute left-0 top-0 z-10 w-8 h-8 md:w-10 md:h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border-4 border-white shadow-sm">
+                        <CheckCircle2 size={20} />
+                      </div>
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 ml-1">
+                        <p className="text-emerald-800 font-bold text-sm">
+                          Application Fully Approved
+                        </p>
+                        <p className="text-emerald-600 text-xs mt-0.5">
+                          The CTO request has been finalized.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-center py-10 px-4 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
-                  <Users className="mx-auto text-slate-300 mb-2" size={24} />
-                  <p className="text-xs text-slate-400 font-medium">
-                    No approval workflow has been initiated yet.
+                <div className="flex flex-col items-center justify-center p-12 bg-white border border-dashed border-slate-300 rounded-xl text-center">
+                  <Users size={32} className="text-slate-300 mb-3" />
+                  <p className="text-slate-500 font-medium">
+                    Waiting for workflow initiation
+                  </p>
+                  <p className="text-slate-400 text-sm">
+                    No approvers have acted on this request yet.
                   </p>
                 </div>
               )}
@@ -280,17 +319,17 @@ const CtoApplicationDetails = ({ app }) => {
         </div>
       </div>
 
-      {/* Memo Modal */}
+      {/* Modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={() => setMemoModal({ isOpen: false, memos: [] })}
         title="Attached Reference Documents"
-        closeLabel="Done"
-        maxWidth="max-w-5xl"
+        closeLabel="Close Viewer"
+        maxWidth="max-w-4xl"
       >
         <MemoList
           memos={memoModal.memos}
-          description={"Read-only view of CTO memos attached to this request."}
+          description="Documents attached by the applicant for reference."
         />
       </Modal>
     </div>

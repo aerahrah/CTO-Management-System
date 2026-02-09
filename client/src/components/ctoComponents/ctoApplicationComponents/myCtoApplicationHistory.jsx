@@ -63,7 +63,7 @@ const BalanceHoursCard = ({ hours, loading }) => {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="leading-tight text-[15px] sm:text-base font-extrabold text-blue-700 truncate ">
+          <div className="leading-tight text-[15px] sm:text-base font-extrabold text-blue-700 truncate">
             {loading ? <Skeleton width={70} /> : showValue}
           </div>
         </div>
@@ -224,6 +224,20 @@ const MyCtoApplications = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
+  // ✅ Add status-colored left strip for MOBILE cards
+  const getStatusColor = (status) => {
+    switch (status) {
+      case "APPROVED":
+        return "border-l-4 border-l-emerald-500";
+      case "REJECTED":
+        return "border-l-4 border-l-rose-500";
+      case "PENDING":
+        return "border-l-4 border-l-amber-500";
+      default:
+        return "border-l-4 border-l-slate-300";
+    }
+  };
+
   // debounce search
   const searchTimeout = useRef(null);
   useEffect(() => {
@@ -247,14 +261,9 @@ const MyCtoApplications = () => {
     placeholderData: (prev) => prev,
   });
 
-  // ✅ Balance hours (tries app endpoint first, falls back to credit summary totals)
   const { data: creditSummaryData, isLoading: isBalanceLoading } = useQuery({
     queryKey: ["myCtoBalanceHours"],
-    queryFn: () =>
-      fetchMyCreditRequests({
-        page: 1,
-        limit: 1,
-      }),
+    queryFn: () => fetchMyCreditRequests({ page: 1, limit: 1 }),
     staleTime: 1000 * 60,
   });
 
@@ -371,13 +380,12 @@ const MyCtoApplications = () => {
             </p>
           </div>
 
-          {/* ✅ Balance card + New Application (right side) */}
           <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 sm:bg-neutral-200/50 sm:p-3 rounded-xl">
             <BalanceHoursCard hours={balanceHours} loading={isBalanceLoading} />
 
             <button
               onClick={() => setIsFormModalOpen(true)}
-              className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-3.5 text-sm font-semibold text-white shadow-md  transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
+              className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
               type="button"
             >
               <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
@@ -545,7 +553,7 @@ const MyCtoApplications = () => {
             </div>
           ) : (
             <>
-              {/* DESKTOP TABLE */}
+              {/* DESKTOP TABLE (unchanged) */}
               <div className="hidden md:block w-full align-middle">
                 <table className="w-full text-left">
                   <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
@@ -640,7 +648,7 @@ const MyCtoApplications = () => {
                 </table>
               </div>
 
-              {/* MOBILE CARDS */}
+              {/* ✅ MOBILE CARDS with LEFT STATUS COLOR STRIP */}
               <div className="md:hidden flex flex-col p-3 gap-3 bg-gray-50">
                 {isLoading
                   ? [...Array(5)].map((_, i) => (
@@ -655,7 +663,12 @@ const MyCtoApplications = () => {
                       <div
                         key={app._id}
                         onClick={() => setSelectedApp(app)}
-                        className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden active:scale-[0.99] transition-transform"
+                        className={[
+                          "bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)]",
+                          "border-y border-r border-gray-100 overflow-hidden",
+                          "active:scale-[0.99] transition-transform",
+                          getStatusColor(app.overallStatus), // ✅ left strip here
+                        ].join(" ")}
                         role="button"
                         tabIndex={0}
                       >
@@ -750,7 +763,8 @@ const MyCtoApplications = () => {
         <Modal
           isOpen={!!selectedApp}
           onClose={() => setSelectedApp(null)}
-          title="Application Details"
+          title="CTO Application Details"
+          maxWidth="max-w-5xl"
         >
           <CtoApplicationDetails app={selectedApp} loading={!selectedApp} />
         </Modal>

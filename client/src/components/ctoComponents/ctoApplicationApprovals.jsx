@@ -9,11 +9,13 @@ const CtoApplicationApprovals = () => {
   const hasSelection = Boolean(id);
 
   return (
-    <div className="w-full  min-w-0 ">
+    <div className="w-full  min-w-0  pt-2">
       {/* LEFT CARD (List) */}
-      <Breadcrumbs rootLabel="home" rootTo="/app" />
+      <div className="px-1">
+        <Breadcrumbs rootLabel="home" rootTo="/app" />
+      </div>
 
-      <div className="flex flex-col xl:flex-row gap-3 h-[calc(100vh-3.5rem-3.5rem)]">
+      <div className="flex flex-col xl:flex-row gap-3 h-[calc(100vh-3.5rem-2.5rem)] md:h-[calc(100vh-3.75rem-3.5rem)]">
         <CardMd
           className={[
             // Mobile/Tablet: show list only when no selection

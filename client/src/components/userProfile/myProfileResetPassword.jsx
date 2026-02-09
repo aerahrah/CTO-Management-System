@@ -1,14 +1,15 @@
 import React, { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+import Breadcrumbs from "../breadCrumbs";
 import {
   Lock,
   ShieldCheck,
-  ArrowLeft,
   Eye,
   EyeOff,
   AlertCircle,
   CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import { resetMyPassword } from "../../api/employee";
 import { toast, ToastContainer } from "react-toastify";
@@ -33,6 +34,112 @@ const schema = yup.object().shape({
     .oneOf([yup.ref("newPassword")], "Passwords must match"),
 });
 
+/* =========================
+   Minimal UI Primitives (match MyProfile style)
+========================= */
+const Card = ({ title, subtitle, children, className = "" }) => (
+  <div
+    className={[
+      "bg-white rounded-3xl border border-zinc-100 shadow-sm",
+      className,
+    ].join(" ")}
+  >
+    {(title || subtitle) && (
+      <div className="px-6 pt-6 pb-2">
+        {title && (
+          <h3 className="text-sm font-medium text-zinc-900 tracking-tight">
+            {title}
+          </h3>
+        )}
+        {subtitle && <p className="text-xs text-zinc-500 mt-1">{subtitle}</p>}
+      </div>
+    )}
+    <div className="p-6">{children}</div>
+  </div>
+);
+
+const Field = ({
+  label,
+  icon: Icon,
+  type,
+  placeholder,
+  error,
+  registerProps,
+  showPassword,
+  onToggle,
+}) => (
+  <div className="space-y-1.5">
+    <label className="text-xs font-medium text-zinc-600">{label}</label>
+
+    <div className="relative">
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-zinc-50 border border-zinc-100 flex items-center justify-center text-zinc-500">
+        <Icon className="w-4 h-4" strokeWidth={1.8} />
+      </div>
+
+      <input
+        type={type}
+        placeholder={placeholder}
+        {...registerProps}
+        className={[
+          "w-full h-11 pl-12 pr-11",
+          "bg-white",
+          "border rounded-xl text-sm text-zinc-900",
+          "outline-none transition",
+          error
+            ? "border-rose-300 focus:ring-2 focus:ring-rose-200 focus:border-rose-300"
+            : "border-zinc-200 focus:ring-2 focus:ring-blue-200/70 focus:border-blue-300",
+        ].join(" ")}
+      />
+
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-lg text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 border border-transparent hover:border-zinc-200 transition"
+        aria-label={showPassword ? "Hide password" : "Show password"}
+        title={showPassword ? "Hide password" : "Show password"}
+      >
+        {showPassword ? (
+          <EyeOff className="w-4 h-4" />
+        ) : (
+          <Eye className="w-4 h-4" />
+        )}
+      </button>
+    </div>
+
+    {error && (
+      <p className="text-xs text-rose-600 flex items-center gap-2">
+        <AlertCircle className="w-4 h-4" />
+        {error}
+      </p>
+    )}
+  </div>
+);
+
+const Tip = ({ children, tone = "blue" }) => {
+  const tones = {
+    blue: "bg-blue-50/50 border-blue-100/50 text-blue-700",
+    amber: "bg-amber-50/50 border-amber-100/50 text-amber-800",
+  };
+  return (
+    <div className={`rounded-2xl p-5 border ${tones[tone]}`}>
+      <div className="flex gap-3">
+        <AlertCircle className="w-5 h-5 shrink-0 opacity-90 mt-0.5" />
+        <p className="text-xs leading-relaxed font-semibold">{children}</p>
+      </div>
+    </div>
+  );
+};
+
+const GuideItem = ({ children }) => (
+  <li className="flex items-start gap-2 text-sm text-blue-100">
+    <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+    <span className="leading-snug">{children}</span>
+  </li>
+);
+
+/* =========================
+   Main
+========================= */
 const ResetPassword = () => {
   const navigate = useNavigate();
   const [showPasswords, setShowPasswords] = useState(false);
@@ -40,7 +147,6 @@ const ResetPassword = () => {
   const {
     register,
     handleSubmit,
-    watch,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: yupResolver(schema),
@@ -49,14 +155,14 @@ const ResetPassword = () => {
   const mutation = useMutation({
     mutationFn: resetMyPassword,
     onSuccess: (data) => {
-      toast.success(data.message || "Password updated successfully!", {
+      toast.success(data?.message || "Password updated successfully!", {
         position: "top-right",
-        autoClose: 3000,
+        autoClose: 2500,
       });
       navigate("/app/my-profile");
     },
     onError: (err) => {
-      toast.error(err.response?.data?.error || "Failed to reset password", {
+      toast.error(err?.response?.data?.error || "Failed to reset password", {
         position: "top-right",
         autoClose: 3000,
       });
@@ -70,171 +176,143 @@ const ResetPassword = () => {
     });
   };
 
+  const busy = isSubmitting || mutation.isPending;
+
   return (
-    <div className="bg-white/70 rounded-xl h-[calc(100vh-3.5rem-1rem)] p-6">
+    <div className=" px-1 py-2">
       <ToastContainer />
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <div className="mb-6">
-          <button
-            onClick={() => navigate(-1)}
-            className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-700 mb-2 group"
-          >
-            <ArrowLeft className="w-4 h-4 mr-1 transform group-hover:-translate-x-1 transition-transform" />
-            Back to Profile
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Reset Password
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            Update your password to keep your account secure.
-          </p>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
-          {/* Left: Guide */}
-          <div className="md:col-span-2 space-y-4">
-            <div className="bg-blue-600 rounded-2xl p-6 text-white shadow-lg shadow-blue-100">
-              <ShieldCheck className="w-8 h-8 mb-4 text-blue-200" />
-              <h3 className="font-bold text-lg mb-2">Password Guide</h3>
-              <ul className="text-blue-100 text-sm space-y-3">
-                <li className="flex items-start">
-                  <CheckCircle2 className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                  Must be at least 8 characters long.
-                </li>
-                <li className="flex items-start">
-                  <CheckCircle2 className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                  Include at least one uppercase letter.
-                </li>
-                <li className="flex items-start">
-                  <CheckCircle2 className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
-                  Avoid using your name or email.
-                </li>
-              </ul>
-            </div>
+      <div className="">
+        {/* Breadcrumbs + Header */}
+        <div className="space-y-4">
+          <Breadcrumbs rootLabel="Home" rootTo="/app" />
 
-            <div className="p-4 rounded-xl bg-amber-50 border border-amber-100 flex items-start">
-              <AlertCircle className="w-5 h-5 text-amber-500 mr-3 mt-0.5" />
-              <p className="text-xs text-amber-700 leading-relaxed">
-                You will be required to log in again on all devices after
-                changing your password.
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 max-w-6xl mx-auto">
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+                Reset Password
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Update your password to keep your account secure.
               </p>
             </div>
           </div>
+        </div>
+
+        {/* Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-6xl mx-auto ">
+          {/* Left: Guide */}
+          <div className="lg:col-span-4 lg:sticky lg:top-8 space-y-4">
+            <div className="rounded-3xl overflow-hidden shadow-sm border border-zinc-100">
+              <div className="p-6 bg-blue-600 text-white">
+                <ShieldCheck className="w-8 h-8 text-blue-200" />
+                <h3 className="mt-4 text-lg font-semibold">Password Guide</h3>
+                <p className="text-sm text-blue-100 mt-1">
+                  Simple rules to keep your account safe.
+                </p>
+              </div>
+              <div className="p-6 bg-blue-600">
+                <ul className="space-y-3">
+                  <GuideItem>Must be at least 8 characters long.</GuideItem>
+                  <GuideItem>Include at least one uppercase letter.</GuideItem>
+                  <GuideItem>Include at least one lowercase letter.</GuideItem>
+                  <GuideItem>Include at least one number.</GuideItem>
+                </ul>
+              </div>
+            </div>
+
+            <Tip tone="amber">
+              You may be required to log in again on all devices after changing
+              your password.
+            </Tip>
+          </div>
 
           {/* Right: Form */}
-          <div className="md:col-span-3">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+          <div className="lg:col-span-8">
+            <Card
+              title="Change Password"
+              subtitle="Enter your current password, then choose a new one."
+            >
               <form
+                id="resetPwForm"
                 onSubmit={handleSubmit(onSubmit)}
                 className="space-y-5"
                 noValidate
               >
-                {/* Old Password */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    Current Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showPasswords ? "text" : "password"}
-                      placeholder="Enter current password"
-                      {...register("oldPassword")}
-                      className={`w-full pl-10 pr-4 py-2.5 bg-gray-50 border rounded-xl text-sm focus:ring-2 outline-none transition-all ${
-                        errors.oldPassword
-                          ? "border-red-300 focus:ring-red-500"
-                          : "border-gray-200 focus:ring-blue-500"
-                      }`}
-                    />
-                  </div>
-                  {errors.oldPassword && (
-                    <p className="text-[11px] text-red-500 font-medium">
-                      {errors.oldPassword.message}
-                    </p>
-                  )}
+                <Field
+                  label="Current Password"
+                  icon={Lock}
+                  type={showPasswords ? "text" : "password"}
+                  placeholder="Enter current password"
+                  error={errors.oldPassword?.message}
+                  registerProps={register("oldPassword")}
+                  showPassword={showPasswords}
+                  onToggle={() => setShowPasswords((s) => !s)}
+                />
+
+                <div className="h-px bg-zinc-100 my-1" />
+
+                <Field
+                  label="New Password"
+                  icon={Lock}
+                  type={showPasswords ? "text" : "password"}
+                  placeholder="Minimum 8 characters"
+                  error={errors.newPassword?.message}
+                  registerProps={register("newPassword")}
+                  showPassword={showPasswords}
+                  onToggle={() => setShowPasswords((s) => !s)}
+                />
+
+                <Field
+                  label="Confirm New Password"
+                  icon={Lock}
+                  type={showPasswords ? "text" : "password"}
+                  placeholder="Repeat new password"
+                  error={errors.confirmPassword?.message}
+                  registerProps={register("confirmPassword")}
+                  showPassword={showPasswords}
+                  onToggle={() => setShowPasswords((s) => !s)}
+                />
+
+                <div className="pt-2 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords((s) => !s)}
+                    className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-500 hover:text-zinc-900 transition w-fit"
+                  >
+                    {showPasswords ? (
+                      <>
+                        <EyeOff className="w-4 h-4" />
+                        Hide passwords
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4" />
+                        Show passwords
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md transition disabled:opacity-50"
+                  >
+                    {busy ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <ShieldCheck className="w-4 h-4" />
+                        Reset Password
+                      </>
+                    )}
+                  </button>
                 </div>
-
-                <hr className="border-gray-100" />
-
-                {/* New Password */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    New Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showPasswords ? "text" : "password"}
-                      placeholder="Minimum 8 characters"
-                      {...register("newPassword")}
-                      className={`w-full pl-10 pr-4 py-2.5 bg-gray-50 border rounded-xl text-sm focus:ring-2 outline-none transition-all ${
-                        errors.newPassword
-                          ? "border-red-300 focus:ring-red-500"
-                          : "border-gray-200 focus:ring-blue-500"
-                      }`}
-                    />
-                  </div>
-                  {errors.newPassword && (
-                    <p className="text-[11px] text-red-500 font-medium">
-                      {errors.newPassword.message}
-                    </p>
-                  )}
-                </div>
-
-                {/* Confirm Password */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase">
-                    Confirm New Password
-                  </label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showPasswords ? "text" : "password"}
-                      placeholder="Repeat new password"
-                      {...register("confirmPassword")}
-                      className={`w-full pl-10 pr-4 py-2.5 bg-gray-50 border rounded-xl text-sm focus:ring-2 outline-none transition-all ${
-                        errors.confirmPassword
-                          ? "border-red-300 focus:ring-red-500"
-                          : "border-gray-200 focus:ring-blue-500"
-                      }`}
-                    />
-                  </div>
-                  {errors.confirmPassword && (
-                    <p className="text-[11px] text-red-500 font-medium">
-                      {errors.confirmPassword.message}
-                    </p>
-                  )}
-                </div>
-
-                {/* Visibility Toggle */}
-                <button
-                  type="button"
-                  onClick={() => setShowPasswords(!showPasswords)}
-                  className="flex items-center text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors"
-                >
-                  {showPasswords ? (
-                    <>
-                      <EyeOff className="w-3.5 h-3.5 mr-1" /> Hide Passwords
-                    </>
-                  ) : (
-                    <>
-                      <Eye className="w-3.5 h-3.5 mr-1" /> Show Passwords
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting || mutation.isPending}
-                  className="w-full py-3 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 disabled:opacity-50 disabled:shadow-none"
-                >
-                  {mutation.isPending
-                    ? "Updating Security..."
-                    : "Reset Password"}
-                </button>
               </form>
-            </div>
+            </Card>
           </div>
         </div>
       </div>

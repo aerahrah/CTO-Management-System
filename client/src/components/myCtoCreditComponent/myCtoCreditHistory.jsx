@@ -8,7 +8,6 @@ import Skeleton from "react-loading-skeleton";
 import Breadcrumbs from "../breadCrumbs";
 import "react-loading-skeleton/dist/skeleton.css";
 import {
-  Clipboard,
   Search,
   ChevronLeft,
   ChevronRight,
@@ -16,7 +15,6 @@ import {
   RotateCcw,
   Inbox,
   FileText,
-  ExternalLink,
   Calendar,
   CheckCircle2,
   Archive,
@@ -42,7 +40,8 @@ const useDebouncedValue = (value, delay = 500) => {
  * StatCard
  * - responsive: full width on mobile, min width on md
  * - uses h-full so all cards align to same height in the grid
- */ const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
+ */
+const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
   const tones = {
     blue: {
       wrap: "bg-blue-50/60 border-blue-100",
@@ -93,9 +92,7 @@ const useDebouncedValue = (value, delay = 500) => {
         <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
           {title}
         </div>
-        <div
-          className={`mt-0.5 text-lg font-bold truncate ${tones.neutral.value}`}
-        >
+        <div className={`mt-0.5 text-lg font-bold truncate ${t.value}`}>
           {value}
         </div>
         {hint && (
@@ -105,8 +102,14 @@ const useDebouncedValue = (value, delay = 500) => {
     </div>
   );
 };
+
 /* ------------------ Mobile/Tablet Card Row ------------------ */
-const CreditCard = ({ credit, onViewMemo, formatDuration }) => {
+const CreditCard = ({
+  credit,
+  onViewMemo,
+  formatDuration,
+  leftStripClassName,
+}) => {
   const dateLabel = credit?.dateApproved
     ? new Date(credit.dateApproved).toLocaleDateString("en-US", {
         year: "numeric",
@@ -116,7 +119,9 @@ const CreditCard = ({ credit, onViewMemo, formatDuration }) => {
     : "-";
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+    <div
+      className={`bg-white rounded-xl shadow-sm overflow-hidden border-y border-r border-gray-200 ${leftStripClassName}`}
+    >
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -164,6 +169,7 @@ const CreditCard = ({ credit, onViewMemo, formatDuration }) => {
         <button
           onClick={onViewMemo}
           className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600"
+          type="button"
         >
           <Eye className="w-4 h-4" />
           View Memo
@@ -191,6 +197,7 @@ const CompactPagination = ({
           onClick={onPrev}
           disabled={page === 1 || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          type="button"
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
@@ -209,6 +216,7 @@ const CompactPagination = ({
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          type="button"
         >
           Next
           <ChevronRight className="w-4 h-4" />
@@ -230,6 +238,7 @@ const CompactPagination = ({
             onClick={onPrev}
             disabled={page === 1 || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
+            type="button"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -240,6 +249,7 @@ const CompactPagination = ({
             onClick={onNext}
             disabled={page >= totalPages || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
+            type="button"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -378,12 +388,24 @@ const MyCtoCreditHistory = () => {
     setMemoModal({ isOpen: true, memo: credit });
   }, []);
 
+  // ✅ left color strip like CTO credit cards
+  const getLeftStripClass = useCallback((employeeStatus) => {
+    switch (employeeStatus) {
+      case "ACTIVE":
+        return "border-l-4 border-l-emerald-500";
+      case "EXHAUSTED":
+        return "border-l-4 border-l-rose-500";
+      case "ROLLEDBACK":
+        return "border-l-4 border-l-amber-500";
+      default:
+        return "border-l-4 border-l-slate-300";
+    }
+  }, []);
+
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
       <div className="pt-2 pb-3 sm:pb-6 px-1">
-        {/* <Breadcrumbs /> */}
-
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="flex items-start gap-4 flex-1 min-w-0">
             <div>
@@ -492,6 +514,7 @@ const MyCtoCreditHistory = () => {
                           ? tab.activeColor
                           : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                       }`}
+                    type="button"
                   >
                     <tab.icon className="w-3.5 h-3.5" />
                     <span>{tab.label}</span>
@@ -525,6 +548,7 @@ const MyCtoCreditHistory = () => {
                     onClick={() => setSearchInput("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear search"
+                    type="button"
                   >
                     <RotateCcw size={14} />
                   </button>
@@ -589,6 +613,7 @@ const MyCtoCreditHistory = () => {
               <button
                 onClick={handleResetFilters}
                 className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
+                type="button"
               >
                 <RotateCcw size={10} /> Reset
               </button>
@@ -612,6 +637,7 @@ const MyCtoCreditHistory = () => {
               <button
                 onClick={() => refetch()}
                 className="mt-6 inline-flex items-center gap-2 rounded-md px-4 py-2 bg-white border border-gray-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition"
+                type="button"
               >
                 <RotateCcw className="w-4 h-4" />
                 Retry
@@ -629,6 +655,7 @@ const MyCtoCreditHistory = () => {
                 <button
                   onClick={handleResetFilters}
                   className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                  type="button"
                 >
                   Clear all filters
                 </button>
@@ -636,7 +663,7 @@ const MyCtoCreditHistory = () => {
             </div>
           ) : (
             <>
-              {/* Mobile + Tablet (cards) */}
+              {/* Mobile (cards) */}
               <div className="block md:hidden p-4">
                 <div className="space-y-3">
                   {isLoading
@@ -663,6 +690,9 @@ const MyCtoCreditHistory = () => {
                           key={credit._id || `${credit.memoNo}-${i}`}
                           credit={credit}
                           formatDuration={formatDuration}
+                          leftStripClassName={getLeftStripClass(
+                            credit?.employeeStatus,
+                          )} // ✅ left color strip
                           onViewMemo={() => openMemo(credit)}
                         />
                       ))}
@@ -696,6 +726,9 @@ const MyCtoCreditHistory = () => {
                           key={credit._id || `${credit.memoNo}-${i}`}
                           credit={credit}
                           formatDuration={formatDuration}
+                          leftStripClassName={getLeftStripClass(
+                            credit?.employeeStatus,
+                          )} // ✅ left color strip
                           onViewMemo={() => openMemo(credit)}
                         />
                       ))}
@@ -763,6 +796,7 @@ const MyCtoCreditHistory = () => {
                               <button
                                 onClick={() => openMemo(credit)}
                                 className="group inline-flex items-center gap-2 rounded-md px-3 py-1.5 bg-white border border-gray-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition"
+                                type="button"
                               >
                                 <FileText className="w-4 h-4" />
                                 View Memo

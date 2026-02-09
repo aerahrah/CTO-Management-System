@@ -10,7 +10,7 @@ const approvalStepSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["PENDING", "APPROVED", "DENIED"],
+      enum: ["PENDING", "APPROVED", "REJECTED"],
       default: "PENDING",
     },
     reviewedAt: { type: Date },
@@ -21,7 +21,7 @@ const approvalStepSchema = new mongoose.Schema(
       required: true,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("ApprovalStep", approvalStepSchema);

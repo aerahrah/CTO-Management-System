@@ -40,7 +40,7 @@ const Sidebar = ({
   const { data: pendingCount = 0, isPending } = useQuery({
     queryKey: ["ctoPendingCount"],
     queryFn: fetchCtoApplicationsPendingRequest,
-    staleTime: 5 * 60 * 1000, // optional caching
+    staleTime: 5 * 60 * 1000,
   });
 
   const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);
@@ -57,8 +57,9 @@ const Sidebar = ({
       subItems: [
         {
           name: "Dashboard",
-          path: "/app/cto-dashboard",
+          path: "/app",
           icon: <LayoutDashboard size={14} />,
+          exact: true, // ✅ IMPORTANT: prevents "Dashboard" from being active on every /app/* route
         },
         {
           name: "Credit CTO",
@@ -82,16 +83,13 @@ const Sidebar = ({
           icon: <Files size={14} />,
           roles: ["admin", "hr"],
         },
-
         {
           name: "Pending Approvals",
           path: "/app/cto-approvals",
           icon: <UserCheck size={14} />,
           roles: ["admin", "supervisor"],
-          // Only show badge if count > 0 or it's still loading
           badge: isPending ? "..." : pendingCount > 0 ? pendingCount : null,
         },
-
         {
           name: "All CTO Records",
           path: "/app/cto-records",
@@ -141,7 +139,15 @@ const Sidebar = ({
     onSuccess: (data) => queryClient.setQueryData(["employees"], data),
   });
 
-  const isActive = (path) => location.pathname.startsWith(path);
+  // ✅ FIX: "/app" should only be active on EXACT "/app" (not "/app/anything")
+  const normalize = (p) => (p || "").replace(/\/+$/, "") || "/";
+  const isActive = (path, exact = false) => {
+    const current = normalize(location.pathname);
+    const target = normalize(path);
+
+    if (exact) return current === target;
+    return current === target || current.startsWith(target + "/");
+  };
 
   const toggleMenu = (name) => {
     if (isLockedOpenRole) return;
@@ -187,7 +193,7 @@ const Sidebar = ({
             : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex flex-shrink-0 items-center h-14  justify-between px-4 border-b border-slate-100">
+        <div className="flex flex-shrink-0 items-center h-14 justify-between px-4 border-b border-slate-100">
           {(!collapsed || mobileOpen) && (
             <img
               src="/logo_dict.png"
@@ -216,9 +222,13 @@ const Sidebar = ({
         <nav className="flex-1 mt-6 px-3 space-y-2 overflow-y-auto no-scrollbar">
           {filteredItems.map((item) => {
             const hasSubItems = item.subItems?.length > 0;
+
             const isSubItemActive =
-              hasSubItems && item.subItems.some((sub) => isActive(sub.path));
+              hasSubItems &&
+              item.subItems.some((sub) => isActive(sub.path, sub.exact));
+
             const isMainItemActive = item.path && isActive(item.path);
+
             const isOpen =
               isLockedOpenRole || openMenus[item.name] || isSubItemActive;
 
@@ -234,7 +244,7 @@ const Sidebar = ({
                     }
                   }}
                   onMouseLeave={() => setHoveredItem(null)}
-                  className={`flex items-center py-2.5  px-3 rounded-xl cursor-pointer transition-all duration-200
+                  className={`flex items-center py-2.5 px-3 rounded-xl cursor-pointer transition-all duration-200
                     ${collapsed && !mobileOpen ? "justify-center" : "gap-3"}
                     ${
                       isMainItemActive || (isSubItemActive && collapsed)
@@ -280,15 +290,15 @@ const Sidebar = ({
                           if (window.innerWidth < 1024) setMobileOpen(false);
                         }}
                         className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
-      ${
-        isActive(sub.path)
-          ? "text-blue-600 bg-blue-50"
-          : "text-slate-500 hover:text-blue-600 hover:bg-slate-50"
-      }`}
+                          ${
+                            isActive(sub.path, sub.exact)
+                              ? "text-blue-600 bg-blue-50"
+                              : "text-slate-500 hover:text-blue-600 hover:bg-slate-50"
+                          }`}
                       >
                         <span
                           className={
-                            isActive(sub.path)
+                            isActive(sub.path, sub.exact)
                               ? "text-blue-600 bg-slate-50 border-slate-100 p-1.5 rounded-md"
                               : "text-slate-400 bg-slate-50 p-1.5 rounded-md"
                           }
@@ -296,6 +306,7 @@ const Sidebar = ({
                           {sub.icon}
                         </span>
                         <span className="flex-1">{sub.name}</span>
+
                         {sub.badge !== undefined && sub.badge !== null && (
                           <span
                             className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -332,6 +343,7 @@ const Sidebar = ({
                         <div className="px-4 py-2 border-b border-slate-50 mb-1 text-[11px] font-bold text-slate-400 uppercase tracking-tight">
                           {item.name}
                         </div>
+
                         {item.subItems.map((sub) => (
                           <div
                             key={sub.name}
@@ -340,14 +352,14 @@ const Sidebar = ({
                               setHoveredItem(null);
                             }}
                             className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${
-                              isActive(sub.path)
+                              isActive(sub.path, sub.exact)
                                 ? "bg-blue-600 text-white"
                                 : "text-slate-600 hover:bg-slate-50 hover:text-blue-600"
                             }`}
                           >
                             <span
                               className={
-                                isActive(sub.path)
+                                isActive(sub.path, sub.exact)
                                   ? "text-white"
                                   : "text-slate-400"
                               }

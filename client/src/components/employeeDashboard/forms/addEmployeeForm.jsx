@@ -24,7 +24,6 @@ import {
   UserPlus,
   ShieldCheck,
   Building2,
-  ChevronLeft,
   Save,
   Loader2,
   Hash,
@@ -72,7 +71,6 @@ const safeEnum = (value, allowed) => {
 };
 
 const safeEnumCI = (value, allowed) => {
-  // case-insensitive mapping (useful for edit mode if API returns different casing)
   const v = normalizeText(value);
   const found = allowed.find((a) => a.toLowerCase() === v.toLowerCase());
   return found || "";
@@ -87,7 +85,7 @@ const pickDesignation = (d) => {
 };
 
 /* =========================
-   SELECT INPUT (react-select)
+   SELECT INPUT (react-select) - MINIMALIST
 ========================= */
 const SelectInput = ({ label, options, value, onChange, error, required }) => {
   const selectOptions = useMemo(
@@ -99,17 +97,32 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
     () => ({
       control: (base, state) => ({
         ...base,
-        minHeight: "38px",
-        borderRadius: "0.5rem",
+        minHeight: "44px",
+        borderRadius: "0.75rem",
         borderColor: state.isFocused
-          ? "#2563eb"
+          ? "#a5b4fc" // indigo-300
           : error
-            ? "#f87171"
-            : "#d1d5db",
-        boxShadow: "none",
-        "&:hover": { borderColor: state.isFocused ? "#2563eb" : "#9ca3af" },
+            ? "#fda4af" // rose-300
+            : "rgba(226,232,240,0.9)", // slate-200-ish
+        boxShadow: state.isFocused ? "0 0 0 4px rgba(99,102,241,0.12)" : "none",
+        "&:hover": {
+          borderColor: state.isFocused
+            ? "#a5b4fc"
+            : error
+              ? "#fda4af"
+              : "rgba(148,163,184,0.7)", // slate-400-ish
+        },
+        backgroundColor: "rgba(255,255,255,0.9)",
         overflow: "hidden",
-        textOverflow: "ellipsis",
+      }),
+      valueContainer: (base) => ({
+        ...base,
+        paddingLeft: 10,
+        paddingRight: 10,
+      }),
+      placeholder: (base) => ({
+        ...base,
+        color: "rgba(100,116,139,0.8)", // slate-500
       }),
       singleValue: (base) => ({
         ...base,
@@ -117,16 +130,41 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
         overflow: "hidden",
         textOverflow: "ellipsis",
         maxWidth: "100%",
+        color: "#0f172a", // slate-900
+        fontWeight: 500,
       }),
-      menu: (base) => ({ ...base, zIndex: 9999 }),
+      indicatorSeparator: () => ({ display: "none" }),
+      dropdownIndicator: (base) => ({
+        ...base,
+        color: "rgba(100,116,139,0.8)",
+      }),
+      clearIndicator: (base) => ({ ...base, color: "rgba(100,116,139,0.8)" }),
+      menu: (base) => ({
+        ...base,
+        zIndex: 9999,
+        borderRadius: "0.75rem",
+        overflow: "hidden",
+        border: "1px solid rgba(226,232,240,0.9)",
+        boxShadow: "0 20px 40px rgba(15,23,42,0.08)",
+      }),
+      option: (base, state) => ({
+        ...base,
+        fontSize: 13,
+        backgroundColor: state.isSelected
+          ? "rgba(99,102,241,0.10)"
+          : state.isFocused
+            ? "rgba(2,6,23,0.04)"
+            : "white",
+        color: "#0f172a",
+      }),
     }),
     [error],
   );
 
   return (
     <div className="pt-2">
-      <label className="block text-[11px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-        {label} {required && <span className="text-red-500">*</span>}
+      <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
+        {label} {required && <span className="text-rose-500">*</span>}
       </label>
 
       <Select
@@ -139,8 +177,8 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
       />
 
       {error && (
-        <p className="text-red-500 text-[10px] mt-1.5 flex items-center gap-1 font-semibold">
-          <AlertCircle size={10} /> {error.message}
+        <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+          <AlertCircle size={14} /> {error.message}
         </p>
       )}
     </div>
@@ -148,7 +186,7 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
 };
 
 /* =========================
-   MAIN FORM
+   MAIN FORM (MINIMALIST)
 ========================= */
 const AddEmployeeForm = () => {
   const navigate = useNavigate();
@@ -159,10 +197,6 @@ const AddEmployeeForm = () => {
   // Prevent double-submit (defense-in-depth)
   const submitLockRef = useRef(false);
 
-  // Build schema dynamically:
-  // - status choices are exactly your enum
-  // - department removed
-  // - role required ONLY in add mode (and NOT sent in edit payload)
   const schema = useMemo(() => {
     const base = {
       employeeId: yup
@@ -272,7 +306,6 @@ const AddEmployeeForm = () => {
         .oneOf(ROLES, "Invalid role")
         .required("Role is required");
     } else {
-      // present in form values for display only; not required, not updated
       base.role = yup
         .string()
         .transform((v) => normalizeText(v))
@@ -329,7 +362,6 @@ const AddEmployeeForm = () => {
     mode: "onSubmit",
   });
 
-  // Populate values in edit mode (and normalize to whitelists)
   useEffect(() => {
     if (!isEditMode) return;
     if (!employee) return;
@@ -347,9 +379,7 @@ const AddEmployeeForm = () => {
       project: safeEnumCI(employee.project, PROJECTS),
       status: safeEnumCI(employee.status, STATUSES) || "Active",
 
-      // role shown (optional), but not editable and not sent on update
       role: normalizeText(employee.role || "employee"),
-
       designation: pickDesignation(employee.designation),
 
       address: {
@@ -367,7 +397,6 @@ const AddEmployeeForm = () => {
 
   const mutation = useMutation({
     mutationFn: async (raw) => {
-      // Strict payload (only allowed keys)
       const payload = {
         employeeId: isEditMode
           ? normalizeText(employee?.employeeId || raw.employeeId)
@@ -399,12 +428,10 @@ const AddEmployeeForm = () => {
         },
       };
 
-      // role is ONLY added on create (and NEVER on update)
       if (!isEditMode) {
         payload.role = safeEnum(normalizeText(raw.role), ROLES);
       }
 
-      // Extra hard checks
       if (!payload.division) throw new Error("Invalid division selected.");
       if (!payload.project) throw new Error("Invalid project selected.");
       if (!payload.status) throw new Error("Invalid status selected.");
@@ -418,7 +445,6 @@ const AddEmployeeForm = () => {
     },
     retry: 0,
     onSuccess: () => {
-      // Compatible invalidate style
       queryClient.invalidateQueries({ queryKey: ["employees"] });
       if (isEditMode)
         queryClient.invalidateQueries({ queryKey: ["employee", id] });
@@ -453,10 +479,12 @@ const AddEmployeeForm = () => {
   /* ======= Edit mode: loading / error states ======= */
   if (isEditMode && isEmployeeLoading) {
     return (
-      <div className="p-6 bg-neutral-50 mx-auto">
-        <div className="bg-white border border-gray-100 rounded-2xl p-8 shadow-sm flex items-center gap-3 text-gray-700">
-          <Loader2 className="animate-spin" size={18} />
-          Loading employee…
+      <div className="min-h-screen bg-slate-50 p-4 md:p-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 p-6 shadow-[0_1px_0_rgba(15,23,42,0.04)] flex items-center gap-3 text-slate-700">
+            <Loader2 className="animate-spin" size={18} />
+            <span className="text-sm font-medium">Loading employee…</span>
+          </div>
         </div>
       </div>
     );
@@ -464,31 +492,33 @@ const AddEmployeeForm = () => {
 
   if (isEditMode && isEmployeeError) {
     return (
-      <div className="p-6 bg-neutral-50 mx-auto">
-        <div className="bg-white border border-red-100 rounded-2xl p-8 shadow-sm">
-          <div className="flex items-center gap-2 text-red-600 font-bold">
-            <AlertCircle size={18} />
-            Failed to load employee
-          </div>
-          <p className="text-sm text-gray-600 mt-2">
-            Please try again. If this persists, check the employee ID or your
-            API.
-          </p>
-          <div className="mt-5 flex gap-2">
-            <button
-              type="button"
-              onClick={() => refetchEmployee()}
-              className="px-4 py-2 text-sm font-semibold bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate(-1)}
-              className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-            >
-              Go Back
-            </button>
+      <div className="min-h-screen ">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white/80 backdrop-blur rounded-2xl border border-rose-200/60 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
+            <div className="flex items-center gap-2 text-rose-700 font-medium">
+              <AlertCircle size={18} />
+              Failed to load employee
+            </div>
+            <p className="text-sm text-slate-600 mt-2">
+              Please try again. If this persists, check the employee ID or your
+              API.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => refetchEmployee()}
+                className="px-4 py-2.5 text-sm font-medium bg-white/70 border border-slate-200/70 rounded-xl hover:bg-white hover:border-slate-300/70 hover:shadow-sm transition"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm transition"
+              >
+                Go Back
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -496,304 +526,304 @@ const AddEmployeeForm = () => {
   }
 
   return (
-    <div className="py-2 px-1 mx-auto">
-      {/* === NAVIGATION & HEADER === */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div className="min-w-0">
-          {/* Breadcrumbs above the header title */}
-          <Breadcrumbs
-            rootLabel="home"
-            rootTo="/app"
-            // grey part after "/" (matches screenshot style)
-            // You can tweak this to your route naming preference
-            currentPathText={`Employees/${isEditMode ? "Update" : "Add"}`}
-          />
+    <div className="min-h-screen">
+      <div className="max-w-6xl mx-auto">
+        {/* === NAVIGATION & HEADER === */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <Breadcrumbs
+              rootLabel="home"
+              rootTo="/app"
+              currentPathText={`Employees/${isEditMode ? "Update" : "Add"}`}
+            />
 
-          <div className="flex items-center gap-3 mt-2">
-            <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-              <UserPlus size={20} />
-            </div>
+            <div className="flex items-start gap-3 mt-3">
+              <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                <UserPlus size={18} />
+              </div>
 
-            <div className="min-w-0">
-              <h1 className="text-xl font-bold text-gray-900 truncate">
-                {isEditMode ? "Update Employee" : "Add New Employee"}
-              </h1>
-              <p className="text-sm text-gray-500 font-medium">
-                Manage employee records and assignment details.
-              </p>
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold text-slate-900 tracking-tight truncate">
+                  {isEditMode ? "Update Employee" : "Add New Employee"}
+                </h1>
+                <p className="text-sm text-slate-600 mt-1">
+                  Manage employee records and assignment details.
+                </p>
+              </div>
             </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate(-1)}
+              className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-white/70 border border-slate-200/70 rounded-xl hover:bg-white hover:border-slate-300/70 hover:shadow-sm transition"
+              disabled={isPending}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              form="employeeForm"
+              disabled={isPending}
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm disabled:opacity-70 transition"
+            >
+              {isPending ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 size={18} className="animate-spin" />
+                  {isEditMode ? "Updating..." : "Saving..."}
+                </span>
+              ) : (
+                <>
+                  <Save size={18} />
+                  {isEditMode ? "Update Employee" : "Save Employee"}
+                </>
+              )}
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => navigate(-1)}
-            className="px-4 py-2 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-all"
-            disabled={isPending}
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            form="employeeForm"
-            disabled={isPending}
-            className="flex items-center gap-2 px-6 py-2 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 shadow-md shadow-blue-100 disabled:opacity-70 transition-all"
-          >
-            {isPending ? (
-              <span className="flex items-center gap-2">
-                <Loader2 size={18} className="animate-spin" />
-                {isEditMode ? "Updating..." : "Saving..."}
-              </span>
-            ) : (
-              <>
-                <Save size={18} />
-                {isEditMode ? "Update Employee" : "Save Employee"}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      <form
-        id="employeeForm"
-        onSubmit={handleSubmit(onSubmit)}
-        className="grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white p-8 rounded-2xl border border-gray-100 shadow-sm"
-      >
-        {/* LEFT COLUMN */}
-        <div className="space-y-8">
-          <Section title="Personal Details" icon={User}>
-            <InputField
-              label="Employee ID"
-              required
-              icon={<Hash size={14} className="text-gray-400" />}
-              {...register("employeeId")}
-              error={errors.employeeId}
-              disabled={isEditMode}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
+        <form
+          id="employeeForm"
+          onSubmit={handleSubmit(onSubmit)}
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white/80 backdrop-blur p-6 md:p-8 rounded-2xl border border-slate-200/70 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+        >
+          {/* LEFT COLUMN */}
+          <div className="space-y-8">
+            <Section title="Personal Details" icon={User}>
               <InputField
-                label="First Name"
+                label="Employee ID"
                 required
-                {...register("firstName")}
-                error={errors.firstName}
+                icon={<Hash size={14} className="text-slate-400" />}
+                {...register("employeeId")}
+                error={errors.employeeId}
+                disabled={isEditMode}
               />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="First Name"
+                  required
+                  {...register("firstName")}
+                  error={errors.firstName}
+                />
+                <InputField
+                  label="Last Name"
+                  required
+                  {...register("lastName")}
+                  error={errors.lastName}
+                />
+              </div>
+
               <InputField
-                label="Last Name"
+                label="Username"
                 required
-                {...register("lastName")}
-                error={errors.lastName}
+                {...register("username")}
+                error={errors.username}
               />
-            </div>
 
-            <InputField
-              label="Username"
-              required
-              {...register("username")}
-              error={errors.username}
-            />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <InputField
+                  label="Email Address"
+                  type="email"
+                  required
+                  icon={<Mail size={14} className="text-slate-400" />}
+                  {...register("email")}
+                  error={errors.email}
+                />
+                <InputField
+                  label="Phone Number"
+                  type="tel"
+                  icon={<Phone size={14} className="text-slate-400" />}
+                  {...register("phone")}
+                  error={errors.phone}
+                  hint="Digits only (10–15). We’ll strip spaces/dashes automatically."
+                />
+              </div>
+            </Section>
 
-            <div className="grid grid-cols-2 gap-4">
-              <InputField
-                label="Email Address"
-                type="email"
-                required
-                icon={<Mail size={14} className="text-gray-400" />}
-                {...register("email")}
-                error={errors.email}
-              />
-              <InputField
-                label="Phone Number"
-                type="tel"
-                icon={<Phone size={14} className="text-gray-400" />}
-                {...register("phone")}
-                error={errors.phone}
-                hint="Digits only (10–15). We’ll strip spaces/dashes automatically."
-              />
-            </div>
-          </Section>
+            <Section title="Work Information" icon={Briefcase}>
+              {!isEditMode ? (
+                <Controller
+                  name="role"
+                  control={control}
+                  render={({ field }) => (
+                    <SelectInput
+                      label="System Role"
+                      options={ROLES}
+                      value={field.value}
+                      onChange={field.onChange}
+                      error={errors.role}
+                      required
+                    />
+                  )}
+                />
+              ) : (
+                <div className="pt-2">
+                  <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
+                    <Shield size={14} className="text-slate-400" /> System Role
+                  </label>
+                  <div className="h-11 px-3 flex items-center rounded-xl border border-slate-200/70 bg-slate-50/60 text-sm font-medium text-slate-800">
+                    {employee?.role || "—"}
+                  </div>
+                </div>
+              )}
 
-          <Section title="Work Information" icon={Briefcase}>
-            {/* Role: ONLY for ADD. For UPDATE, show as read-only text (not editable, not sent). */}
-            {!isEditMode ? (
               <Controller
-                name="role"
+                name="status"
                 control={control}
                 render={({ field }) => (
                   <SelectInput
-                    label="System Role"
-                    options={ROLES}
+                    label="Status"
+                    options={STATUSES}
                     value={field.value}
                     onChange={field.onChange}
-                    error={errors.role}
+                    error={errors.status}
                     required
                   />
                 )}
               />
-            ) : (
+
+              <InputField
+                label="Position Title"
+                required
+                {...register("position")}
+                error={errors.position}
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Controller
+                  name="division"
+                  control={control}
+                  render={({ field }) => (
+                    <SelectInput
+                      label="Division"
+                      options={DIVISIONS}
+                      value={field.value}
+                      onChange={field.onChange}
+                      error={errors.division}
+                      required
+                    />
+                  )}
+                />
+
+                <Controller
+                  name="project"
+                  control={control}
+                  render={({ field }) => (
+                    <SelectInput
+                      label="Project"
+                      options={PROJECTS}
+                      value={field.value}
+                      onChange={field.onChange}
+                      error={errors.project}
+                      required
+                    />
+                  )}
+                />
+              </div>
+
               <div className="pt-2">
-                <label className="block text-[11px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-                  <Shield size={12} /> System Role
+                <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
+                  <Building2 size={14} className="text-slate-400" /> Designation{" "}
+                  <span className="text-rose-500">*</span>
                 </label>
-                <div className="h-10 px-3 flex items-center rounded-lg border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700">
-                  {/* role exists in form values via reset() */}
-                  {employee?.role || "—"}
+
+                <Controller
+                  name="designation"
+                  control={control}
+                  render={({ field }) => (
+                    <ProvincialOfficeSelect
+                      value={pickDesignation(field.value)}
+                      onChange={(v) => field.onChange(pickDesignation(v))}
+                      error={errors.designation}
+                    />
+                  )}
+                />
+
+                {errors.designation && (
+                  <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+                    <AlertCircle size={14} /> {errors.designation.message}
+                  </p>
+                )}
+              </div>
+            </Section>
+          </div>
+
+          {/* RIGHT COLUMN */}
+          <div className="space-y-8">
+            <Section title="Primary Address" icon={MapPin}>
+              <div className="bg-slate-50/60 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                <InputField
+                  label="Street / Building"
+                  {...register("address.street")}
+                  error={errors.address?.street}
+                  className="bg-white/80"
+                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <InputField
+                    label="City"
+                    {...register("address.city")}
+                    error={errors.address?.city}
+                    className="bg-white/80"
+                  />
+                  <InputField
+                    label="Province"
+                    {...register("address.province")}
+                    error={errors.address?.province}
+                    className="bg-white/80"
+                  />
                 </div>
               </div>
-            )}
+            </Section>
 
-            <Controller
-              name="status"
-              control={control}
-              render={({ field }) => (
-                <SelectInput
-                  label="Status"
-                  options={STATUSES}
-                  value={field.value}
-                  onChange={field.onChange}
-                  error={errors.status}
-                  required
-                />
-              )}
-            />
-
-            <InputField
-              label="Position Title"
-              required
-              {...register("position")}
-              error={errors.position}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <Controller
-                name="division"
-                control={control}
-                render={({ field }) => (
-                  <SelectInput
-                    label="Division"
-                    options={DIVISIONS}
-                    value={field.value}
-                    onChange={field.onChange}
-                    error={errors.division}
-                    required
-                  />
-                )}
-              />
-
-              <Controller
-                name="project"
-                control={control}
-                render={({ field }) => (
-                  <SelectInput
-                    label="Project"
-                    options={PROJECTS}
-                    value={field.value}
-                    onChange={field.onChange}
-                    error={errors.project}
-                    required
-                  />
-                )}
-              />
-            </div>
-
-            <div className="pt-2">
-              <label className="block text-[11px] font-bold text-gray-500 mb-1.5 uppercase tracking-wider flex items-center gap-1">
-                <Building2 size={12} /> Designation{" "}
-                <span className="text-red-500">*</span>
-              </label>
-
-              <Controller
-                name="designation"
-                control={control}
-                render={({ field }) => (
-                  <ProvincialOfficeSelect
-                    value={pickDesignation(field.value)}
-                    onChange={(v) => field.onChange(pickDesignation(v))}
-                    error={errors.designation}
-                  />
-                )}
-              />
-
-              {errors.designation && (
-                <p className="text-red-500 text-[10px] mt-1.5 flex items-center gap-1 font-semibold">
-                  <AlertCircle size={10} /> {errors.designation.message}
-                </p>
-              )}
-            </div>
-          </Section>
-        </div>
-
-        {/* RIGHT COLUMN */}
-        <div className="space-y-8">
-          <Section title="Primary Address" icon={MapPin}>
-            <div className="bg-gray-50/50 p-5 rounded-xl border border-gray-100 space-y-4">
-              <InputField
-                label="Street / Building"
-                {...register("address.street")}
-                error={errors.address?.street}
-                className="bg-white"
-              />
-              <div className="grid grid-cols-2 gap-4">
+            <Section title="Emergency Contact" icon={ShieldCheck}>
+              <div className="bg-rose-50/30 p-5 rounded-2xl border border-rose-200/50 space-y-4">
                 <InputField
-                  label="City"
-                  {...register("address.city")}
-                  error={errors.address?.city}
-                  className="bg-white"
+                  label="Contact Person"
+                  {...register("emergencyContact.name")}
+                  error={errors.emergencyContact?.name}
+                  className="bg-white/80"
                 />
-                <InputField
-                  label="Province"
-                  {...register("address.province")}
-                  error={errors.address?.province}
-                  className="bg-white"
-                />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <InputField
+                    label="Relationship"
+                    {...register("emergencyContact.relation")}
+                    error={errors.emergencyContact?.relation}
+                    className="bg-white/80"
+                  />
+                  <InputField
+                    label="Contact Phone"
+                    type="tel"
+                    {...register("emergencyContact.phone")}
+                    error={errors.emergencyContact?.phone}
+                    className="bg-white/80"
+                  />
+                </div>
               </div>
-            </div>
-          </Section>
-
-          <Section title="Emergency Contact" icon={ShieldCheck}>
-            <div className="bg-red-50/30 p-5 rounded-xl border border-red-100 space-y-4">
-              <InputField
-                label="Contact Person"
-                {...register("emergencyContact.name")}
-                error={errors.emergencyContact?.name}
-                className="bg-white"
-              />
-              <div className="grid grid-cols-2 gap-4">
-                <InputField
-                  label="Relationship"
-                  {...register("emergencyContact.relation")}
-                  error={errors.emergencyContact?.relation}
-                  className="bg-white"
-                />
-                <InputField
-                  label="Contact Phone"
-                  type="tel"
-                  {...register("emergencyContact.phone")}
-                  error={errors.emergencyContact?.phone}
-                  className="bg-white"
-                />
-              </div>
-            </div>
-          </Section>
-        </div>
-      </form>
+            </Section>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };
 
 /* =========================
-   ATOMIC COMPONENTS
+   ATOMIC COMPONENTS (MINIMALIST)
 ========================= */
 
 const Section = ({ title, icon: Icon, children }) => (
   <div className="flex flex-col gap-4">
-    <div className="flex items-center gap-2 text-gray-800 pb-2 border-b border-gray-100">
-      <Icon size={18} className="text-blue-600" />
-      <h4 className="font-bold text-xs uppercase tracking-widest text-gray-500">
-        {title}
-      </h4>
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <div className="p-2 rounded-xl bg-slate-100 text-slate-600 border border-slate-200/60">
+          <Icon size={16} />
+        </div>
+        <h4 className="text-sm font-medium text-slate-700">{title}</h4>
+      </div>
+      <div className="h-px flex-1 bg-slate-200/60 hidden md:block" />
     </div>
     {children}
   </div>
@@ -801,9 +831,9 @@ const Section = ({ title, icon: Icon, children }) => (
 
 const InputField = React.forwardRef(
   ({ label, error, required, className = "", hint, icon, ...props }, ref) => (
-    <div className="w-full">
-      <label className="block text-[11px] font-bold text-gray-600 mb-1.5 uppercase tracking-wider">
-        {label} {required && <span className="text-red-500">*</span>}
+    <div className="w-full pt-2">
+      <label className="block text-xs text-slate-600 mb-1.5">
+        {label} {required && <span className="text-rose-500">*</span>}
       </label>
 
       <div className="relative">
@@ -814,22 +844,30 @@ const InputField = React.forwardRef(
         <input
           ref={ref}
           {...props}
-          className={`w-full ${icon ? "pl-9" : "pl-3"} pr-3 py-2.5 text-sm border rounded-lg transition-all outline-none 
-          ${
+          className={[
+            "w-full h-11",
+            icon ? "pl-9" : "pl-3",
+            "pr-3",
+            "text-sm",
+            "rounded-xl",
+            "border",
+            "outline-none",
+            "transition",
+            "bg-white/90",
             error
-              ? "border-red-300 focus:ring-4 focus:ring-red-500/5 bg-red-50 text-red-900"
-              : "border-gray-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 text-gray-800 bg-white"
-          } ${className}`}
+              ? "border-rose-300 focus:ring-2 focus:ring-rose-200 focus:border-rose-300 text-rose-900"
+              : "border-slate-200/80 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 text-slate-900",
+            "disabled:opacity-60 disabled:bg-slate-50",
+            className,
+          ].join(" ")}
         />
       </div>
 
-      {hint && !error && (
-        <p className="text-[10px] mt-1.5 text-gray-400 font-medium">{hint}</p>
-      )}
+      {hint && !error && <p className="text-xs mt-2 text-slate-500">{hint}</p>}
 
       {error && (
-        <p className="text-red-500 text-[10px] mt-1.5 flex items-center gap-1 font-semibold">
-          <AlertCircle size={10} /> {error.message}
+        <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+          <AlertCircle size={14} /> {error.message}
         </p>
       )}
     </div>

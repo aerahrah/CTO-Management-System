@@ -398,6 +398,7 @@ const getCtoApplicationsByEmployeeService = async (
               lastName: "$approver.lastName",
               position: "$approver.position",
             },
+            remarks: 1,
           },
         },
       ],
