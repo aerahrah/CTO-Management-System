@@ -1,7 +1,9 @@
 // utils/endpointMap.js
 
 const endpointMap = [
-  // Employee Routes
+  /* =========================
+     Employee Routes
+  ========================= */
   { pattern: /^\/employee$/, method: "POST", name: "Create Employee" },
   { pattern: /^\/employee\/login$/, method: "POST", name: "Employee Login" },
   { pattern: /^\/employee\/\w+$/, method: "PUT", name: "Update Employee" },
@@ -37,7 +39,9 @@ const endpointMap = [
     name: "View Employee Details",
   },
 
-  // CTO Credit Routes
+  /* =========================
+     CTO Credit Routes
+  ========================= */
   {
     pattern: /^\/cto\/credits$/,
     method: "POST",
@@ -64,7 +68,9 @@ const endpointMap = [
     name: "View Employee Credit History",
   },
 
-  // CTO Application Routes
+  /* =========================
+     CTO Application Routes
+  ========================= */
   {
     pattern: /^\/cto\/applications\/apply$/,
     method: "POST",
@@ -106,10 +112,14 @@ const endpointMap = [
     name: "Reject CTO Application",
   },
 
-  // CTO Dashboard
+  /* =========================
+     CTO Dashboard
+  ========================= */
   { pattern: /^\/cto\/dashboard$/, method: "GET", name: "View Dashboard" },
 
-  // CTO Settings
+  /* =========================
+     CTO Settings
+  ========================= */
   { pattern: /^\/cto\/settings$/, method: "GET", name: "View CTO Settings" },
   {
     pattern: /^\/cto\/settings\/\w+$/,
@@ -127,7 +137,9 @@ const endpointMap = [
     name: "Delete CTO Approver Setting",
   },
 
-  // Designations
+  /* =========================
+     Designations (Provincial Offices)
+  ========================= */
   {
     pattern: /^\/settings\/provincial-office$/,
     method: "GET",
@@ -153,6 +165,53 @@ const endpointMap = [
     method: "DELETE",
     name: "Delete Designation",
   },
+
+  /* =========================
+     Projects (Settings)
+     ✅ Updated routes:
+       GET /settings/projects          -> list (paginated)
+       GET /settings/projects/options  -> listAll (no pagination; for dropdowns)
+       GET /settings/projects/:id      -> getOne
+       POST /settings/projects         -> create
+       PATCH /settings/projects/:id    -> update
+       PATCH /settings/projects/:id/status -> updateStatus
+       DELETE /settings/projects/:id   -> remove
+  ========================= */
+  {
+    pattern: /^\/settings\/projects$/,
+    method: "POST",
+    name: "Create Project",
+  },
+  {
+    pattern: /^\/settings\/projects$/,
+    method: "GET",
+    name: "View Projects",
+  },
+  {
+    pattern: /^\/settings\/projects\/options$/,
+    method: "GET",
+    name: "View Project Options",
+  },
+  {
+    pattern: /^\/settings\/projects\/\w+$/,
+    method: "GET",
+    name: "View Project Details",
+  },
+  {
+    pattern: /^\/settings\/projects\/\w+$/,
+    method: "PATCH",
+    name: "Update Project",
+  },
+  {
+    pattern: /^\/settings\/projects\/\w+$/,
+    method: "DELETE",
+    name: "Delete Project",
+  },
+  {
+    pattern: /^\/settings\/projects\/\w+\/status$/,
+    method: "PATCH",
+    name: "Update Project Status",
+  },
 ];
 
 // Function to map URL + method to a friendly endpoint name
@@ -160,7 +219,7 @@ const getEndpointName = (url, method) => {
   const match = endpointMap.find(
     (e) => e.method === method && e.pattern.test(url),
   );
-  return match ? match.name : `${method} ${url}`; // fallback to raw URL
+  return match ? match.name : `${method} ${url}`;
 };
 
 module.exports = getEndpointName;

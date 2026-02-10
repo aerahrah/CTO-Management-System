@@ -1,9 +1,16 @@
 // src/api/projectApi.js
 import API from "./api";
 
-// ✅ GET list (supports: ?status=Active&search=abc&page=1&limit=20|50|100)
+// ✅ GET list (supports: ?status=Active&page=1&limit=20|50|100)
 export const fetchAllProjects = async (params = {}) => {
   const { data } = await API.get("/settings/projects", { params });
+  return data;
+};
+
+// ✅ NEW: GET all projects (NO pagination) for dropdown/options
+// supports: ?status=Active | Inactive (optional)
+export const fetchProjectOptions = async (params = {}) => {
+  const { data } = await API.get("/settings/projects/options", { params });
   return data;
 };
 

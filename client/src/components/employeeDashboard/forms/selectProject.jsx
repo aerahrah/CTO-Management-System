@@ -1,37 +1,37 @@
+// src/components/employees/addEmployee/selectProjectOptions.jsx
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
 import { Loader2 } from "lucide-react";
-import { fetchProvincialOffices } from "../../../api/employee";
+import { fetchProjectOptions } from "../../../api/project";
 
-export default function ProvincialOfficeSelect({ value, onChange, error }) {
+export default function SelectProjectOptions({ value, onChange, error }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const {
-    data: offices = [],
-    isPending,
-    isError,
-  } = useQuery({
-    queryKey: ["provincialOffices"],
-    queryFn: fetchProvincialOffices,
+  const { data, isPending, isError } = useQuery({
+    queryKey: ["projectOptions", "Active"],
+    queryFn: () => fetchProjectOptions({ status: "Active" }),
     staleTime: 5 * 60 * 1000,
   });
 
-  const options = useMemo(
-    () =>
-      (offices || [])
-        .filter((o) => o?._id && o?.name)
-        .map((office) => ({
-          value: String(office._id),
-          label: office.name,
-        })),
-    [offices],
-  );
+  const options = useMemo(() => {
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const opts = items
+      .filter((p) => p?._id && p?.name)
+      .map((p) => ({ value: String(p._id), label: p.name }));
+
+    const seen = new Set();
+    return opts.filter((o) => {
+      if (!o?.value) return false;
+      if (seen.has(o.value)) return false;
+      seen.add(o.value);
+      return true;
+    });
+  }, [data]);
 
   const handleMenuOpen = () => setMenuOpen(true);
   const handleMenuClose = () => setMenuOpen(false);
 
-  // dynamic options when user opens the dropdown
   const dynamicOptions = useMemo(() => {
     if (menuOpen && isPending) {
       return [
@@ -40,7 +40,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
           label: (
             <div className="flex items-center gap-2 text-slate-600">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading provincial offices...
+              Loading projects...
             </div>
           ),
           isDisabled: true,
@@ -52,11 +52,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
       return [
         {
           value: "__error__",
-          label: (
-            <div className="text-rose-600">
-              Failed to load provincial offices.
-            </div>
-          ),
+          label: <div className="text-rose-600">Failed to load projects.</div>,
           isDisabled: true,
         },
       ];
@@ -70,7 +66,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
     return options.find((opt) => opt.value === String(value)) || null;
   }, [options, value]);
 
-  // ✅ matches your Project select design (44px, rounded-xl, indigo focus ring)
+  // ✅ same design as your SelectInput / ProvincialOfficeSelect (project-style)
   const customStyles = useMemo(
     () => ({
       control: (base, state) => ({
@@ -78,17 +74,17 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
         minHeight: "44px",
         borderRadius: "0.75rem",
         borderColor: state.isFocused
-          ? "#a5b4fc" // indigo-300
+          ? "#a5b4fc"
           : error
-            ? "#fda4af" // rose-300
-            : "rgba(226,232,240,0.9)", // slate-200-ish
+            ? "#fda4af"
+            : "rgba(226,232,240,0.9)",
         boxShadow: state.isFocused ? "0 0 0 4px rgba(99,102,241,0.12)" : "none",
         "&:hover": {
           borderColor: state.isFocused
             ? "#a5b4fc"
             : error
               ? "#fda4af"
-              : "rgba(148,163,184,0.7)", // slate-400-ish
+              : "rgba(148,163,184,0.7)",
         },
         backgroundColor: "rgba(255,255,255,0.9)",
         overflow: "hidden",
@@ -100,7 +96,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
       }),
       placeholder: (base) => ({
         ...base,
-        color: "rgba(100,116,139,0.8)", // slate-500
+        color: "rgba(100,116,139,0.8)",
       }),
       singleValue: (base) => ({
         ...base,
@@ -108,7 +104,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
         overflow: "hidden",
         textOverflow: "ellipsis",
         maxWidth: "100%",
-        color: "#0f172a", // slate-900
+        color: "#0f172a",
         fontWeight: 500,
       }),
       indicatorSeparator: () => ({ display: "none" }),
@@ -147,9 +143,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
         value={selected}
         onChange={(selectedOpt) => onChange(selectedOpt?.value || "")}
         placeholder={
-          isPending && !menuOpen
-            ? "Loading provincial offices..."
-            : "Select Provincial Office"
+          isPending && !menuOpen ? "Loading projects..." : "Select Project"
         }
         isClearable
         onMenuOpen={handleMenuOpen}

@@ -10,6 +10,7 @@ import {
 } from "../../../api/project";
 import { RotateCcw, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import FilterSelect from "../../filterSelect";
+import { toast } from "react-toastify";
 
 const pageSizeOptions = [20, 50, 100];
 const qk = (status, page, limit) => ["projects", status, page, limit];
@@ -43,6 +44,9 @@ const normalizeListResponse = (raw, fallbackPage, fallbackLimit) => {
 
   return { items, total, pages, page, limit };
 };
+
+const getErrMsg = (err, fallback = "Failed") =>
+  err?.response?.data?.message || err?.message || fallback;
 
 const Card = ({ children, className = "" }) => (
   <div
@@ -408,6 +412,7 @@ export default function ProjectSettings() {
 
   const refetchBoth = useCallback(async () => {
     await Promise.all([activeQuery.refetch(), inactiveQuery.refetch()]);
+    toast.info("List refreshed");
   }, [activeQuery, inactiveQuery]);
 
   const isRefreshing = activeQuery.isRefetching || inactiveQuery.isRefetching;
@@ -415,13 +420,16 @@ export default function ProjectSettings() {
   // Mutations
   const createMutation = useMutation({
     mutationFn: createProject,
-    onSuccess: async () => {
+    onSuccess: async (_data, vars) => {
       setNewName("");
       setInlineError("");
+      toast.success(`Added "${vars?.name}"`);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (err) => {
-      setInlineError(err?.response?.data?.message || err.message || "Failed");
+      const msg = getErrMsg(err, "Failed to add project");
+      setInlineError(msg);
+      toast.error(msg);
     },
   });
 
@@ -430,14 +438,17 @@ export default function ProjectSettings() {
     onMutate: ({ id }) => addBusy(setRenameBusyIds, id),
     onSettled: (_d, _e, vars) =>
       vars?.id && removeBusy(setRenameBusyIds, vars.id),
-    onSuccess: async () => {
+    onSuccess: async (_data, vars) => {
       setEditingId(null);
       setEditingName("");
       setInlineError("");
+      toast.success(`Renamed to "${vars?.payload?.name}"`);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (err) => {
-      setInlineError(err?.response?.data?.message || err.message || "Failed");
+      const msg = getErrMsg(err, "Failed to rename project");
+      setInlineError(msg);
+      toast.error(msg);
     },
   });
 
@@ -446,12 +457,15 @@ export default function ProjectSettings() {
     onMutate: ({ id }) => addBusy(setStatusBusyIds, id),
     onSettled: (_d, _e, vars) =>
       vars?.id && removeBusy(setStatusBusyIds, vars.id),
-    onSuccess: async () => {
+    onSuccess: async (_data, vars) => {
       setInlineError("");
+      toast.success(`Set to ${vars?.status}`);
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (err) => {
-      setInlineError(err?.response?.data?.message || err.message || "Failed");
+      const msg = getErrMsg(err, "Failed to update status");
+      setInlineError(msg);
+      toast.error(msg);
     },
   });
 
@@ -461,10 +475,13 @@ export default function ProjectSettings() {
     onSettled: (_d, _e, id) => id && removeBusy(setDeleteBusyIds, id),
     onSuccess: async () => {
       setInlineError("");
+      toast.success("Deleted project");
       await queryClient.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (err) => {
-      setInlineError(err?.response?.data?.message || err.message || "Failed");
+      const msg = getErrMsg(err, "Failed to delete project");
+      setInlineError(msg);
+      toast.error(msg);
     },
   });
 
@@ -472,7 +489,12 @@ export default function ProjectSettings() {
   const onCreate = (e) => {
     e.preventDefault();
     const name = newName.trim();
-    if (!name) return setInlineError("Project name is required.");
+    if (!name) {
+      const msg = "Project name is required.";
+      setInlineError(msg);
+      toast.error(msg);
+      return;
+    }
     setInlineError("");
     createMutation.mutate({ name, status: "Active" });
   };
@@ -490,7 +512,12 @@ export default function ProjectSettings() {
 
   const submitRename = (id) => {
     const name = editingName.trim();
-    if (!name) return setInlineError("Name cannot be empty.");
+    if (!name) {
+      const msg = "Name cannot be empty.";
+      setInlineError(msg);
+      toast.error(msg);
+      return;
+    }
     renameMutation.mutate({ id, payload: { name } });
   };
 
@@ -530,16 +557,13 @@ export default function ProjectSettings() {
 
   return (
     <div className="w-full flex-1 flex h-full flex-col bg-gray-50/50">
-      <div className="max-w-[1180px] w-full mx-auto px-3 md:px-6 pt-3 pb-6">
+      <div className="px-1 w-full mx-auto py-2 pb-6">
         <Breadcrumbs
-          items={[
-            { label: "USER MANAGEMENT", to: "/app/user-management" },
-            { label: "OFFICE/PROJECT" },
-          ]}
+          items={[{ label: "USER MANAGEMENT", to: "/app/user-management" }]}
         />
 
         {/* Header */}
-        <div className="mt-2 flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div className=" flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
               Office <span className="font-bold">Projects</span>
@@ -583,7 +607,7 @@ export default function ProjectSettings() {
                 className={`inline-flex items-center justify-center gap-2 h-11 px-4 rounded-lg text-sm font-bold border transition
                   ${
                     canCreate
-                      ? "bg-gray-900 text-white border-gray-900 hover:bg-gray-800"
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
                       : "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                   }`}
               >

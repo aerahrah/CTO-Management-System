@@ -1,6 +1,8 @@
+// src/components/employees/EmployeeDirectory.jsx
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
+import { fetchProjectOptions } from "../../api/project"; // ✅ NEW endpoint for dropdown options
 import { useNavigate } from "react-router-dom";
 import { RoleBadge } from "../statusUtils";
 import Skeleton from "react-loading-skeleton";
@@ -8,7 +10,6 @@ import "react-loading-skeleton/dist/skeleton.css";
 import Breadcrumbs from "../breadCrumbs";
 import EmployeeRoleChanger from "./employeeChangeRole";
 import Modal from "../modal";
-import FilterSelect from "../filterSelect";
 
 import {
   Search,
@@ -30,24 +31,40 @@ import {
 /* =========================
    CONSTANTS
 ========================= */
-const FILTER_OPTIONS = {
-  divisions: ["AFD", "TOD", "ORD"],
-  designations: ["Engineer", "Manager", "Analyst", "Intern", "HR Specialist"],
-  projects: [
-    "Cybersecurity/PNPKI",
-    "FPIAP",
-    "ILCDB",
-    "ILCDB - Tech4ED",
-    "DigiGov",
-    "GECS",
-    "NIPPSB",
-    "GovNet",
-    "MISS",
-    "IIDB",
-  ],
+const DIVISION_OPTIONS = ["AFD", "TOD", "ORD"];
+const pageSizeOptions = [20, 50, 100];
+
+/* =========================
+   HELPERS (safe normalize)
+========================= */
+const toInt = (v, fallback) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : fallback;
 };
 
-const pageSizeOptions = [20, 50, 100];
+const initials = (firstName, lastName) =>
+  `${(firstName || " ")[0] || ""}${(lastName || " ")[0] || ""}`.toUpperCase();
+
+const getStatusPill = (status) => {
+  const s = status || "Active";
+  const map = {
+    Active: "bg-emerald-50 text-emerald-700 border-emerald-100",
+    Inactive: "bg-gray-50 text-gray-700 border-gray-100",
+    Resigned: "bg-amber-50 text-amber-700 border-amber-100",
+    Terminated: "bg-rose-50 text-rose-700 border-rose-100",
+  };
+  const dot = {
+    Active: "bg-emerald-600",
+    Inactive: "bg-gray-500",
+    Resigned: "bg-amber-600",
+    Terminated: "bg-rose-600",
+  };
+  return {
+    wrap: map[s] || map.Inactive,
+    dot: dot[s] || dot.Inactive,
+    label: s,
+  };
+};
 
 /* =========================
    HOOK: DEBOUNCE
@@ -153,6 +170,8 @@ const CompactPagination = ({
   onNext,
   label = "items",
 }) => {
+  const tp = Math.max(Number(totalPages) || 1, 1);
+
   return (
     <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
       {/* Mobile */}
@@ -169,7 +188,7 @@ const CompactPagination = ({
 
         <div className="text-center min-w-0">
           <div className="text-xs font-mono font-semibold text-gray-700">
-            {page} / {totalPages}
+            {page} / {tp}
           </div>
           <div className="text-[11px] text-gray-500 truncate">
             {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
@@ -179,7 +198,7 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onNext}
-          disabled={page >= totalPages || total === 0}
+          disabled={page >= tp || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
         >
           Next
@@ -207,12 +226,12 @@ const CompactPagination = ({
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="text-xs font-mono font-medium px-3 text-gray-600">
-            {page} / {totalPages}
+            {page} / {tp}
           </span>
           <button
             type="button"
             onClick={onNext}
-            disabled={page >= totalPages || total === 0}
+            disabled={page >= tp || total === 0}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
           >
             <ChevronRight className="w-4 h-4" />
@@ -224,8 +243,39 @@ const CompactPagination = ({
 };
 
 /* =========================
-   Helpers
+   Small Select UI (value=id, label=text)
 ========================= */
+const SelectField = ({
+  label,
+  value,
+  onChange,
+  options,
+  disabled,
+  className = "",
+}) => {
+  return (
+    <div className={className}>
+      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.14em] mb-1">
+        {label}
+      </label>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full h-10 px-3 text-sm bg-gray-50 border border-gray-200 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-gray-700 cursor-pointer ${
+          disabled ? "opacity-60 cursor-not-allowed" : ""
+        }`}
+      >
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
 const DivisionBadge = ({ division }) => {
   const styles = {
     AFD: "bg-blue-50 text-blue-700 border-blue-100",
@@ -244,21 +294,16 @@ const DivisionBadge = ({ division }) => {
   );
 };
 
-const initials = (firstName, lastName) =>
-  `${(firstName || " ")[0] || ""}${(lastName || " ")[0] || ""}`.toUpperCase();
-
 /* =========================
-   MAIN COMPONENT (SECURE)
+   MAIN COMPONENT
 ========================= */
 const EmployeeDirectory = () => {
   const navigate = useNavigate();
 
-  // Role modal (secure)
+  // Role modal
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [roleBusy, setRoleBusy] = useState(false);
-
-  // Hard lock to prevent rapid re-opening / multiple modals
   const openRoleLockRef = useRef(false);
 
   const [page, setPage] = useState(1);
@@ -267,55 +312,90 @@ const EmployeeDirectory = () => {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, 400);
 
+  // Store filter values as IDs (for refs)
   const [filters, setFilters] = useState({
     division: "All",
-    designation: "All",
-    project: "All",
+    designation: "All", // designationId (best-effort)
+    project: "All", // projectId
   });
 
-  // sanitize filter values to allowed lists (defense-in-depth)
+  /* -------- Projects (options endpoint, no pagination) -------- */
+  const projectsQuery = useQuery({
+    queryKey: ["projectOptions", "Active"],
+    queryFn: () => fetchProjectOptions({ status: "Active" }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const activeProjects = useMemo(() => {
+    const items = Array.isArray(projectsQuery.data?.items)
+      ? projectsQuery.data.items
+      : [];
+    return items;
+  }, [projectsQuery.data]);
+
+  const projectOptions = useMemo(() => {
+    const base = [{ value: "All", label: "All" }];
+    const opts = activeProjects
+      .filter((p) => p?._id && p?.name)
+      .map((p) => ({ value: String(p._id), label: p.name }));
+
+    const seen = new Set();
+    return [...base, ...opts].filter((o) => {
+      if (!o?.value) return false;
+      if (seen.has(o.value)) return false;
+      seen.add(o.value);
+      return true;
+    });
+  }, [activeProjects]);
+
+  const projectIdSet = useMemo(() => {
+    return new Set(projectOptions.map((o) => o.value));
+  }, [projectOptions]);
+
+  /* -------- Employees -------- */
   const safeFilters = useMemo(() => {
-    const safeDivision = ["All", ...FILTER_OPTIONS.divisions].includes(
-      filters.division,
-    )
+    const safeDivision = ["All", ...DIVISION_OPTIONS].includes(filters.division)
       ? filters.division
       : "All";
 
-    const safeDesignation = ["All", ...FILTER_OPTIONS.designations].includes(
-      filters.designation,
-    )
-      ? filters.designation
-      : "All";
+    const safeDesignation =
+      filters.designation === "All" ||
+      (filters.designation && typeof filters.designation === "string")
+        ? filters.designation
+        : "All";
 
-    const safeProject = ["All", ...FILTER_OPTIONS.projects].includes(
-      filters.project,
-    )
-      ? filters.project
-      : "All";
+    const safeProject =
+      filters.project === "All"
+        ? "All"
+        : projectIdSet.has(filters.project)
+          ? filters.project
+          : "All";
 
     return {
       division: safeDivision,
       designation: safeDesignation,
       project: safeProject,
     };
-  }, [filters]);
+  }, [filters, projectIdSet]);
+
+  const employeeQueryParams = useMemo(
+    () => ({
+      page,
+      limit,
+      search: debouncedSearch || undefined,
+      division:
+        safeFilters.division === "All" ? undefined : safeFilters.division,
+
+      designation:
+        safeFilters.designation === "All" ? undefined : safeFilters.designation,
+      project: safeFilters.project === "All" ? undefined : safeFilters.project,
+    }),
+    [page, limit, debouncedSearch, safeFilters],
+  );
 
   const { data, isLoading, isPlaceholderData } = useQuery({
-    queryKey: ["employees", page, limit, safeFilters, debouncedSearch],
-    queryFn: () =>
-      getEmployees({
-        page,
-        limit,
-        search: debouncedSearch || undefined,
-        division:
-          safeFilters.division === "All" ? undefined : safeFilters.division,
-        designation:
-          safeFilters.designation === "All"
-            ? undefined
-            : safeFilters.designation,
-        project:
-          safeFilters.project === "All" ? undefined : safeFilters.project,
-      }),
+    queryKey: ["employees", employeeQueryParams],
+    queryFn: () => getEmployees(employeeQueryParams),
     placeholderData: keepPreviousData,
   });
 
@@ -326,9 +406,13 @@ const EmployeeDirectory = () => {
 
   const employees = data?.data || [];
   const totalItems = data?.total || 0;
-  const totalPages = Math.max(data?.totalPages || 1, 1);
 
-  // keep page within range
+  const totalPages = useMemo(() => {
+    const tpFromApi = data?.totalPages;
+    if (Number(tpFromApi) && Number(tpFromApi) > 0) return Number(tpFromApi);
+    return Math.max(Math.ceil(totalItems / limit) || 1, 1);
+  }, [data?.totalPages, totalItems, limit]);
+
   useEffect(() => {
     setPage((p) => {
       if (p > totalPages) return totalPages;
@@ -340,6 +424,36 @@ const EmployeeDirectory = () => {
   const startItem = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endItem = totalItems === 0 ? 0 : Math.min(page * limit, totalItems);
 
+  // designation options (best-effort from current data)
+  const designationOptions = useMemo(() => {
+    const base = [{ value: "All", label: "All" }];
+    const seen = new Set();
+
+    const fromPage = employees
+      .map((e) => e?.designation)
+      .filter(Boolean)
+      .map((d) => {
+        if (typeof d === "string") return { value: d, label: d };
+        if (d?._id)
+          return { value: String(d._id), label: d?.name || String(d._id) };
+        return null;
+      })
+      .filter(Boolean);
+
+    return [...base, ...fromPage].filter((o) => {
+      if (!o?.value) return false;
+      if (seen.has(o.value)) return false;
+      seen.add(o.value);
+      return true;
+    });
+  }, [employees]);
+
+  const selectedProjectLabel =
+    projectOptions.find((o) => o.value === safeFilters.project)?.label || "";
+  const selectedDesignationLabel =
+    designationOptions.find((o) => o.value === safeFilters.designation)
+      ?.label || "";
+
   const handleAddEmployee = () => navigate("/app/employees/add-employee");
 
   const closeRoleModal = useCallback(() => {
@@ -350,7 +464,6 @@ const EmployeeDirectory = () => {
   }, []);
 
   const openRoleModal = useCallback((employee) => {
-    // Hard-block multiple opens from rapid clicks
     if (openRoleLockRef.current) return;
     openRoleLockRef.current = true;
 
@@ -358,7 +471,6 @@ const EmployeeDirectory = () => {
     setRoleBusy(false);
     setIsRoleModalOpen(true);
 
-    // release lock after first paint; modal stays single-instance
     requestAnimationFrame(() => {
       openRoleLockRef.current = false;
     });
@@ -395,9 +507,7 @@ const EmployeeDirectory = () => {
       <div className="pt-2 pb-3 sm:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="flex-1 min-w-0">
-            {/* Breadcrumbs above the title */}
             <Breadcrumbs rootLabel="home" rootTo="/app" />
-
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
               Employee Directory
             </h1>
@@ -421,41 +531,43 @@ const EmployeeDirectory = () => {
       <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             {/* Filters */}
             <div className="w-full md:w-auto">
-              <div className="flex flex-wrap md:flex-nowrap items-center gap-2 overflow-visible">
-                <div className="min-w-[140px] w-[140px] md:w-auto">
-                  <FilterSelect
-                    label="Division"
-                    value={safeFilters.division}
-                    onChange={(v) => setFilters((p) => ({ ...p, division: v }))}
-                    options={["All", ...FILTER_OPTIONS.divisions]}
-                    className="w-full"
-                  />
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                <SelectField
+                  label="Division"
+                  value={safeFilters.division}
+                  onChange={(v) => setFilters((p) => ({ ...p, division: v }))}
+                  options={[
+                    { value: "All", label: "All" },
+                    ...DIVISION_OPTIONS.map((d) => ({ value: d, label: d })),
+                  ]}
+                />
 
-                <div className="min-w-[160px] w-[160px] md:w-auto">
-                  <FilterSelect
-                    label="Designation"
-                    value={safeFilters.designation}
-                    onChange={(v) =>
-                      setFilters((p) => ({ ...p, designation: v }))
-                    }
-                    options={["All", ...FILTER_OPTIONS.designations]}
-                    className="w-full"
-                  />
-                </div>
+                <SelectField
+                  label="Designation"
+                  value={safeFilters.designation}
+                  onChange={(v) =>
+                    setFilters((p) => ({ ...p, designation: v }))
+                  }
+                  options={designationOptions}
+                  disabled={designationOptions.length <= 1}
+                />
 
-                <div className="min-w-[180px] w-full sm:w-[220px] md:w-auto">
-                  <FilterSelect
-                    label="Project"
-                    value={safeFilters.project}
-                    onChange={(v) => setFilters((p) => ({ ...p, project: v }))}
-                    options={["All", ...FILTER_OPTIONS.projects]}
-                    className="w-full"
-                  />
-                </div>
+                <SelectField
+                  label="Project"
+                  value={safeFilters.project}
+                  onChange={(v) => setFilters((p) => ({ ...p, project: v }))}
+                  options={
+                    projectsQuery.isLoading
+                      ? [{ value: "All", label: "Loading projects..." }]
+                      : projectOptions
+                  }
+                  disabled={
+                    projectsQuery.isLoading || projectOptions.length <= 1
+                  }
+                />
               </div>
             </div>
 
@@ -524,12 +636,12 @@ const EmployeeDirectory = () => {
                 )}
                 {safeFilters.designation !== "All" && (
                   <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {safeFilters.designation}
+                    {selectedDesignationLabel || "Designation"}
                   </span>
                 )}
                 {safeFilters.project !== "All" && (
                   <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {safeFilters.project}
+                    {selectedProjectLabel || "Project"}
                   </span>
                 )}
               </div>
@@ -553,7 +665,9 @@ const EmployeeDirectory = () => {
               <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
                 <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
                   <th className="px-6 py-4 font-bold">Employee</th>
-                  <th className="px-6 py-4 font-bold">Designation</th>
+                  <th className="px-6 py-4 font-bold">
+                    Position / Designation
+                  </th>
                   <th className="px-6 py-4 font-bold">Division</th>
                   <th className="px-6 py-4 font-bold">Project</th>
                   <th className="px-6 py-4 font-bold">Role</th>
@@ -574,68 +688,94 @@ const EmployeeDirectory = () => {
                     </tr>
                   ))
                 ) : employees.length > 0 ? (
-                  employees.map((emp, i) => (
-                    <tr
-                      key={emp._id}
-                      className={`group hover:bg-gray-50/80 transition-colors ${
-                        i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                      }`}
-                    >
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200">
-                            {initials(emp.firstName, emp.lastName)}
+                  employees.map((emp, i) => {
+                    const statusPill = getStatusPill(emp?.status);
+
+                    const projectLabel =
+                      typeof emp?.project === "string"
+                        ? emp.project
+                        : emp?.project?.name || emp?.project?._id || "—";
+
+                    const designationLabel =
+                      typeof emp?.designation === "string"
+                        ? emp.designation
+                        : emp?.designation?.name || "—";
+
+                    const positionOrDesignation =
+                      emp?.position || designationLabel;
+
+                    return (
+                      <tr
+                        key={emp._id}
+                        className={`group hover:bg-gray-50/80 transition-colors ${
+                          i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                        }`}
+                      >
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200">
+                              {initials(emp.firstName, emp.lastName)}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 truncate">
+                                {emp.firstName} {emp.lastName}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">
+                                {emp.email || "No email"}
+                                {emp.username ? (
+                                  <span className="ml-2 font-mono text-[11px] text-gray-400">
+                                    @{emp.username}
+                                  </span>
+                                ) : null}
+                              </p>
+                            </div>
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">
-                              {emp.firstName} {emp.lastName}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">
-                              {emp.email || "No email"}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {emp?.designation?.name || emp.designation || "—"}
-                      </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {positionOrDesignation || "—"}
+                        </td>
 
-                      <td className="px-6 py-4">
-                        <DivisionBadge division={emp.division} />
-                      </td>
+                        <td className="px-6 py-4">
+                          <DivisionBadge division={emp.division} />
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {emp.project ? (
-                          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
-                            {emp.project}
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {projectLabel && projectLabel !== "—" ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                              {projectLabel}
+                            </span>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {emp.role ? <RoleBadge role={emp.role} /> : "—"}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusPill.wrap}`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`}
+                            />
+                            {statusPill.label}
                           </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
+                        </td>
 
-                      <td className="px-6 py-4 text-sm text-gray-600">
-                        {emp.role ? <RoleBadge role={emp.role} /> : "—"}
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
-                          {emp.status || "ACTIVE"}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end">
-                          <ActionMenu
-                            disabled={isRoleModalOpen} // prevent chaos while modal open
-                            onAction={(action) => handleAction(action, emp)}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex justify-end">
+                            <ActionMenu
+                              disabled={isRoleModalOpen}
+                              onAction={(action) => handleAction(action, emp)}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td colSpan={7} className="px-6 py-16">
@@ -678,114 +818,142 @@ const EmployeeDirectory = () => {
                 </div>
               ))
             ) : employees.length > 0 ? (
-              employees.map((emp) => (
-                <div
-                  key={emp._id}
-                  className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden"
-                  onClick={() => navigate(`/app/employees/${emp._id}`)}
-                  role="button"
-                  tabIndex={0}
-                >
-                  <div className="px-3 py-2 flex justify-between items-center border-b border-gray-50">
-                    <span className="text-[11px] font-mono text-gray-400">
-                      #{emp._id ? emp._id.slice(-6).toUpperCase() : "—"}
-                    </span>
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-50 text-green-700 border border-green-100">
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-600" />
-                      {emp.status || "ACTIVE"}
-                    </span>
-                  </div>
+              employees.map((emp) => {
+                const statusPill = getStatusPill(emp?.status);
 
-                  <div className="p-3 space-y-2">
-                    <div className="flex items-start gap-2">
-                      <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200 flex-none">
-                        {initials(emp.firstName, emp.lastName)}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-sm font-bold text-gray-900 truncate leading-5">
-                          {emp.firstName} {emp.lastName}
-                        </h4>
-                        <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
-                          <Mail size={12} className="text-gray-400" />
-                          <span className="truncate">
-                            {emp.email || "No email"}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex-none -mt-1">
-                        <ActionMenu
-                          disabled={isRoleModalOpen}
-                          onAction={(action) => handleAction(action, emp)}
+                const projectLabel =
+                  typeof emp?.project === "string"
+                    ? emp.project
+                    : emp?.project?.name || emp?.project?._id || "—";
+
+                const designationLabel =
+                  typeof emp?.designation === "string"
+                    ? emp.designation
+                    : emp?.designation?.name || "—";
+
+                const positionOrDesignation = emp?.position || designationLabel;
+
+                return (
+                  <div
+                    key={emp._id}
+                    className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden"
+                    onClick={() => navigate(`/app/employees/${emp._id}`)}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <div className="px-3 py-2 flex justify-between items-center border-b border-gray-50">
+                      <span className="text-[11px] font-mono text-gray-400">
+                        #{emp._id ? emp._id.slice(-6).toUpperCase() : "—"}
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusPill.wrap}`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`}
                         />
+                        {statusPill.label}
+                      </span>
+                    </div>
+
+                    <div className="p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200 flex-none">
+                          {initials(emp.firstName, emp.lastName)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-bold text-gray-900 truncate leading-5">
+                            {emp.firstName} {emp.lastName}
+                          </h4>
+
+                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+                            <Mail size={12} className="text-gray-400" />
+                            <span className="truncate">
+                              {emp.email || "No email"}
+                            </span>
+                          </div>
+
+                          {emp.username && (
+                            <div className="mt-1 text-[11px] text-gray-400 font-mono truncate">
+                              @{emp.username}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex-none -mt-1">
+                          <ActionMenu
+                            disabled={isRoleModalOpen}
+                            onAction={(action) => handleAction(action, emp)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
+                          <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                            <IdCard size={12} /> Position
+                          </div>
+                          <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
+                            {positionOrDesignation || "—"}
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
+                          <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                            <Building2 size={12} /> Division
+                          </div>
+                          <div className="mt-1">
+                            <DivisionBadge division={emp.division} />
+                          </div>
+                        </div>
+
+                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 col-span-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                                <Briefcase size={12} /> Project
+                              </div>
+                              <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
+                                {projectLabel || "—"}
+                              </div>
+                            </div>
+                            <div className="flex-none text-right">
+                              <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1 justify-end">
+                                <Shield size={12} /> Role
+                              </div>
+                              <div className="text-xs font-semibold text-gray-800 mt-0.5">
+                                {emp.role ? <RoleBadge role={emp.role} /> : "—"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
-                        <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                          <IdCard size={12} /> Designation
-                        </div>
-                        <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
-                          {emp?.designation?.name || emp.designation || "—"}
-                        </div>
-                      </div>
-
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
-                        <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                          <Building2 size={12} /> Division
-                        </div>
-                        <div className="mt-1">
-                          <DivisionBadge division={emp.division} />
-                        </div>
-                      </div>
-
-                      <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 col-span-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                              <Briefcase size={12} /> Project
-                            </div>
-                            <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
-                              {emp.project || "—"}
-                            </div>
-                          </div>
-                          <div className="flex-none text-right">
-                            <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1 justify-end">
-                              <Shield size={12} /> Role
-                            </div>
-                            <div className="text-xs font-semibold text-gray-800 mt-0.5">
-                              {emp.role ? <RoleBadge role={emp.role} /> : "—"}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                    <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/app/employees/${emp._id}`);
+                        }}
+                        className="py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
+                      >
+                        <User size={14} /> View
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRoleModal(emp);
+                        }}
+                        className="py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-2"
+                      >
+                        <Shield size={14} /> Role
+                      </button>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate(`/app/employees/${emp._id}`);
-                      }}
-                      className="py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
-                    >
-                      <User size={14} /> View
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openRoleModal(emp);
-                      }}
-                      className="py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-2"
-                    >
-                      <Shield size={14} /> Role
-                    </button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center py-14 px-4 text-center bg-white rounded-xl border border-gray-100">
                 <div className="bg-gray-50 p-5 rounded-full mb-3 ring-1 ring-gray-100">
@@ -826,26 +994,35 @@ const EmployeeDirectory = () => {
         />
       </div>
 
+      {/* ROLE MODAL */}
       {isRoleModalOpen && selectedEmployee && (
         <Modal
           isOpen={isRoleModalOpen}
           title={`Change Role - ${selectedEmployee.firstName} ${selectedEmployee.lastName}`}
           showFooter={false}
           maxWidth="max-w-lg"
-          canClose={!roleBusy} // blocks overlay/ESC close while busy
+          canClose={!roleBusy}
           onClose={() => {
-            if (roleBusy) return; // extra guard
-            closeRoleModal();
+            if (roleBusy) return;
+            setIsRoleModalOpen(false);
+            setSelectedEmployee(null);
+            setRoleBusy(false);
           }}
         >
           <EmployeeRoleChanger
-            key={selectedEmployee._id} // ensures clean reset per employee
+            key={selectedEmployee._id}
             employeeId={selectedEmployee._id}
             currentRole={selectedEmployee.role}
             onPendingChange={(v) => setRoleBusy(!!v)}
-            onCancel={closeRoleModal} // ALWAYS closes even while busy
+            onCancel={() => {
+              setIsRoleModalOpen(false);
+              setSelectedEmployee(null);
+              setRoleBusy(false);
+            }}
             onRoleUpdated={() => {
-              closeRoleModal();
+              setIsRoleModalOpen(false);
+              setSelectedEmployee(null);
+              setRoleBusy(false);
             }}
           />
         </Modal>

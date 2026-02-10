@@ -74,6 +74,26 @@ async function listProjects(query = {}) {
   };
 }
 
+/**
+ * ✅ NEW: listAllProjects (NO pagination)
+ * Use this for dropdown/options.
+ * - supports optional ?status=Active|Inactive
+ * - returns minimal fields and sorted by name
+ */
+async function listAllProjects(query = {}) {
+  const filter = {};
+  if (query.status) filter.status = query.status;
+
+  const items = await Project.find(filter)
+    .select("_id name status") // keep payload small for options
+    .sort({ name: 1 });
+
+  return {
+    items,
+    total: items.length,
+  };
+}
+
 async function getProjectById(id) {
   assertObjectId(id);
 
@@ -150,6 +170,7 @@ async function updateProjectStatus(id, status) {
 module.exports = {
   createProject,
   listProjects,
+  listAllProjects, // ✅ export
   getProjectById,
   updateProject,
   deleteProject,

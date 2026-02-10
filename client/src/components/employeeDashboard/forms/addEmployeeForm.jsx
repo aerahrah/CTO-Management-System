@@ -1,3 +1,4 @@
+// src/components/employees/addEmployee/addEmployeeForm.jsx
 import React, { useEffect, useMemo, useRef } from "react";
 import { useForm, Controller } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -12,8 +13,10 @@ import {
   updateEmployeeById,
   addEmployee,
 } from "../../../api/employee";
+import { fetchProjectOptions } from "../../../api/project";
 
 import ProvincialOfficeSelect from "./selectProvincialOffice";
+import SelectProjectOptions from "./selectProject";
 
 import {
   User,
@@ -34,25 +37,8 @@ import {
 /* =========================
    CONSTANTS (whitelists)
 ========================= */
-const PROJECTS = [
-  "Cybersecurity/PNPKI",
-  "FPIAP",
-  "ILCDB",
-  "ILCDB - Tech4ED",
-  "DigiGov",
-  "GECS",
-  "NIPPSB",
-  "GovNet",
-  "MISS",
-  "IIDB",
-];
-
 const DIVISIONS = ["AFD", "TOD", "ORD"];
-
-// EXACTLY as your backend expects (per your note)
 const STATUSES = ["Active", "Inactive", "Resigned", "Terminated"];
-
-// Used ONLY when adding (role should not be updated)
 const ROLES = ["employee", "supervisor", "hr", "admin"];
 
 /* =========================
@@ -62,6 +48,7 @@ const normalizeText = (v) =>
   String(v ?? "")
     .replace(/\0/g, "")
     .trim();
+
 const normalizeEmail = (v) => normalizeText(v).toLowerCase();
 const digitsOnly = (v) => normalizeText(v).replace(/\D/g, "");
 
@@ -76,22 +63,27 @@ const safeEnumCI = (value, allowed) => {
   return found || "";
 };
 
-// designation can arrive as string or object (e.g. {name, _id})
-const pickDesignation = (d) => {
-  if (!d) return "";
-  if (typeof d === "string") return d;
-  if (typeof d === "object") return d._id || d.id || d.name || "";
+const pickId = (v) => {
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "object") return v._id || v.id || "";
   return "";
 };
 
+const pickProjectId = (p) => pickId(p);
+const pickDesignationId = (d) => pickId(d);
+
 /* =========================
    SELECT INPUT (react-select) - MINIMALIST
+   ✅ accepts string[] OR {value,label}[]
 ========================= */
 const SelectInput = ({ label, options, value, onChange, error, required }) => {
-  const selectOptions = useMemo(
-    () => options.map((opt) => ({ value: opt, label: opt })),
-    [options],
-  );
+  const selectOptions = useMemo(() => {
+    return (options || []).map((opt) => {
+      if (typeof opt === "string") return { value: opt, label: opt };
+      return opt;
+    });
+  }, [options]);
 
   const customStyles = useMemo(
     () => ({
@@ -100,17 +92,17 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
         minHeight: "44px",
         borderRadius: "0.75rem",
         borderColor: state.isFocused
-          ? "#a5b4fc" // indigo-300
+          ? "#a5b4fc"
           : error
-            ? "#fda4af" // rose-300
-            : "rgba(226,232,240,0.9)", // slate-200-ish
+            ? "#fda4af"
+            : "rgba(226,232,240,0.9)",
         boxShadow: state.isFocused ? "0 0 0 4px rgba(99,102,241,0.12)" : "none",
         "&:hover": {
           borderColor: state.isFocused
             ? "#a5b4fc"
             : error
               ? "#fda4af"
-              : "rgba(148,163,184,0.7)", // slate-400-ish
+              : "rgba(148,163,184,0.7)",
         },
         backgroundColor: "rgba(255,255,255,0.9)",
         overflow: "hidden",
@@ -122,7 +114,7 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
       }),
       placeholder: (base) => ({
         ...base,
-        color: "rgba(100,116,139,0.8)", // slate-500
+        color: "rgba(100,116,139,0.8)",
       }),
       singleValue: (base) => ({
         ...base,
@@ -130,7 +122,7 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
         overflow: "hidden",
         textOverflow: "ellipsis",
         maxWidth: "100%",
-        color: "#0f172a", // slate-900
+        color: "#0f172a",
         fontWeight: 500,
       }),
       indicatorSeparator: () => ({ display: "none" }),
@@ -194,9 +186,28 @@ const AddEmployeeForm = () => {
   const { id } = useParams();
   const isEditMode = Boolean(id);
 
-  // Prevent double-submit (defense-in-depth)
   const submitLockRef = useRef(false);
 
+  /* -------------------------
+     Project IDs set (for validation)
+     ✅ still fetched here for schema + submit guard
+  ------------------------- */
+  const projectsQuery = useQuery({
+    queryKey: ["projectOptions", "Active"],
+    queryFn: () => fetchProjectOptions({ status: "Active" }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const projectIdSet = useMemo(() => {
+    const items = Array.isArray(projectsQuery.data?.items)
+      ? projectsQuery.data.items
+      : [];
+    return new Set(items.filter((p) => p?._id).map((p) => String(p._id)));
+  }, [projectsQuery.data]);
+
+  /* -------------------------
+     Schema (depends on projectIdSet)
+  ------------------------- */
   const schema = useMemo(() => {
     const base = {
       employeeId: yup
@@ -204,24 +215,29 @@ const AddEmployeeForm = () => {
         .transform((v) => normalizeText(v))
         .min(4, "Employee ID is too short")
         .required("Employee ID is required"),
+
       username: yup
         .string()
         .transform((v) => normalizeText(v))
         .min(4, "Min 4 characters")
         .required("Username is required"),
+
       firstName: yup
         .string()
         .transform((v) => normalizeText(v))
         .required("First name is required"),
+
       lastName: yup
         .string()
         .transform((v) => normalizeText(v))
         .required("Last name is required"),
+
       email: yup
         .string()
         .transform((v) => normalizeEmail(v))
         .email("Invalid email")
         .required("Email is required"),
+
       phone: yup
         .string()
         .transform((v) => digitsOnly(v))
@@ -246,8 +262,13 @@ const AddEmployeeForm = () => {
       project: yup
         .string()
         .transform((v) => normalizeText(v))
-        .oneOf(PROJECTS, "Invalid project")
-        .required("Project is required"),
+        .required("Project is required")
+        .test("project-valid", "Invalid project selected", (v) => {
+          const val = normalizeText(v);
+          if (!val) return false;
+          if (projectIdSet.size > 0) return projectIdSet.has(val);
+          return true;
+        }),
 
       status: yup
         .string()
@@ -258,7 +279,7 @@ const AddEmployeeForm = () => {
       designation: yup
         .mixed()
         .test("designation-required", "Designation is required", (v) => {
-          const picked = pickDesignation(v);
+          const picked = pickDesignationId(v);
           return Boolean(normalizeText(picked));
         }),
 
@@ -313,8 +334,11 @@ const AddEmployeeForm = () => {
     }
 
     return yup.object(base);
-  }, [isEditMode]);
+  }, [isEditMode, projectIdSet]);
 
+  /* -------------------------
+     Employee fetch (edit mode)
+  ------------------------- */
   const {
     data: employeeRes,
     isLoading: isEmployeeLoading,
@@ -342,7 +366,7 @@ const AddEmployeeForm = () => {
       division: "",
       project: "",
       status: "Active",
-      role: "employee", // used only in add mode
+      role: "employee",
       designation: "",
       address: { street: "", city: "", province: "" },
       emergencyContact: { name: "", phone: "", relation: "" },
@@ -376,11 +400,11 @@ const AddEmployeeForm = () => {
       position: normalizeText(employee.position),
 
       division: safeEnumCI(employee.division, DIVISIONS),
-      project: safeEnumCI(employee.project, PROJECTS),
+      project: pickProjectId(employee.project),
       status: safeEnumCI(employee.status, STATUSES) || "Active",
 
       role: normalizeText(employee.role || "employee"),
-      designation: pickDesignation(employee.designation),
+      designation: pickDesignationId(employee.designation),
 
       address: {
         street: normalizeText(employee.address?.street),
@@ -395,6 +419,9 @@ const AddEmployeeForm = () => {
     });
   }, [employee, isEditMode, reset]);
 
+  /* -------------------------
+     Mutation
+  ------------------------- */
   const mutation = useMutation({
     mutationFn: async (raw) => {
       const payload = {
@@ -411,10 +438,9 @@ const AddEmployeeForm = () => {
         position: normalizeText(raw.position),
 
         division: safeEnum(normalizeText(raw.division), DIVISIONS),
-        project: safeEnum(normalizeText(raw.project), PROJECTS),
+        project: normalizeText(raw.project),
         status: safeEnum(normalizeText(raw.status), STATUSES),
-
-        designation: pickDesignation(raw.designation),
+        designation: pickDesignationId(raw.designation),
 
         address: {
           street: normalizeText(raw.address?.street),
@@ -428,12 +454,13 @@ const AddEmployeeForm = () => {
         },
       };
 
-      if (!isEditMode) {
-        payload.role = safeEnum(normalizeText(raw.role), ROLES);
-      }
+      if (!isEditMode) payload.role = safeEnum(normalizeText(raw.role), ROLES);
 
       if (!payload.division) throw new Error("Invalid division selected.");
-      if (!payload.project) throw new Error("Invalid project selected.");
+      if (!payload.project) throw new Error("Project is required.");
+      if (projectIdSet.size > 0 && !projectIdSet.has(payload.project)) {
+        throw new Error("Invalid project selected.");
+      }
       if (!payload.status) throw new Error("Invalid status selected.");
       if (!payload.designation) throw new Error("Designation is required.");
       if (!isEditMode && !payload.role)
@@ -477,6 +504,8 @@ const AddEmployeeForm = () => {
   };
 
   /* ======= Edit mode: loading / error states ======= */
+  // ✅ No hooks below this point
+
   if (isEditMode && isEmployeeLoading) {
     return (
       <div className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -708,22 +737,31 @@ const AddEmployeeForm = () => {
                   )}
                 />
 
-                <Controller
-                  name="project"
-                  control={control}
-                  render={({ field }) => (
-                    <SelectInput
-                      label="Project"
-                      options={PROJECTS}
-                      value={field.value}
-                      onChange={field.onChange}
-                      error={errors.project}
-                      required
-                    />
+                {/* ✅ Project extracted into its own component */}
+                <div className="pt-2">
+                  <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
+                    Project <span className="text-rose-500">*</span>
+                  </label>
+                  <Controller
+                    name="project"
+                    control={control}
+                    render={({ field }) => (
+                      <SelectProjectOptions
+                        value={field.value}
+                        onChange={field.onChange}
+                        error={errors.project}
+                      />
+                    )}
+                  />
+                  {errors.project && (
+                    <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+                      <AlertCircle size={14} /> {errors.project.message}
+                    </p>
                   )}
-                />
+                </div>
               </div>
 
+              {/* ✅ Designation matches Project select UI */}
               <div className="pt-2">
                 <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
                   <Building2 size={14} className="text-slate-400" /> Designation{" "}
@@ -735,8 +773,8 @@ const AddEmployeeForm = () => {
                   control={control}
                   render={({ field }) => (
                     <ProvincialOfficeSelect
-                      value={pickDesignation(field.value)}
-                      onChange={(v) => field.onChange(pickDesignation(v))}
+                      value={pickDesignationId(field.value)}
+                      onChange={(v) => field.onChange(v)}
                       error={errors.designation}
                     />
                   )}
