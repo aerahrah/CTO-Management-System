@@ -29,9 +29,17 @@ const employeeSchema = new mongoose.Schema(
     lastName: { type: String, required: true, trim: true },
     email: { type: String, required: true, lowercase: true },
     phone: { type: String },
+
     position: { type: String, required: true },
     division: { type: String, required: true },
-    project: { type: String, required: true },
+
+    // ✅ dynamic project reference
+    project: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Project",
+      required: true,
+    },
+
     dateHired: { type: Date, default: Date.now },
     status: {
       type: String,

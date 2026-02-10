@@ -11,6 +11,7 @@ const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const cors = require("cors");
 const path = require("path");
 const auditLogger = require("./middlewares/auditLogMiddleware");
+const projectRoutes = require("./routers/projectRoute");
 
 dotenv.config();
 const app = express();
@@ -40,6 +41,7 @@ app.use("/cto", ctoDashboardRoutes);
 app.use("/cto/settings", ctoSettingRoutes);
 app.use("/settings/provincial-office", designationRoutes);
 app.use("/audit-logs", auditLogRoutes);
+app.use("/settings/projects", projectRoutes);
 
 // Connect to DB and start server
 connectDB().then(() => {

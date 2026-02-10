@@ -33,7 +33,7 @@ import EmployeeInformation from "./components/employeeDashboard/employeeInformat
 /* Settings */
 import CtoSettings from "./components/generalSettingsComponents/ctoSettings";
 import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
-
+import ProjectSettings from "./components/generalSettingsComponents/projectSettings/projectSettings";
 /* Profile */
 import MyProfile from "./components/userProfile/myProfile";
 import UpdateProfile from "./components/userProfile/myProfileUpdate";
@@ -104,9 +104,10 @@ function App() {
 
             <Route path="cto-settings" element={<CtoSettings />} />
             <Route
-              path="office-locations"
+              path="designations"
               element={<OfficeLocationSettingsPage />}
             />
+            <Route path="projects" element={<ProjectSettings />} />
           </Route>
 
           {/* ===================== */}

@@ -127,7 +127,12 @@ const Sidebar = ({
         },
         {
           name: "Designations Settings",
-          path: "/app/office-locations",
+          path: "/app/designations",
+          icon: <MapPin size={14} />,
+        },
+        {
+          name: "Projects Settings",
+          path: "/app/projects",
           icon: <MapPin size={14} />,
         },
       ],
@@ -186,7 +191,7 @@ const Sidebar = ({
 
       <aside
         className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:h-screen flex-shrink-0
-        ${collapsed ? "lg:w-20" : "lg:w-68"}
+        ${collapsed ? "lg:w-20" : "lg:w-72"}
         ${
           mobileOpen
             ? "translate-x-0 w-72"

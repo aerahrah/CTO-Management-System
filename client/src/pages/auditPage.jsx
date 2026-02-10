@@ -1,5 +1,5 @@
 // components/AuditLogTable.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getAuditLogs } from "../api/audit";
 import Breadcrumbs from "../components/breadCrumbs";
@@ -49,15 +49,22 @@ const getMethodColor = (method) => {
 };
 
 /* =========================
-   HOOK: DEBOUNCE
+   HOOK: DEBOUNCE (with flush)
 ========================= */
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
+
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
-  return debouncedValue;
+
+  // ✅ allows forcing the debounced value immediately (for Refresh)
+  const flush = useCallback(() => {
+    setDebouncedValue(value);
+  }, [value]);
+
+  return { debouncedValue, flush };
 }
 
 /* =========================
@@ -82,6 +89,7 @@ const CompactPagination = ({
           onClick={onPrev}
           disabled={page === 1 || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-semibold text-gray-700 disabled:opacity-30"
+          type="button"
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
@@ -91,7 +99,7 @@ const CompactPagination = ({
           <div className="text-xs font-mono font-semibold text-gray-700">
             {page} / {Math.max(totalPages, 1)}
           </div>
-          <div className="text-[11px] text-gray-500 ">
+          <div className="text-[11px] text-gray-500">
             {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
           </div>
         </div>
@@ -100,6 +108,7 @@ const CompactPagination = ({
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-semibold text-gray-700 disabled:opacity-30"
+          type="button"
         >
           Next
           <ChevronRight className="w-4 h-4" />
@@ -124,6 +133,7 @@ const CompactPagination = ({
               disabled={page === 1 || total === 0}
               className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
               aria-label="Previous"
+              type="button"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
@@ -135,6 +145,7 @@ const CompactPagination = ({
               disabled={page >= totalPages || total === 0}
               className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
               aria-label="Next"
+              type="button"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -171,9 +182,18 @@ const AuditLogTable = () => {
   const [endpointInput, setEndpointInput] = useState("");
   const [statusInput, setStatusInput] = useState("");
 
-  const username = useDebounce(usernameInput, 350);
-  const endpoint = useDebounce(endpointInput, 350);
-  const statusCode = useDebounce(statusInput, 350);
+  const { debouncedValue: username, flush: flushUsername } = useDebounce(
+    usernameInput,
+    350,
+  );
+  const { debouncedValue: endpoint, flush: flushEndpoint } = useDebounce(
+    endpointInput,
+    350,
+  );
+  const { debouncedValue: statusCode, flush: flushStatus } = useDebounce(
+    statusInput,
+    350,
+  );
 
   // Select/date filters
   const [method, setMethod] = useState("All");
@@ -231,6 +251,8 @@ const AuditLogTable = () => {
     endDate,
   );
 
+  const rows = data?.data || [];
+
   const clearFilters = () => {
     setUsernameInput("");
     setEndpointInput("");
@@ -240,10 +262,17 @@ const AuditLogTable = () => {
     setEndDate("");
     setLimit(20);
     setPage(1);
-    setTimeout(() => refetch(), 0);
+    // no manual refetch needed; queryKey changes will refetch automatically
   };
 
-  const rows = data?.data || [];
+  // ✅ Refresh uses latest typed values immediately (flush debounce) then refetch
+  const handleRefresh = useCallback(async () => {
+    flushUsername();
+    flushEndpoint();
+    flushStatus();
+    await Promise.resolve(); // let state apply before refetch
+    refetch({ cancelRefetch: false });
+  }, [flushUsername, flushEndpoint, flushStatus, refetch]);
 
   return (
     <div className="w-full flex-1 flex h-full flex-col">
@@ -262,8 +291,9 @@ const AuditLogTable = () => {
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <button
-              onClick={() => refetch()}
+              onClick={handleRefresh}
               disabled={isFetching}
+              type="button"
               className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-60 w-full sm:w-auto"
               title="Refresh"
             >
@@ -281,11 +311,6 @@ const AuditLogTable = () => {
       <div className="mb-6 flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white">
-          {/* Responsive layout:
-              - Mobile: 1 column
-              - Tablet: 2 columns
-              - Desktop: 6 columns
-          */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-3">
             {/* Method */}
             <div className="sm:col-span-1 xl:col-span-2">
@@ -371,6 +396,7 @@ const AuditLogTable = () => {
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear user"
                     title="Clear"
+                    type="button"
                   >
                     <RotateCcw size={14} />
                   </button>
@@ -399,6 +425,7 @@ const AuditLogTable = () => {
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear endpoint"
                     title="Clear"
+                    type="button"
                   >
                     <RotateCcw size={14} />
                   </button>
@@ -447,6 +474,7 @@ const AuditLogTable = () => {
                   onClick={clearFilters}
                   className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-700"
                   title="Reset all"
+                  type="button"
                 >
                   <FilterX size={14} />
                   Reset all
@@ -508,7 +536,6 @@ const AuditLogTable = () => {
                         idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"
                       }`}
                     >
-                      {/* Timestamp */}
                       <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <div className="flex flex-col">
                           <span className="text-gray-900 font-semibold">
@@ -520,14 +547,12 @@ const AuditLogTable = () => {
                         </div>
                       </td>
 
-                      {/* User (no avatar) */}
                       <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                        <span className=" block max-w-[220px]">
+                        <span className="block max-w-[220px]">
                           {log.username}
                         </span>
                       </td>
 
-                      {/* Request Details */}
                       <td className="px-4 md:px-6 py-4">
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center gap-2 min-w-0 flex-wrap">
@@ -540,7 +565,7 @@ const AuditLogTable = () => {
                             </span>
 
                             <span
-                              className="font-mono text-sm text-gray-800 font-medium  max-w-[520px]"
+                              className="font-mono text-sm text-gray-800 font-medium max-w-[520px]"
                               title={log.endpoint}
                             >
                               {log.endpoint}
@@ -559,7 +584,7 @@ const AuditLogTable = () => {
 
                             {log.url && log.url !== log.endpoint && (
                               <span
-                                className="text-xs text-gray-400 font-mono  max-w-[520px]"
+                                className="text-xs text-gray-400 font-mono max-w-[520px]"
                                 title={log.url}
                               >
                                 {log.url}
@@ -569,7 +594,6 @@ const AuditLogTable = () => {
                         </div>
                       </td>
 
-                      {/* Summary (hide on small tablets if needed) */}
                       <td className="px-4 md:px-6 py-4 text-xs text-gray-600 hidden md:table-cell">
                         <div
                           className="max-w-[520px]"
@@ -583,7 +607,6 @@ const AuditLogTable = () => {
                         </div>
                       </td>
 
-                      {/* IP (only on large) */}
                       <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono hidden lg:table-cell">
                         {log.ip}
                       </td>
@@ -609,6 +632,7 @@ const AuditLogTable = () => {
                           <button
                             onClick={clearFilters}
                             className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                            type="button"
                           >
                             Clear all filters
                           </button>
@@ -622,7 +646,7 @@ const AuditLogTable = () => {
           </div>
         </div>
 
-        {/* MOBILE LIST (instead of wide table) */}
+        {/* MOBILE LIST */}
         <div className="sm:hidden flex-1 overflow-y-auto bg-white">
           <div className="p-3 space-y-2">
             {(isPending && !data) || (isFetching && !data) ? (
@@ -645,7 +669,7 @@ const AuditLogTable = () => {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 ">
+                      <div className="text-sm font-semibold text-gray-900">
                         {log.username || "Unknown user"}
                       </div>
                       <div className="text-xs text-gray-500">
@@ -674,7 +698,7 @@ const AuditLogTable = () => {
                     </span>
 
                     <span
-                      className="font-mono text-xs text-gray-700  max-w-full"
+                      className="font-mono text-xs text-gray-700 max-w-full"
                       title={log.endpoint}
                     >
                       {log.endpoint}
@@ -692,7 +716,7 @@ const AuditLogTable = () => {
                   )}
 
                   <div className="mt-2 text-[11px] text-gray-500 flex items-center justify-between">
-                    <span className="font-mono  max-w-[65%]">
+                    <span className="font-mono max-w-[65%]">
                       {log.url && log.url !== log.endpoint ? log.url : ""}
                     </span>
                     <span className="font-mono">{log.ip}</span>
@@ -715,6 +739,7 @@ const AuditLogTable = () => {
                     <button
                       onClick={clearFilters}
                       className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                      type="button"
                     >
                       Clear all filters
                     </button>

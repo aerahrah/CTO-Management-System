@@ -1,9 +1,70 @@
 const Employee = require("../models/employeeModel");
+const Project = require("../models/projectModel"); // ✅ NEW
+const mongoose = require("mongoose"); // ✅ NEW
+
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
 const CtoCredit = require("../models/ctoCreditModel");
 const bcrypt = require("bcrypt");
+
+const validRoles = ["employee", "supervisor", "hr", "admin"];
+
+/* -------------------- helpers -------------------- */
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function normalizeToStringId(value) {
+  if (!value) return null;
+  if (typeof value === "object" && value._id) return String(value._id);
+  return String(value);
+}
+
+/**
+ * Resolve project input (id or name) -> ObjectId
+ * Throws if not found (good for create/update).
+ */
+async function resolveProjectIdOrThrow(projectInput) {
+  const val = normalizeToStringId(projectInput);
+
+  if (!val || !val.trim()) throw new Error("Project is required");
+
+  // If it's an ObjectId, validate existence
+  if (mongoose.Types.ObjectId.isValid(val)) {
+    const p = await Project.findById(val).select("_id status name");
+    if (!p) throw new Error("Selected project not found");
+    return p._id;
+  }
+
+  // Else treat as project name (case-insensitive exact)
+  const p = await Project.findOne({
+    name: { $regex: new RegExp(`^${escapeRegExp(val.trim())}$`, "i") },
+  }).select("_id status name");
+
+  if (!p) throw new Error("Selected project not found");
+  return p._id;
+}
+
+/**
+ * Resolve project filter (id or name) -> ObjectId or null
+ * Does NOT throw (good for filtering list endpoints).
+ */
+async function resolveProjectIdForFilter(projectInput) {
+  const val = normalizeToStringId(projectInput);
+  if (!val || !val.trim()) return null;
+
+  if (mongoose.Types.ObjectId.isValid(val)) return val;
+
+  const p = await Project.findOne({
+    name: { $regex: new RegExp(`^${escapeRegExp(val.trim())}$`, "i") },
+  }).select("_id");
+
+  return p ? p._id : null;
+}
+
+/* -------------------- services -------------------- */
+
 // Create employee with temporary password
 const createEmployeeService = async (employeeData) => {
   const {
@@ -27,6 +88,9 @@ const createEmployeeService = async (employeeData) => {
     throw new Error("Employee with this ID, username, or email already exists");
   }
 
+  // ✅ Resolve project to ObjectId
+  const projectId = await resolveProjectIdOrThrow(project);
+
   // Generate temporary password
   const tempPassword = crypto.randomBytes(6).toString("hex");
 
@@ -37,7 +101,7 @@ const createEmployeeService = async (employeeData) => {
     firstName,
     lastName,
     division,
-    project,
+    project: projectId, // ✅ store ObjectId
     designation,
     position,
     role,
@@ -51,12 +115,10 @@ const createEmployeeService = async (employeeData) => {
     try {
       const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-        <!-- Header -->
         <div style="background-color: #2563eb; padding: 20px; text-align: center;">
           <img src="https://yourdomain.com/logo.png" alt="DICT Logo" style="height: 50px;" />
         </div>
 
-        <!-- Body -->
         <div style="padding: 20px; color: #1f2937;">
           <h2 style="color: #2563eb; margin-top: 0;">Welcome to DICT HRMS, ${firstName}!</h2>
           <p>Your account has been successfully created.</p>
@@ -80,7 +142,6 @@ const createEmployeeService = async (employeeData) => {
           </a>
         </div>
 
-        <!-- Footer -->
         <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280;">
           DICT HRMS &copy; ${new Date().getFullYear()}. All rights reserved.
         </div>
@@ -114,7 +175,15 @@ const getEmployeesService = async ({
     // Filters
     if (division) query.division = division;
     if (designation) query.designation = designation;
-    if (project) query.project = project;
+
+    // ✅ project filter supports projectId OR project name
+    if (project) {
+      const projectId = await resolveProjectIdForFilter(project);
+      if (!projectId) {
+        return { data: [], total: 0, totalPages: 0 };
+      }
+      query.project = projectId;
+    }
 
     // Search by name or email
     if (search) {
@@ -144,6 +213,7 @@ const getEmployeesService = async ({
         .limit(limit)
         .sort({ lastName: 1, firstName: 1 })
         .populate("designation", "name")
+        .populate("project", "name status") // ✅ NEW populate
         .lean(),
       Employee.countDocuments(query),
     ]);
@@ -163,7 +233,10 @@ const getEmployeesService = async ({
 
 // Get employee by ID
 const getEmployeeByIdService = async (id) => {
-  const employee = await Employee.findById(id);
+  const employee = await Employee.findById(id)
+    .populate("designation", "name")
+    .populate("project", "name status"); // ✅ NEW
+
   if (!employee) {
     throw new Error(`Employee with ID ${id} not found`);
   }
@@ -209,7 +282,7 @@ const updateEmployeeService = async (id, updateData) => {
   if (updateData.email || updateData.username) {
     const conflict = await Employee.findOne({
       $and: [
-        { _id: { $ne: id } }, // exclude current employee
+        { _id: { $ne: id } },
         {
           $or: [{ email: updateData.email }, { username: updateData.username }],
         },
@@ -221,16 +294,19 @@ const updateEmployeeService = async (id, updateData) => {
     }
   }
 
-  // ✅ Dynamically update allowed fields only
+  // ✅ if project is being updated, resolve it first
+  if (updateData.project !== undefined) {
+    updateData.project = await resolveProjectIdOrThrow(updateData.project);
+  }
+
+  // Dynamically update allowed fields only
   Object.keys(updateData).forEach((key) => {
     if (key !== "employeeId") {
-      // Skip employeeId
       employee[key] = updateData[key];
     }
   });
 
   await employee.save();
-
   return employee;
 };
 
@@ -259,13 +335,9 @@ const getEmployeeCtoMemos = async (employeeId) => {
     };
   });
 
-  // Optional: sort oldest to newest
   formatted.sort((a, b) => new Date(a.dateApproved) - new Date(b.dateApproved));
-
   return formatted;
 };
-
-const validRoles = ["employee", "supervisor", "hr", "admin"];
 
 async function changeEmployeeRole(id, newRole) {
   if (!validRoles.includes(newRole)) {
@@ -273,24 +345,25 @@ async function changeEmployeeRole(id, newRole) {
   }
 
   const employee = await Employee.findById(id);
-  if (!employee) {
-    throw new Error("Employee not found");
-  }
+  if (!employee) throw new Error("Employee not found");
 
-  // Update role
   employee.role = newRole;
   await employee.save();
 
   return employee;
 }
+
 const getProfile = async (employeeId) => {
-  const employee = await Employee.findById(employeeId).select("-password");
+  const employee = await Employee.findById(employeeId)
+    .select("-password")
+    .populate("designation", "name")
+    .populate("project", "name status"); // ✅ NEW
+
   if (!employee) throw new Error("Employee not found");
   return employee;
 };
 
 const updateProfile = async (employeeId, updateData) => {
-  // Only allow certain fields to be updated
   const allowedUpdates = [
     "firstName",
     "lastName",
@@ -309,11 +382,19 @@ const updateProfile = async (employeeId, updateData) => {
       filteredData[field] = updateData[field];
   });
 
+  // ✅ resolve project if included
+  if (filteredData.project !== undefined) {
+    filteredData.project = await resolveProjectIdOrThrow(filteredData.project);
+  }
+
   const updatedEmployee = await Employee.findByIdAndUpdate(
     employeeId,
     filteredData,
     { new: true, runValidators: true },
-  ).select("-password");
+  )
+    .select("-password")
+    .populate("designation", "name")
+    .populate("project", "name status");
 
   if (!updatedEmployee) throw new Error("Employee not found");
   return updatedEmployee;
@@ -323,11 +404,9 @@ const resetPassword = async (employeeId, oldPassword, newPassword) => {
   const employee = await Employee.findById(employeeId);
   if (!employee) throw new Error("Employee not found");
 
-  // Verify old password
   const isMatch = await bcrypt.compare(oldPassword, employee.password);
   if (!isMatch) throw new Error("Old password is incorrect");
 
-  // Set new password (hashed automatically by pre-save hook)
   employee.password = newPassword;
   await employee.save();
 

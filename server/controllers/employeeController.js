@@ -35,7 +35,7 @@ const getEmployees = async (req, res) => {
     const {
       division,
       designation,
-      project,
+      project, // ✅ can be projectId OR project name now
       search,
       page = 1,
       limit = 20,
@@ -116,9 +116,6 @@ const updateEmployee = async (req, res) => {
   }
 };
 
-/**
- * Controller to fetch all CTO memos for the authenticated employee
- */
 const getEmployeeCtoMemosById = async (req, res) => {
   try {
     const employeeId = req.params.id;
@@ -167,7 +164,6 @@ const updateRole = async (req, res) => {
 const getMyProfile = async (req, res) => {
   try {
     const employee = await getProfile(req.user.id);
-    console.log(req.user.id);
     res.json(employee);
   } catch (err) {
     res.status(404).json({ error: err.message });
