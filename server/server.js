@@ -16,6 +16,10 @@ const projectRoutes = require("./routers/projectRoute");
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
+const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // Middleware
 app.use(
@@ -24,7 +28,7 @@ app.use(
 );
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
     credentials: true,
   }),
 );
@@ -46,6 +50,6 @@ app.use("/settings/projects", projectRoutes);
 // Connect to DB and start server
 connectDB().then(() => {
   app.listen(PORT, () => {
-    console.log(`✅ Server running at http://localhost:${PORT}`);
+    console.log(`✅ Server running on port ${PORT}`);
   });
 });

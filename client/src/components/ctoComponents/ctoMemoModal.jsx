@@ -1,5 +1,6 @@
 import React from "react";
 import { FileText, Calendar, ExternalLink, Info } from "lucide-react";
+import { buildApiUrl } from "../../config/env";
 
 // Helper to check if a file is PDF
 const isPdf = (url) => url?.toLowerCase().endsWith(".pdf");
@@ -20,7 +21,7 @@ const MemoList = ({ memos = [], description }) => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 ">
           {memos.map((memo, i) => {
-            const fileUrl = `http://localhost:3000/${memo.uploadedMemo}`;
+            const fileUrl = buildApiUrl(memo.uploadedMemo);
 
             return (
               <div

@@ -26,6 +26,7 @@ import "react-loading-skeleton/dist/skeleton.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import MemoList from "../ctoMemoModal";
+import { buildApiUrl } from "../../../config/env";
 
 /* =========================
    LOADING SKELETON (FULL SCREEN INSIDE CARD)
@@ -442,7 +443,7 @@ const CtoApplicationDetails = () => {
                       </div>
 
                       <a
-                        href={`http://localhost:3000${m.uploadedMemo}`}
+                        href={buildApiUrl(m.uploadedMemo)}
                         target="_blank"
                         rel="noreferrer"
                         className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors flex-none"

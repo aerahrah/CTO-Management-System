@@ -1,6 +1,7 @@
 // CtoMemoModalContent.jsx
 import React, { memo, useMemo } from "react";
 import { FileText, Clipboard, Calendar, ExternalLink } from "lucide-react";
+import { API_BASE_URL } from "../../../config/env";
 
 /**
  * CTO Memo Modal Content
@@ -9,7 +10,7 @@ import { FileText, Clipboard, Calendar, ExternalLink } from "lucide-react";
  */
 const CtoMemoModalContent = memo(function CtoMemoModalContent({
   memo,
-  baseUrl = "http://localhost:3000",
+  baseUrl = API_BASE_URL,
   emptyState = "No memo selected",
   bannerText = "Read-only view. Status updates automatically based on usage.",
   // Optional: show a 2nd button at the bottom

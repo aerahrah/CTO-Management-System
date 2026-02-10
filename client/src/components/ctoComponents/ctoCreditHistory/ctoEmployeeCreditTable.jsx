@@ -6,6 +6,7 @@ import FilterSelect from "../../filterSelect";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import CtoMemoModalContent from "../ctoCreditComponents/CtoMemoModalContent";
+import { API_BASE_URL } from "../../../config/env";
 import {
   Search,
   RotateCcw,
@@ -21,10 +22,7 @@ import {
 const statusOptions = ["ACTIVE", "EXHAUSTED", "ROLLEDBACK"];
 const pageSizeOptions = [20, 50, 100];
 
-const BASE_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_API_BASE_URL) ||
-  "http://localhost:3000";
+const BASE_URL = API_BASE_URL;
 
 /* =========================
    SMALL UI
@@ -505,13 +503,7 @@ const CreditCtoTable = ({
                 <div key={memo._id || i} className="min-w-0">
                   <CtoMemoModalContent
                     memo={memo}
-                    baseUrl={
-                      (typeof import.meta !== "undefined" &&
-                        import.meta.env?.VITE_API_BASE_URL) ||
-                      (typeof process !== "undefined" &&
-                        process.env?.REACT_APP_API_BASE_URL) ||
-                      "http://localhost:3000"
-                    }
+                    baseUrl={BASE_URL}
                   />
                 </div>
               ))}
