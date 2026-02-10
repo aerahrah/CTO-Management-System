@@ -1,25 +1,26 @@
+// services/auditLog.service.js
 const AuditLog = require("../models/auditLogModel");
 
-/**
- * Create a new audit log
- */
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseIntSafe(v, def) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : def;
+}
+
+function parseDateSafe(v) {
+  if (!v) return null;
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
+
 const createAuditLog = async (data) => {
-  return await AuditLog.create(data);
+  return AuditLog.create(data);
 };
 
-/**
- * Get audit logs with pagination and filters
- * @param {Object} options - pagination and filters
- * @param {number} options.page - page number
- * @param {number} options.limit - items per page (10, 20, 50, 100)
- * @param {string} options.userId - filter by user ID
- * @param {string} options.username - filter by username (partial match)
- * @param {string} options.method - filter by HTTP method (GET, POST, etc.)
- * @param {string} options.endpoint - filter by endpoint (partial match)
- * @param {number} options.statusCode - filter by HTTP status code
- * @param {string} options.startDate - filter by start date (ISO string)
- * @param {string} options.endDate - filter by end date (ISO string)
- */
 const getAuditLogs = async ({
   page = 1,
   limit = 10,
@@ -31,31 +32,54 @@ const getAuditLogs = async ({
   startDate,
   endDate,
 }) => {
-  // Ensure minimum page size 10 and allowed options
   const allowedLimits = [10, 20, 50, 100];
-  limit = parseInt(limit);
+  limit = parseIntSafe(limit, 10);
   if (!allowedLimits.includes(limit)) limit = 10;
 
-  page = parseInt(page) || 1;
+  page = Math.max(parseIntSafe(page, 1), 1);
   const skip = (page - 1) * limit;
 
-  // Build filter object
   const filter = {};
+
   if (userId) filter.userId = userId;
-  if (username) filter.username = { $regex: username, $options: "i" }; // case-insensitive partial match
-  if (method) filter.method = method.toUpperCase();
-  if (endpoint) filter.endpoint = { $regex: endpoint, $options: "i" };
-  if (statusCode) filter.statusCode = statusCode;
-  if (startDate || endDate) filter.timestamp = {};
-  if (startDate) filter.timestamp.$gte = new Date(startDate);
-  if (endDate) filter.timestamp.$lte = new Date(endDate);
 
-  const logs = await AuditLog.find(filter)
-    .sort({ timestamp: -1 })
-    .skip(skip)
-    .limit(limit);
+  if (username) {
+    const safe = escapeRegExp(username);
+    filter.username = { $regex: safe, $options: "i" };
+  }
 
-  const total = await AuditLog.countDocuments(filter);
+  if (method) {
+    const m = String(method).toUpperCase();
+    filter.method = m;
+  }
+
+  if (endpoint) {
+    const safe = escapeRegExp(endpoint);
+    filter.endpoint = { $regex: safe, $options: "i" };
+  }
+
+  if (statusCode !== undefined && statusCode !== null && statusCode !== "") {
+    const sc = parseIntSafe(statusCode, NaN);
+    if (Number.isFinite(sc)) filter.statusCode = sc;
+  }
+
+  const sd = parseDateSafe(startDate);
+  const ed = parseDateSafe(endDate);
+
+  if (sd || ed) {
+    filter.timestamp = {};
+    if (sd) filter.timestamp.$gte = sd;
+    if (ed) filter.timestamp.$lte = ed;
+  }
+
+  const [logs, total] = await Promise.all([
+    AuditLog.find(filter)
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+    AuditLog.countDocuments(filter),
+  ]);
 
   return {
     data: logs,

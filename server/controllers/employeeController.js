@@ -12,22 +12,37 @@ const {
   resetPassword,
 } = require("../services/employeeService");
 
+function sendError(res, err) {
+  const status = err.statusCode || err.status || 500;
+  return res.status(status).json({
+    success: false,
+    message: err.message || "Server error",
+    detail: err.originalMessage || null,
+  });
+}
+
 const createEmployee = async (req, res) => {
   try {
-    const { employee, tempPassword } = await createEmployeeService(req.body);
+    const result = await createEmployeeService(req.body);
 
-    res.status(201).json({
-      message: "Employee created with temporary password",
+    // service may or may not return tempPassword (production should NOT)
+    const employee = result.employee;
+    const tempPassword = result.tempPassword;
+
+    const response = {
+      message: "Employee created",
       data: {
         id: employee._id,
         username: employee.username,
         email: employee.email,
-        tempPassword,
+        ...(tempPassword ? { tempPassword } : {}),
       },
-    });
+    };
+
+    return res.status(201).json(response);
   } catch (err) {
     console.error("Error creating employee:", err.message);
-    res.status(400).json({ message: err.message });
+    return sendError(res, err);
   }
 };
 
@@ -35,8 +50,8 @@ const getEmployees = async (req, res) => {
   try {
     const {
       division,
-      designation, // ✅ now supports designationId OR designation name
-      project, // ✅ supports projectId OR project name
+      designation,
+      project,
       search,
       page = 1,
       limit = 20,
@@ -57,7 +72,7 @@ const getEmployees = async (req, res) => {
       limit: parsedLimit,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: result.data.length,
       total: result.total,
@@ -70,22 +85,16 @@ const getEmployees = async (req, res) => {
       "Error fetching employees:",
       err.originalMessage || err.message,
     );
-
-    res.status(err.statusCode || 500).json({
-      success: false,
-      errorCode: err.statusCode || 500,
-      message: err.message,
-      detail: err.originalMessage || null,
-    });
+    return sendError(res, err);
   }
 };
 
 const getEmployeeById = async (req, res) => {
   try {
     const employee = await getEmployeeByIdService(req.params.id);
-    res.status(200).json({ success: true, data: employee });
+    return res.status(200).json({ success: true, data: employee });
   } catch (err) {
-    res.status(404).json({ success: false, message: err.message });
+    return sendError(res, err);
   }
 };
 
@@ -95,10 +104,9 @@ const signInEmployee = async (req, res) => {
       req.body.username,
       req.body.password,
     );
-
-    res.json({ message: "Login successful", token, admin: payload });
+    return res.json({ message: "Login successful", token, admin: payload });
   } catch (err) {
-    res.status(401).json({ message: err.message });
+    return res.status(err.statusCode || 401).json({ message: err.message });
   }
 };
 
@@ -106,14 +114,14 @@ const updateEmployee = async (req, res) => {
   try {
     const employee = await updateEmployeeService(req.params.id, req.body);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Employee updated successfully",
       data: employee,
     });
   } catch (err) {
     console.error("Error updating employee:", err.message);
-    res.status(400).json({ success: false, message: err.message });
+    return sendError(res, err);
   }
 };
 
@@ -121,21 +129,23 @@ const getEmployeeCtoMemosById = async (req, res) => {
   try {
     const employeeId = req.params.id;
     const memos = await getEmployeeCtoMemos(employeeId);
-    res.status(200).json({ memos });
+    return res.status(200).json({ memos });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Failed to fetch CTO memos" });
+    return res.status(500).json({ message: "Failed to fetch CTO memos" });
   }
 };
 
 const getMyCtoMemos = async (req, res) => {
   try {
-    const employeeId = req.user.id;
+    const employeeId = req.user?.id;
+    if (!employeeId) return res.status(401).json({ message: "Unauthorized" });
+
     const memos = await getEmployeeCtoMemos(employeeId);
-    res.status(200).json({ memos });
+    return res.status(200).json({ memos });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: "Failed to fetch your CTO memos" });
+    return res.status(500).json({ message: "Failed to fetch your CTO memos" });
   }
 };
 
@@ -158,30 +168,39 @@ const updateRole = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: error.message });
+    return sendError(res, error);
   }
 };
 
 const getMyProfile = async (req, res) => {
   try {
-    const employee = await getProfile(req.user.id);
-    res.json(employee);
+    const employeeId = req.user?.id;
+    if (!employeeId) return res.status(401).json({ error: "Unauthorized" });
+
+    const employee = await getProfile(employeeId);
+    return res.json(employee);
   } catch (err) {
-    res.status(404).json({ error: err.message });
+    return sendError(res, err);
   }
 };
 
 const updateMyProfile = async (req, res) => {
   try {
-    const updatedEmployee = await updateProfile(req.user.id, req.body);
-    res.json(updatedEmployee);
+    const employeeId = req.user?.id;
+    if (!employeeId) return res.status(401).json({ error: "Unauthorized" });
+
+    const updatedEmployee = await updateProfile(employeeId, req.body);
+    return res.json(updatedEmployee);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return sendError(res, err);
   }
 };
 
 const resetMyPassword = async (req, res) => {
   try {
+    const employeeId = req.user?.id;
+    if (!employeeId) return res.status(401).json({ error: "Unauthorized" });
+
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword) {
       return res
@@ -189,10 +208,10 @@ const resetMyPassword = async (req, res) => {
         .json({ error: "Old and new passwords are required" });
     }
 
-    const result = await resetPassword(req.user.id, oldPassword, newPassword);
-    res.json(result);
+    const result = await resetPassword(employeeId, oldPassword, newPassword);
+    return res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    return sendError(res, err);
   }
 };
 

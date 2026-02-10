@@ -2,7 +2,7 @@
 const designationService = require("../services/designation.service");
 
 function sendError(res, err) {
-  const status = err.statusCode || 500;
+  const status = err.statusCode || err.status || 500;
   return res.status(status).json({
     message: err.message || "Server error",
   });
@@ -18,7 +18,6 @@ async function getAllDesignations(req, res) {
 }
 
 /**
- * ✅ fetch all without pagination (for dropdown/options)
  * GET /settings/designation/options?status=Active
  */
 async function listAll(req, res) {
@@ -45,7 +44,7 @@ async function createDesignation(req, res) {
   try {
     const created = await designationService.createDesignation(req.body);
 
-    // optional: give middleware a target label for create
+    // optional: for audit middleware
     req.auditTarget = `${created.name} (id: ${created._id})`;
 
     return res.status(201).json({
@@ -59,14 +58,12 @@ async function createDesignation(req, res) {
 
 async function updateDesignation(req, res) {
   try {
-    // ✅ attach "before" snapshot for audit (like projects)
+    // attach BEFORE for audit
     try {
       const before = await designationService.getDesignationById(req.params.id);
       req.auditBeforeDesignation = { name: before.name, status: before.status };
       req.auditTarget = `${before.name} (id: ${before._id})`;
-    } catch (_) {
-      // ignore; service will throw properly below if not found
-    }
+    } catch (_) {}
 
     const updated = await designationService.updateDesignation(
       req.params.id,
@@ -84,7 +81,6 @@ async function updateDesignation(req, res) {
 
 async function deleteDesignation(req, res) {
   try {
-    // ✅ attach "before" snapshot for audit
     try {
       const before = await designationService.getDesignationById(req.params.id);
       req.auditBeforeDesignation = { name: before.name, status: before.status };
@@ -101,10 +97,8 @@ async function deleteDesignation(req, res) {
   }
 }
 
-/* ✅ PATCH /:id/status  body: { status: "Active" | "Inactive" } */
 async function updateStatus(req, res) {
   try {
-    // ✅ attach "before" snapshot for audit
     try {
       const before = await designationService.getDesignationById(req.params.id);
       req.auditBeforeDesignation = { name: before.name, status: before.status };

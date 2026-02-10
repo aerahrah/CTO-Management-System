@@ -1,13 +1,13 @@
+// controllers/ctoApproverSettingController.js
 const ctoApproverSettingService = require("../services/ctoApproverSetting.service");
 
 function sendError(res, err) {
-  const status = err.statusCode || 500;
+  const status = err.statusCode || err.status || 500;
   return res.status(status).json({
     message: err.message || "Server error",
   });
 }
 
-// Get approvers by designation
 exports.getApproversByDesignation = async (req, res) => {
   try {
     const { designationId } = req.params;
@@ -34,7 +34,6 @@ exports.getApproversByDesignation = async (req, res) => {
   }
 };
 
-// Create or update (upsert)
 exports.upsertApproverSetting = async (req, res) => {
   try {
     const setting =
@@ -50,7 +49,6 @@ exports.upsertApproverSetting = async (req, res) => {
   }
 };
 
-// Get all approver settings
 exports.getAllApproverSettings = async (req, res) => {
   try {
     const settings =
@@ -62,7 +60,6 @@ exports.getAllApproverSettings = async (req, res) => {
   }
 };
 
-// Delete approver setting
 exports.deleteApproverSetting = async (req, res) => {
   try {
     const { id } = req.params;

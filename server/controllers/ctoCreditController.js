@@ -1,35 +1,94 @@
-// controllers/ctoCredit.controller.js
+// controllers/ctoCreditController.js
 const ctoCreditService = require("../services/ctoCredit.service");
-
 const path = require("path");
-const fsPromises = require("fs").promises;
+const fs = require("fs/promises");
+
+function getUserIdOrThrow(req) {
+  const userId = req?.user?.id;
+  if (!userId) {
+    const err = new Error("Unauthorized");
+    err.statusCode = 401;
+    throw err;
+  }
+  return userId;
+}
+
+function parseJsonMaybe(value, fallback) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return fallback;
+    }
+  }
+  return value;
+}
+
+function safeDateStamp(dateApproved) {
+  const d = dateApproved ? new Date(dateApproved) : new Date();
+  if (Number.isNaN(d.getTime()))
+    return new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  return d.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function sendError(res, err) {
+  const status = err.statusCode || err.status || 500;
+  return res.status(status).json({ message: err.message || "Server error" });
+}
 
 const addCtoCreditRequest = async (req, res) => {
   try {
+    const userId = getUserIdOrThrow(req);
+
     const { employees, duration, memoNo, dateApproved } = req.body;
-    const userId = req.user.id;
 
-    let filePath = req.file?.path;
+    // robust parsing (supports form-data string OR JSON body array/object)
+    const employeesArray = parseJsonMaybe(employees, employees);
+    const durationObj = parseJsonMaybe(duration, duration);
 
-    if (filePath) {
-      try {
-        const extension = path.extname(req.file.originalname);
-        const cleanMemoNo = memoNo
-          .replace(/\s+/g, "_")
-          .replace(/[^a-zA-Z0-9_]/g, "");
-        const cleanDate = dateApproved.replace(/-/g, "");
-        const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
-        const newPath = path.join(path.dirname(filePath), newFileName);
-
-        await fsPromises.rename(filePath, newPath);
-        filePath = newPath;
-      } catch (err) {
-        console.warn("File rename failed, keeping original path", err);
-      }
+    if (!memoNo) {
+      return res.status(400).json({ message: "memoNo is required" });
     }
 
-    const employeesArray = JSON.parse(employees);
-    const durationObj = JSON.parse(duration);
+    let fileName = null;
+
+    // Store only filename (avoid leaking absolute server paths)
+    if (req.file?.path && req.file?.originalname) {
+      const extension = path.extname(req.file.originalname).toLowerCase();
+
+      // Optional: allow only pdf/images
+      const allowed = new Set([".pdf", ".png", ".jpg", ".jpeg"]);
+      if (!allowed.has(extension)) {
+        // cleanup uploaded file if type not allowed
+        await fs.unlink(req.file.path).catch(() => {});
+        return res
+          .status(400)
+          .json({ message: "Invalid file type. Upload PDF/JPG/PNG only." });
+      }
+
+      const cleanMemoNo = String(memoNo)
+        .trim()
+        .replace(/\s+/g, "_")
+        .replace(/[^a-zA-Z0-9_]/g, "");
+
+      const cleanDate = safeDateStamp(dateApproved);
+      const newFileName = `${cleanMemoNo || "memo"}_${cleanDate}${extension}`;
+
+      const newPath = path.join(path.dirname(req.file.path), newFileName);
+
+      try {
+        await fs.rename(req.file.path, newPath);
+        fileName = newFileName;
+      } catch (err) {
+        // keep original filename if rename fails
+        fileName = path.basename(req.file.path);
+        console.warn(
+          "File rename failed, keeping original filename:",
+          err?.message,
+        );
+      }
+    }
 
     const creditRequest = await ctoCreditService.addCredit({
       employees: employeesArray,
@@ -37,7 +96,7 @@ const addCtoCreditRequest = async (req, res) => {
       memoNo,
       dateApproved,
       userId,
-      filePath,
+      filePath: fileName, // store filename only
     });
 
     return res.status(201).json({
@@ -46,23 +105,23 @@ const addCtoCreditRequest = async (req, res) => {
     });
   } catch (error) {
     console.error("Add CTO credit error:", error);
-    return res.status(400).json({ message: error.message });
+    return sendError(res, error);
   }
 };
 
 const rollbackCreditedRequest = async (req, res) => {
   try {
+    const userId = getUserIdOrThrow(req);
     const { creditId } = req.params;
-    const userId = req.user.id;
 
     const credit = await ctoCreditService.rollbackCredit({ creditId, userId });
 
-    res.json({
+    return res.json({
       message: "CTO credit rolled back and employee balances updated",
       credit,
     });
   } catch (error) {
-    res.status(400).json({ message: error.message });
+    return sendError(res, error);
   }
 };
 
@@ -71,15 +130,15 @@ const getEmployeeDetails = async (req, res) => {
     const { employeeId } = req.params;
     const employee = await ctoCreditService.getEmployeeDetails(employeeId);
 
-    if (!employee) {
+    if (!employee)
       return res.status(404).json({ message: "Employee not found" });
-    }
 
-    res.json({ message: "Employee fetched", employee });
+    return res.json({ message: "Employee fetched", employee });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return sendError(res, error);
   }
 };
+
 const getAllCreditRequests = async (req, res) => {
   try {
     const { page, limit, search, status } = req.query;
@@ -91,22 +150,25 @@ const getAllCreditRequests = async (req, res) => {
       filters: { status },
     });
 
-    res.json({
+    return res.json({
       message: "Showing credit requests",
-      page: parseInt(page) || 1,
-      limit: parseInt(limit) || 20,
+      page: parseInt(page, 10) || 1,
+      limit: parseInt(limit, 10) || 20,
       total: credits.totalCount,
       credits: credits.items,
       grandTotals: credits.grandTotals,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return sendError(res, error);
   }
 };
 
 const getEmployeeCredits = async (req, res) => {
   try {
-    const employeeId = req.params.employeeId || req.user.id;
+    // allow /:employeeId OR fallback to current user
+    const employeeId = req.params.employeeId || req?.user?.id;
+    if (!employeeId) return res.status(401).json({ message: "Unauthorized" });
+
     const { search, status, page, limit } = req.query;
 
     const result = await ctoCreditService.getEmployeeCredits(employeeId, {
@@ -116,76 +178,16 @@ const getEmployeeCredits = async (req, res) => {
       limit,
     });
 
-    res.json({
+    return res.json({
       message: "Employee credits fetched successfully",
       employeeId,
       ...result,
     });
   } catch (error) {
     console.error("Controller error:", error.message);
-    res.status(400).json({ message: error.message });
+    return sendError(res, error);
   }
 };
-// const addCreditRequestWithApprover = async (req, res) => {
-//   try {
-//     const { employees, hours, memoNo, approver } = req.body;
-
-//     const creditRequest = await ctoCreditService.createCreditRequest({
-//       employees,
-//       hours,
-//       memoNo,
-//       approver,
-//       filePath: req.file?.path,
-//     });
-
-//     res
-//       .status(201)
-//       .json({ message: "CTO credit request created", creditRequest });
-//   } catch (error) {
-//     res.status(400).json({ message: error.message });
-//   }
-// };
-
-// const handleApproveOrRejectCredit = async (req, res) => {
-//   try {
-//     const { creditId } = req.params;
-//     const { decision, remarks } = req.body;
-//     const userId = req.user.id;
-
-//     const credit = await ctoCreditService.approveOrRejectCredit({
-//       creditId,
-//       decision,
-//       remarks,
-//       userId,
-//     });
-
-//     res.json({
-//       message: `CTO credit ${decision.toLowerCase()}ed successfully`,
-//       credit,
-//     });
-//   } catch (error) {
-//     res.status(400).json({ message: error.message });
-//   }
-// };
-
-// const handleCancelCreditRequest = async (req, res) => {
-//   try {
-//     const { creditId } = req.params;
-//     const userId = req.user.id;
-
-//     const credit = await ctoCreditService.cancelCreditRequest({
-//       creditId,
-//       userId,
-//     });
-
-//     res.json({
-//       message: "CTO credit request canceled",
-//       credit,
-//     });
-//   } catch (error) {
-//     res.status(400).json({ message: error.message });
-//   }
-// };
 
 module.exports = {
   addCtoCreditRequest,

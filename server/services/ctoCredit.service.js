@@ -1,159 +1,217 @@
 // services/ctoCredit.service.js
+const mongoose = require("mongoose");
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
-const mongoose = require("mongoose");
-const addCredit = async ({
+
+function httpError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function assertObjectId(id, label = "id") {
+  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+    throw httpError(`Invalid ${label}`, 400);
+  }
+}
+
+function escapeRegExp(str) {
+  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function toHours(duration) {
+  const h = Number(duration?.hours || 0);
+  const m = Number(duration?.minutes || 0);
+  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) {
+    throw httpError("Invalid duration", 400);
+  }
+  return h + m / 60;
+}
+
+async function addCredit({
   employees,
   duration,
   memoNo,
   dateApproved,
   userId,
   filePath,
-}) => {
-  const totalHours =
-    Number(duration.hours || 0) + Number(duration.minutes || 0) / 60;
+}) {
+  if (!Array.isArray(employees) || employees.length === 0) {
+    throw httpError("Employees array is required", 400);
+  }
+  if (!memoNo || typeof memoNo !== "string" || !memoNo.trim()) {
+    throw httpError("memoNo is required", 400);
+  }
+  assertObjectId(userId, "userId");
 
-  const employeeObjs = employees.map((id) => ({
-    employee: id,
-    creditedHours: totalHours,
-    usedHours: 0,
-    remainingHours: totalHours,
-    status: "ACTIVE",
-    dateCredited: dateApproved,
-  }));
+  const employeeIds = employees.map(String);
+  employeeIds.forEach((id) => assertObjectId(id, "employeeId"));
 
-  const credit = await CtoCredit.create({
-    memoNo,
-    dateApproved,
-    uploadedMemo: filePath,
-    duration,
-    employees: employeeObjs,
-    creditedBy: userId,
-    status: "CREDITED",
-  });
+  const totalHours = toHours(duration);
+  if (totalHours <= 0) throw httpError("Credited hours must be > 0", 400);
 
-  await Promise.all(
-    employees.map(async (employeeId) => {
-      const employee = await Employee.findById(employeeId);
-      if (employee) {
-        employee.balances.ctoHours =
-          (employee.balances.ctoHours || 0) + totalHours;
-        await employee.save();
+  const approvedDate = dateApproved ? new Date(dateApproved) : new Date();
+  if (Number.isNaN(approvedDate.getTime()))
+    throw httpError("Invalid dateApproved", 400);
+
+  const session = await mongoose.startSession();
+  try {
+    let created;
+    await session.withTransaction(async () => {
+      const existingCount = await Employee.countDocuments(
+        { _id: { $in: employeeIds } },
+        { session },
+      );
+      if (existingCount !== employeeIds.length) {
+        throw httpError("Some employee IDs are invalid or not found", 400);
       }
-    }),
-  );
 
-  return credit;
-};
+      const employeeObjs = employeeIds.map((id) => ({
+        employee: id,
+        creditedHours: totalHours,
+        usedHours: 0,
+        reservedHours: 0,
+        remainingHours: totalHours,
+        status: "ACTIVE",
+        dateCredited: approvedDate,
+      }));
 
-// const rollbackCredit = async ({ creditId, userId }) => {
-//   const credit = await CtoCredit.findById(creditId);
-//   if (!credit) throw new Error("Credit not found");
+      const docs = await CtoCredit.create(
+        [
+          {
+            memoNo: memoNo.trim(),
+            dateApproved: approvedDate,
+            uploadedMemo: filePath,
+            duration,
+            employees: employeeObjs,
+            creditedBy: userId,
+            status: "CREDITED",
+          },
+        ],
+        { session },
+      );
+      created = docs[0];
 
-//   credit.status = "ROLLEDBACK";
-//   credit.dateRolledBack = new Date();
-//   credit.rolledBackBy = userId;
-//   await credit.save();
+      await Employee.updateMany(
+        { _id: { $in: employeeIds } },
+        { $inc: { "balances.ctoHours": totalHours } },
+        { session },
+      );
+    });
 
-//   // Optionally, update applied hours on employees here
-
-//   return credit;
-// };
+    return created;
+  } finally {
+    session.endSession();
+  }
+}
 
 async function rollbackCredit({ creditId, userId }) {
-  const credit = await CtoCredit.findById(creditId);
-  if (!credit) throw new Error("Credit request not found");
+  assertObjectId(creditId, "creditId");
+  assertObjectId(userId, "userId");
 
-  // Cannot rollback if credit is already rolled back or not active
-  if (credit.status !== "CREDITED") {
-    throw new Error("This credit is not active or already rolled back");
+  const session = await mongoose.startSession();
+  try {
+    let updated;
+    await session.withTransaction(async () => {
+      const credit = await CtoCredit.findById(creditId).session(session);
+      if (!credit) throw httpError("Credit request not found", 404);
+
+      if (credit.status !== "CREDITED") {
+        throw httpError(
+          "This credit is not active or already rolled back",
+          400,
+        );
+      }
+
+      const hasUsedOrReserved = credit.employees.some(
+        (e) => (e.usedHours || 0) > 0 || (e.reservedHours || 0) > 0,
+      );
+      if (hasUsedOrReserved) {
+        throw httpError(
+          "Cannot rollback: Some employees have used or reserved hours",
+          400,
+        );
+      }
+
+      const ops = credit.employees.map((e) => ({
+        updateOne: {
+          filter: { _id: e.employee },
+          update: { $inc: { "balances.ctoHours": -(e.creditedHours || 0) } },
+        },
+      }));
+
+      if (ops.length) {
+        await Employee.bulkWrite(ops, { session });
+      }
+
+      credit.employees = credit.employees.map((e) => ({
+        ...e.toObject(),
+        status: "ROLLEDBACK",
+      }));
+
+      credit.status = "ROLLEDBACK";
+      credit.dateRolledBack = new Date();
+      credit.rolledBackBy = userId;
+
+      updated = await credit.save({ session });
+    });
+
+    return updated;
+  } finally {
+    session.endSession();
   }
-
-  // Check if any employee has usedHours or reservedHours
-  const hasUsedOrReserved = credit.employees.some(
-    (e) => (e.usedHours || 0) > 0 || (e.reservedHours || 0) > 0,
-  );
-  if (hasUsedOrReserved) {
-    throw new Error(
-      "Cannot rollback: Some employees have already used or reserved hours",
-    );
-  }
-
-  // Calculate total credited hours for each employee
-  const employeeHoursMap = credit.employees.reduce((acc, e) => {
-    const hours = e.creditedHours || 0;
-    acc[e.employee] = hours;
-    return acc;
-  }, {});
-
-  // Deduct hours from each employee's balance
-  await Promise.all(
-    Object.entries(employeeHoursMap).map(([empId, hours]) =>
-      Employee.updateOne(
-        { _id: empId },
-        { $inc: { "balances.ctoHours": -hours } },
-      ),
-    ),
-  );
-
-  // Update status for each employee inside the credit document
-  credit.employees = credit.employees.map((e) => ({
-    ...e.toObject(),
-    status: "ROLLEDBACK",
-  }));
-
-  // Update memo-level status
-  credit.status = "ROLLEDBACK";
-  credit.dateRolledBack = new Date();
-  credit.rolledBackBy = userId;
-
-  await credit.save();
-
-  return credit;
 }
+
 async function getAllCredits({
   page = 1,
   limit = 20,
   search = "",
   filters = {},
 }) {
-  page = parseInt(page);
-  limit = Math.min(Math.max(limit, 20), 100);
+  page = Math.max(parseInt(page, 10) || 1, 1);
+  limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
   const skip = (page - 1) * limit;
 
   const query = {};
   if (filters.status) query.status = filters.status;
 
-  // Search by employee name
-  if (search) {
+  const q = String(search || "").trim();
+  if (q) {
+    const safe = escapeRegExp(q);
+
+    // employee name search
     const employees = await Employee.find({
       $or: [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
+        { firstName: { $regex: safe, $options: "i" } },
+        { lastName: { $regex: safe, $options: "i" } },
       ],
     }).select("_id");
 
     const employeeIds = employees.map((e) => e._id);
-    query["employees.employee"] = { $in: employeeIds };
+
+    // allow memoNo search too
+    query.$or = [
+      { memoNo: { $regex: safe, $options: "i" } },
+      { "employees.employee": { $in: employeeIds } },
+    ];
   }
 
-  // Pagination query
-  const totalCount = await CtoCredit.countDocuments(query);
-  const items = await CtoCredit.find(query)
-    .populate("employees.employee", "firstName lastName position")
-    .populate("rolledBackBy", "firstName lastName position role")
-    .populate("creditedBy", "firstName lastName position role")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit);
+  const [totalCount, items] = await Promise.all([
+    CtoCredit.countDocuments(query),
+    CtoCredit.find(query)
+      .populate("employees.employee", "firstName lastName position")
+      .populate("rolledBackBy", "firstName lastName position role")
+      .populate("creditedBy", "firstName lastName position role")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
+  ]);
 
-  // GRAND COUNTS: not affected by pagination or filters
-  const totalCreditedCount = await CtoCredit.countDocuments({
-    status: "CREDITED",
-  });
-  const totalRolledBackCount = await CtoCredit.countDocuments({
-    status: "ROLLEDBACK",
-  });
+  const [totalCreditedCount, totalRolledBackCount] = await Promise.all([
+    CtoCredit.countDocuments({ status: "CREDITED" }),
+    CtoCredit.countDocuments({ status: "ROLLEDBACK" }),
+  ]);
 
   return {
     totalCount,
@@ -166,68 +224,46 @@ async function getAllCredits({
 }
 
 async function getEmployeeDetails(employeeId) {
+  assertObjectId(employeeId, "employeeId");
   return Employee.findById(employeeId)
     .select("firstName lastName position department email")
     .lean();
 }
+
 async function getEmployeeCredits(
   employeeId,
   { search = "", filters = {}, page = 1, limit = 20 } = {},
 ) {
   if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
-    throw new Error("Invalid employee ID");
+    throw httpError("Invalid employee ID", 400);
   }
 
   const employeeObjId = new mongoose.Types.ObjectId(employeeId);
 
-  page = parseInt(page, 10);
+  page = Math.max(parseInt(page, 10) || 1, 1);
   limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
   const skip = (page - 1) * limit;
 
-  // -----------------------------
-  // 1) Totals (IGNORE search/filters)
-  // -----------------------------
+  // totals (ignore filters/search)
   const [totalsAgg] = await CtoCredit.aggregate([
-    // Narrow docs quickly
     { $match: { "employees.employee": employeeObjId } },
     { $unwind: "$employees" },
     { $match: { "employees.employee": employeeObjId } },
-
-    // Compute per-credit total hours (duration) and remaining
     {
       $addFields: {
-        _durationHours: {
-          $add: [
-            { $ifNull: ["$duration.hours", 0] },
-            {
-              $divide: [{ $ifNull: ["$duration.minutes", 0] }, 60],
-            },
-          ],
-        },
         _usedHours: { $ifNull: ["$employees.usedHours", 0] },
         _reservedHours: { $ifNull: ["$employees.reservedHours", 0] },
         _creditedHours: { $ifNull: ["$employees.creditedHours", 0] },
+        _remainingHours: { $ifNull: ["$employees.remainingHours", 0] },
       },
     },
-    {
-      $addFields: {
-        _remainingHours: {
-          $subtract: [
-            "$_durationHours",
-            { $add: ["$_usedHours", "$_reservedHours"] },
-          ],
-        },
-      },
-    },
-
-    // Sum totals for employee across ALL credits
     {
       $group: {
         _id: null,
         totalUsedHours: { $sum: "$_usedHours" },
         totalReservedHours: { $sum: "$_reservedHours" },
         totalRemainingHours: { $sum: "$_remainingHours" },
-        totalCreditedHours: { $sum: "$_creditedHours" }, // optional but handy
+        totalCreditedHours: { $sum: "$_creditedHours" },
       },
     },
   ]);
@@ -236,12 +272,10 @@ async function getEmployeeCredits(
     totalUsedHours: totalsAgg?.totalUsedHours ?? 0,
     totalReservedHours: totalsAgg?.totalReservedHours ?? 0,
     totalRemainingHours: totalsAgg?.totalRemainingHours ?? 0,
-    totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0, // optional
+    totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0,
   };
 
-  // -----------------------------
-  // 2) List query (APPLY search/filters)
-  // -----------------------------
+  const safeSearch = String(search || "").trim();
   const listMatch = {
     employees: {
       $elemMatch: {
@@ -249,7 +283,9 @@ async function getEmployeeCredits(
         ...(filters.status ? { status: filters.status } : {}),
       },
     },
-    ...(search ? { memoNo: { $regex: search, $options: "i" } } : {}),
+    ...(safeSearch
+      ? { memoNo: { $regex: escapeRegExp(safeSearch), $options: "i" } }
+      : {}),
   };
 
   const totalCount = await CtoCredit.countDocuments(listMatch);
@@ -268,12 +304,6 @@ async function getEmployeeCredits(
       (e) => e.employee?._id?.toString() === employeeId,
     );
 
-    const totalHours =
-      (credit.duration?.hours || 0) + (credit.duration?.minutes || 0) / 60;
-
-    const usedHours = empData?.usedHours || 0;
-    const reservedHours = empData?.reservedHours || 0;
-
     return {
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
@@ -282,9 +312,9 @@ async function getEmployeeCredits(
       creditedHours: empData?.creditedHours ?? 0,
       duration: credit.duration,
 
-      usedHours,
-      reservedHours,
-      remainingHours: totalHours - usedHours - reservedHours,
+      usedHours: empData?.usedHours || 0,
+      reservedHours: empData?.reservedHours || 0,
+      remainingHours: empData?.remainingHours ?? 0,
 
       status: credit.status,
       employeeStatus: empData?.status || "ACTIVE",
@@ -294,7 +324,6 @@ async function getEmployeeCredits(
     };
   });
 
-  // Status counts (this is overall for the employee; also ignores search/filters)
   const statusAggregation = await CtoCredit.aggregate([
     { $match: { "employees.employee": employeeObjId } },
     { $unwind: "$employees" },
@@ -313,82 +342,9 @@ async function getEmployeeCredits(
     page,
     limit,
     statusCounts,
-    totals, // ✅ totals unaffected by search/filters
+    totals,
   };
 }
-// async function createCreditRequest({
-//   employees,
-//   hours,
-//   memoNo,
-//   approver,
-//   filePath,
-// }) {
-//   const existingEmployees = await Employee.find({ _id: { $in: employees } });
-//   if (existingEmployees.length !== employees.length) {
-//     throw new Error(
-//       "Some employee IDs are invalid or not found in the database"
-//     );
-//   }
-
-//   const approverExists = await Employee.findById(approver);
-//   if (!approverExists) {
-//     throw new Error("Approver ID is invalid or not found in the database");
-//   }
-
-//   const creditRequest = await CtoCredit.create({
-//     employees,
-//     hours,
-//     memoNo,
-//     approver,
-//     status: "PENDING",
-//     uploadedMemo: filePath,
-//   });
-
-//   return creditRequest;
-// }
-
-// async function approveOrRejectCredit({ creditId, decision, remarks, userId }) {
-//   const credit = await CtoCredit.findById(creditId);
-//   if (!credit) throw new Error("Credit request not found");
-//   if (credit.status !== "PENDING") throw new Error("Already processed");
-//   if (credit.approver.toString() !== userId.toString()) {
-//     throw new Error("You are not authorized to approve/reject this request");
-//   }
-
-//   if (decision === "APPROVE") {
-//     credit.status = "APPROVED";
-//     credit.dateApproved = new Date();
-//     await credit.save();
-
-//     await Employee.updateMany(
-//       { _id: { $in: credit.employees } },
-//       { $inc: { "balances.ctoHours": credit.hours } }
-//     );
-//   } else if (decision === "REJECT") {
-//     credit.status = "REJECTED";
-//     credit.reviewedAt = new Date();
-//     if (remarks) credit.remarks = remarks;
-//     await credit.save();
-//   } else {
-//     throw new Error("Invalid decision. Use APPROVE or REJECT.");
-//   }
-
-//   return credit;
-// }
-
-// async function cancelCreditRequest({ creditId, userId }) {
-//   const credit = await CtoCredit.findById(creditId);
-//   if (!credit) throw new Error("Credit request not found");
-//   if (credit.status !== "PENDING")
-//     throw new Error("Only pending requests can be canceled");
-
-//   credit.status = "CANCELED";
-//   credit.canceledAt = new Date();
-//   credit.canceledBy = userId;
-//   await credit.save();
-
-//   return credit;
-// }
 
 module.exports = {
   addCredit,

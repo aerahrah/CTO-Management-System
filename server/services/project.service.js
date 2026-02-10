@@ -1,7 +1,9 @@
+// services/project.service.js
 const mongoose = require("mongoose");
 const Project = require("../models/projectModel");
 
 const ALLOWED_LIMITS = [20, 50, 100];
+const ALLOWED_STATUS = ["Active", "Inactive"];
 
 function httpError(message, statusCode) {
   const err = new Error(message);
@@ -24,19 +26,25 @@ function parsePage(value) {
 
 function parseLimit(value) {
   if (value === undefined || value === null || value === "") return 20;
-
   const limit = Number.parseInt(String(value), 10);
   if (Number.isNaN(limit)) throw httpError("Invalid limit", 400);
-
   if (!ALLOWED_LIMITS.includes(limit)) {
     throw httpError("Invalid limit. Allowed values: 20, 50, 100", 400);
   }
-
   return limit;
 }
 
+function normalizeStatus(status) {
+  if (status === undefined) return undefined;
+  if (!ALLOWED_STATUS.includes(status)) {
+    throw httpError("Invalid status. Allowed values: Active, Inactive", 400);
+  }
+  return status;
+}
+
 async function createProject(payload) {
-  const { name, status } = payload;
+  const { name } = payload || {};
+  const status = normalizeStatus(payload?.status);
 
   if (!name || typeof name !== "string" || !name.trim()) {
     throw httpError("Project name is required", 400);
@@ -53,14 +61,14 @@ async function createProject(payload) {
 
 async function listProjects(query = {}) {
   const filter = {};
-  if (query.status) filter.status = query.status;
+  if (query.status) filter.status = normalizeStatus(query.status);
 
   const page = parsePage(query.page);
   const limit = parseLimit(query.limit);
   const skip = (page - 1) * limit;
 
   const [items, total] = await Promise.all([
-    Project.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Project.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
     Project.countDocuments(filter),
   ]);
 
@@ -74,30 +82,21 @@ async function listProjects(query = {}) {
   };
 }
 
-/**
- * ✅ NEW: listAllProjects (NO pagination)
- * Use this for dropdown/options.
- * - supports optional ?status=Active|Inactive
- * - returns minimal fields and sorted by name
- */
 async function listAllProjects(query = {}) {
   const filter = {};
-  if (query.status) filter.status = query.status;
+  if (query.status) filter.status = normalizeStatus(query.status);
 
   const items = await Project.find(filter)
-    .select("_id name status") // keep payload small for options
-    .sort({ name: 1 });
-
-  return {
-    items,
-    total: items.length,
-  };
+    .select("_id name status")
+    .sort({ name: 1 })
+    .lean();
+  return { items, total: items.length };
 }
 
 async function getProjectById(id) {
   assertObjectId(id);
 
-  const project = await Project.findById(id);
+  const project = await Project.findById(id).lean();
   if (!project) throw httpError("Project not found", 404);
 
   return project;
@@ -121,20 +120,18 @@ async function updateProject(id, payload) {
       name: payload.name.trim(),
       _id: { $ne: id },
     });
-
     if (existing) throw httpError("Project name already exists", 409);
 
     update.name = payload.name.trim();
   }
 
-  if (payload.status !== undefined) {
-    update.status = payload.status;
-  }
+  if (payload.status !== undefined)
+    update.status = normalizeStatus(payload.status);
 
   const project = await Project.findByIdAndUpdate(id, update, {
     new: true,
     runValidators: true,
-  });
+  }).lean();
 
   if (!project) throw httpError("Project not found", 404);
   return project;
@@ -143,26 +140,22 @@ async function updateProject(id, payload) {
 async function deleteProject(id) {
   assertObjectId(id);
 
-  const deleted = await Project.findByIdAndDelete(id);
+  const deleted = await Project.findByIdAndDelete(id).lean();
   if (!deleted) throw httpError("Project not found", 404);
 
   return deleted;
 }
 
-/* ✅ ONE API: set status Active/Inactive */
 async function updateProjectStatus(id, status) {
   assertObjectId(id);
 
-  if (!status || !["Active", "Inactive"].includes(status)) {
-    throw httpError("Invalid status. Allowed values: Active, Inactive", 400);
-  }
+  const st = normalizeStatus(status);
 
   const project = await Project.findByIdAndUpdate(
     id,
-    { status },
+    { status: st },
     { new: true, runValidators: true },
-  );
-
+  ).lean();
   if (!project) throw httpError("Project not found", 404);
   return project;
 }
@@ -170,7 +163,7 @@ async function updateProjectStatus(id, status) {
 module.exports = {
   createProject,
   listProjects,
-  listAllProjects, // ✅ export
+  listAllProjects,
   getProjectById,
   updateProject,
   deleteProject,

@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Designation = require("../models/designationModel");
 
 const ALLOWED_LIMITS = [20, 50, 100];
+const ALLOWED_STATUS = ["Active", "Inactive"];
 
 function httpError(message, statusCode) {
   const err = new Error(message);
@@ -25,24 +26,30 @@ function parsePage(value) {
 
 function parseLimit(value) {
   if (value === undefined || value === null || value === "") return 20;
-
   const limit = Number.parseInt(String(value), 10);
   if (Number.isNaN(limit)) throw httpError("Invalid limit", 400);
-
   if (!ALLOWED_LIMITS.includes(limit)) {
     throw httpError("Invalid limit. Allowed values: 20, 50, 100", 400);
   }
   return limit;
 }
 
+function normalizeStatus(status) {
+  if (status === undefined) return undefined;
+  if (!ALLOWED_STATUS.includes(status)) {
+    throw httpError("Invalid status. Allowed values: Active, Inactive", 400);
+  }
+  return status;
+}
+
 async function createDesignation(payload) {
-  const { name, status } = payload;
+  const { name } = payload || {};
+  const status = normalizeStatus(payload?.status);
 
   if (!name || typeof name !== "string" || !name.trim()) {
     throw httpError("Designation name is required", 400);
   }
 
-  // if you want unique names, keep this check (recommended)
   const exists = await Designation.findOne({ name: name.trim() });
   if (exists) throw httpError("Designation name already exists", 409);
 
@@ -52,20 +59,20 @@ async function createDesignation(payload) {
   });
 }
 
-/**
- * ✅ Paginated list (like projects list)
- * supports ?status=Active|Inactive&page=1&limit=20|50|100
- */
 async function listDesignations(query = {}) {
   const filter = {};
-  if (query.status) filter.status = query.status;
+  if (query.status) filter.status = normalizeStatus(query.status);
 
   const page = parsePage(query.page);
   const limit = parseLimit(query.limit);
   const skip = (page - 1) * limit;
 
   const [items, total] = await Promise.all([
-    Designation.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Designation.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean(),
     Designation.countDocuments(filter),
   ]);
 
@@ -79,17 +86,14 @@ async function listDesignations(query = {}) {
   };
 }
 
-/**
- * ✅ No pagination (for dropdown/options)
- * supports optional ?status=Active|Inactive
- */
 async function listAllDesignations(query = {}) {
   const filter = {};
-  if (query.status) filter.status = query.status;
+  if (query.status) filter.status = normalizeStatus(query.status);
 
   const items = await Designation.find(filter)
     .select("_id name status")
-    .sort({ name: 1 });
+    .sort({ name: 1 })
+    .lean();
 
   return { items, total: items.length };
 }
@@ -97,7 +101,7 @@ async function listAllDesignations(query = {}) {
 async function getDesignationById(id) {
   assertObjectId(id);
 
-  const designation = await Designation.findById(id);
+  const designation = await Designation.findById(id).lean();
   if (!designation) throw httpError("Designation not found", 404);
 
   return designation;
@@ -121,20 +125,19 @@ async function updateDesignation(id, payload) {
       name: payload.name.trim(),
       _id: { $ne: id },
     });
-
     if (existing) throw httpError("Designation name already exists", 409);
 
     update.name = payload.name.trim();
   }
 
   if (payload.status !== undefined) {
-    update.status = payload.status;
+    update.status = normalizeStatus(payload.status);
   }
 
   const designation = await Designation.findByIdAndUpdate(id, update, {
     new: true,
     runValidators: true,
-  });
+  }).lean();
 
   if (!designation) throw httpError("Designation not found", 404);
   return designation;
@@ -143,25 +146,22 @@ async function updateDesignation(id, payload) {
 async function deleteDesignation(id) {
   assertObjectId(id);
 
-  const deleted = await Designation.findByIdAndDelete(id);
+  const deleted = await Designation.findByIdAndDelete(id).lean();
   if (!deleted) throw httpError("Designation not found", 404);
 
   return deleted;
 }
 
-/* ✅ ONE API: set status Active/Inactive */
 async function updateDesignationStatus(id, status) {
   assertObjectId(id);
 
-  if (!status || !["Active", "Inactive"].includes(status)) {
-    throw httpError("Invalid status. Allowed values: Active, Inactive", 400);
-  }
+  const st = normalizeStatus(status);
 
   const designation = await Designation.findByIdAndUpdate(
     id,
-    { status },
+    { status: st },
     { new: true, runValidators: true },
-  );
+  ).lean();
 
   if (!designation) throw httpError("Designation not found", 404);
   return designation;

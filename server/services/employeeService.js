@@ -1,20 +1,34 @@
 // services/employeeService.js
 const Employee = require("../models/employeeModel");
 const Project = require("../models/projectModel");
-const Designation = require("../models/designationModel"); // ✅ NEW
+const Designation = require("../models/designationModel");
 const mongoose = require("mongoose");
 
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
 const CtoCredit = require("../models/ctoCreditModel");
-const bcrypt = require("bcrypt");
 
 const validRoles = ["employee", "supervisor", "hr", "admin"];
+const ALLOWED_LIMITS = [10, 20, 50, 100];
 
-/* -------------------- helpers -------------------- */
+function httpError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
 function escapeRegExp(str) {
   return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function normalizeToStringId(value) {
@@ -23,21 +37,24 @@ function normalizeToStringId(value) {
   return String(value);
 }
 
-/**
- * Resolve project input (id or name) -> ObjectId
- * Throws if not found.
- */
+function parsePage(v) {
+  const page = Math.max(parseInt(v, 10) || 1, 1);
+  return page;
+}
+
+function parseLimit(v, def = 20) {
+  const lim = parseInt(v, 10);
+  if (!Number.isFinite(lim)) return def;
+  return ALLOWED_LIMITS.includes(lim) ? lim : def;
+}
+
 async function resolveProjectIdOrThrow(projectInput) {
   const val = normalizeToStringId(projectInput);
-  if (!val || !val.trim()) throw new Error("Project is required");
+  if (!val || !val.trim()) throw httpError("Project is required", 400);
 
   if (mongoose.Types.ObjectId.isValid(val)) {
     const p = await Project.findById(val).select("_id status name");
-    if (!p) throw new Error("Selected project not found");
-
-    // OPTIONAL: enforce Active only
-    // if (p.status !== "Active") throw new Error("Selected project is inactive");
-
+    if (!p) throw httpError("Selected project not found", 400);
     return p._id;
   }
 
@@ -45,22 +62,13 @@ async function resolveProjectIdOrThrow(projectInput) {
     name: { $regex: new RegExp(`^${escapeRegExp(val.trim())}$`, "i") },
   }).select("_id status name");
 
-  if (!p) throw new Error("Selected project not found");
-
-  // OPTIONAL: enforce Active only
-  // if (p.status !== "Active") throw new Error("Selected project is inactive");
-
+  if (!p) throw httpError("Selected project not found", 400);
   return p._id;
 }
 
-/**
- * Resolve project filter (id or name) -> ObjectId or null
- * Does NOT throw (good for filtering list endpoints).
- */
 async function resolveProjectIdForFilter(projectInput) {
   const val = normalizeToStringId(projectInput);
   if (!val || !val.trim()) return null;
-
   if (mongoose.Types.ObjectId.isValid(val)) return val;
 
   const p = await Project.findOne({
@@ -70,22 +78,15 @@ async function resolveProjectIdForFilter(projectInput) {
   return p ? p._id : null;
 }
 
-/**
- * ✅ NEW: Resolve designation input (id or name) -> ObjectId
- * Throws if not found. Enforces Active designation by default.
- */
 async function resolveDesignationIdOrThrow(designationInput) {
   const val = normalizeToStringId(designationInput);
-  if (!val || !val.trim()) throw new Error("Designation is required");
+  if (!val || !val.trim()) throw httpError("Designation is required", 400);
 
   if (mongoose.Types.ObjectId.isValid(val)) {
     const d = await Designation.findById(val).select("_id status name");
-    if (!d) throw new Error("Selected designation not found");
-
-    // ✅ enforce Active only (recommended)
+    if (!d) throw httpError("Selected designation not found", 400);
     if (d.status !== "Active")
-      throw new Error("Selected designation is inactive");
-
+      throw httpError("Selected designation is inactive", 400);
     return d._id;
   }
 
@@ -93,21 +94,16 @@ async function resolveDesignationIdOrThrow(designationInput) {
     name: { $regex: new RegExp(`^${escapeRegExp(val.trim())}$`, "i") },
   }).select("_id status name");
 
-  if (!d) throw new Error("Selected designation not found");
+  if (!d) throw httpError("Selected designation not found", 400);
   if (d.status !== "Active")
-    throw new Error("Selected designation is inactive");
+    throw httpError("Selected designation is inactive", 400);
 
   return d._id;
 }
 
-/**
- * ✅ NEW: Resolve designation filter (id or name) -> ObjectId or null
- * Does NOT throw (good for filtering list endpoints).
- */
 async function resolveDesignationIdForFilter(designationInput) {
   const val = normalizeToStringId(designationInput);
   if (!val || !val.trim()) return null;
-
   if (mongoose.Types.ObjectId.isValid(val)) return val;
 
   const d = await Designation.findOne({
@@ -116,8 +112,6 @@ async function resolveDesignationIdForFilter(designationInput) {
 
   return d ? d._id : null;
 }
-
-/* -------------------- services -------------------- */
 
 // Create employee with temporary password
 const createEmployeeService = async (employeeData) => {
@@ -132,86 +126,106 @@ const createEmployeeService = async (employeeData) => {
     division,
     project,
     role,
-  } = employeeData;
+  } = employeeData || {};
+
+  if (
+    !employeeId ||
+    !username ||
+    !firstName ||
+    !lastName ||
+    !designation ||
+    !project
+  ) {
+    throw httpError("Missing required fields for employee creation", 400);
+  }
+
+  if (role && !validRoles.includes(role)) {
+    throw httpError(`Invalid role. Valid roles: ${validRoles.join(", ")}`, 400);
+  }
 
   const existing = await Employee.findOne({
-    $or: [{ employeeId }, { username }, { email }],
+    $or: [{ employeeId }, { username }, ...(email ? [{ email }] : [])],
   });
 
   if (existing) {
-    throw new Error("Employee with this ID, username, or email already exists");
+    throw httpError(
+      "Employee with this ID, username, or email already exists",
+      409,
+    );
   }
 
-  // ✅ Resolve refs
   const projectId = await resolveProjectIdOrThrow(project);
   const designationId = await resolveDesignationIdOrThrow(designation);
 
-  const tempPassword = crypto.randomBytes(6).toString("hex");
+  // Stronger temporary password
+  const tempPassword = crypto.randomBytes(12).toString("hex");
 
   const employee = new Employee({
-    employeeId,
-    username,
-    email,
-    firstName,
-    lastName,
+    employeeId: String(employeeId).trim(),
+    username: String(username).trim(),
+    email: email ? String(email).trim() : undefined,
+    firstName: String(firstName).trim(),
+    lastName: String(lastName).trim(),
     division,
     project: projectId,
-    designation: designationId, // ✅ store ObjectId
+    designation: designationId,
     position,
-    role,
+    role: role || "employee",
     password: tempPassword,
   });
 
   await employee.save();
 
-  // Send email if email is provided
-  if (email) {
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+
+  if (employee.email) {
     try {
       const htmlBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-        <div style="background-color: #2563eb; padding: 20px; text-align: center;">
-          <img src="https://yourdomain.com/logo.png" alt="DICT Logo" style="height: 50px;" />
+        <div style="background-color: #2563eb; padding: 20px; text-align: center; color: #fff;">
+          <strong>HRMS</strong>
         </div>
 
         <div style="padding: 20px; color: #1f2937;">
-          <h2 style="color: #2563eb; margin-top: 0;">Welcome to DICT HRMS, ${firstName}!</h2>
-          <p>Your account has been successfully created.</p>
+          <h2 style="color: #2563eb; margin-top: 0;">Welcome, ${escapeHtml(firstName)}!</h2>
+          <p>Your account has been created.</p>
 
           <table style="width: 100%; margin: 20px 0; border-collapse: collapse;">
             <tr>
               <td style="padding: 8px; font-weight: bold; width: 40%;">Username:</td>
-              <td style="padding: 8px;">${username}</td>
+              <td style="padding: 8px;">${escapeHtml(username)}</td>
             </tr>
             <tr>
               <td style="padding: 8px; font-weight: bold;">Temporary Password:</td>
-              <td style="padding: 8px;">${tempPassword}</td>
+              <td style="padding: 8px;">${escapeHtml(tempPassword)}</td>
             </tr>
           </table>
 
-          <p style="margin-top: 20px;">Please log in and change your password immediately to secure your account.</p>
+          <p>Please log in and change your password immediately.</p>
 
-          <a href="https://your-hrms-domain.com/login" 
-            style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 4px; margin-top: 10px;">
-            Login to HRMS
+          <a href="${frontendUrl}/login"
+            style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 4px;">
+            Login
           </a>
         </div>
 
         <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280;">
-          DICT HRMS &copy; ${new Date().getFullYear()}. All rights reserved.
+          HRMS &copy; ${new Date().getFullYear()}
         </div>
       </div>
       `;
 
-      await sendEmail(email, "Your DICT HRMS Account", htmlBody);
+      await sendEmail(employee.email, "Your HRMS Account", htmlBody);
     } catch (err) {
       console.error("Failed to send email:", err.message);
     }
   }
 
-  return { employee, tempPassword };
+  // SECURITY: Don’t return temp password unless explicitly allowed
+  const returnTemp = process.env.RETURN_TEMP_PASSWORD === "true";
+  return returnTemp ? { employee, tempPassword } : { employee };
 };
 
-// Get all employees
 const getEmployeesService = async ({
   division,
   designation,
@@ -225,29 +239,31 @@ const getEmployeesService = async ({
 
     if (division) query.division = division;
 
-    // ✅ designation filter supports designationId OR designation name
     if (designation) {
       const designationId = await resolveDesignationIdForFilter(designation);
       if (!designationId) return { data: [], total: 0, totalPages: 0 };
       query.designation = designationId;
     }
 
-    // ✅ project filter supports projectId OR project name
     if (project) {
       const projectId = await resolveProjectIdForFilter(project);
       if (!projectId) return { data: [], total: 0, totalPages: 0 };
       query.project = projectId;
     }
 
-    if (search) {
+    const q = String(search || "").trim();
+    if (q) {
+      const safe = escapeRegExp(q);
       query.$or = [
-        { firstName: { $regex: search, $options: "i" } },
-        { lastName: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
+        { firstName: { $regex: safe, $options: "i" } },
+        { lastName: { $regex: safe, $options: "i" } },
+        { email: { $regex: safe, $options: "i" } },
       ];
     }
 
-    const skip = (page - 1) * limit;
+    const pg = parsePage(page);
+    const lim = parseLimit(limit, 20);
+    const skip = (pg - 1) * lim;
 
     const projection = {
       firstName: 1,
@@ -263,9 +279,9 @@ const getEmployeesService = async ({
     const [data, total] = await Promise.all([
       Employee.find(query, projection)
         .skip(skip)
-        .limit(limit)
+        .limit(lim)
         .sort({ lastName: 1, firstName: 1 })
-        .populate("designation", "name status") // ✅ UPDATED
+        .populate("designation", "name status")
         .populate("project", "name status")
         .lean(),
       Employee.countDocuments(query),
@@ -274,79 +290,77 @@ const getEmployeesService = async ({
     return {
       data,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / lim),
     };
   } catch (err) {
-    const error = new Error("Failed to fetch employees");
-    error.statusCode = 500;
+    const error = httpError("Failed to fetch employees", 500);
     error.originalMessage = err.message;
     throw error;
   }
 };
 
-// Get employee by ID
 const getEmployeeByIdService = async (id) => {
   const employee = await Employee.findById(id)
-    .populate("designation", "name status") // ✅ UPDATED
+    .populate("designation", "name status")
     .populate("project", "name status");
 
-  if (!employee) {
-    throw new Error(`Employee with ID ${id} not found`);
-  }
+  if (!employee) throw httpError(`Employee with ID ${id} not found`, 404);
   return employee;
 };
 
-// Sign in employee
 const signInEmployeeService = async (username, password) => {
-  const employee = await Employee.findOne({ username });
-  if (!employee) throw new Error("Invalid username or password");
+  const employee = await Employee.findOne({
+    username: String(username).trim(),
+  });
+  if (!employee) throw httpError("Invalid username or password", 401);
 
   const isMatch = await employee.comparePassword(password);
-  if (!isMatch) throw new Error("Invalid username or password");
+  if (!isMatch) throw httpError("Invalid username or password", 401);
+
+  if (!process.env.JWT_SECRET) {
+    throw httpError("Server misconfigured: JWT_SECRET is missing", 500);
+  }
 
   const payload = {
     id: employee._id,
     username: employee.username,
-    designation: employee.designation, // id stored in token (ObjectId)
+    designation: employee.designation,
     role: employee.role,
   };
 
-  const token = jwt.sign(
-    payload,
-    process.env.JWT_SECRET || "supersecretkey123",
-    { expiresIn: process.env.JWT_EXPIRES_IN || "1d" },
-  );
+  const token = jwt.sign(payload, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || "1d",
+    issuer: process.env.JWT_ISSUER || "hrms-api",
+    audience: process.env.JWT_AUDIENCE || "hrms-client",
+  });
 
   return { token, payload };
 };
 
 const updateEmployeeService = async (id, updateData) => {
   const employee = await Employee.findById(id);
-  if (!employee) throw new Error(`Employee with ID ${id} not found`);
+  if (!employee) throw httpError(`Employee with ID ${id} not found`, 404);
 
   if (updateData.employeeId && updateData.employeeId !== employee.employeeId) {
-    throw new Error("Employee ID cannot be changed");
+    throw httpError("Employee ID cannot be changed", 400);
   }
 
   if (updateData.email || updateData.username) {
     const conflict = await Employee.findOne({
-      $and: [
-        { _id: { $ne: id } },
-        {
-          $or: [{ email: updateData.email }, { username: updateData.username }],
-        },
+      _id: { $ne: id },
+      $or: [
+        ...(updateData.email ? [{ email: updateData.email }] : []),
+        ...(updateData.username ? [{ username: updateData.username }] : []),
       ],
     });
 
-    if (conflict) throw new Error("Email or username already in use");
+    if (conflict) throw httpError("Email or username already in use", 409);
   }
 
-  // ✅ resolve project if being updated
   if (updateData.project !== undefined) {
     updateData.project = await resolveProjectIdOrThrow(updateData.project);
   }
 
-  // ✅ resolve designation if being updated
   if (updateData.designation !== undefined) {
     updateData.designation = await resolveDesignationIdOrThrow(
       updateData.designation,
@@ -364,18 +378,21 @@ const updateEmployeeService = async (id, updateData) => {
 const getEmployeeCtoMemos = async (employeeId) => {
   const memos = await CtoCredit.find({ "employees.employee": employeeId })
     .populate("employees.employee", "firstName lastName")
-    .exec();
+    .lean();
 
   const formatted = memos.map((memo) => {
     const empData = memo.employees.find(
-      (e) => e.employee._id.toString() === employeeId,
+      (e) => String(e.employee?._id) === String(employeeId),
     );
+    const filename = String(memo.uploadedMemo || "")
+      .split(/[/\\]/)
+      .pop();
 
     return {
       id: memo._id,
       memoNo: memo.memoNo,
       dateApproved: memo.dateApproved,
-      uploadedMemo: `/uploads/cto_memos/${memo.uploadedMemo.split(/[/\\]/).pop()}`,
+      uploadedMemo: filename ? `/uploads/cto_memos/${filename}` : null,
       creditedHours: empData?.creditedHours || 0,
       usedHours: empData?.usedHours || 0,
       remainingHours: empData?.remainingHours || 0,
@@ -390,11 +407,10 @@ const getEmployeeCtoMemos = async (employeeId) => {
 
 async function changeEmployeeRole(id, newRole) {
   if (!validRoles.includes(newRole)) {
-    throw new Error(`Invalid role. Valid roles: ${validRoles.join(", ")}`);
+    throw httpError(`Invalid role. Valid roles: ${validRoles.join(", ")}`, 400);
   }
-
   const employee = await Employee.findById(id);
-  if (!employee) throw new Error("Employee not found");
+  if (!employee) throw httpError("Employee not found", 404);
 
   employee.role = newRole;
   await employee.save();
@@ -404,10 +420,10 @@ async function changeEmployeeRole(id, newRole) {
 const getProfile = async (employeeId) => {
   const employee = await Employee.findById(employeeId)
     .select("-password")
-    .populate("designation", "name status") // ✅ UPDATED
+    .populate("designation", "name status")
     .populate("project", "name status");
 
-  if (!employee) throw new Error("Employee not found");
+  if (!employee) throw httpError("Employee not found", 404);
   return employee;
 };
 
@@ -430,7 +446,14 @@ const updateProfile = async (employeeId, updateData) => {
       filteredData[field] = updateData[field];
   });
 
-  // ✅ resolve project if included
+  if (filteredData.email) {
+    const conflict = await Employee.findOne({
+      _id: { $ne: employeeId },
+      email: filteredData.email,
+    });
+    if (conflict) throw httpError("Email already in use", 409);
+  }
+
   if (filteredData.project !== undefined) {
     filteredData.project = await resolveProjectIdOrThrow(filteredData.project);
   }
@@ -438,22 +461,29 @@ const updateProfile = async (employeeId, updateData) => {
   const updatedEmployee = await Employee.findByIdAndUpdate(
     employeeId,
     filteredData,
-    { new: true, runValidators: true },
+    {
+      new: true,
+      runValidators: true,
+    },
   )
     .select("-password")
-    .populate("designation", "name status") // ✅ UPDATED
+    .populate("designation", "name status")
     .populate("project", "name status");
 
-  if (!updatedEmployee) throw new Error("Employee not found");
+  if (!updatedEmployee) throw httpError("Employee not found", 404);
   return updatedEmployee;
 };
 
 const resetPassword = async (employeeId, oldPassword, newPassword) => {
-  const employee = await Employee.findById(employeeId);
-  if (!employee) throw new Error("Employee not found");
+  if (!newPassword || String(newPassword).length < 8) {
+    throw httpError("New password must be at least 8 characters long", 400);
+  }
 
-  const isMatch = await bcrypt.compare(oldPassword, employee.password);
-  if (!isMatch) throw new Error("Old password is incorrect");
+  const employee = await Employee.findById(employeeId);
+  if (!employee) throw httpError("Employee not found", 404);
+
+  const isMatch = await employee.comparePassword(oldPassword);
+  if (!isMatch) throw httpError("Old password is incorrect", 400);
 
   employee.password = newPassword;
   await employee.save();

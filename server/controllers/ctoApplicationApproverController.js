@@ -1,3 +1,4 @@
+// controllers/ctoApplicationApproverController.js
 const {
   getCtoApplicationsForApproverService,
   approveCtoApplicationService,
@@ -9,11 +10,13 @@ const {
 
 const getPendingCountForApproverController = async (req, res, next) => {
   try {
-    const approverId = req.user.id;
-    const pendingCount = await fetchPendingCtoCountService(approverId); // updated service
-    res.status(200).json({ pending: pendingCount });
+    const approverId = req.user?.id;
+    if (!approverId) return res.status(401).json({ message: "Unauthorized" });
+
+    const pendingCount = await fetchPendingCtoCountService(approverId);
+    return res.status(200).json({ pending: pendingCount });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
@@ -21,14 +24,14 @@ const getApproverOptions = async (req, res) => {
   try {
     const data = await getApproverOptionsService();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: data.length,
       data,
     });
   } catch (err) {
     console.error("Failed to fetch approver options:", err);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to load approver options",
     });
@@ -37,14 +40,10 @@ const getApproverOptions = async (req, res) => {
 
 const getCtoApplicationsForApprover = async (req, res, next) => {
   try {
-    const approverId = req.user.id;
+    const approverId = req.user?.id;
+    if (!approverId) return res.status(401).json({ message: "Unauthorized" });
 
-    const {
-      search = "",
-      status = "", // ✅ ADDED
-      page = 1,
-      limit = 10,
-    } = req.query;
+    const { search = "", status = "", page = 1, limit = 10 } = req.query;
 
     const allowedLimits = [10, 20, 50, 100];
     const parsedLimit = allowedLimits.includes(Number(limit))
@@ -60,7 +59,7 @@ const getCtoApplicationsForApprover = async (req, res, next) => {
       parsedLimit,
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: result.data,
       total: result.total,
@@ -69,7 +68,7 @@ const getCtoApplicationsForApprover = async (req, res, next) => {
       statusCounts: result.statusCounts,
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
@@ -78,18 +77,20 @@ const getCtoApplicationById = async (req, res, next) => {
     const { id } = req.params;
     const application = await getCtoApplicationByIdService(id);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: application,
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
 const approveCtoApplication = async (req, res, next) => {
   try {
-    const approverId = req.user.id;
+    const approverId = req.user?.id;
+    if (!approverId) return res.status(401).json({ message: "Unauthorized" });
+
     const { applicationId } = req.params;
 
     const data = await approveCtoApplicationService({
@@ -98,16 +99,18 @@ const approveCtoApplication = async (req, res, next) => {
       req,
     });
 
-    res.json({ success: true, data });
+    return res.json({ success: true, data });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 
 const rejectCtoApplication = async (req, res, next) => {
   try {
+    const approverId = req.user?.id;
+    if (!approverId) return res.status(401).json({ message: "Unauthorized" });
+
     const { applicationId } = req.params;
-    const approverId = req.user.id;
     const { remarks } = req.body;
 
     const result = await rejectCtoApplicationService({
@@ -117,12 +120,12 @@ const rejectCtoApplication = async (req, res, next) => {
       req,
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       message: "CTO Application has been rejected successfully.",
       data: result,
     });
   } catch (err) {
-    next(err);
+    return next(err);
   }
 };
 

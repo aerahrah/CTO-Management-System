@@ -1,4 +1,4 @@
-// controllers/auditLog.controller.js
+// controllers/auditLogController.js
 const auditLogService = require("../services/auditLog.service");
 
 const getAuditLogs = async (req, res) => {
@@ -8,9 +8,12 @@ const getAuditLogs = async (req, res) => {
     }
 
     const logs = await auditLogService.getAuditLogs(req.query);
-    res.json(logs);
+    return res.json(logs);
   } catch (err) {
-    res.status(500).json({ message: "Failed to fetch audit logs" });
+    console.error("Audit log fetch error:", err);
+    return res
+      .status(err.statusCode || 500)
+      .json({ message: err.message || "Failed to fetch audit logs" });
   }
 };
 

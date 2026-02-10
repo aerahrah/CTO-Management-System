@@ -1,28 +1,36 @@
+// services/ctoDashboard.service.js
 const Employee = require("../models/employeeModel");
 const CtoApplication = require("../models/ctoApplicationModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const ApprovalStep = require("../models/approvalStepModel");
 
+async function sumApprovedHours(employeeId) {
+  const [agg] = await CtoApplication.aggregate([
+    { $match: { employee: employeeId, overallStatus: "APPROVED" } },
+    { $group: { _id: null, usedHours: { $sum: "$requestedHours" } } },
+  ]);
+  return agg?.usedHours || 0;
+}
+
 const ctoDashboardService = {
-  // --- Personal CTO Summary (for reuse) ---
   getPersonalCtoSummary: async (employeeId) => {
-    const employee =
-      await Employee.findById(employeeId).select("balances ctoHours");
+    const employee = await Employee.findById(employeeId)
+      .select("balances")
+      .lean();
 
     if (!employee) {
-      console.warn(`Employee not found: ${employeeId}`);
       return {
         balance: 0,
         used: 0,
         pending: 0,
         approved: 0,
         rejected: 0,
-        totalRequests: 0, // total count of all requests
+        totalRequests: 0,
+        recentRequests: [],
       };
     }
 
-    // Count by status
-    const [approvedCount, pendingCount, rejectedCount, totalCount] =
+    const [approvedCount, pendingCount, rejectedCount, totalCount, usedHours] =
       await Promise.all([
         CtoApplication.countDocuments({
           employee: employeeId,
@@ -37,17 +45,8 @@ const ctoDashboardService = {
           overallStatus: "REJECTED",
         }),
         CtoApplication.countDocuments({ employee: employeeId }),
+        sumApprovedHours(employeeId),
       ]);
-
-    // Used hours comes from approved applications
-    const approvedApplications = await CtoApplication.find({
-      employee: employeeId,
-      overallStatus: "APPROVED",
-    });
-    const usedHours = approvedApplications.reduce(
-      (sum, app) => sum + app.requestedHours,
-      0,
-    );
 
     const recentRequests = await CtoApplication.find({ employee: employeeId })
       .sort({ createdAt: -1 })
@@ -66,23 +65,19 @@ const ctoDashboardService = {
     };
   },
 
-  // --- Employee ---
   getEmployeeSummary: async (employeeId) => {
     const myCtoSummary =
       await ctoDashboardService.getPersonalCtoSummary(employeeId);
-
     return {
       myCtoSummary,
       quickActions: [{ name: "Apply for CTO", link: "/app/cto/apply" }],
     };
   },
 
-  // --- Supervisor ---
   getSupervisorSummary: async (employeeId) => {
     const myCtoSummary =
       await ctoDashboardService.getPersonalCtoSummary(employeeId);
 
-    // Fetch all approval steps for this approver
     const approvalSteps = await ApprovalStep.find({ approver: employeeId })
       .populate({
         path: "ctoApplication",
@@ -97,7 +92,8 @@ const ctoDashboardService = {
 
     for (const step of approvalSteps) {
       const app = step.ctoApplication;
-      if (!app || !app.approvals || app.approvals.length === 0) continue;
+      if (!app || !Array.isArray(app.approvals) || app.approvals.length === 0)
+        continue;
       if (app.overallStatus === "REJECTED") continue;
 
       const steps = app.approvals;
@@ -109,10 +105,10 @@ const ctoDashboardService = {
       const userStep = steps[userStepIndex];
       if (userStep.status === "REJECTED") continue;
 
-      // Only include if it's their turn
       const pendingStep = steps.find((s) => s.status === "PENDING");
       const isTheirTurn =
         pendingStep?.approver?._id?.toString() === employeeId.toString();
+
       if (userStep.status === "PENDING" && isTheirTurn) {
         pendingApplicationsMap.set(app._id.toString(), app);
       }
@@ -130,42 +126,37 @@ const ctoDashboardService = {
       }),
     );
 
-    // For dashboard, only show recent 5
     const recentPendingRequests = allPendingRequests.slice(0, 5);
-
-    // Add quick link if at least 1 pending approval exists
-    const quickLinks =
-      allPendingRequests.length > 0
-        ? [{ name: "Approvals", link: "/app/cto/approvals" }]
-        : [];
 
     return {
       myCtoSummary,
       teamPendingApprovals: allPendingRequests.length,
       pendingRequests: recentPendingRequests,
-      quickLinks,
+      quickLinks:
+        allPendingRequests.length > 0
+          ? [{ name: "Approvals", link: "/app/cto/approvals" }]
+          : [],
     };
   },
-  // --- HR ---
+
   getHrSummary: async (hrId) => {
     const myCtoSummary = await ctoDashboardService.getPersonalCtoSummary(hrId);
 
     const recentCredits = await CtoCredit.find()
       .sort({ createdAt: -1 })
       .limit(5)
-      .populate("employees.employee");
+      .select(
+        "memoNo dateApproved status duration employees creditedBy createdAt",
+      )
+      .populate("employees.employee", "firstName lastName position")
+      .lean();
 
-    const totalCreditedCount = await CtoCredit.countDocuments({
-      status: "CREDITED",
-    });
-
-    const totalRolledBackCount = await CtoCredit.countDocuments({
-      status: "ROLLEDBACK",
-    });
-
-    const totalPendingRequests = await CtoApplication.countDocuments({
-      overallStatus: "PENDING",
-    });
+    const [totalCreditedCount, totalRolledBackCount, totalPendingRequests] =
+      await Promise.all([
+        CtoCredit.countDocuments({ status: "CREDITED" }),
+        CtoCredit.countDocuments({ status: "ROLLEDBACK" }),
+        CtoApplication.countDocuments({ overallStatus: "PENDING" }),
+      ]);
 
     return {
       myCtoSummary,
@@ -181,33 +172,51 @@ const ctoDashboardService = {
     };
   },
 
-  // --- Admin (refactored) ---
   getAdminSummary: async (adminId) => {
-    // Reuse HR summary
     const hrData = await ctoDashboardService.getHrSummary(adminId);
 
-    // Add admin-specific data
-    const totalRequests = await CtoApplication.countDocuments();
-    const approvedRequests = await CtoApplication.countDocuments({
-      overallStatus: "APPROVED",
-    });
-    const rejectedRequests = await CtoApplication.countDocuments({
-      overallStatus: "REJECTED",
-    });
+    const [totalRequests, approvedRequests, rejectedRequests] =
+      await Promise.all([
+        CtoApplication.countDocuments(),
+        CtoApplication.countDocuments({ overallStatus: "APPROVED" }),
+        CtoApplication.countDocuments({ overallStatus: "REJECTED" }),
+      ]);
 
-    const credits = await CtoCredit.find();
-    const totalCredited = credits.reduce((sum, c) => sum + c.totalHours, 0);
-    const rolledBack = credits
-      .filter((c) => c.status === "ROLLEDBACK")
-      .reduce((sum, c) => sum + c.totalHours, 0);
+    // Compute total credited/rolledback hours as “sum of employees.creditedHours”
+    const [creditAgg] = await CtoCredit.aggregate([
+      { $unwind: "$employees" },
+      {
+        $group: {
+          _id: null,
+          totalCredited: {
+            $sum: {
+              $cond: [
+                { $eq: ["$status", "CREDITED"] },
+                "$employees.creditedHours",
+                0,
+              ],
+            },
+          },
+          totalRolledBack: {
+            $sum: {
+              $cond: [
+                { $eq: ["$status", "ROLLEDBACK"] },
+                "$employees.creditedHours",
+                0,
+              ],
+            },
+          },
+        },
+      },
+    ]);
 
     return {
-      ...hrData, // include all HR summary data
+      ...hrData,
       totalRequests,
       approvedRequests,
       rejectedRequests,
-      totalCredited,
-      rolledBack,
+      totalCredited: creditAgg?.totalCredited || 0,
+      rolledBack: creditAgg?.totalRolledBack || 0,
     };
   },
 };

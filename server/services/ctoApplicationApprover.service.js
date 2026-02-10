@@ -1,19 +1,39 @@
+// services/ctoApplicationApprover.service.js
+const mongoose = require("mongoose");
 const ApprovalStep = require("../models/approvalStepModel");
 const CtoApplication = require("../models/ctoApplicationModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
+
 const sendEmail = require("../utils/sendEmail");
 const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
-const mongoose = require("mongoose");
 const ctoRejectionEmail = require("../emails/ctoRejectionRequest");
 const ctoFinalApprovalEmail = require("../emails/ctoFinalApprovalEmail");
+
 const buildAuditDetails = require("../utils/auditActionBuilder");
 const auditLogService = require("./auditLog.service");
 
-const fetchPendingCtoCountService = async (approverId) => {
-  if (!approverId) throw new Error("Approver ID is required");
+function httpError(message, status = 400) {
+  const err = new Error(message);
+  err.status = status;
+  err.statusCode = status;
+  return err;
+}
 
-  // Fetch all approval steps for this approver
+function assertObjectId(id, label = "id") {
+  if (!id || !mongoose.Types.ObjectId.isValid(id))
+    throw httpError(`Invalid ${label}`, 400);
+}
+
+function getClientIp(req) {
+  const xf = req?.headers?.["x-forwarded-for"];
+  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
+  return req?.socket?.remoteAddress || null;
+}
+
+const fetchPendingCtoCountService = async (approverId) => {
+  if (!approverId) throw httpError("Approver ID is required", 400);
+
   const approvalSteps = await ApprovalStep.find({
     approver: approverId,
   }).populate({
@@ -23,10 +43,10 @@ const fetchPendingCtoCountService = async (approverId) => {
     ],
   });
 
-  // Filter applications relevant to this approver
   const pendingCount = approvalSteps.reduce((count, step) => {
     const app = step.ctoApplication;
-    if (!app || !app.approvals || app.approvals.length === 0) return count;
+    if (!app || !Array.isArray(app.approvals) || app.approvals.length === 0)
+      return count;
 
     const steps = app.approvals;
     const userStepIndex = steps.findIndex(
@@ -35,8 +55,6 @@ const fetchPendingCtoCountService = async (approverId) => {
     if (userStepIndex === -1) return count;
 
     const userStep = steps[userStepIndex];
-
-    // Skip rejected applications (unless you want to count them)
     if (userStep.status === "REJECTED") return count;
     if (app.overallStatus === "REJECTED") return count;
 
@@ -44,9 +62,7 @@ const fetchPendingCtoCountService = async (approverId) => {
     const isTheirTurn =
       pendingStep?.approver?._id?.toString() === approverId.toString();
 
-    // Only count if it’s their turn and status is PENDING
     if (userStep.status === "PENDING" && isTheirTurn) return count + 1;
-
     return count;
   }, 0);
 
@@ -54,16 +70,9 @@ const fetchPendingCtoCountService = async (approverId) => {
 };
 
 const getApproverOptionsService = async () => {
-  const query = {
-    // role: { $in: ["supervisor", "hr", "manager"] },
-  };
-
-  const employees = await Employee.find(
-    query,
-    "_id firstName lastName position email",
-  ).sort({ lastName: 1, firstName: 1 });
-
-  return employees;
+  return Employee.find({}, "_id firstName lastName position email")
+    .sort({ lastName: 1, firstName: 1 })
+    .lean();
 };
 
 const getCtoApplicationsForApproverService = async (
@@ -73,11 +82,7 @@ const getCtoApplicationsForApproverService = async (
   page = 1,
   limit = 10,
 ) => {
-  if (!approverId) {
-    const err = new Error("Approver ID is required.");
-    err.status = 400;
-    throw err;
-  }
+  if (!approverId) throw httpError("Approver ID is required.", 400);
 
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
@@ -114,30 +119,21 @@ const getCtoApplicationsForApproverService = async (
 
       const isTheirTurn =
         pendingStep?.approver?._id?.toString() === approverId.toString();
-
-      const alreadyActed = ["APPROVED"].includes(userStep.status);
+      const alreadyActed = userStep.status === "APPROVED";
 
       return isTheirTurn || alreadyActed;
     });
 
-  // ✅ COUNT STATUSES (BASED ON SAME DATA SET)
-  const statusCounts = {
-    PENDING: 0,
-    APPROVED: 0,
-    REJECTED: 0,
-  };
-
+  const statusCounts = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
   ctoApplications.forEach((app) => {
     const myStep = app.approvals.find(
       (s) => s.approver?._id?.toString() === approverId.toString(),
     );
-
     if (myStep?.status === "PENDING") statusCounts.PENDING++;
     if (myStep?.status === "APPROVED") statusCounts.APPROVED++;
     if (myStep?.status === "REJECTED") statusCounts.REJECTED++;
   });
 
-  // ✅ STATUS FILTER (UNCHANGED)
   if (status) {
     ctoApplications = ctoApplications.filter((app) => {
       const myStep = app.approvals.find(
@@ -147,37 +143,28 @@ const getCtoApplicationsForApproverService = async (
     });
   }
 
-  // 🔎 SEARCH FILTER (UNCHANGED)
-  if (search.trim()) {
-    const lowerSearch = search.toLowerCase();
+  const s = String(search || "")
+    .trim()
+    .toLowerCase();
+  if (s) {
     ctoApplications = ctoApplications.filter((app) => {
-      const fullName = `${app.employee?.firstName || ""} ${
-        app.employee?.lastName || ""
-      }`.toLowerCase();
-      return fullName.includes(lowerSearch);
+      const fullName =
+        `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
+      return fullName.includes(s);
     });
   }
 
-  // 📄 PAGINATION (UNCHANGED)
   const total = ctoApplications.length;
   const totalPages = Math.ceil(total / limit);
   const startIndex = (page - 1) * limit;
   const paginatedData = ctoApplications.slice(startIndex, startIndex + limit);
 
-  return {
-    data: paginatedData,
-    total,
-    totalPages,
-    statusCounts,
-  };
+  return { data: paginatedData, total, totalPages, statusCounts };
 };
 
 const getCtoApplicationByIdService = async (ctoApplicationId) => {
-  if (!ctoApplicationId) {
-    const err = new Error("CTO Application ID is required.");
-    err.status = 400;
-    throw err;
-  }
+  if (!ctoApplicationId)
+    throw httpError("CTO Application ID is required.", 400);
 
   const application = await CtoApplication.findById(ctoApplicationId)
     .populate({
@@ -188,131 +175,133 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
       path: "approvals",
       populate: { path: "approver", select: "firstName lastName position" },
     })
-    .populate({
-      path: "memo.memoId",
-      select: "memoNo",
-    });
+    .populate({ path: "memo.memoId", select: "memoNo" });
 
-  if (!application) {
-    const err = new Error("CTO Application not found");
-    err.status = 404;
-    throw err;
-  }
-
+  if (!application) throw httpError("CTO Application not found", 404);
   return application;
 };
+
 const approveCtoApplicationService = async ({
   approverId,
   applicationId,
   req,
 }) => {
+  assertObjectId(approverId, "approverId");
+  assertObjectId(applicationId, "applicationId");
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // 1️⃣ Fetch application with approvals
     const application = await CtoApplication.findById(applicationId)
       .populate("approvals")
       .populate("employee")
       .session(session);
 
-    if (!application) {
-      const err = new Error("CTO Application not found.");
-      err.status = 404;
-      throw err;
-    }
+    if (!application) throw httpError("CTO Application not found.", 404);
+    if (application.overallStatus !== "PENDING")
+      throw httpError("Application already processed.", 400);
 
-    // 2️⃣ Find current approver step
     const currentStep = application.approvals.find(
-      (s) => s.approver.toString() === approverId,
+      (s) => s.approver.toString() === String(approverId),
     );
+    if (!currentStep)
+      throw httpError("You are not an approver for this application.", 403);
 
-    if (!currentStep) {
-      const err = new Error("You are not an approver for this application.");
-      err.status = 403;
-      throw err;
-    }
+    // Prevent double-approve
+    if (currentStep.status !== "PENDING")
+      throw httpError("This step has already been processed.", 400);
 
-    // 3️⃣ Ensure previous steps approved
     const unapprovedPrevious = application.approvals.find(
       (s) => s.level < currentStep.level && s.status !== "APPROVED",
     );
-
-    if (unapprovedPrevious) {
-      const err = new Error(
+    if (unapprovedPrevious)
+      throw httpError(
         `Level ${unapprovedPrevious.level} must approve first.`,
+        400,
       );
-      err.status = 400;
-      throw err;
-    }
 
-    // 4️⃣ Approve current step
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
       { status: "APPROVED", reviewedAt: new Date() },
       { session },
     );
 
-    // 5️⃣ Re-fetch updated steps
     const updatedSteps = await ApprovalStep.find({
       _id: { $in: application.approvals },
     }).session(session);
-
     const allApproved = updatedSteps.every((s) => s.status === "APPROVED");
 
-    // 6️⃣ If all approved, finalize application
     if (allApproved) {
       application.overallStatus = "APPROVED";
       await application.save({ session });
 
-      // Update CTO credits
-      for (const memoItem of application.memo) {
-        const credit = await CtoCredit.findById(memoItem.memoId._id).session(
-          session,
-        );
+      const employeeId = application.employee._id;
+
+      // Update CTO credits using memo entries
+      for (const memoItem of application.memo || []) {
+        const memoId = memoItem.memoId; // FIX: memoId is already ObjectId in most cases
+        const credit = await CtoCredit.findById(memoId).session(session);
         if (!credit) continue;
 
         const empCredit = credit.employees.find(
-          (e) => e.employee.toString() === application.employee._id.toString(),
+          (e) => String(e.employee) === String(employeeId),
         );
         if (!empCredit) continue;
 
-        const appliedHours = memoItem.appliedHours || 0;
+        const appliedHours = Number(memoItem.appliedHours || 0);
+        if (appliedHours <= 0) continue;
 
-        empCredit.reservedHours -= appliedHours;
+        if ((empCredit.reservedHours || 0) < appliedHours) {
+          throw httpError(
+            "Reserved hours mismatch. Please contact admin.",
+            400,
+          );
+        }
+
+        empCredit.reservedHours = (empCredit.reservedHours || 0) - appliedHours;
         empCredit.usedHours = (empCredit.usedHours || 0) + appliedHours;
         empCredit.remainingHours =
-          empCredit.creditedHours -
-          empCredit.usedHours -
-          empCredit.reservedHours;
+          (empCredit.creditedHours || 0) -
+          (empCredit.usedHours || 0) -
+          (empCredit.reservedHours || 0);
 
-        if (empCredit.remainingHours <= 0) empCredit.status = "EXHAUSTED";
+        if (empCredit.remainingHours <= 0) {
+          empCredit.remainingHours = 0;
+          empCredit.status = "EXHAUSTED";
+        }
 
         await CtoCredit.updateOne(
-          { _id: credit._id, "employees.employee": application.employee._id },
+          { _id: credit._id, "employees.employee": employeeId },
           { $set: { "employees.$": empCredit } },
           { session },
         );
       }
 
-      // Deduct employee CTO balance
-      application.employee.balances.ctoHours -= application.requestedHours;
+      // Deduct employee CTO balance (don’t allow negative)
+      const newBal =
+        (application.employee.balances?.ctoHours || 0) -
+        (application.requestedHours || 0);
+      if (newBal < 0)
+        throw httpError("Employee CTO balance would go negative.", 400);
+
+      application.employee.balances.ctoHours = newBal;
       await application.employee.save({ session });
     }
 
-    // 7️⃣ Commit transaction
     await session.commitTransaction();
     session.endSession();
 
-    // 8️⃣ Build audit log (manual, avoids double logging)
-    const approver = await Employee.findById(approverId);
-
+    // Audit log after commit
+    const approver = await Employee.findById(approverId)
+      .select("username")
+      .lean();
     const auditBody = {
       approverId,
       applicationId,
       level: currentStep.level,
-      approverName: `${approver.username} (id: ${approver._id})`,
-      approverUsername: approver.username,
+      approverName: `${approver?.username || "unknown"} (id: ${approverId})`,
+      approverUsername: approver?.username || "unknown",
       employeeName: `${application.employee.username} (id: ${application.employee._id})`,
     };
 
@@ -332,18 +321,20 @@ const approveCtoApplicationService = async ({
       endpoint: "Approve CTO Application",
       url: `/cto/applications/approver/${application._id}/approve`,
       statusCode: 200,
-      ip: req?.headers["x-forwarded-for"] || req?.socket?.remoteAddress,
+      ip: getClientIp(req),
       summary: auditDetails.summary,
       timestamp: new Date(),
     });
 
-    // 9️⃣ Send emails
+    // Emails
     if (!allApproved) {
       const nextStep = updatedSteps.find(
         (s) => s.level === currentStep.level + 1,
       );
       if (nextStep) {
-        const nextApprover = await Employee.findById(nextStep.approver);
+        const nextApprover = await Employee.findById(nextStep.approver)
+          .select("email firstName lastName")
+          .lean();
         if (nextApprover?.email) {
           await sendEmail(
             nextApprover.email,
@@ -372,8 +363,7 @@ const approveCtoApplicationService = async ({
       }
     }
 
-    // 10️⃣ Return updated application
-    return await CtoApplication.findById(applicationId)
+    return CtoApplication.findById(applicationId)
       .populate({
         path: "approvals",
         populate: {
@@ -382,10 +372,7 @@ const approveCtoApplicationService = async ({
         },
       })
       .populate("employee", "firstName lastName position email")
-      .populate(
-        "memo.memoId",
-        "memoNo uploadedMemo creditedHours remainingHours reservedHours usedHours",
-      );
+      .populate("memo.memoId", "memoNo uploadedMemo");
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -399,105 +386,105 @@ const rejectCtoApplicationService = async ({
   remarks,
   req,
 }) => {
+  assertObjectId(approverId, "approverId");
+  assertObjectId(applicationId, "applicationId");
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    // 1️⃣ Fetch the application with approvals and memos (for update)
     const application = await CtoApplication.findById(applicationId)
       .populate("approvals")
       .populate("memo.memoId")
-      .populate("employee", "username firstName lastName email")
+      .populate("employee", "username firstName lastName email balances")
       .session(session);
 
-    if (!application) {
-      const err = new Error("CTO Application not found.");
-      err.status = 404;
-      throw err;
-    }
+    if (!application) throw httpError("CTO Application not found.", 404);
+    if (application.overallStatus !== "PENDING")
+      throw httpError("Application already processed.", 400);
 
-    // 2️⃣ Find the approver’s step
     const currentStep = application.approvals.find(
-      (s) => s.approver.toString() === approverId,
+      (s) => s.approver.toString() === String(approverId),
     );
-
-    if (!currentStep) {
-      const err = new Error(
+    if (!currentStep)
+      throw httpError(
         "You are not authorized to reject this application.",
+        403,
       );
-      err.status = 403;
-      throw err;
-    }
+    if (currentStep.status !== "PENDING")
+      throw httpError("This step has already been processed.", 400);
 
-    // ✅ Prevent double-rejection / rapid clicks
-    if (currentStep.status === "REJECTED") {
-      const err = new Error("This step has already been processed.");
-      err.status = 400;
-      throw err;
-    }
-
-    // 3️⃣ Ensure previous steps are approved
-    const previousLevels = application.approvals.filter(
-      (s) => s.level < currentStep.level,
+    const unapprovedPrevious = application.approvals.find(
+      (s) => s.level < currentStep.level && s.status !== "APPROVED",
     );
-    const unapprovedPrevious = previousLevels.find(
-      (s) => s.status !== "APPROVED",
-    );
-    if (unapprovedPrevious) {
-      const err = new Error(
+    if (unapprovedPrevious)
+      throw httpError(
         `Level ${unapprovedPrevious.level} must approve first.`,
+        400,
       );
-      err.status = 400;
-      throw err;
+
+    const employeeId = application.employee._id;
+
+    // Release reserved hours (transactional)
+    for (const memoItem of application.memo || []) {
+      const memoId = memoItem.memoId?._id || memoItem.memoId;
+      const appliedHours = Number(memoItem.appliedHours || 0);
+      if (!memoId || appliedHours <= 0) continue;
+
+      const res = await CtoCredit.updateOne(
+        {
+          _id: memoId,
+          employees: {
+            $elemMatch: {
+              employee: employeeId,
+              reservedHours: { $gte: appliedHours },
+            },
+          },
+        },
+        {
+          $inc: {
+            "employees.$.reservedHours": -appliedHours,
+            "employees.$.remainingHours": appliedHours,
+          },
+          $set: { "employees.$.status": "ACTIVE" },
+        },
+        { session },
+      );
+
+      if (res.modifiedCount !== 1) {
+        throw httpError(
+          "Failed to release reserved hours (data mismatch).",
+          400,
+        );
+      }
     }
 
-    // 4️⃣ Release reserved hours for each memo
-    for (const memoItem of application.memo) {
-      const credit = await CtoCredit.findById(memoItem.memoId._id).session(
-        session,
-      );
-      if (!credit) continue;
-
-      const empCredit = credit.employees.find(
-        (e) => e.employee.toString() === application.employee.toString(),
-      );
-      if (!empCredit) continue;
-
-      const appliedHours = memoItem.appliedHours || 0;
-      empCredit.reservedHours = (empCredit.reservedHours || 0) - appliedHours;
-      empCredit.remainingHours = (empCredit.remainingHours || 0) + appliedHours;
-
-      await CtoCredit.updateOne(
-        { _id: credit._id, "employees.employee": application.employee },
-        { $set: { "employees.$": empCredit } },
-      ).session(session);
-    }
-
-    // 5️⃣ Update current approver’s step to REJECTED
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
-      { status: "REJECTED", remarks: remarks || "No remarks provided" },
+      {
+        status: "REJECTED",
+        remarks: remarks || "No remarks provided",
+        reviewedAt: new Date(),
+      },
       { session },
     );
 
-    // 6️⃣ Set overall application status to REJECTED
     application.overallStatus = "REJECTED";
     await application.save({ session });
 
-    // ✅ Commit transaction first
     await session.commitTransaction();
     session.endSession();
 
-    // 7️⃣ Send rejection email after DB commit
-
-    const approver = await Employee.findById(approverId); // get username
-
+    // Audit log after commit
+    const approver = await Employee.findById(approverId)
+      .select("username")
+      .lean();
     const auditBody = {
       approverId,
       applicationId,
       level: currentStep.level,
-      approverName: `${approver.username} (id: ${approver._id})`,
-      approverUsername: approver.username,
+      approverName: `${approver?.username || "unknown"} (id: ${approverId})`,
+      approverUsername: approver?.username || "unknown",
       employeeName: `${application.employee.username} (id: ${application.employee._id})`,
     };
 
@@ -512,12 +499,12 @@ const rejectCtoApplicationService = async ({
 
     await auditLogService.createAuditLog({
       userId: approverId,
-      username: approver.username,
+      username: auditBody.approverUsername,
       method: "POST",
       endpoint: "Reject CTO Application",
       url: `/cto/applications/approver/${application._id}/reject`,
       statusCode: 200,
-      ip: req?.headers["x-forwarded-for"] || req?.socket?.remoteAddress,
+      ip: getClientIp(req),
       summary: auditDetails.summary,
       timestamp: new Date(),
     });
@@ -528,22 +515,18 @@ const rejectCtoApplicationService = async ({
         "CTO Application Rejected",
         ctoRejectionEmail({
           employeeName: application.employee.firstName,
-          remarks: remarks,
+          remarks,
         }),
       );
     }
 
-    // 8️⃣ Return updated application (populated)
-    return await CtoApplication.findById(applicationId)
+    return CtoApplication.findById(applicationId)
       .populate({
         path: "approvals",
         populate: { path: "approver", select: "firstName lastName position" },
       })
       .populate("employee", "firstName lastName position email")
-      .populate(
-        "memo.memoId",
-        "memoNo uploadedMemo creditedHours remainingHours reservedHours usedHours",
-      );
+      .populate("memo.memoId", "memoNo uploadedMemo");
   } catch (err) {
     await session.abortTransaction();
     session.endSession();

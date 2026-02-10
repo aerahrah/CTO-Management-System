@@ -1,3 +1,4 @@
+// services/ctoApproverSetting.service.js
 const mongoose = require("mongoose");
 const CtoApproverSetting = require("../models/ctoApproverSettingModel");
 const Designation = require("../models/designationModel");
@@ -23,7 +24,7 @@ async function assertExists(Model, id, label) {
 async function getApproversByDesignationService(designationId) {
   assertObjectId(designationId, "designation id");
 
-  return await CtoApproverSetting.findOne({ designation: designationId })
+  return CtoApproverSetting.findOne({ designation: designationId })
     .populate("designation", "name status")
     .populate("level1Approver", "firstName lastName position")
     .populate("level2Approver", "firstName lastName position")
@@ -34,19 +35,23 @@ async function upsertApproverSettingService(data) {
   const { designation, level1Approver, level2Approver, level3Approver } =
     data || {};
 
-  // ✅ required fields
   assertObjectId(designation, "designation");
   assertObjectId(level1Approver, "level1Approver");
   assertObjectId(level2Approver, "level2Approver");
   assertObjectId(level3Approver, "level3Approver");
 
-  // ✅ ensure refs exist
+  const distinct = new Set([
+    String(level1Approver),
+    String(level2Approver),
+    String(level3Approver),
+  ]);
+  if (distinct.size !== 3) throw httpError("Approvers must be distinct.", 400);
+
   await assertExists(Designation, designation, "Designation");
   await assertExists(Employee, level1Approver, "Level 1 Approver employee");
   await assertExists(Employee, level2Approver, "Level 2 Approver employee");
   await assertExists(Employee, level3Approver, "Level 3 Approver employee");
 
-  // ✅ upsert
   const setting = await CtoApproverSetting.findOneAndUpdate(
     { designation },
     { designation, level1Approver, level2Approver, level3Approver },
@@ -66,7 +71,7 @@ async function upsertApproverSettingService(data) {
 }
 
 async function getAllApproverSettingsService() {
-  return await CtoApproverSetting.find()
+  return CtoApproverSetting.find()
     .populate("designation", "name status")
     .populate("level1Approver", "firstName lastName position")
     .populate("level2Approver", "firstName lastName position")
