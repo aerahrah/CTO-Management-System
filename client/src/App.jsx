@@ -32,9 +32,11 @@ import EmployeeInformation from "./components/employeeDashboard/employeeInformat
 
 /* Settings */
 import CtoSettings from "./components/generalSettingsComponents/ctoSettings";
-import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
+// import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
 import ProjectSettings from "./components/generalSettingsComponents/projectSettings/projectSettings";
+import DesignationSettings from "./components/generalSettingsComponents/designationSettings/designationSettings";
 /* Profile */
+
 import MyProfile from "./components/userProfile/myProfile";
 import UpdateProfile from "./components/userProfile/myProfileUpdate";
 import ResetPassword from "./components/userProfile/myProfileResetPassword";
@@ -103,10 +105,7 @@ function App() {
             </Route>
 
             <Route path="cto-settings" element={<CtoSettings />} />
-            <Route
-              path="designations"
-              element={<OfficeLocationSettingsPage />}
-            />
+            <Route path="designations" element={<DesignationSettings />} />
             <Route path="projects" element={<ProjectSettings />} />
           </Route>
 

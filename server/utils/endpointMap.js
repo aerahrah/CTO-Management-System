@@ -118,7 +118,7 @@ const endpointMap = [
   { pattern: /^\/cto\/dashboard$/, method: "GET", name: "View Dashboard" },
 
   /* =========================
-     CTO Settings
+     CTO Settings (Approver Setting)
   ========================= */
   { pattern: /^\/cto\/settings$/, method: "GET", name: "View CTO Settings" },
   {
@@ -138,7 +138,58 @@ const endpointMap = [
   },
 
   /* =========================
-     Designations (Provincial Offices)
+     ✅ Designations (NEW)
+     Routes:
+       GET    /settings/designation
+       GET    /settings/designation/options
+       GET    /settings/designation/:id
+       POST   /settings/designation
+       PUT    /settings/designation/:id
+       PATCH  /settings/designation/:id/status
+       DELETE /settings/designation/:id
+  ========================= */
+
+  // IMPORTANT: options + status must be before "/:id"
+  {
+    pattern: /^\/settings\/designation\/options$/,
+    method: "GET",
+    name: "View Designation Options",
+  },
+  {
+    pattern: /^\/settings\/designation\/\w+\/status$/,
+    method: "PATCH",
+    name: "Update Designation Status",
+  },
+  {
+    pattern: /^\/settings\/designation$/,
+    method: "GET",
+    name: "View All Designations",
+  },
+  {
+    pattern: /^\/settings\/designation\/\w+$/,
+    method: "GET",
+    name: "View Designation Details",
+  },
+  {
+    pattern: /^\/settings\/designation$/,
+    method: "POST",
+    name: "Create Designation",
+  },
+  {
+    pattern: /^\/settings\/designation\/\w+$/,
+    method: "PUT",
+    name: "Update Designation",
+  },
+  {
+    pattern: /^\/settings\/designation\/\w+$/,
+    method: "DELETE",
+    name: "Delete Designation",
+  },
+
+  /* =========================
+     (Optional) Legacy support:
+     If some parts still call /settings/provincial-office,
+     keep these mappings so audit still works.
   ========================= */
   {
     pattern: /^\/settings\/provincial-office$/,
@@ -168,14 +219,6 @@ const endpointMap = [
 
   /* =========================
      Projects (Settings)
-     ✅ Updated routes:
-       GET /settings/projects          -> list (paginated)
-       GET /settings/projects/options  -> listAll (no pagination; for dropdowns)
-       GET /settings/projects/:id      -> getOne
-       POST /settings/projects         -> create
-       PATCH /settings/projects/:id    -> update
-       PATCH /settings/projects/:id/status -> updateStatus
-       DELETE /settings/projects/:id   -> remove
   ========================= */
   {
     pattern: /^\/settings\/projects$/,

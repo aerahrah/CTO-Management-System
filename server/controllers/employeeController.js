@@ -1,3 +1,4 @@
+// controllers/employeeController.js
 const {
   createEmployeeService,
   getEmployeesService,
@@ -34,8 +35,8 @@ const getEmployees = async (req, res) => {
   try {
     const {
       division,
-      designation,
-      project, // ✅ can be projectId OR project name now
+      designation, // ✅ now supports designationId OR designation name
+      project, // ✅ supports projectId OR project name
       search,
       page = 1,
       limit = 20,

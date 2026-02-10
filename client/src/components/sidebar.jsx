@@ -23,6 +23,7 @@ import {
   UserCircle, // For My Profile
   MapPin, // For Office Locations
   SlidersHorizontal, // For CTO Settings
+  FolderKanban, // ✅ NEW: better Projects icon
 } from "lucide-react";
 
 const Sidebar = ({
@@ -48,6 +49,13 @@ const Sidebar = ({
   const [hoveredItem, setHoveredItem] = useState(null);
   const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
   const [openMenus, setOpenMenus] = useState({});
+
+  // ✅ small security hardening: prevent accidental navigation outside your app base
+  const safeNavigate = (path) => {
+    if (typeof path !== "string") return;
+    if (!path.startsWith("/app")) return;
+    navigate(path);
+  };
 
   const menuItems = [
     {
@@ -133,7 +141,7 @@ const Sidebar = ({
         {
           name: "Projects Settings",
           path: "/app/projects",
-          icon: <MapPin size={14} />,
+          icon: <FolderKanban size={14} />, // ✅ CHANGED: improved icon
         },
       ],
     },
@@ -166,7 +174,7 @@ const Sidebar = ({
       toggleMenu(item.name);
     } else {
       if (item.name === "Employee Management") await mutateAsync();
-      navigate(item.path);
+      safeNavigate(item.path);
       if (window.innerWidth < 1024) setMobileOpen(false);
     }
   };
@@ -291,7 +299,7 @@ const Sidebar = ({
                       <div
                         key={sub.name}
                         onClick={() => {
-                          navigate(sub.path);
+                          safeNavigate(sub.path);
                           if (window.innerWidth < 1024) setMobileOpen(false);
                         }}
                         className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
@@ -353,7 +361,7 @@ const Sidebar = ({
                           <div
                             key={sub.name}
                             onClick={() => {
-                              navigate(sub.path);
+                              safeNavigate(sub.path);
                               setHoveredItem(null);
                             }}
                             className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${

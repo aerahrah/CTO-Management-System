@@ -1,9 +1,10 @@
 // utils/auditActionBuilder.js
+
 const buildAuditDetails = ({
   endpoint,
-  body,
-  params,
-  actor,
+  body = {},
+  params = {},
+  actor = "Someone",
   targetUser,
   before,
 }) => {
@@ -89,18 +90,25 @@ const buildAuditDetails = ({
        CTO Settings
     ========================= */
     case "View CTO Settings":
+      summary = `${actor} viewed CTO settings`;
+      break;
+
     case "View CTO Setting By Designation":
-      summary = `${actor} viewed CTO settings${
-        params.id ? ` for designation ${params.id}` : ""
+      summary = `${actor} viewed CTO settings for designation ${
+        params.id || "N/A"
       }`;
       break;
 
     case "Upsert CTO Approver Setting":
-      summary = `${actor} upserted CTO approver settings`;
+      summary = `${actor} upserted CTO approver settings${
+        body.designation ? ` for designation ${body.designation}` : ""
+      }`;
       break;
 
     case "Delete CTO Approver Setting":
-      summary = `${actor} deleted CTO approver setting for designation ${params.id}`;
+      summary = `${actor} deleted CTO approver setting for designation ${
+        params.id || "N/A"
+      }`;
       break;
 
     /* =========================
@@ -110,24 +118,56 @@ const buildAuditDetails = ({
       summary = `${actor} viewed all designations`;
       break;
 
+    case "View Designation Options":
+      summary = `${actor} viewed designation options`;
+      break;
+
     case "View Designation Details":
-      summary = `${actor} viewed designation ${params.id}`;
+      summary = `${actor} viewed designation ${params.id || "N/A"}`;
       break;
 
     case "Create Designation":
-      summary = `${actor} created new designation ${body.name || "N/A"}`;
+      summary = `${actor} created new designation "${body.name || "N/A"}"${
+        body.status ? ` (status: ${body.status})` : ""
+      }`;
       break;
 
-    case "Update Designation":
-      summary = `${actor} updated designation ${params.id}`;
+    case "Update Designation": {
+      const beforeName = b?.name || "N/A";
+      const beforeStatus = b?.status || "N/A";
+
+      const afterName = body?.name ?? beforeName;
+      const afterStatus = body?.status ?? beforeStatus;
+
+      const changes = [];
+      if (body?.name !== undefined && afterName !== beforeName) {
+        changes.push(`name: "${beforeName}" → "${afterName}"`);
+      }
+      if (body?.status !== undefined && afterStatus !== beforeStatus) {
+        changes.push(`status: "${beforeStatus}" → "${afterStatus}"`);
+      }
+
+      summary =
+        changes.length > 0
+          ? `${actor} updated designation ${params.id || "N/A"} (${changes.join(
+              ", ",
+            )})`
+          : `${actor} updated designation ${params.id || "N/A"}`;
+      break;
+    }
+
+    case "Update Designation Status":
+      summary = `${actor} updated designation ${params.id || "N/A"} status from "${
+        b?.status || "N/A"
+      }" to "${body.status || "N/A"}"`;
       break;
 
     case "Delete Designation":
-      summary = `${actor} deleted designation ${params.id}`;
+      summary = `${actor} deleted designation ${params.id || "N/A"}`;
       break;
 
     /* =========================
-       ✅ Projects (NEW)
+       Projects
     ========================= */
     case "Create Project":
       summary = `${actor} created new project "${body.name || "N/A"}"${
@@ -144,7 +184,7 @@ const buildAuditDetails = ({
       break;
 
     case "View Project Details":
-      summary = `${actor} viewed project ${params.id}`;
+      summary = `${actor} viewed project ${params.id || "N/A"}`;
       break;
 
     case "Update Project": {
@@ -163,19 +203,21 @@ const buildAuditDetails = ({
 
       summary =
         changes.length > 0
-          ? `${actor} updated project ${params.id} (${changes.join(", ")})`
-          : `${actor} updated project ${params.id}`;
+          ? `${actor} updated project ${params.id || "N/A"} (${changes.join(
+              ", ",
+            )})`
+          : `${actor} updated project ${params.id || "N/A"}`;
       break;
     }
 
     case "Update Project Status":
-      summary = `${actor} updated project ${params.id} status from "${
+      summary = `${actor} updated project ${params.id || "N/A"} status from "${
         b?.status || "N/A"
       }" to "${body.status || "N/A"}"`;
       break;
 
     case "Delete Project":
-      summary = `${actor} deleted project ${params.id}`;
+      summary = `${actor} deleted project ${params.id || "N/A"}`;
       break;
 
     /* =========================

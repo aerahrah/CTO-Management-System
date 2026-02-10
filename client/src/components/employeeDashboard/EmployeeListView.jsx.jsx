@@ -2,7 +2,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
-import { fetchProjectOptions } from "../../api/project"; // ✅ NEW endpoint for dropdown options
+import { fetchProjectOptions } from "../../api/project"; // ✅ project options
+import { fetchDesignationOptions } from "../../api/designation"; // ✅ designation options (NEW)
 import { useNavigate } from "react-router-dom";
 import { RoleBadge } from "../statusUtils";
 import Skeleton from "react-loading-skeleton";
@@ -312,10 +313,10 @@ const EmployeeDirectory = () => {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, 400);
 
-  // Store filter values as IDs (for refs)
+  // Store filter values as IDs
   const [filters, setFilters] = useState({
     division: "All",
-    designation: "All", // designationId (best-effort)
+    designation: "All", // designationId
     project: "All", // projectId
   });
 
@@ -348,9 +349,44 @@ const EmployeeDirectory = () => {
     });
   }, [activeProjects]);
 
-  const projectIdSet = useMemo(() => {
-    return new Set(projectOptions.map((o) => o.value));
-  }, [projectOptions]);
+  const projectIdSet = useMemo(
+    () => new Set(projectOptions.map((o) => o.value)),
+    [projectOptions],
+  );
+
+  /* -------- ✅ Designations (options endpoint, no pagination) -------- */
+  const designationsQuery = useQuery({
+    queryKey: ["designationOptions", "Active"],
+    queryFn: () => fetchDesignationOptions({ status: "Active" }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const activeDesignations = useMemo(() => {
+    const items = Array.isArray(designationsQuery.data?.items)
+      ? designationsQuery.data.items
+      : [];
+    return items;
+  }, [designationsQuery.data]);
+
+  const designationOptions = useMemo(() => {
+    const base = [{ value: "All", label: "All" }];
+    const opts = activeDesignations
+      .filter((d) => d?._id && d?.name)
+      .map((d) => ({ value: String(d._id), label: d.name }));
+
+    const seen = new Set();
+    return [...base, ...opts].filter((o) => {
+      if (!o?.value) return false;
+      if (seen.has(o.value)) return false;
+      seen.add(o.value);
+      return true;
+    });
+  }, [activeDesignations]);
+
+  const designationIdSet = useMemo(
+    () => new Set(designationOptions.map((o) => o.value)),
+    [designationOptions],
+  );
 
   /* -------- Employees -------- */
   const safeFilters = useMemo(() => {
@@ -359,10 +395,11 @@ const EmployeeDirectory = () => {
       : "All";
 
     const safeDesignation =
-      filters.designation === "All" ||
-      (filters.designation && typeof filters.designation === "string")
-        ? filters.designation
-        : "All";
+      filters.designation === "All"
+        ? "All"
+        : designationIdSet.has(filters.designation)
+          ? filters.designation
+          : "All";
 
     const safeProject =
       filters.project === "All"
@@ -376,7 +413,7 @@ const EmployeeDirectory = () => {
       designation: safeDesignation,
       project: safeProject,
     };
-  }, [filters, projectIdSet]);
+  }, [filters, designationIdSet, projectIdSet]);
 
   const employeeQueryParams = useMemo(
     () => ({
@@ -385,7 +422,6 @@ const EmployeeDirectory = () => {
       search: debouncedSearch || undefined,
       division:
         safeFilters.division === "All" ? undefined : safeFilters.division,
-
       designation:
         safeFilters.designation === "All" ? undefined : safeFilters.designation,
       project: safeFilters.project === "All" ? undefined : safeFilters.project,
@@ -423,30 +459,6 @@ const EmployeeDirectory = () => {
 
   const startItem = totalItems === 0 ? 0 : (page - 1) * limit + 1;
   const endItem = totalItems === 0 ? 0 : Math.min(page * limit, totalItems);
-
-  // designation options (best-effort from current data)
-  const designationOptions = useMemo(() => {
-    const base = [{ value: "All", label: "All" }];
-    const seen = new Set();
-
-    const fromPage = employees
-      .map((e) => e?.designation)
-      .filter(Boolean)
-      .map((d) => {
-        if (typeof d === "string") return { value: d, label: d };
-        if (d?._id)
-          return { value: String(d._id), label: d?.name || String(d._id) };
-        return null;
-      })
-      .filter(Boolean);
-
-    return [...base, ...fromPage].filter((o) => {
-      if (!o?.value) return false;
-      if (seen.has(o.value)) return false;
-      seen.add(o.value);
-      return true;
-    });
-  }, [employees]);
 
   const selectedProjectLabel =
     projectOptions.find((o) => o.value === safeFilters.project)?.label || "";
@@ -551,8 +563,15 @@ const EmployeeDirectory = () => {
                   onChange={(v) =>
                     setFilters((p) => ({ ...p, designation: v }))
                   }
-                  options={designationOptions}
-                  disabled={designationOptions.length <= 1}
+                  options={
+                    designationsQuery.isLoading
+                      ? [{ value: "All", label: "Loading designations..." }]
+                      : designationOptions
+                  }
+                  disabled={
+                    designationsQuery.isLoading ||
+                    designationOptions.length <= 1
+                  }
                 />
 
                 <SelectField
@@ -1004,9 +1023,7 @@ const EmployeeDirectory = () => {
           canClose={!roleBusy}
           onClose={() => {
             if (roleBusy) return;
-            setIsRoleModalOpen(false);
-            setSelectedEmployee(null);
-            setRoleBusy(false);
+            closeRoleModal();
           }}
         >
           <EmployeeRoleChanger
@@ -1014,16 +1031,8 @@ const EmployeeDirectory = () => {
             employeeId={selectedEmployee._id}
             currentRole={selectedEmployee.role}
             onPendingChange={(v) => setRoleBusy(!!v)}
-            onCancel={() => {
-              setIsRoleModalOpen(false);
-              setSelectedEmployee(null);
-              setRoleBusy(false);
-            }}
-            onRoleUpdated={() => {
-              setIsRoleModalOpen(false);
-              setSelectedEmployee(null);
-              setRoleBusy(false);
-            }}
+            onCancel={closeRoleModal}
+            onRoleUpdated={closeRoleModal}
           />
         </Modal>
       )}

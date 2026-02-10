@@ -14,8 +14,7 @@ import {
   addEmployee,
 } from "../../../api/employee";
 import { fetchProjectOptions } from "../../../api/project";
-
-import ProvincialOfficeSelect from "./selectProvincialOffice";
+import SelectDesignation from "./selectDesignation";
 import SelectProjectOptions from "./selectProject";
 
 import {
@@ -72,6 +71,175 @@ const pickId = (v) => {
 
 const pickProjectId = (p) => pickId(p);
 const pickDesignationId = (d) => pickId(d);
+
+/* =========================
+   ✅ Skeleton UI (better loading)
+========================= */
+const Sk = ({ className = "" }) => (
+  <div
+    className={[
+      "animate-pulse rounded-lg bg-slate-200/80",
+      "ring-1 ring-slate-100",
+      className,
+    ].join(" ")}
+  />
+);
+
+const SkText = ({ w = "w-40", h = "h-3", className = "" }) => (
+  <Sk className={[w, h, className].join(" ")} />
+);
+
+const SkInput = ({ className = "" }) => (
+  <Sk className={["h-11 w-full rounded-xl", className].join(" ")} />
+);
+
+const SkCard = ({ children, className = "" }) => (
+  <div
+    className={[
+      "bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70",
+      "shadow-[0_1px_0_rgba(15,23,42,0.04)]",
+      className,
+    ].join(" ")}
+  >
+    {children}
+  </div>
+);
+
+const FormSkeleton = ({ isEditMode }) => {
+  return (
+    <div className="min-h-screen">
+      <div className="max-w-6xl mx-auto">
+        {/* Header skeleton */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+          <div className="min-w-0">
+            <div className="opacity-70">
+              <SkText w="w-48" h="h-3" />
+            </div>
+
+            <div className="flex items-start gap-3 mt-3">
+              <Sk className="w-11 h-11 rounded-2xl" />
+              <div className="min-w-0 w-full">
+                <SkText w="w-64" h="h-6" />
+                <SkText w="w-96" h="h-4" className="mt-2" />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <Sk className="h-11 w-28 rounded-xl" />
+            <Sk className="h-11 w-44 rounded-xl" />
+          </div>
+        </div>
+
+        {/* Form skeleton */}
+        <SkCard className="p-6 md:p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Left column */}
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Sk className="w-9 h-9 rounded-xl" />
+                  <SkText w="w-40" h="h-4" />
+                  <div className="hidden md:block flex-1">
+                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SkInput />
+                  <SkInput />
+                </div>
+                <SkInput />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SkInput />
+                  <SkInput />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Sk className="w-9 h-9 rounded-xl" />
+                  <SkText w="w-40" h="h-4" />
+                  <div className="hidden md:block flex-1">
+                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                  </div>
+                </div>
+
+                {/* role / status */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SkInput />
+                  <SkInput />
+                </div>
+
+                <SkInput />
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <SkInput />
+                  <SkInput />
+                </div>
+
+                <SkInput />
+              </div>
+            </div>
+
+            {/* Right column */}
+            <div className="space-y-8">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Sk className="w-9 h-9 rounded-xl" />
+                  <SkText w="w-40" h="h-4" />
+                  <div className="hidden md:block flex-1">
+                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                  </div>
+                </div>
+
+                <div className="bg-slate-50/60 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+                  <SkInput className="bg-slate-200/70" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <SkInput className="bg-slate-200/70" />
+                    <SkInput className="bg-slate-200/70" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Sk className="w-9 h-9 rounded-xl" />
+                  <SkText w="w-44" h="h-4" />
+                  <div className="hidden md:block flex-1">
+                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                  </div>
+                </div>
+
+                <div className="bg-rose-50/30 p-5 rounded-2xl border border-rose-200/50 space-y-4">
+                  <SkInput className="bg-slate-200/70" />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <SkInput className="bg-slate-200/70" />
+                    <SkInput className="bg-slate-200/70" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom hint skeleton row */}
+          <div className="mt-8 flex items-center justify-between">
+            <SkText w="w-56" h="h-3" />
+            <SkText w="w-24" h="h-3" />
+          </div>
+        </SkCard>
+
+        {/* Small loading pill (optional) */}
+        {isEditMode ? (
+          <div className="mt-4 flex items-center gap-2 text-slate-600">
+            <Loader2 className="animate-spin" size={16} />
+            <span className="text-xs font-medium">Loading employee…</span>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
 
 /* =========================
    SELECT INPUT (react-select) - MINIMALIST
@@ -506,17 +674,9 @@ const AddEmployeeForm = () => {
   /* ======= Edit mode: loading / error states ======= */
   // ✅ No hooks below this point
 
+  // ✅ improved skeleton instead of plain loader
   if (isEditMode && isEmployeeLoading) {
-    return (
-      <div className="min-h-screen bg-slate-50 p-4 md:p-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 p-6 shadow-[0_1px_0_rgba(15,23,42,0.04)] flex items-center gap-3 text-slate-700">
-            <Loader2 className="animate-spin" size={18} />
-            <span className="text-sm font-medium">Loading employee…</span>
-          </div>
-        </div>
-      </div>
-    );
+    return <FormSkeleton isEditMode />;
   }
 
   if (isEditMode && isEmployeeError) {
@@ -556,7 +716,7 @@ const AddEmployeeForm = () => {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-6xl mx-auto">
+      <div className="px-1 py-2">
         {/* === NAVIGATION & HEADER === */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="min-w-0">
@@ -567,12 +727,8 @@ const AddEmployeeForm = () => {
             />
 
             <div className="flex items-start gap-3 mt-3">
-              <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
-                <UserPlus size={18} />
-              </div>
-
               <div className="min-w-0">
-                <h1 className="text-2xl font-semibold text-slate-900 tracking-tight truncate">
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight truncate">
                   {isEditMode ? "Update Employee" : "Add New Employee"}
                 </h1>
                 <p className="text-sm text-slate-600 mt-1">
@@ -772,7 +928,7 @@ const AddEmployeeForm = () => {
                   name="designation"
                   control={control}
                   render={({ field }) => (
-                    <ProvincialOfficeSelect
+                    <SelectDesignation
                       value={pickDesignationId(field.value)}
                       onChange={(v) => field.onChange(v)}
                       error={errors.designation}
@@ -851,7 +1007,6 @@ const AddEmployeeForm = () => {
 /* =========================
    ATOMIC COMPONENTS (MINIMALIST)
 ========================= */
-
 const Section = ({ title, icon: Icon, children }) => (
   <div className="flex flex-col gap-4">
     <div className="flex items-center justify-between gap-3">
@@ -911,5 +1066,7 @@ const InputField = React.forwardRef(
     </div>
   ),
 );
+
+InputField.displayName = "InputField";
 
 export default AddEmployeeForm;

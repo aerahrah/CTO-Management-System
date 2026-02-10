@@ -2,9 +2,12 @@ const mongoose = require("mongoose");
 
 const designationSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true }, // e.g. "Isabela Provincial Office - Cauayan"
-    province: { type: String, required: false },
-    region: { type: String, default: "Region II - Cagayan Valley" },
+    name: { type: String, required: true },
+    status: {
+      type: String,
+      enum: ["Active", "Inactive"],
+      default: "Active",
+    },
   },
   { timestamps: true },
 );

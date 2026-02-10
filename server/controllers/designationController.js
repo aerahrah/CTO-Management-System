@@ -1,93 +1,137 @@
-const {
-  getAllDesignationsService,
-  getDesignationByIdService,
-  createDesignationService,
-  updateDesignationService,
-  deleteDesignationService,
-} = require("../services/designation.service");
+// controllers/designationController.js
+const designationService = require("../services/designation.service");
 
-/**
- * Get all designations
- */
-const getAllDesignations = async (req, res) => {
+function sendError(res, err) {
+  const status = err.statusCode || 500;
+  return res.status(status).json({
+    message: err.message || "Server error",
+  });
+}
+
+async function getAllDesignations(req, res) {
   try {
-    const designations = await getAllDesignationsService();
-    res.status(200).json(designations);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+    const result = await designationService.listDesignations(req.query);
+    return res.status(200).json(result);
+  } catch (err) {
+    return sendError(res, err);
   }
-};
+}
 
 /**
- * Get designation by ID
+ * ✅ fetch all without pagination (for dropdown/options)
+ * GET /settings/designation/options?status=Active
  */
-const getDesignationById = async (req, res) => {
+async function listAll(req, res) {
   try {
-    const { id } = req.params;
-    const designation = await getDesignationByIdService(id);
+    const result = await designationService.listAllDesignations(req.query);
+    return res.status(200).json(result);
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
 
-    if (!designation) {
-      return res.status(404).json({ message: "Designation not found." });
+async function getDesignationById(req, res) {
+  try {
+    const designation = await designationService.getDesignationById(
+      req.params.id,
+    );
+    return res.status(200).json(designation);
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
+async function createDesignation(req, res) {
+  try {
+    const created = await designationService.createDesignation(req.body);
+
+    // optional: give middleware a target label for create
+    req.auditTarget = `${created.name} (id: ${created._id})`;
+
+    return res.status(201).json({
+      message: "Designation created successfully.",
+      data: created,
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
+
+async function updateDesignation(req, res) {
+  try {
+    // ✅ attach "before" snapshot for audit (like projects)
+    try {
+      const before = await designationService.getDesignationById(req.params.id);
+      req.auditBeforeDesignation = { name: before.name, status: before.status };
+      req.auditTarget = `${before.name} (id: ${before._id})`;
+    } catch (_) {
+      // ignore; service will throw properly below if not found
     }
 
-    res.status(200).json(designation);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-};
+    const updated = await designationService.updateDesignation(
+      req.params.id,
+      req.body,
+    );
 
-/**
- * Create designation
- */
-const createDesignation = async (req, res) => {
-  try {
-    const newDesignation = await createDesignationService(req.body);
-    res.status(201).json({
-      message: "Designation created successfully.",
-      data: newDesignation,
-    });
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
-
-/**
- * Update designation
- */
-const updateDesignation = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updated = await updateDesignationService(id, req.body);
-
-    res.status(200).json({
+    return res.status(200).json({
       message: "Designation updated successfully.",
       data: updated,
     });
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+  } catch (err) {
+    return sendError(res, err);
   }
-};
+}
 
-/**
- * Delete designation
- */
-const deleteDesignation = async (req, res) => {
+async function deleteDesignation(req, res) {
   try {
-    const { id } = req.params;
-    await deleteDesignationService(id);
+    // ✅ attach "before" snapshot for audit
+    try {
+      const before = await designationService.getDesignationById(req.params.id);
+      req.auditBeforeDesignation = { name: before.name, status: before.status };
+      req.auditTarget = `${before.name} (id: ${before._id})`;
+    } catch (_) {}
 
-    res.status(200).json({
+    const deleted = await designationService.deleteDesignation(req.params.id);
+    return res.status(200).json({
       message: "Designation deleted successfully.",
+      deleted,
     });
-  } catch (error) {
-    res.status(400).json({ message: error.message });
+  } catch (err) {
+    return sendError(res, err);
   }
-};
+}
+
+/* ✅ PATCH /:id/status  body: { status: "Active" | "Inactive" } */
+async function updateStatus(req, res) {
+  try {
+    // ✅ attach "before" snapshot for audit
+    try {
+      const before = await designationService.getDesignationById(req.params.id);
+      req.auditBeforeDesignation = { name: before.name, status: before.status };
+      req.auditTarget = `${before.name} (id: ${before._id})`;
+    } catch (_) {}
+
+    const { status } = req.body;
+    const designation = await designationService.updateDesignationStatus(
+      req.params.id,
+      status,
+    );
+
+    return res.json({
+      message: `Designation status updated to ${status}`,
+      designation,
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+}
 
 module.exports = {
   getAllDesignations,
+  listAll,
   getDesignationById,
   createDesignation,
   updateDesignation,
   deleteDesignation,
+  updateStatus,
 };

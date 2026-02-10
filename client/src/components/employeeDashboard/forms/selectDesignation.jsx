@@ -2,20 +2,31 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
 import { Loader2 } from "lucide-react";
-import { fetchProvincialOffices } from "../../../api/employee";
 
-export default function ProvincialOfficeSelect({ value, onChange, error }) {
+// ✅ use the new Designation options endpoint (same style as project options)
+import { fetchDesignationOptions } from "../../../api/designation";
+
+export default function SelectDesignation({ value, onChange, error }) {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const {
-    data: offices = [],
+    data: raw,
     isPending,
     isError,
   } = useQuery({
-    queryKey: ["provincialOffices"],
-    queryFn: fetchProvincialOffices,
+    queryKey: ["designationOptions", "Active"],
+    queryFn: () => fetchDesignationOptions({ status: "Active" }),
     staleTime: 5 * 60 * 1000,
   });
+
+  // ✅ normalize like project options: backend returns { items: [...] }
+  const offices = useMemo(() => {
+    return Array.isArray(raw?.items)
+      ? raw.items
+      : Array.isArray(raw)
+        ? raw
+        : [];
+  }, [raw]);
 
   const options = useMemo(
     () =>
@@ -31,7 +42,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
   const handleMenuOpen = () => setMenuOpen(true);
   const handleMenuClose = () => setMenuOpen(false);
 
-  // dynamic options when user opens the dropdown
+  // ✅ dynamic options (same behavior)
   const dynamicOptions = useMemo(() => {
     if (menuOpen && isPending) {
       return [
@@ -70,7 +81,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
     return options.find((opt) => opt.value === String(value)) || null;
   }, [options, value]);
 
-  // ✅ matches your Project select design (44px, rounded-xl, indigo focus ring)
+  // ✅ same styling as your project select
   const customStyles = useMemo(
     () => ({
       control: (base, state) => ({
@@ -116,7 +127,10 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
         ...base,
         color: "rgba(100,116,139,0.8)",
       }),
-      clearIndicator: (base) => ({ ...base, color: "rgba(100,116,139,0.8)" }),
+      clearIndicator: (base) => ({
+        ...base,
+        color: "rgba(100,116,139,0.8)",
+      }),
       menu: (base) => ({
         ...base,
         zIndex: 9999,
@@ -154,6 +168,7 @@ export default function ProvincialOfficeSelect({ value, onChange, error }) {
         isClearable
         onMenuOpen={handleMenuOpen}
         onMenuClose={handleMenuClose}
+        // ✅ same behavior as project select: allow opening shows loading row
         isDisabled={isPending && !menuOpen}
         menuPlacement="auto"
       />

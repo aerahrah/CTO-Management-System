@@ -7,6 +7,7 @@ const ctoApproverSettingSchema = new mongoose.Schema(
       ref: "Designation",
       required: true,
       unique: true,
+      index: true,
     },
     level1Approver: {
       type: mongoose.Schema.Types.ObjectId,

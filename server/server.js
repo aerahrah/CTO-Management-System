@@ -39,7 +39,7 @@ app.use("/employee", employeeRoutes);
 app.use("/cto", ctoRoutes);
 app.use("/cto", ctoDashboardRoutes);
 app.use("/cto/settings", ctoSettingRoutes);
-app.use("/settings/provincial-office", designationRoutes);
+app.use("/settings/designation", designationRoutes);
 app.use("/audit-logs", auditLogRoutes);
 app.use("/settings/projects", projectRoutes);
 

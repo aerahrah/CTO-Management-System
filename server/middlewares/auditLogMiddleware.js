@@ -2,7 +2,8 @@
 const mongoose = require("mongoose");
 const auditLogService = require("../services/auditLog.service");
 const Employee = require("../models/employeeModel");
-const Project = require("../models/projectModel"); // ✅ NEW (for before snapshots if controller didn't attach)
+const Project = require("../models/projectModel");
+const Designation = require("../models/designationModel"); // ✅ NEW
 const getEndpointName = require("../utils/endpointMap");
 const buildAuditDetails = require("../utils/auditActionBuilder");
 
@@ -24,7 +25,7 @@ const matchUrl = (url, pattern) => {
 // ✅ Helper: normalize URL for endpointMap matching (removes query + optional /api prefix)
 const normalizeUrlForMap = (url) => {
   const clean = String(url || "").split("?")[0];
-  return clean.replace(/^\/api/, ""); // adjust if your prefix is different
+  return clean.replace(/^\/api/, "");
 };
 
 // ✅ Helper: safe pick from req.user (supports both {id} and {_id})
@@ -44,6 +45,14 @@ const tryFetchProjectBefore = async (projectId) => {
   const p = await Project.findById(projectId).select("name status");
   if (!p) return null;
   return { name: p.name, status: p.status, _id: p._id };
+};
+
+// ✅ Helper: best-effort "before" for Designations (if controller didn't attach req.auditBeforeDesignation)
+const tryFetchDesignationBefore = async (designationId) => {
+  if (!mongoose.Types.ObjectId.isValid(designationId)) return null;
+  const d = await Designation.findById(designationId).select("name status");
+  if (!d) return null;
+  return { name: d.name, status: d.status, _id: d._id };
 };
 
 // === Middleware function ===
@@ -92,15 +101,15 @@ const auditLogger = (req, res, next) => {
           const employees = await Employee.find({
             _id: { $in: empIds },
           }).select("username role");
+
           targetUsers = employees.map(
             (emp) => `${emp.username} (id: ${emp._id})`,
           );
-          // keep as array for bulk (builder can handle array too)
           beforeData = employees.map((emp) => ({ role: emp.role }));
         }
       } else if (
         /* =========================
-         2) Project operations (✅ NEW + fixes "before" N/A)
+         2) Project operations
          Prefer controller-attached snapshot:
            req.auditBeforeProject, req.auditTarget
       ========================= */
@@ -110,14 +119,11 @@ const auditLogger = (req, res, next) => {
         req.params.id &&
         mongoose.Types.ObjectId.isValid(req.params.id)
       ) {
-        // target label
         if (req.auditTarget) targetUsers = [req.auditTarget];
 
-        // before snapshot
         if (req.auditBeforeProject) {
           beforeData = req.auditBeforeProject;
         } else {
-          // fallback: fetch before (may be null if already deleted)
           const before = await tryFetchProjectBefore(req.params.id);
           if (before) {
             beforeData = { name: before.name, status: before.status };
@@ -127,13 +133,41 @@ const auditLogger = (req, res, next) => {
           }
         }
 
-        if (!targetUsers.length) {
-          targetUsers = [`N/A (id: ${req.params.id})`];
-        }
+        if (!targetUsers.length) targetUsers = [`N/A (id: ${req.params.id})`];
         if (!beforeData) beforeData = {};
       } else if (
         /* =========================
-         3) Single employee operations (existing)
+         3) ✅ Designation operations (FIX N/A)
+         Prefer controller-attached snapshot:
+           req.auditBeforeDesignation, req.auditTarget
+      ========================= */
+        [
+          "Update Designation",
+          "Update Designation Status",
+          "Delete Designation",
+        ].includes(endpoint) &&
+        req.params.id &&
+        mongoose.Types.ObjectId.isValid(req.params.id)
+      ) {
+        if (req.auditTarget) targetUsers = [req.auditTarget];
+
+        if (req.auditBeforeDesignation) {
+          beforeData = req.auditBeforeDesignation;
+        } else {
+          const before = await tryFetchDesignationBefore(req.params.id);
+          if (before) {
+            beforeData = { name: before.name, status: before.status };
+            if (!targetUsers.length) {
+              targetUsers = [`${before.name || "N/A"} (id: ${before._id})`];
+            }
+          }
+        }
+
+        if (!targetUsers.length) targetUsers = [`N/A (id: ${req.params.id})`];
+        if (!beforeData) beforeData = {};
+      } else if (
+        /* =========================
+         4) Single employee operations (existing)
       ========================= */
         req.params.id &&
         mongoose.Types.ObjectId.isValid(req.params.id)
@@ -165,7 +199,7 @@ const auditLogger = (req, res, next) => {
 
       // Save audit log
       await auditLogService.createAuditLog({
-        userId: actorId === "GuestID" ? null : actorId, // ✅ store real id when present
+        userId: actorId === "GuestID" ? null : actorId,
         username: actorUsername,
         method: req.method,
         endpoint,

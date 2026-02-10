@@ -1,19 +1,20 @@
+// src/components/settings/designations/DesignationSettings.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Breadcrumbs from "../../breadCrumbs";
 import {
-  fetchAllProjects,
-  createProject,
-  updateProject,
-  updateProjectStatus,
-  deleteProject,
-} from "../../../api/project";
+  fetchAllDesignations,
+  createDesignation,
+  updateDesignation,
+  updateDesignationStatus,
+  deleteDesignation,
+} from "../../../api/designation";
 import { RotateCcw, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import { toast } from "react-toastify";
 
 const pageSizeOptions = [20, 50, 100];
-const qk = (status, page, limit) => ["projects", status, page, limit];
+const qk = (status, page, limit) => ["designations", status, page, limit];
 
 // ---- helpers ----
 const toInt = (v, fallback) => {
@@ -26,9 +27,11 @@ const normalizeListResponse = (raw, fallbackPage, fallbackLimit) => {
     ? raw.items
     : Array.isArray(raw?.data)
       ? raw.data
-      : Array.isArray(raw?.projects)
-        ? raw.projects
-        : [];
+      : Array.isArray(raw?.designations)
+        ? raw.designations
+        : Array.isArray(raw)
+          ? raw
+          : [];
 
   const total = toInt(
     raw?.total ?? raw?.count ?? raw?.totalCount ?? items.length,
@@ -76,7 +79,7 @@ const EmptyState = () => (
     <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
       <div className="text-sm font-medium text-gray-700">No items found</div>
       <div className="text-xs text-gray-500 mt-1">
-        Add a new project above or refresh the list.
+        Add a new designation above or refresh the list.
       </div>
     </div>
   </div>
@@ -131,7 +134,7 @@ const ActionPill = ({
   );
 };
 
-/* ✅ Pagination component styled like MyCtoCreditHistory */
+/* ✅ Pagination component styled like your ProjectSettings */
 const CompactPagination = ({
   page,
   totalPages,
@@ -140,6 +143,7 @@ const CompactPagination = ({
   endItem,
   onPrev,
   onNext,
+  noun = "items",
 }) => {
   return (
     <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white rounded-xl">
@@ -182,7 +186,7 @@ const CompactPagination = ({
           <span className="font-bold text-gray-900">
             {total === 0 ? 0 : `${startItem}-${endItem}`}
           </span>{" "}
-          of <span className="font-bold text-gray-900">{total}</span> projects
+          of <span className="font-bold text-gray-900">{total}</span> {noun}
         </div>
 
         <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
@@ -244,16 +248,16 @@ function StatusCard({
           <EmptyState />
         ) : (
           <div className="p-4 space-y-3">
-            {items.map((p) => {
-              const isEditing = editingId === p._id;
-              const isStatusBusy = statusBusyIds?.has(p._id);
-              const isDeleteBusy = deleteBusyIds?.has(p._id);
-              const isRenameBusy = renameBusyIds?.has(p._id);
+            {items.map((d) => {
+              const isEditing = editingId === d._id;
+              const isStatusBusy = statusBusyIds?.has(d._id);
+              const isDeleteBusy = deleteBusyIds?.has(d._id);
+              const isRenameBusy = renameBusyIds?.has(d._id);
               const rowBusy = isStatusBusy || isDeleteBusy || isRenameBusy;
 
               return (
                 <div
-                  key={p._id}
+                  key={d._id}
                   className="rounded-xl border border-gray-200 bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)] p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
@@ -263,7 +267,7 @@ function StatusCard({
                           value={editingName}
                           onChange={(e) => setEditingName(e.target.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") onSubmitRename(p._id);
+                            if (e.key === "Enter") onSubmitRename(d._id);
                             if (e.key === "Escape") onCancelRename();
                           }}
                           autoFocus
@@ -271,14 +275,14 @@ function StatusCard({
                         />
                       ) : (
                         <div className="text-sm font-semibold text-gray-900 truncate">
-                          {p.name}
+                          {d.name}
                         </div>
                       )}
 
                       <div className="mt-1 text-[11px] text-gray-500">
                         Status:{" "}
                         <span className="font-medium text-gray-700">
-                          {p.status}
+                          {d.status}
                         </span>
                       </div>
                     </div>
@@ -287,7 +291,7 @@ function StatusCard({
                       {isEditing ? (
                         <>
                           <ActionPill
-                            onClick={() => onSubmitRename(p._id)}
+                            onClick={() => onSubmitRename(d._id)}
                             disabled={isRenameBusy}
                             tone="dark"
                           >
@@ -304,7 +308,7 @@ function StatusCard({
                       ) : (
                         <>
                           <ActionPill
-                            onClick={() => onStartRename(p)}
+                            onClick={() => onStartRename(d)}
                             disabled={rowBusy}
                             tone="blue"
                           >
@@ -312,7 +316,7 @@ function StatusCard({
                           </ActionPill>
 
                           <ActionPill
-                            onClick={() => onToggleStatus(p)}
+                            onClick={() => onToggleStatus(d)}
                             disabled={isStatusBusy || isDeleteBusy}
                             tone={actionTone}
                           >
@@ -320,7 +324,7 @@ function StatusCard({
                           </ActionPill>
 
                           <ActionPill
-                            onClick={() => onDelete(p)}
+                            onClick={() => onDelete(d)}
                             disabled={isDeleteBusy || isStatusBusy}
                             tone="neutral"
                           >
@@ -340,7 +344,7 @@ function StatusCard({
   );
 }
 
-export default function ProjectSettings() {
+export default function DesignationSettings() {
   const queryClient = useQueryClient();
 
   const [limit, setLimit] = useState(20);
@@ -375,7 +379,7 @@ export default function ProjectSettings() {
   const activeQuery = useQuery({
     queryKey: qk("Active", activePage, limit),
     queryFn: () =>
-      fetchAllProjects({ status: "Active", page: activePage, limit }),
+      fetchAllDesignations({ status: "Active", page: activePage, limit }),
     placeholderData: (prev) => prev,
     select: (raw) => normalizeListResponse(raw, activePage, limit),
   });
@@ -383,7 +387,7 @@ export default function ProjectSettings() {
   const inactiveQuery = useQuery({
     queryKey: qk("Inactive", inactivePage, limit),
     queryFn: () =>
-      fetchAllProjects({ status: "Inactive", page: inactivePage, limit }),
+      fetchAllDesignations({ status: "Inactive", page: inactivePage, limit }),
     placeholderData: (prev) => prev,
     select: (raw) => normalizeListResponse(raw, inactivePage, limit),
   });
@@ -419,22 +423,22 @@ export default function ProjectSettings() {
 
   // Mutations
   const createMutation = useMutation({
-    mutationFn: createProject,
+    mutationFn: createDesignation,
     onSuccess: async (_data, vars) => {
       setNewName("");
       setInlineError("");
       toast.success(`Added "${vars?.name}"`);
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["designations"] });
     },
     onError: (err) => {
-      const msg = getErrMsg(err, "Failed to add project");
+      const msg = getErrMsg(err, "Failed to add designation");
       setInlineError(msg);
       toast.error(msg);
     },
   });
 
   const renameMutation = useMutation({
-    mutationFn: ({ id, payload }) => updateProject(id, payload),
+    mutationFn: ({ id, payload }) => updateDesignation(id, payload),
     onMutate: ({ id }) => addBusy(setRenameBusyIds, id),
     onSettled: (_d, _e, vars) =>
       vars?.id && removeBusy(setRenameBusyIds, vars.id),
@@ -443,24 +447,24 @@ export default function ProjectSettings() {
       setEditingName("");
       setInlineError("");
       toast.success(`Renamed to "${vars?.payload?.name}"`);
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["designations"] });
     },
     onError: (err) => {
-      const msg = getErrMsg(err, "Failed to rename project");
+      const msg = getErrMsg(err, "Failed to rename designation");
       setInlineError(msg);
       toast.error(msg);
     },
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }) => updateProjectStatus(id, status),
+    mutationFn: ({ id, status }) => updateDesignationStatus(id, status),
     onMutate: ({ id }) => addBusy(setStatusBusyIds, id),
     onSettled: (_d, _e, vars) =>
       vars?.id && removeBusy(setStatusBusyIds, vars.id),
     onSuccess: async (_data, vars) => {
       setInlineError("");
       toast.success(`Set to ${vars?.status}`);
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      await queryClient.invalidateQueries({ queryKey: ["designations"] });
     },
     onError: (err) => {
       const msg = getErrMsg(err, "Failed to update status");
@@ -470,16 +474,16 @@ export default function ProjectSettings() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => deleteProject(id),
+    mutationFn: (id) => deleteDesignation(id),
     onMutate: (id) => addBusy(setDeleteBusyIds, id),
     onSettled: (_d, _e, id) => id && removeBusy(setDeleteBusyIds, id),
     onSuccess: async () => {
       setInlineError("");
-      toast.success("Deleted project");
-      await queryClient.invalidateQueries({ queryKey: ["projects"] });
+      toast.success("Deleted designation");
+      await queryClient.invalidateQueries({ queryKey: ["designations"] });
     },
     onError: (err) => {
-      const msg = getErrMsg(err, "Failed to delete project");
+      const msg = getErrMsg(err, "Failed to delete designation");
       setInlineError(msg);
       toast.error(msg);
     },
@@ -490,7 +494,7 @@ export default function ProjectSettings() {
     e.preventDefault();
     const name = newName.trim();
     if (!name) {
-      const msg = "Project name is required.";
+      const msg = "Designation name is required.";
       setInlineError(msg);
       toast.error(msg);
       return;
@@ -499,10 +503,10 @@ export default function ProjectSettings() {
     createMutation.mutate({ name, status: "Active" });
   };
 
-  const startRename = (p) => {
+  const startRename = (d) => {
     setInlineError("");
-    setEditingId(p._id);
-    setEditingName(p.name || "");
+    setEditingId(d._id);
+    setEditingName(d.name || "");
   };
 
   const cancelRename = () => {
@@ -521,14 +525,14 @@ export default function ProjectSettings() {
     renameMutation.mutate({ id, payload: { name } });
   };
 
-  const toggleStatus = (p) => {
-    const next = p.status === "Active" ? "Inactive" : "Active";
-    statusMutation.mutate({ id: p._id, status: next });
+  const toggleStatus = (d) => {
+    const next = d.status === "Active" ? "Inactive" : "Active";
+    statusMutation.mutate({ id: d._id, status: next });
   };
 
-  const onDelete = (p) => {
-    if (!window.confirm(`Delete project "${p.name}"?`)) return;
-    deleteMutation.mutate(p._id);
+  const onDelete = (d) => {
+    if (!window.confirm(`Delete designation "${d.name}"?`)) return;
+    deleteMutation.mutate(d._id);
   };
 
   const onLimitChange = (n) => {
@@ -563,17 +567,18 @@ export default function ProjectSettings() {
         />
 
         {/* Header */}
-        <div className=" flex flex-col md:flex-row md:items-start justify-between gap-4">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
-              Office <span className="font-bold">Projects</span>
+              Office <span className="font-bold">Designations</span>
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage project options used in registration and storage.
+              Manage designation options used in employee registration and
+              storage.
             </p>
           </div>
 
-          {/* ✅ Refresh button styled like MyCtoCreditHistory retry/reset buttons */}
+          {/* Refresh */}
           <button
             onClick={refetchBoth}
             disabled={isRefreshing}
@@ -596,7 +601,7 @@ export default function ProjectSettings() {
                 <input
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Add new project"
+                  placeholder="Add new designation"
                   className="w-full h-11 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
                 />
               </div>
@@ -612,17 +617,17 @@ export default function ProjectSettings() {
                   }`}
               >
                 <Plus className="w-4 h-4" />
-                {createMutation.isPending ? "Adding..." : "Add project"}
+                {createMutation.isPending ? "Adding..." : "Add designation"}
               </button>
             </form>
 
             <div className="mt-2 text-xs text-gray-500">
-              Tip: You can deactivate an project instead of deleting it.
+              Tip: You can deactivate a designation instead of deleting it.
             </div>
 
             <InlineError message={inlineError} />
 
-            {/* ✅ page-size controls: EXACT pattern from MyCtoCreditHistory */}
+            {/* Page-size controls */}
             <div className="mt-4 flex items-center justify-between gap-3">
               {/* Desktop select */}
               <div className="hidden md:flex items-center gap-2">
@@ -631,9 +636,7 @@ export default function ProjectSettings() {
                 </span>
                 <select
                   value={limit}
-                  onChange={(e) => {
-                    onLimitChange(Number(e.target.value));
-                  }}
+                  onChange={(e) => onLimitChange(Number(e.target.value))}
                   className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
                 >
                   {pageSizeOptions.map((opt) => (
@@ -658,7 +661,7 @@ export default function ProjectSettings() {
                 />
               </div>
 
-              {/* optional chips (kept from your layout) */}
+              {/* Quick chips */}
               <div className="hidden md:flex items-center gap-2">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Quick
@@ -688,7 +691,7 @@ export default function ProjectSettings() {
           {/* Active */}
           <div className="flex flex-col gap-3">
             <StatusCard
-              title="Active offices/projects"
+              title="Active designations"
               count={activeTotal}
               loading={activeQuery.isLoading}
               items={activeItems}
@@ -707,7 +710,6 @@ export default function ProjectSettings() {
               renameBusyIds={renameBusyIds}
             />
 
-            {/* ✅ Pagination styled like MyCtoCreditHistory */}
             <CompactPagination
               page={activePage}
               totalPages={activeTotalPages}
@@ -718,13 +720,14 @@ export default function ProjectSettings() {
               onNext={() =>
                 setActivePage((p) => Math.min(p + 1, activeTotalPages))
               }
+              noun="designations"
             />
           </div>
 
           {/* Inactive */}
           <div className="flex flex-col gap-3">
             <StatusCard
-              title="Inactive offices/projects"
+              title="Inactive designations"
               count={inactiveTotal}
               loading={inactiveQuery.isLoading}
               items={inactiveItems}
@@ -743,7 +746,6 @@ export default function ProjectSettings() {
               renameBusyIds={renameBusyIds}
             />
 
-            {/* ✅ Pagination styled like MyCtoCreditHistory */}
             <CompactPagination
               page={inactivePage}
               totalPages={inactiveTotalPages}
@@ -754,6 +756,7 @@ export default function ProjectSettings() {
               onNext={() =>
                 setInactivePage((p) => Math.min(p + 1, inactiveTotalPages))
               }
+              noun="designations"
             />
           </div>
         </div>
