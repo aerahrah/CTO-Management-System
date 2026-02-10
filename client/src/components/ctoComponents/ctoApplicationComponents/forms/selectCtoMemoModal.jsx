@@ -7,6 +7,7 @@ import {
   FileText,
   ExternalLink,
 } from "lucide-react";
+import { buildApiUrl } from "../../../../config/env";
 
 const SelectCtoMemoModal = ({
   isOpen,
@@ -144,14 +145,14 @@ const SelectCtoMemoModal = ({
                     {memo.uploadedMemo?.endsWith(".pdf") ? (
                       <div className="h-36 w-full relative">
                         <iframe
-                          src={`http://localhost:3000${memo.uploadedMemo}#toolbar=0&view=FitH`}
+                          src={`${buildApiUrl(memo.uploadedMemo)}#toolbar=0&view=FitH`}
                           className="w-full h-full"
                           title={memo.memoNo}
                           loading="lazy"
                         />
                         {/* Hover overlay to open PDF */}
                         <a
-                          href={`http://localhost:3000${memo.uploadedMemo}`}
+                          href={buildApiUrl(memo.uploadedMemo)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="absolute inset-0 bg-white/0 group-hover:bg-white/60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"

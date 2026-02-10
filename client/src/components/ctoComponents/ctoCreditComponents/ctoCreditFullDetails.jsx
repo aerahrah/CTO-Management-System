@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { StatusBadge, StatusIcon, getStatusStyles } from "../../statusUtils";
+import { buildApiUrl } from "../../../config/env";
 // import Modal from "../../modal"; // Uncomment if needed
 
 // --- Helper: Enhanced Utilization Bar (Supports Reserved Hours) ---
@@ -165,7 +166,7 @@ const CtoCreditDetails = ({ credit }) => {
       : "-";
 
   const PDF_URL = credit.uploadedMemo
-    ? `http://localhost:3000/${credit.uploadedMemo.replace(/\\/g, "/")}`
+    ? buildApiUrl(credit.uploadedMemo.replace(/\\/g, "/"))
     : "";
 
   return (

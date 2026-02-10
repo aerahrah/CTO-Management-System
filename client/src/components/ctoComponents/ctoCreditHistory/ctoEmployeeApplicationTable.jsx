@@ -14,16 +14,14 @@ import {
   FileText,
 } from "lucide-react";
 import MemoList from "../ctoMemoModal";
+import { API_BASE_URL } from "../../../config/env";
 /* =========================
    CONSTANTS
 ========================= */
 const statusOptions = ["PENDING", "APPROVED", "REJECTED"];
 const pageSizeOptions = [20, 50, 100];
 
-const BASE_URL =
-  (typeof import.meta !== "undefined" && import.meta.env?.VITE_API_BASE_URL) ||
-  (typeof process !== "undefined" && process.env?.REACT_APP_API_BASE_URL) ||
-  "http://localhost:3000";
+const BASE_URL = API_BASE_URL;
 
 /* =========================
    SMALL UI

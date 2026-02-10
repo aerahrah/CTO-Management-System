@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoCreditForm from "./forms/addCtoCreditForm";
-import CtoCreditDetails from "./ctoCreditfullDetails";
+import CtoCreditDetails from "./ctoCreditFullDetails";
 
 const pageSizeOptions = [20, 50, 100];
 

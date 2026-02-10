@@ -23,6 +23,7 @@ import {
   Eye,
 } from "lucide-react";
 import FilterSelect from "../filterSelect";
+import { API_BASE_URL } from "../../config/env";
 
 const pageSizeOptions = [20, 50, 100];
 
@@ -833,13 +834,7 @@ const MyCtoCreditHistory = () => {
       >
         <CtoMemoModalContent
           memo={memoModal.memo}
-          baseUrl={
-            (typeof import.meta !== "undefined" &&
-              import.meta.env?.VITE_API_BASE_URL) ||
-            (typeof process !== "undefined" &&
-              process.env?.REACT_APP_API_BASE_URL) ||
-            "http://localhost:3000"
-          }
+          baseUrl={API_BASE_URL}
         />
       </Modal>
     </div>
