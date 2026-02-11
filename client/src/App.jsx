@@ -34,6 +34,7 @@ import ApproverSettings from "./components/generalSettingsComponents/ctoApprover
 import CtoSettingsPlaceholder from "./components/generalSettingsComponents/ctoSettingsPlaceholder";
 import ProjectSettings from "./components/generalSettingsComponents/projectSettings/projectSettings";
 import DesignationSettings from "./components/generalSettingsComponents/designationSettings/designationSettings";
+import BackupSettings from "./components/generalSettingsComponents/backupSettings/backupSettings";
 
 /* Profile */
 import MyProfile from "./components/userProfile/myProfile";
@@ -105,6 +106,7 @@ function App() {
 
             <Route path="designations" element={<DesignationSettings />} />
             <Route path="projects" element={<ProjectSettings />} />
+            <Route path="backups" element={<BackupSettings />} />
           </Route>
 
           {/* ===================== */}

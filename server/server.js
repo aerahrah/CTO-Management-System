@@ -12,6 +12,7 @@ const ctoRoutes = require("./routers/ctoRoutes");
 const auditLogRoutes = require("./routers/auditLogRoute");
 const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const projectRoutes = require("./routers/projectRoute");
+const ctoBackupRoutes = require("./routers/ctoBackupRoute.js");
 
 const auditLogger = require("./middlewares/auditLogMiddleware");
 
@@ -42,10 +43,11 @@ const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
 const corsOptions =
   NODE_ENV !== "production"
     ? {
-        origin: true, // reflect origin in dev (prevents localhost/127.0.0.1 mismatch pain)
+        origin: true,
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
+        exposedHeaders: ["Content-Disposition", "Content-Length"], // ✅ add
       }
     : {
         origin: (origin, cb) => {
@@ -56,6 +58,7 @@ const corsOptions =
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
+        exposedHeaders: ["Content-Disposition", "Content-Length"], // ✅ add
       };
 
 app.use(cors(corsOptions));
@@ -76,6 +79,7 @@ app.use("/cto/settings", ctoSettingRoutes);
 app.use("/settings/designation", designationRoutes);
 app.use("/audit-logs", auditLogRoutes);
 app.use("/settings/projects", projectRoutes);
+app.use("/settings/mongodb", ctoBackupRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ message: "Not found" }));

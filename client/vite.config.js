@@ -4,7 +4,6 @@ import react from "@vitejs/plugin-react-swc";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig(({ mode }) => {
-  // load envs if needed later
   loadEnv(mode, process.cwd(), "");
 
   return {
@@ -28,32 +27,42 @@ export default defineConfig(({ mode }) => {
             { src: "logo_dict.png", sizes: "512x512", type: "image/png" },
           ],
         },
-        // Important for SPA routing (React Router)
+
         workbox: {
           navigateFallback: "/index.html",
+
+          // ✅ IMPORTANT: your backend routes are NOT under /api
+          // prevent SW from treating these as SPA navigations / caching them
+          navigateFallbackDenylist: [/^\/settings\//, /^\/cto\//, /^\/auth\//],
+
           runtimeCaching: [
             {
-              // Don't cache API
-              urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
+              // ✅ Don’t cache backend endpoints (match your real routes)
+              urlPattern: ({ url }) =>
+                url.pathname.startsWith("/settings/") ||
+                url.pathname.startsWith("/cto/") ||
+                url.pathname.startsWith("/auth/"),
               handler: "NetworkOnly",
             },
           ],
         },
-        // only enable SW in dev if you really want it
-        devOptions: { enabled: mode === "development" },
+
+        // ✅ disable SW in dev (removes dev-dist warnings)
+        devOptions: { enabled: false },
       }),
     ],
 
-    // Build Vite output into backend so backend can serve it
     build: {
       outDir: "../backend/public",
       emptyOutDir: true,
     },
 
-    // Dev only: proxy /api -> backend so you avoid CORS locally
     server: {
       proxy: {
-        "/api": "http://localhost:3000",
+        // ✅ You’re not using /api in your frontend calls, so proxy these too
+        "/settings": "http://localhost:3000",
+        "/cto": "http://localhost:3000",
+        "/auth": "http://localhost:3000",
       },
     },
   };
