@@ -274,6 +274,7 @@ const getEmployeesService = async ({
       project: 1,
       role: 1,
       status: 1,
+      position: 1,
     };
 
     const [data, total] = await Promise.all([

@@ -863,6 +863,7 @@ const AllCtoApplicationsHistory = () => {
         <Modal
           isOpen={!!selectedApp}
           onClose={() => setSelectedApp(null)}
+          maxWidth="max-w-5xl"
           title="CTO Application Details"
         >
           <CtoApplicationDetails app={selectedApp} loading={!selectedApp} />

@@ -233,15 +233,26 @@ function StatusCard({
   statusBusyIds,
   deleteBusyIds,
   renameBusyIds,
+
+  // ✅ pagination props
+  page,
+  totalPages,
+  total,
+  startItem,
+  endItem,
+  onPrev,
+  onNext,
+  noun,
 }) {
   return (
-    <Card className="min-h-[420px] flex flex-col overflow-hidden">
+    <Card className="h-[calc(100vh-16rem)] flex flex-col overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
         <div className="text-sm font-semibold text-gray-900">{title}</div>
         <CountPill value={count} />
       </div>
 
-      <div className="flex-1 overflow-auto">
+      {/* ✅ scrollable body */}
+      <div className="flex-1 overflow-y-auto">
         {loading ? (
           <SkeletonList />
         ) : items.length === 0 ? (
@@ -339,6 +350,20 @@ function StatusCard({
             })}
           </div>
         )}
+      </div>
+
+      {/* ✅ fixed footer pagination inside card */}
+      <div className="shrink-0">
+        <CompactPagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          startItem={startItem}
+          endItem={endItem}
+          onPrev={onPrev}
+          onNext={onNext}
+          noun={noun}
+        />
       </div>
     </Card>
   );
@@ -561,7 +586,7 @@ export default function DesignationSettings() {
 
   return (
     <div className="w-full flex-1 flex h-full flex-col bg-gray-50/50">
-      <div className="px-1 w-full mx-auto py-2 pb-6">
+      <div className="px-1 w-full mx-auto py-2 pb-2">
         <Breadcrumbs
           items={[{ label: "USER MANAGEMENT", to: "/app/user-management" }]}
         />
@@ -708,9 +733,6 @@ export default function DesignationSettings() {
               statusBusyIds={statusBusyIds}
               deleteBusyIds={deleteBusyIds}
               renameBusyIds={renameBusyIds}
-            />
-
-            <CompactPagination
               page={activePage}
               totalPages={activeTotalPages}
               total={activeTotal}
@@ -744,9 +766,6 @@ export default function DesignationSettings() {
               statusBusyIds={statusBusyIds}
               deleteBusyIds={deleteBusyIds}
               renameBusyIds={renameBusyIds}
-            />
-
-            <CompactPagination
               page={inactivePage}
               totalPages={inactiveTotalPages}
               total={inactiveTotal}

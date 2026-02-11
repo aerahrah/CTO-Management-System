@@ -1,4 +1,3 @@
-// App.jsx
 import React from "react";
 import { Routes, Route } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
@@ -11,7 +10,6 @@ import EmployeesPage from "./pages/employeePage";
 import AdminPage from "./pages/adminPage";
 import SettingsPage from "./pages/settingsPage";
 import AuditLogTable from "./pages/auditPage";
-// import AppOverviewPage from "./pages/appOverviewPage"; // ✅ HOME (/app)
 
 /* CTO Components */
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
@@ -32,11 +30,12 @@ import EmployeeInformation from "./components/employeeDashboard/employeeInformat
 
 /* Settings */
 import CtoSettings from "./components/generalSettingsComponents/ctoSettings";
-// import OfficeLocationSettingsPage from "./components/generalSettingsComponents/OfficeLocationSettings/officeLocationSettingsPage";
+import ApproverSettings from "./components/generalSettingsComponents/ctoApproverSetting";
+import CtoSettingsPlaceholder from "./components/generalSettingsComponents/ctoSettingsPlaceholder";
 import ProjectSettings from "./components/generalSettingsComponents/projectSettings/projectSettings";
 import DesignationSettings from "./components/generalSettingsComponents/designationSettings/designationSettings";
-/* Profile */
 
+/* Profile */
 import MyProfile from "./components/userProfile/myProfile";
 import UpdateProfile from "./components/userProfile/myProfileUpdate";
 import ResetPassword from "./components/userProfile/myProfileResetPassword";
@@ -54,16 +53,11 @@ function App() {
         {/* APP LAYOUT */}
         <Route path="/app" element={<Dashboard />}>
           {/* ===================== */}
-          {/* ALL AUTHENTICATED USERS (HOME lives here) */}
+          {/* ALL AUTHENTICATED USERS */}
           {/* ===================== */}
           <Route element={<ProtectedRoute />}>
-            {/* ✅ DEFAULT HOME: /app */}
             <Route index element={<CtoDashboard />} />
 
-            {/* Optional: keep /app/overview as an alias (safe to keep)
-            <Route path="overview" element={<AppOverviewPage />} /> */}
-            {/* 
-            <Route path="cto-dashboard" element={<CtoDashboard />} /> */}
             <Route path="cto-apply" element={<CtoApplication />} />
             <Route path="cto-my-credits" element={<MyCtoCredits />} />
 
@@ -74,7 +68,6 @@ function App() {
               element={<ResetPassword />}
             />
 
-            {/* Optional admin page if you still need it */}
             <Route path="admin" element={<AdminPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>
@@ -104,7 +97,12 @@ function App() {
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
 
-            <Route path="cto-settings" element={<CtoSettings />} />
+            {/* ✅ CTO SETTINGS (NESTED LIKE CtoRecords) */}
+            <Route path="cto-settings" element={<CtoSettings />}>
+              <Route index element={<CtoSettingsPlaceholder />} />
+              <Route path=":designationId" element={<ApproverSettings />} />
+            </Route>
+
             <Route path="designations" element={<DesignationSettings />} />
             <Route path="projects" element={<ProjectSettings />} />
           </Route>

@@ -741,7 +741,9 @@ const MyCtoCreditHistory = () => {
                 <table className="w-full text-left">
                   <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
                     <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
-                      <th className="px-6 py-4 font-bold bg-white">Memo No.</th>
+                      <th className="px-6 py-4 font-bold bg-white">
+                        REFERENCE / MEMO
+                      </th>
                       <th className="px-6 py-4 font-bold bg-white">
                         Date Credited
                       </th>
@@ -772,7 +774,15 @@ const MyCtoCreditHistory = () => {
                             }`}
                           >
                             <td className="px-6 py-4 font-medium text-gray-900">
-                              {credit.memoNo}
+                              <div className="flex flex-col">
+                                {credit.memoNo}
+                                <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                  ID:{" "}
+                                  {credit._id
+                                    ? credit._id.slice(-6).toUpperCase()
+                                    : "-"}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-gray-600">
                               {credit.dateApproved
@@ -832,10 +842,7 @@ const MyCtoCreditHistory = () => {
         closeLabel="Close"
         maxWidth="max-w-xl"
       >
-        <CtoMemoModalContent
-          memo={memoModal.memo}
-          baseUrl={API_BASE_URL}
-        />
+        <CtoMemoModalContent memo={memoModal.memo} baseUrl={API_BASE_URL} />
       </Modal>
     </div>
   );

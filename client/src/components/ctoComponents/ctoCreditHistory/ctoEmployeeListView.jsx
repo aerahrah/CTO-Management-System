@@ -341,7 +341,7 @@ const EmployeeList = ({ setIsEmployeeLoading }) => {
                       {item.firstName} {item.lastName}
                     </span>
                     <span className="text-xs text-neutral-500 truncate">
-                      {item.department || item.position || "No Department"}
+                      {item?.project?.name || item.position || "No Department"}
                     </span>
                   </div>
                 </li>

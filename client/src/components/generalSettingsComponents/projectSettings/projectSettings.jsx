@@ -229,9 +229,18 @@ function StatusCard({
   statusBusyIds,
   deleteBusyIds,
   renameBusyIds,
+
+  // ✅ pagination props
+  page,
+  totalPages,
+  total,
+  startItem,
+  endItem,
+  onPrev,
+  onNext,
 }) {
   return (
-    <Card className="min-h-[420px] flex flex-col overflow-hidden">
+    <Card className="h-[calc(100vh-16rem)] flex flex-col overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
         <div className="text-sm font-semibold text-gray-900">{title}</div>
         <CountPill value={count} />
@@ -335,6 +344,19 @@ function StatusCard({
             })}
           </div>
         )}
+      </div>
+
+      {/* ✅ Fixed footer pagination inside card */}
+      <div className="shrink-0">
+        <CompactPagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          startItem={startItem}
+          endItem={endItem}
+          onPrev={onPrev}
+          onNext={onNext}
+        />
       </div>
     </Card>
   );
@@ -557,7 +579,7 @@ export default function ProjectSettings() {
 
   return (
     <div className="w-full flex-1 flex h-full flex-col bg-gray-50/50">
-      <div className="px-1 w-full mx-auto py-2 pb-6">
+      <div className="px-1 w-full mx-auto py-2 pb-2">
         <Breadcrumbs
           items={[{ label: "USER MANAGEMENT", to: "/app/user-management" }]}
         />
@@ -684,11 +706,11 @@ export default function ProjectSettings() {
         </Card>
 
         {/* Two Columns */}
-        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4 ">
           {/* Active */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3  ">
             <StatusCard
-              title="Active offices/projects"
+              title="Active projects"
               count={activeTotal}
               loading={activeQuery.isLoading}
               items={activeItems}
@@ -705,10 +727,6 @@ export default function ProjectSettings() {
               statusBusyIds={statusBusyIds}
               deleteBusyIds={deleteBusyIds}
               renameBusyIds={renameBusyIds}
-            />
-
-            {/* ✅ Pagination styled like MyCtoCreditHistory */}
-            <CompactPagination
               page={activePage}
               totalPages={activeTotalPages}
               total={activeTotal}
@@ -722,9 +740,9 @@ export default function ProjectSettings() {
           </div>
 
           {/* Inactive */}
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 ">
             <StatusCard
-              title="Inactive offices/projects"
+              title="Inactive projects"
               count={inactiveTotal}
               loading={inactiveQuery.isLoading}
               items={inactiveItems}
@@ -741,10 +759,6 @@ export default function ProjectSettings() {
               statusBusyIds={statusBusyIds}
               deleteBusyIds={deleteBusyIds}
               renameBusyIds={renameBusyIds}
-            />
-
-            {/* ✅ Pagination styled like MyCtoCreditHistory */}
-            <CompactPagination
               page={inactivePage}
               totalPages={inactiveTotalPages}
               total={inactiveTotal}

@@ -1,6 +1,12 @@
-// src/components/cto/officeLocationList.jsx
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import { fetchDesignationOptions } from "../../api/designation";
 import {
   Search,
@@ -27,6 +33,34 @@ function useDebounce(value, delay) {
   return debouncedValue;
 }
 
+/* ================================
+   HOOK: MEDIA QUERY (xl and up)
+   - Only auto-navigate on xl screens (2-pane layout)
+================================ */
+function useIsXlUp() {
+  const [isXlUp, setIsXlUp] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 1280px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const onChange = (e) => setIsXlUp(e.matches);
+
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+
+  return isXlUp;
+}
+
 const normalizeOptionsResponse = (raw) => {
   const items = Array.isArray(raw?.items)
     ? raw.items
@@ -38,24 +72,27 @@ const normalizeOptionsResponse = (raw) => {
   return items;
 };
 
-const OfficeLocationList = ({
-  selectedDesignation,
-  setSelectedDesignation,
-}) => {
+const OfficeLocationList = () => {
+  const navigate = useNavigate();
+  const { designationId } = useParams();
+  const activeId = designationId ? String(designationId) : "";
+
+  const isXlUp = useIsXlUp();
+  const hasNavigatedRef = useRef(false);
+
   const [searchTerm, setSearchTerm] = useState("");
   const debouncedSearch = useDebounce(searchTerm, 300);
   const [sortOrder, setSortOrder] = useState("asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
-  // ✅ fetch all designations (no pagination) for sidebar
   const {
     data: designationRaw,
     isLoading,
     isError,
   } = useQuery({
     queryKey: ["designationOptions", "all"],
-    queryFn: () => fetchDesignationOptions({}), // optionally { status: "Active" }
+    queryFn: () => fetchDesignationOptions({}),
     staleTime: 10 * 60 * 1000,
   });
 
@@ -70,17 +107,12 @@ const OfficeLocationList = ({
       }));
   }, [designationRaw]);
 
-  // Client-side filtering/sorting/pagination
   const processedData = useMemo(() => {
     let result = allDesignations;
 
-    // filter
     const q = (debouncedSearch || "").toLowerCase();
-    if (q) {
-      result = result.filter((d) => d.name.toLowerCase().includes(q));
-    }
+    if (q) result = result.filter((d) => d.name.toLowerCase().includes(q));
 
-    // sort
     result = [...result].sort((a, b) => {
       const A = a.name.toLowerCase();
       const B = b.name.toLowerCase();
@@ -90,37 +122,43 @@ const OfficeLocationList = ({
     const totalCount = result.length;
     const totalPages = Math.max(Math.ceil(totalCount / limit) || 1, 1);
 
-    // clamp page
     const safePage = Math.min(Math.max(page, 1), totalPages);
-
-    // paginate
     const startIndex = (safePage - 1) * limit;
     const paginatedData = result.slice(startIndex, startIndex + limit);
 
     return { data: paginatedData, totalPages, totalCount, safePage };
   }, [allDesignations, debouncedSearch, sortOrder, page, limit]);
 
-  // clamp page when total pages change
   useEffect(() => {
     if (page !== processedData.safePage) setPage(processedData.safePage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedData.safePage]);
 
-  // auto-select first item
+  // ✅ Auto-select first ONLY on xl screens AND only once
   useEffect(() => {
-    if (!selectedDesignation && processedData.data.length > 0) {
-      setSelectedDesignation(processedData.data[0]);
-    }
-  }, [processedData.data, selectedDesignation, setSelectedDesignation]);
+    if (!isXlUp) return;
+    if (hasNavigatedRef.current) return;
 
-  // reset page when search changes
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch]);
+    if (!activeId && processedData.data.length > 0) {
+      navigate(`/app/cto-settings/${processedData.data[0]._id}`, {
+        replace: true,
+      });
+      hasNavigatedRef.current = true;
+    }
+  }, [activeId, processedData.data, navigate, isXlUp]);
+
+  useEffect(() => setPage(1), [debouncedSearch]);
 
   const handleSortToggle = useCallback(() => {
     setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
   }, []);
+
+  const handleSelect = useCallback(
+    (designation) => {
+      navigate(`/app/cto-settings/${designation._id}`);
+    },
+    [navigate],
+  );
 
   return (
     <div className="flex flex-col h-full bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden">
@@ -200,13 +238,12 @@ const OfficeLocationList = ({
               </li>
             ) : processedData.data.length > 0 ? (
               processedData.data.map((designation) => {
-                const isActive =
-                  String(selectedDesignation?._id || "") === designation._id;
+                const isActive = activeId === designation._id;
 
                 return (
                   <li
                     key={designation._id}
-                    onClick={() => setSelectedDesignation(designation)}
+                    onClick={() => handleSelect(designation)}
                     className={`group flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200
                       ${
                         isActive

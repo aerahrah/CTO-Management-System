@@ -14,7 +14,6 @@ import {
   Edit3,
   KeyRound,
   AlertCircle,
-  Copy,
   ChevronRight,
 } from "lucide-react";
 import { getMyProfile } from "../../api/employee";
@@ -108,21 +107,158 @@ const Badge = ({ children, color = "green" }) => {
    Skeleton & Error States
 ========================= */
 
+const SkeletonLine = ({ className = "" }) => (
+  <div className={`h-3.5 bg-zinc-200/80 rounded-md ${className}`} />
+);
+
+const SkeletonChip = ({ className = "" }) => (
+  <div className={`h-8 bg-zinc-200/80 rounded-full ${className}`} />
+);
+
+const SkeletonIcon = ({ className = "" }) => (
+  <div className={`w-8 h-8 rounded-lg bg-zinc-200/80 ${className}`} />
+);
+
+const Shimmer = () => (
+  <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]">
+    <div className="absolute inset-0 -translate-x-full animate-[shimmer_1.3s_infinite] bg-gradient-to-r from-transparent via-white/45 to-transparent" />
+    <style>
+      {`@keyframes shimmer { 100% { transform: translateX(100%); } }`}
+    </style>
+  </div>
+);
+
 const ProfileSkeleton = () => (
-  <div className="min-h-screen bg-zinc-50/50 p-6 md:p-10 animate-pulse">
-    <div className="max-w-5xl mx-auto space-y-8">
-      <div className="flex justify-between items-center">
-        <div className="h-8 w-48 bg-zinc-200 rounded-lg" />
-        <div className="flex gap-2">
-          <div className="h-10 w-32 bg-zinc-200 rounded-full" />
-          <div className="h-10 w-32 bg-zinc-200 rounded-full" />
+  <div className="min-h-screen bg-zinc-50/50 px-1 py-2">
+    <div className="max-w-6xl mx-auto">
+      {/* Header skeleton */}
+      <div className="mb-6">
+        <div className="h-4 w-40 bg-zinc-200/80 rounded-md mx-auto md:mx-0" />
+        <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-2">
+            <div className="h-8 w-56 bg-zinc-200/80 rounded-lg" />
+            <div className="h-4 w-80 bg-zinc-200/80 rounded-md" />
+          </div>
+          <div className="flex items-center gap-3">
+            <SkeletonChip className="w-36" />
+            <SkeletonChip className="w-36" />
+          </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-4 h-96 bg-white rounded-3xl border border-zinc-100" />
+
+      {/* Content grid skeleton */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left: Identity card skeleton */}
+        <div className="lg:col-span-4 lg:sticky lg:top-8">
+          <div className="relative bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden h-full flex flex-col">
+            <Shimmer />
+            <div className="p-8 flex flex-col items-center text-center border-b border-zinc-50">
+              <div className="w-24 h-24 rounded-full bg-zinc-200/80" />
+              <div className="mt-6 h-5 w-40 bg-zinc-200/80 rounded-md" />
+              <div className="mt-2 h-4 w-28 bg-zinc-200/80 rounded-md" />
+
+              <div className="mt-6 w-full grid grid-cols-2 gap-2">
+                <div className="h-9 bg-zinc-200/70 rounded-xl" />
+                <div className="h-9 bg-zinc-200/70 rounded-xl" />
+              </div>
+            </div>
+
+            <div className="p-6 bg-zinc-50/30 flex-1 flex flex-col justify-center space-y-5">
+              <div className="space-y-4">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between py-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <SkeletonIcon />
+                      <SkeletonLine className="w-20" />
+                    </div>
+                    <SkeletonLine className="w-32" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right: Sections skeleton */}
         <div className="lg:col-span-8 space-y-6">
-          <div className="h-40 bg-white rounded-3xl border border-zinc-100" />
-          <div className="h-40 bg-white rounded-3xl border border-zinc-100" />
+          {/* Employment Details */}
+          <div className="relative bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+            <Shimmer />
+            <div className="px-6 pt-6 pb-2">
+              <div className="h-4 w-40 bg-zinc-200/80 rounded-md" />
+            </div>
+            <div className="p-6">
+              <div className="space-y-2">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <React.Fragment key={i}>
+                    <div className="flex items-center justify-between py-3">
+                      <div className="flex items-center gap-3">
+                        <SkeletonIcon />
+                        <SkeletonLine className="w-24" />
+                      </div>
+                      <SkeletonLine className="w-40" />
+                    </div>
+                    {i < 2 && <div className="h-px bg-zinc-50 my-2" />}
+                  </React.Fragment>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Emergency Contact */}
+          <div className="relative bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+            <Shimmer />
+            <div className="px-6 pt-6 pb-2">
+              <div className="h-4 w-44 bg-zinc-200/80 rounded-md" />
+            </div>
+            <div className="p-6">
+              <div className="rounded-2xl p-4 mb-4 border border-amber-100/40 bg-amber-50/40">
+                <div className="flex gap-3 items-start">
+                  <div className="w-5 h-5 bg-zinc-200/80 rounded" />
+                  <div className="flex-1 space-y-2">
+                    <SkeletonLine className="w-full max-w-[420px]" />
+                    <SkeletonLine className="w-full max-w-[360px]" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                <div className="space-y-2">
+                  <SkeletonLine className="h-3 w-28" />
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="w-10 h-10 rounded-full bg-zinc-200/80" />
+                    <div className="space-y-2">
+                      <SkeletonLine className="w-32" />
+                      <SkeletonLine className="w-24" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 flex flex-col justify-center">
+                  <SkeletonLine className="h-3 w-32" />
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="w-4 h-4 bg-zinc-200/80 rounded" />
+                    <SkeletonLine className="w-28" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Optional third skeleton card to match spacing on larger screens */}
+          <div className="relative bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden hidden lg:block">
+            <Shimmer />
+            <div className="p-6">
+              <div className="h-4 w-52 bg-zinc-200/70 rounded-md" />
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div className="h-16 bg-zinc-200/60 rounded-2xl" />
+                <div className="h-16 bg-zinc-200/60 rounded-2xl" />
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

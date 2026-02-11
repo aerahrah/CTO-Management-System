@@ -487,7 +487,7 @@ const EmployeeInformation = () => {
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
               <div className="min-w-0">
                 <div className="mt-3 flex items-start gap-4">
-                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center text-base font-semibold shadow-sm">
+                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-base font-semibold shadow-sm">
                     {initials || "?"}
                   </div>
 
@@ -789,7 +789,7 @@ const TabButton = ({ active, onClick, label, icon }) => (
       "px-3.5 py-2 rounded-xl text-sm",
       "border transition",
       active
-        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
         : "bg-white/70 text-slate-700 border-slate-200/70 hover:bg-white hover:border-slate-300/70",
     ].join(" ")}
   >

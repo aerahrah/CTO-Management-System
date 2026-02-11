@@ -305,6 +305,7 @@ async function getEmployeeCredits(
     );
 
     return {
+      _id: credit._id,
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
       uploadedMemo: credit.uploadedMemo,

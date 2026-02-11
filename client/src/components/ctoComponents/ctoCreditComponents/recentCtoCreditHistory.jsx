@@ -686,7 +686,7 @@ const CtoCreditHistory = () => {
                   <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
                     <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
                       <th className="px-6 py-4 font-bold">Employees</th>
-                      <th className="px-6 py-4 font-bold">Memo No.</th>
+                      <th className="px-6 py-4 font-bold">REFERENCE / Memo</th>
                       <th className="px-6 py-4 text-center">Duration</th>
                       <th className="px-6 py-4 text-center">Date Approved</th>
                       <th className="px-6 py-4 text-center">Status</th>
@@ -713,25 +713,26 @@ const CtoCreditHistory = () => {
                             }`}
                           >
                             <td className="px-6 py-4">
+                              <span className="font-semibold text-gray-900 text-sm">
+                                {credit.employees
+                                  .map((e) =>
+                                    `${e.employee?.firstName || ""} ${e.employee?.lastName || ""}`.trim(),
+                                  )
+                                  .filter(Boolean)
+                                  .join(", ")}
+                              </span>
+                            </td>
+
+                            <td className="px-6 py-4 font-medium text-gray-900">
                               <div className="flex flex-col">
-                                <span className="font-semibold text-gray-900 text-sm">
-                                  {credit.employees
-                                    .map((e) =>
-                                      `${e.employee?.firstName || ""} ${e.employee?.lastName || ""}`.trim(),
-                                    )
-                                    .filter(Boolean)
-                                    .join(", ")}
-                                </span>
+                                {credit.memoNo}
                                 <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                  ID:{" "}
                                   {credit._id
                                     ? credit._id.slice(-6).toUpperCase()
                                     : "-"}
                                 </span>
                               </div>
-                            </td>
-
-                            <td className="px-6 py-4 font-medium text-gray-900">
-                              {credit.memoNo}
                             </td>
 
                             <td className="px-6 py-4 text-center text-gray-600">

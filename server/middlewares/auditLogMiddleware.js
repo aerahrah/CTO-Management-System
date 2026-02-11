@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const auditLogService = require("../services/auditLog.service");
 const Employee = require("../models/employeeModel");
 const Project = require("../models/projectModel");
-const Designation = require("../models/designationModel"); // ✅ NEW
+const Designation = require("../models/designationModel");
 const getEndpointName = require("../utils/endpointMap");
 const buildAuditDetails = require("../utils/auditActionBuilder");
 
@@ -12,9 +12,9 @@ const EXCLUDED_KEYWORDS = ["login", "signup", "reset-password"];
 const EXCLUDED_ENDPOINTS = [
   "Approve CTO Application",
   "Reject CTO Application",
-]; // handled manually elsewhere
+];
 const LOG_METHODS = ["POST", "PUT", "DELETE", "PATCH"];
-const SENSITIVE_GETS = []; // URLs to log selectively even on GET
+const SENSITIVE_GETS = [];
 
 // === Helper: match URL patterns ===
 const matchUrl = (url, pattern) => {
@@ -22,24 +22,27 @@ const matchUrl = (url, pattern) => {
   return regex.test(url);
 };
 
-// ✅ Helper: normalize URL for endpointMap matching (removes query + optional /api prefix)
 const normalizeUrlForMap = (url) => {
   const clean = String(url || "").split("?")[0];
   return clean.replace(/^\/api/, "");
 };
 
-// ✅ Helper: safe pick from req.user (supports both {id} and {_id})
 const getActorFromReq = (req) => {
   const actorId = req.user?.id || req.user?._id || "GuestID";
   const actorUsername = req.user?.username || "Guest";
-  return {
-    actorId,
-    actorUsername,
-    actor: `${actorUsername} (id: ${actorId})`,
-  };
+  return { actorId, actorUsername, actor: `${actorUsername} (id: ${actorId})` };
 };
 
-// ✅ Helper: best-effort "before" for Projects (if controller didn't attach req.auditBeforeProject)
+const safeJsonParse = (val, fallback) => {
+  if (val === undefined || val === null) return fallback;
+  if (typeof val !== "string") return val;
+  try {
+    return JSON.parse(val);
+  } catch {
+    return fallback;
+  }
+};
+
 const tryFetchProjectBefore = async (projectId) => {
   if (!mongoose.Types.ObjectId.isValid(projectId)) return null;
   const p = await Project.findById(projectId).select("name status");
@@ -47,7 +50,6 @@ const tryFetchProjectBefore = async (projectId) => {
   return { name: p.name, status: p.status, _id: p._id };
 };
 
-// ✅ Helper: best-effort "before" for Designations (if controller didn't attach req.auditBeforeDesignation)
 const tryFetchDesignationBefore = async (designationId) => {
   if (!mongoose.Types.ObjectId.isValid(designationId)) return null;
   const d = await Designation.findById(designationId).select("name status");
@@ -55,20 +57,18 @@ const tryFetchDesignationBefore = async (designationId) => {
   return { name: d.name, status: d.status, _id: d._id };
 };
 
-// === Middleware function ===
 const auditLogger = (req, res, next) => {
+  // ✅ Allow preflight to pass cleanly
+  if (req.method === "OPTIONS") return next();
+
   const url = req.originalUrl;
 
-  // Skip excluded keywords
   if (EXCLUDED_KEYWORDS.some((word) => url.includes(word))) return next();
 
-  // Skip logging if method not in LOG_METHODS and not sensitive GET
   const isSensitiveGet =
     req.method === "GET" && SENSITIVE_GETS.some((p) => matchUrl(url, p));
 
   if (!LOG_METHODS.includes(req.method) && !isSensitiveGet) return next();
-
-  // Skip if service flagged it
   if (req.skipAudit) return next();
 
   res.on("finish", async () => {
@@ -76,7 +76,6 @@ const auditLogger = (req, res, next) => {
       const urlForMap = normalizeUrlForMap(url);
       const endpoint = getEndpointName(urlForMap, req.method);
 
-      // Skip excluded endpoints
       if (EXCLUDED_ENDPOINTS.includes(endpoint)) return;
 
       const { actorId, actorUsername, actor } = getActorFromReq(req);
@@ -84,35 +83,31 @@ const auditLogger = (req, res, next) => {
       let targetUsers = [];
       let beforeData = null;
 
-      /* =========================
-         1) Bulk employees for CTO Credit
-      ========================= */
+      // 1) Bulk employees for CTO Credit
       if (
         req.body?.employees?.length &&
         endpoint === "Add CTO Credit Request"
       ) {
         let empIds = Array.isArray(req.body.employees)
           ? req.body.employees
-          : JSON.parse(req.body.employees);
+          : safeJsonParse(req.body.employees, []);
 
-        empIds = empIds.filter((id) => mongoose.Types.ObjectId.isValid(id));
+        empIds = (empIds || []).filter((id) =>
+          mongoose.Types.ObjectId.isValid(id),
+        );
 
         if (empIds.length) {
           const employees = await Employee.find({
             _id: { $in: empIds },
           }).select("username role");
-
           targetUsers = employees.map(
             (emp) => `${emp.username} (id: ${emp._id})`,
           );
           beforeData = employees.map((emp) => ({ role: emp.role }));
         }
-      } else if (
-        /* =========================
-         2) Project operations
-         Prefer controller-attached snapshot:
-           req.auditBeforeProject, req.auditTarget
-      ========================= */
+      }
+      // 2) Project operations
+      else if (
         ["Update Project", "Update Project Status", "Delete Project"].includes(
           endpoint,
         ) &&
@@ -127,20 +122,16 @@ const auditLogger = (req, res, next) => {
           const before = await tryFetchProjectBefore(req.params.id);
           if (before) {
             beforeData = { name: before.name, status: before.status };
-            if (!targetUsers.length) {
+            if (!targetUsers.length)
               targetUsers = [`${before.name || "N/A"} (id: ${before._id})`];
-            }
           }
         }
 
         if (!targetUsers.length) targetUsers = [`N/A (id: ${req.params.id})`];
         if (!beforeData) beforeData = {};
-      } else if (
-        /* =========================
-         3) ✅ Designation operations (FIX N/A)
-         Prefer controller-attached snapshot:
-           req.auditBeforeDesignation, req.auditTarget
-      ========================= */
+      }
+      // 3) Designation operations
+      else if (
         [
           "Update Designation",
           "Update Designation Status",
@@ -157,18 +148,16 @@ const auditLogger = (req, res, next) => {
           const before = await tryFetchDesignationBefore(req.params.id);
           if (before) {
             beforeData = { name: before.name, status: before.status };
-            if (!targetUsers.length) {
+            if (!targetUsers.length)
               targetUsers = [`${before.name || "N/A"} (id: ${before._id})`];
-            }
           }
         }
 
         if (!targetUsers.length) targetUsers = [`N/A (id: ${req.params.id})`];
         if (!beforeData) beforeData = {};
-      } else if (
-        /* =========================
-         4) Single employee operations (existing)
-      ========================= */
+      }
+      // 4) Single employee operations
+      else if (
         req.params.id &&
         mongoose.Types.ObjectId.isValid(req.params.id)
       ) {
@@ -186,7 +175,6 @@ const auditLogger = (req, res, next) => {
 
       const targetSummary = targetUsers.join(", ");
 
-      // Build audit summary
       const audit = buildAuditDetails({
         endpoint,
         method: req.method,
@@ -197,7 +185,6 @@ const auditLogger = (req, res, next) => {
         before: beforeData,
       });
 
-      // Save audit log
       await auditLogService.createAuditLog({
         userId: actorId === "GuestID" ? null : actorId,
         username: actorUsername,
