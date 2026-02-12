@@ -1,3 +1,4 @@
+// Sidebar.jsx
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -23,7 +24,8 @@ import {
   UserCircle, // For My Profile
   MapPin, // For Office Locations
   SlidersHorizontal, // For CTO Settings
-  FolderKanban, // ✅ NEW: better Projects icon
+  FolderKanban, // Projects icon
+  HardDrive, // ✅ NEW: Backup & Restore icon
 } from "lucide-react";
 
 const Sidebar = ({
@@ -67,7 +69,7 @@ const Sidebar = ({
           name: "Dashboard",
           path: "/app",
           icon: <LayoutDashboard size={14} />,
-          exact: true, // ✅ IMPORTANT: prevents "Dashboard" from being active on every /app/* route
+          exact: true,
         },
         {
           name: "Credit CTO",
@@ -141,7 +143,13 @@ const Sidebar = ({
         {
           name: "Projects Settings",
           path: "/app/projects",
-          icon: <FolderKanban size={14} />, // ✅ CHANGED: improved icon
+          icon: <FolderKanban size={14} />,
+        },
+        {
+          // ✅ NEW: Backup & Restore
+          name: "Backup & Restore",
+          path: "/app/backups",
+          icon: <HardDrive size={14} />,
         },
       ],
     },
@@ -221,6 +229,7 @@ const Sidebar = ({
             className={`p-2 rounded-lg hover:bg-slate-100 transition text-slate-500 ${
               collapsed && !mobileOpen ? "mx-auto" : ""
             }`}
+            type="button"
           >
             {mobileOpen ? (
               <X size={20} />

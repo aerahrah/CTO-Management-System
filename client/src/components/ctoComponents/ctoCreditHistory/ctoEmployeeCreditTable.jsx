@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+// ctoEmployeeCreditTable.jsx
+import React, { useMemo, useState, useCallback } from "react";
 import Modal from "../../modal";
 import { TableActionButton } from "../../customButton";
 import { StatusBadge } from "../../statusUtils";
@@ -14,14 +15,15 @@ import {
   ChevronRight,
   Inbox,
   FileText,
+  AlertCircle,
+  CheckCircle2,
+  Layers,
 } from "lucide-react";
 
 /* =========================
    CONSTANTS
 ========================= */
-const statusOptions = ["ACTIVE", "EXHAUSTED", "ROLLEDBACK"];
 const pageSizeOptions = [20, 50, 100];
-
 const BASE_URL = API_BASE_URL;
 
 /* =========================
@@ -34,14 +36,14 @@ const Chip = ({ children }) => (
 );
 
 /* =========================
-   COMPACT PAGINATION (mobile like your MyCtoCreditHistory)
+   COMPACT PAGINATION (mobile like MyCtoCreditHistory)
 ========================= */
 const CompactPagination = ({
   page,
   totalPages,
-  total, // can be undefined
-  startItem, // can be null
-  endItem, // can be null
+  total, // optional
+  startItem, // optional
+  endItem, // optional
   onPrev,
   onNext,
   label = "credits",
@@ -59,6 +61,7 @@ const CompactPagination = ({
           onClick={onPrev}
           disabled={disabled || page === 1 || noResults}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-neutral-200 bg-white text-sm font-bold text-neutral-700 disabled:opacity-30"
+          type="button"
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
@@ -81,6 +84,7 @@ const CompactPagination = ({
           onClick={onNext}
           disabled={disabled || page >= safeTotalPages || noResults}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-neutral-200 bg-white text-sm font-bold text-neutral-700 disabled:opacity-30"
+          type="button"
         >
           Next
           <ChevronRight className="w-4 h-4" />
@@ -115,6 +119,7 @@ const CompactPagination = ({
             disabled={disabled || page === 1 || noResults}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-neutral-600"
             aria-label="Previous page"
+            type="button"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -128,6 +133,7 @@ const CompactPagination = ({
             disabled={disabled || page >= safeTotalPages || noResults}
             className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-neutral-600"
             aria-label="Next page"
+            type="button"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -144,6 +150,7 @@ const CreditCtoTable = ({
   credits = [],
   search = "",
   status = "",
+  statusCounts, // ✅ pass from API if available
   onSearchChange,
   onStatusChange,
   page = 1,
@@ -178,59 +185,103 @@ const CreditCtoTable = ({
   const endItem =
     total != null ? (credits.length ? Math.min(page * limit, total) : 0) : null;
 
-  // If backend doesn't give totals, fallback to "page-based"
-  const showingLabel = useMemo(() => {
-    if (total != null) {
-      return `Showing ${startItem}-${endItem} of ${total} credits`;
-    }
-    return `Page ${page} of ${totalPages}`;
-  }, [total, startItem, endItem, page, totalPages]);
+  const normalizedCounts = statusCounts || {
+    ACTIVE: 0,
+    EXHAUSTED: 0,
+    ROLLEDBACK: 0,
+  };
+
+  const getStatusTabs = useCallback((counts = {}) => {
+    const allCount =
+      (counts.ACTIVE || 0) + (counts.EXHAUSTED || 0) + (counts.ROLLEDBACK || 0);
+
+    return [
+      {
+        id: "",
+        label: "All Credits",
+        icon: Layers,
+        count: allCount,
+        activeColor: "bg-blue-100 text-blue-700 border-blue-200",
+      },
+      {
+        id: "ACTIVE",
+        label: "Active",
+        icon: CheckCircle2,
+        count: counts.ACTIVE || 0,
+        activeColor: "bg-green-100 text-green-700 border-green-200",
+      },
+      {
+        id: "EXHAUSTED",
+        label: "Exhausted",
+        icon: AlertCircle,
+        count: counts.EXHAUSTED || 0,
+        activeColor: "bg-red-100 text-red-700 border-red-200",
+      },
+      {
+        id: "ROLLEDBACK",
+        label: "Rolled Back",
+        icon: RotateCcw,
+        count: counts.ROLLEDBACK || 0,
+        activeColor: "bg-amber-100 text-amber-700 border-amber-200",
+      },
+    ];
+  }, []);
+
+  const tabs = useMemo(
+    () => getStatusTabs(normalizedCounts),
+    [getStatusTabs, normalizedCounts],
+  );
 
   return (
     <div className="w-full h-full flex flex-col min-h-0 min-w-0 bg-white overflow-hidden">
       {/* Toolbar */}
-      <div className=" border-b border-neutral-100 bg-white space-y-3">
+      <div className="border-b border-neutral-100  bg-white space-y-3 py-2">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-          {/* Status pills */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            <button
-              onClick={() => onStatusChange?.("")}
-              className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap
-                ${
-                  !status
-                    ? "bg-neutral-900 text-white border-neutral-900 shadow-sm"
-                    : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50"
-                }`}
-            >
-              All Status
-            </button>
+          {/* ✅ Status tabs (colored like MyCtoCreditHistory) */}
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            {tabs.map((tab) => {
+              const isActive = status === tab.id;
+              const Icon = tab.icon;
 
-            {statusOptions.map((s) => (
-              <button
-                key={s}
-                onClick={() => onStatusChange?.(s)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap
-                  ${
-                    status === s
-                      ? "bg-neutral-900 text-white border-neutral-900 shadow-sm"
-                      : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50"
-                  }`}
-              >
-                {s.charAt(0) + s.slice(1).toLowerCase()}
-              </button>
-            ))}
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => onStatusChange?.(tab.id)}
+                  className={`px-2 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap flex items-center gap-2
+                    ${
+                      isActive
+                        ? tab.activeColor
+                        : "bg-white text-neutral-700 border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50"
+                    }`}
+                  type="button"
+                >
+                  {/* <Icon className="w-3.5 h-3.5" /> */}
+                  <span>{tab.label}</span>
+                  <span
+                    className={`px-1 py-0.5 rounded-full text-[10px] font-bold
+                      ${
+                        isActive
+                          ? "bg-white/80 text-neutral-900"
+                          : "bg-neutral-100 text-neutral-600"
+                      }`}
+                  >
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* Search + rows */}
           <div className="flex items-center gap-3 w-full lg:w-auto min-w-0">
-            <div className="relative flex-1 lg:w-72 min-w-0">
+            <div className="relative flex-1 lg:w-56 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
               <input
                 type="text"
-                placeholder="Search memo no…"
+                placeholder="Search memo..."
                 value={search}
                 onChange={(e) => onSearchChange?.(e.target.value)}
-                className="w-full h-10 pl-9 pr-9 bg-neutral-50 border border-neutral-200 rounded-lg text-sm outline-none
+                className="w-full h-8 pl-9 pr-9 bg-neutral-50 border border-neutral-200 rounded-lg text-sm outline-none
                            focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               />
               {search && (
@@ -239,6 +290,7 @@ const CreditCtoTable = ({
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100"
                   aria-label="Clear search"
                   title="Clear"
+                  type="button"
                 >
                   <RotateCcw size={14} />
                 </button>
@@ -282,8 +334,8 @@ const CreditCtoTable = ({
 
         {/* Active filters row */}
         {isFiltered && (
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <div className="flex px-1.5 items-center justify-between gap-3">
+            <div className=" flex flex-wrap items-center gap-2 min-w-0">
               <span className="text-[10px] font-bold text-neutral-400 uppercase">
                 Active:
               </span>
@@ -293,6 +345,7 @@ const CreditCtoTable = ({
             <button
               onClick={handleResetFilters}
               className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
+              type="button"
             >
               <RotateCcw size={10} /> Reset
             </button>
@@ -315,6 +368,7 @@ const CreditCtoTable = ({
               <button
                 onClick={handleResetFilters}
                 className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                type="button"
               >
                 Clear all filters
               </button>
@@ -322,7 +376,7 @@ const CreditCtoTable = ({
           </div>
         ) : (
           <>
-            {/* TABLE (md+) */}
+            {/* TABLE (sm+) */}
             <div className="hidden sm:block h-full overflow-auto">
               <table className="w-full text-left">
                 <thead className="bg-white sticky top-0 z-10 border-b border-neutral-100">
@@ -349,7 +403,7 @@ const CreditCtoTable = ({
                     : credits.map((c, i) => (
                         <tr
                           key={c._id || `${c.memoNo}-${i}`}
-                          className={`group hover:bg-blue-50/30 transition-colors ${
+                          className={`group hover:bg-gray-50/80 transition-colors ${
                             i % 2 === 0 ? "bg-white" : "bg-neutral-50/40"
                           }`}
                         >
@@ -380,11 +434,12 @@ const CreditCtoTable = ({
 
                           <td className="px-4 md:px-6 py-4 text-right">
                             {c.uploadedMemo ? (
-                              <TableActionButton
-                                label="View Memo"
-                                variant="secondary"
+                              <button
+                                className="group inline-flex items-center gap-2 rounded-md px-3 py-1.5 bg-white border border-gray-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition cursor-pointer"
                                 onClick={() => openMemoModal(c)}
-                              />
+                              >
+                                View Memo
+                              </button>
                             ) : (
                               <span className="text-neutral-400 text-sm">
                                 No memo
@@ -472,7 +527,7 @@ const CreditCtoTable = ({
         )}
       </div>
 
-      {/* PAGINATION (mobile matches CompactPagination style) */}
+      {/* PAGINATION */}
       <CompactPagination
         page={page}
         totalPages={totalPages}
@@ -501,10 +556,7 @@ const CreditCtoTable = ({
             <div>
               {memoModal.memos.map((memo, i) => (
                 <div key={memo._id || i} className="min-w-0">
-                  <CtoMemoModalContent
-                    memo={memo}
-                    baseUrl={BASE_URL}
-                  />
+                  <CtoMemoModalContent memo={memo} baseUrl={BASE_URL} />
                 </div>
               ))}
             </div>

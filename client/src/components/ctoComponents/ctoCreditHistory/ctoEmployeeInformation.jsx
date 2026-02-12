@@ -1,5 +1,5 @@
 // ctoEmployeeInformation.jsx
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import {
   fetchEmployeeCredits,
@@ -10,15 +10,7 @@ import CreditCtoTable from "./ctoEmployeeCreditTable";
 import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import Breadcrumbs from "../../breadCrumbs";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  Layers,
-  Clock as ClockIcon,
-  Archive,
-  CheckCircle2,
-  ChevronLeft,
-} from "lucide-react";
 
 /* =========================
    HOOK: DEBOUNCE
@@ -71,55 +63,23 @@ const EmployeeInfoSkeleton = () => (
 
 /* =========================
    UI: StatCard + Tabs
-   - More responsive: clamp + truncation + tighter layout on small
 ========================= */
-const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
+const StatCard = ({ title, value, hint, tone = "neutral" }) => {
   const tones = {
-    blue: {
-      wrap: "bg-blue-50/60 border-blue-100",
-      iconWrap: "bg-blue-100/70",
-      icon: "text-blue-600",
-      value: "text-blue-700",
-    },
-    green: {
-      wrap: "bg-green-50/60 border-green-100",
-      iconWrap: "bg-green-100/70",
-      icon: "text-green-600",
-      value: "text-green-700",
-    },
-    red: {
-      wrap: "bg-red-50/60 border-red-100",
-      iconWrap: "bg-red-100/70",
-      icon: "text-red-600",
-      value: "text-red-700",
-    },
-    amber: {
-      wrap: "bg-amber-50/60 border-amber-100",
-      iconWrap: "bg-amber-100/70",
-      icon: "text-amber-600",
-      value: "text-amber-700",
-    },
-    neutral: {
-      wrap: "bg-white border-gray-100",
-      iconWrap: "bg-gray-50",
-      icon: "text-gray-600",
-      value: "text-gray-900",
-    },
+    blue: { wrap: "bg-blue-50/60 border-blue-100", value: "text-blue-700" },
+    green: { wrap: "bg-green-50/60 border-green-100", value: "text-green-700" },
+    red: { wrap: "bg-red-50/60 border-red-100", value: "text-red-700" },
+    amber: { wrap: "bg-amber-50/60 border-amber-100", value: "text-amber-700" },
+    neutral: { wrap: "bg-white border-gray-100", value: "text-gray-900" },
   };
 
   const t = tones[tone] || tones.neutral;
 
   return (
     <div
-      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${tones.neutral.wrap}`}
+      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${t.wrap}`}
       role="status"
     >
-      {/* <div
-        className={`p-2 rounded-md flex items-center justify-center flex-none ${t.iconWrap}`}
-      >
-        <Icon className={`w-5 h-5 ${t.icon}`} />
-      </div> */}
-
       <div className="flex-1 min-w-0">
         <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
           {title}
@@ -144,6 +104,7 @@ const TabButton = ({ active, onClick, label }) => (
           ? "border-blue-600 text-blue-700"
           : "border-transparent text-neutral-500 hover:text-neutral-800"
       }`}
+    type="button"
   >
     {label}
   </button>
@@ -189,7 +150,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     data: creditData,
     isLoading: isCreditLoading,
     isError: isCreditError,
-    isFetching: isCreditFetching,
   } = useQuery({
     queryKey: [
       "employeeCredits",
@@ -216,7 +176,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     data: applicationData,
     isLoading: isApplicationLoading,
     isError: isApplicationError,
-    isFetching: isApplicationFetching,
   } = useQuery({
     queryKey: [
       "employeeApplications",
@@ -240,47 +199,64 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
 
   /* ===== DATA SHAPING ===== */
   const employee = employeeData?.employee || {};
+
   const credits = creditData?.credits || [];
   const creditPagination = creditData?.pagination || { page: 1, totalPages: 1 };
+
   const creditTotal =
     creditPagination?.total ??
     creditPagination?.totalItems ??
     creditPagination?.totalDocs ??
     creditData?.total;
 
+  // ✅ pull statusCounts + totals from API (same pattern as MyCtoCreditHistory)
+  const creditStatusCounts = creditData?.statusCounts || {
+    ACTIVE: 0,
+    EXHAUSTED: 0,
+    ROLLEDBACK: 0,
+  };
+
+  const creditTotals = creditData?.totals || {
+    totalUsedHours: 0,
+    totalReservedHours: 0,
+    totalRemainingHours: 0,
+    totalCreditedHours: 0,
+  };
+
   const applications = applicationData?.data || [];
   const appPagination = applicationData?.pagination || {
     page: 1,
     totalPages: 1,
   };
+
   const appTotal =
     appPagination?.total ??
     appPagination?.totalItems ??
     appPagination?.totalDocs ??
     applicationData?.total;
 
-  /* ===== SUMMARY ===== */
-  const summary = useMemo(() => {
-    const totals = credits.reduce(
-      (acc, c) => {
-        acc.totalCredited += Number(c.creditedHours || 0);
-        acc.usedHours += Number(c.usedHours || 0);
-        acc.reservedHours += Number(c.reservedHours || 0);
-
-        if (typeof c.remainingHours === "number") {
-          acc.remainingHours += Number(c.remainingHours || 0);
-        } else {
-          acc.remainingHours +=
-            Number(c.creditedHours || 0) -
-            Number(c.usedHours || 0) -
-            Number(c.reservedHours || 0);
-        }
-        return acc;
-      },
-      { totalCredited: 0, usedHours: 0, reservedHours: 0, remainingHours: 0 },
+  const totalMemosOverall = useMemo(() => {
+    return (
+      (creditStatusCounts.ACTIVE || 0) +
+      (creditStatusCounts.EXHAUSTED || 0) +
+      (creditStatusCounts.ROLLEDBACK || 0)
     );
-    return totals;
-  }, [credits]);
+  }, [creditStatusCounts]);
+
+  const fmtHours = useCallback((h) => {
+    const n = Number(h || 0);
+    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+  }, []);
+
+  // ✅ Summary now comes from API totals (no manual reduce)
+  const summary = useMemo(() => {
+    return {
+      totalCredited: Number(creditTotals.totalCreditedHours || 0),
+      usedHours: Number(creditTotals.totalUsedHours || 0),
+      reservedHours: Number(creditTotals.totalReservedHours || 0),
+      remainingHours: Number(creditTotals.totalRemainingHours || 0),
+    };
+  }, [creditTotals]);
 
   // ✅ SAFE hide (AFTER all hooks)
   const shouldHideInfoOnSmall = !isXlUp && !selectedId;
@@ -327,28 +303,27 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
             <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
               <StatCard
                 title="Total Credited"
-                value={`${summary.totalCredited}h`}
-                icon={CheckCircle2}
-                hint={`${credits.length} memos (page)`}
+                value={`${fmtHours(summary.totalCredited)}h`}
+                hint={`${totalMemosOverall} memos`}
+                tone="green"
               />
-
               <StatCard
                 title="Used Hours"
-                value={`${summary.usedHours}h`}
-                icon={ClockIcon}
+                value={`${fmtHours(summary.usedHours)}h`}
                 hint="Total used"
+                tone="red"
               />
               <StatCard
                 title="Reserved"
-                value={`${summary.reservedHours}h`}
-                icon={Archive}
+                value={`${fmtHours(summary.reservedHours)}h`}
                 hint="Reserved in apps"
+                tone="amber"
               />
               <StatCard
                 title="Balance"
-                value={`${summary.remainingHours}h`}
-                icon={Layers}
+                value={`${fmtHours(summary.remainingHours)}h`}
                 hint="Remaining hours"
+                tone="blue"
               />
             </div>
 
@@ -359,7 +334,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   Balance
                 </div>
                 <div className="text-sm font-bold text-neutral-900 truncate">
-                  {summary.remainingHours}h
+                  {fmtHours(summary.remainingHours)}h
                 </div>
               </div>
               <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
@@ -367,7 +342,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   Used
                 </div>
                 <div className="text-sm font-bold text-amber-600 truncate">
-                  {summary.usedHours}h
+                  {fmtHours(summary.usedHours)}h
                 </div>
               </div>
               <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
@@ -375,7 +350,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   Reserved
                 </div>
                 <div className="text-sm font-bold text-neutral-700 truncate">
-                  {summary.reservedHours}h
+                  {fmtHours(summary.reservedHours)}h
                 </div>
               </div>
               <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
@@ -383,7 +358,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   Credited
                 </div>
                 <div className="text-sm font-bold text-neutral-900 truncate">
-                  {summary.totalCredited}h
+                  {fmtHours(summary.totalCredited)}h
                 </div>
               </div>
             </div>
@@ -406,13 +381,14 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
           />
         </div>
 
-        <div className="p-3 sm:pt-4 flex-1 min-h-0 overflow-hidden">
+        <div className="px-3 pb-3 flex-1 min-h-0 overflow-hidden">
           {activeTab === "credit" ? (
             <CreditCtoTable
               credits={credits}
               page={creditPage}
               limit={creditLimit}
               status={creditStatus}
+              statusCounts={creditStatusCounts} // ✅ for colored tabs counts
               search={creditSearchInput}
               totalPages={creditPagination.totalPages || 1}
               total={creditTotal}
