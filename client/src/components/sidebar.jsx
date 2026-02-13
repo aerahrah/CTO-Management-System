@@ -9,6 +9,7 @@ import {
   X,
   UserRound, // For Employee Management
   Settings,
+  Sliders,
   Timer, // For CTO Service Parent
   ChevronsLeft,
   ChevronsRight,
@@ -144,6 +145,11 @@ const Sidebar = ({
           name: "Projects Settings",
           path: "/app/projects",
           icon: <FolderKanban size={14} />,
+        },
+        {
+          name: "Session Settings",
+          path: "/app/session-settings",
+          icon: <Sliders size={14} />,
         },
         {
           // ✅ NEW: Backup & Restore

@@ -3,6 +3,7 @@ const Employee = require("../models/employeeModel");
 const Project = require("../models/projectModel");
 const Designation = require("../models/designationModel");
 const mongoose = require("mongoose");
+const { getGeneralSettings } = require("./generalSettings.service");
 
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
@@ -308,7 +309,6 @@ const getEmployeeByIdService = async (id) => {
   if (!employee) throw httpError(`Employee with ID ${id} not found`, 404);
   return employee;
 };
-
 const signInEmployeeService = async (username, password) => {
   const employee = await Employee.findOne({
     username: String(username).trim(),
@@ -329,11 +329,23 @@ const signInEmployeeService = async (username, password) => {
     role: employee.role,
   };
 
-  const token = jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || "1d",
+  // ✅ pull from DB
+  const settingsDoc = await getGeneralSettings();
+  const enabled = Boolean(settingsDoc.sessionTimeoutEnabled);
+  const minutes = Number(settingsDoc.sessionTimeoutMinutes || 0);
+
+  const options = {
     issuer: process.env.JWT_ISSUER || "hrms-api",
     audience: process.env.JWT_AUDIENCE || "hrms-client",
-  });
+  };
+
+  // ✅ if enabled -> backend converts minutes to seconds
+  // ✅ if disabled -> DO NOT set expiresIn (token won't expire)
+  if (enabled) {
+    options.expiresIn = Math.max(1, Math.trunc(minutes)) * 60; // seconds
+  }
+
+  const token = jwt.sign(payload, process.env.JWT_SECRET, options);
 
   return { token, payload };
 };

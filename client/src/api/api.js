@@ -1,27 +1,30 @@
 import axios from "axios";
+import { emitSessionExpired } from "./sessionEvents";
 import { useAuth } from "../store/authStore";
-import { API_BASE_URL } from "../config/env";
-
 const API = axios.create({
-  baseURL: API_BASE_URL,
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:3000",
 });
 
 API.interceptors.request.use((config) => {
-  const { token } = useAuth.getState();
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  // ✅ pull token directly from zustand store (no hooks here)
+  const token = useAuth.getState().token;
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
 API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      useAuth.getState().logout();
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status;
+    if (status === 401 || status === 403) {
+      const msg =
+        err?.response?.data?.message ||
+        "Your session has expired. Please sign in again.";
+
+      emitSessionExpired({ reason: "unauthorized", message: msg });
     }
-    return Promise.reject(error);
-  }
+    return Promise.reject(err);
+  },
 );
 
 export default API;

@@ -13,6 +13,7 @@ const auditLogRoutes = require("./routers/auditLogRoute");
 const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const projectRoutes = require("./routers/projectRoute");
 const ctoBackupRoutes = require("./routers/ctoBackupRoute.js");
+const generalSettingRoutes = require("./routers/generalSettingsRoute");
 
 const auditLogger = require("./middlewares/auditLogMiddleware");
 
@@ -80,6 +81,7 @@ app.use("/settings/designation", designationRoutes);
 app.use("/audit-logs", auditLogRoutes);
 app.use("/settings/projects", projectRoutes);
 app.use("/settings/mongodb", ctoBackupRoutes);
+app.use("/settings/general", generalSettingRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ message: "Not found" }));
