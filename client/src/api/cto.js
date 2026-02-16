@@ -114,6 +114,7 @@ export const fetchMyCtoApplications = async (params = {}) => {
       "cto/applications/my-application",
       withCreds(params),
     );
+    console.log(unwrap(res));
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch my CTO applications");

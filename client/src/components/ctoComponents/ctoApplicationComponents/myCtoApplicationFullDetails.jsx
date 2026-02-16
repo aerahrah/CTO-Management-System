@@ -9,10 +9,12 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
+  XCircle,
   CornerDownRight,
   StickyNote,
   History,
   FileX,
+  Ban, // ✅ added for CANCELLED icon (timeline only)
 } from "lucide-react";
 import { StatusBadge, StatusIcon, getStatusStyles } from "../../statusUtils";
 import Modal from "../../modal";
@@ -44,87 +46,110 @@ const DateLeaf = ({ dateString }) => {
   );
 };
 
-// --- Helper: Timeline Card (Wide Version) ---
+/* =========================
+   Timeline helpers (DESIGN ONLY)
+========================= */
+const StepDotIcon = ({ status }) => {
+  const s = String(status || "").toUpperCase();
+  if (s === "APPROVED")
+    return <CheckCircle2 size={16} className="text-white" />;
+  if (s === "REJECTED") return <XCircle size={16} className="text-white" />;
+  if (s === "CANCELLED") return <Ban size={16} className="text-white" />;
+  return <Users size={16} className="text-white" />;
+};
+
+const StepDotClass = (status) => {
+  const s = String(status || "").toUpperCase();
+  if (s === "APPROVED") return "bg-emerald-500";
+  if (s === "REJECTED") return "bg-red-500";
+  if (s === "CANCELLED") return "bg-slate-400";
+  return "bg-gray-200";
+};
+
+// --- Helper: Timeline Card (Updated design only) ---
 const TimelineCard = ({ approval, index, isLast }) => {
-  const isDenied = approval.status === "REJECTED";
-  const isPending = approval.status === "PENDING";
-  const isApproved = approval.status === "APPROVED";
+  const status = String(approval?.status || "").toUpperCase();
+  const isDenied = status === "REJECTED";
+  const isPending = status === "PENDING";
+  const isCancelled = status === "CANCELLED";
 
   return (
-    <div className="relative pl-8 md:pl-12 pb-8 last:pb-0">
+    <div className="relative flex gap-2 sm:gap-4 items-start min-w-0">
       {/* Connector Line */}
       {!isLast && (
-        <div className="absolute left-[15px] md:left-[19px] top-10 bottom-0 w-0.5 bg-slate-200" />
+        <div className="absolute left-5 top-10 bottom-0 w-0.5 bg-gray-100" />
       )}
 
-      {/* Status Node */}
+      {/* Status Dot */}
       <div
-        className={`absolute left-0 top-0 z-10 w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center border-4  border-slate-50 shadow-sm transition-transform hover:scale-110 ${getStatusStyles(
-          approval.status,
+        className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md transition-transform hover:scale-110 flex-none ${StepDotClass(
+          status,
         )}`}
+        title={status}
       >
-        <StatusIcon status={approval.status} size={16} />
+        <StepDotIcon status={status} />
       </div>
 
-      {/* Card Body */}
+      {/* Card */}
       <div
-        className={`bg-slate-50/50 border rounded-xl p-4 md:p-5  transition-all ${isPending ? "border-slate-100 opacity-80" : "border-slate-200"}`}
+        className={`flex-1 bg-white border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0 transition-all ${
+          isPending ? "border-gray-100 opacity-90" : "border-gray-200"
+        }`}
       >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Step {index + 1}
+        <div className="flex items-start justify-between gap-3 min-w-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                Approver {index + 1}
               </span>
-              {approval.updatedAt && (
-                <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+
+              {approval?.updatedAt && (
+                <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                   {new Date(approval.updatedAt).toLocaleString()}
                 </span>
               )}
             </div>
-            <h4 className="font-bold text-slate-800 text-sm md:text-base mt-1">
+
+            <p className="text-sm font-semibold text-gray-900 break-words mt-1">
               {approval.approver?.firstName} {approval.approver?.lastName}
-            </h4>
-            <p className="text-xs text-indigo-600 font-medium">
+            </p>
+
+            <p className="text-xs text-blue-700 font-medium break-words">
               {approval.approver?.position || "Approver"}
             </p>
           </div>
 
-          <div className="shrink-0">
-            <StatusBadge
-              status={approval.status}
-              className="text-xs px-2 py-1"
-            />
+          <div className="flex-none">
+            <StatusBadge status={status} size="sm" />
           </div>
         </div>
 
-        {/* Remarks Section - Handles Long Text Gracefully */}
-        {approval.remarks && approval.remarks.trim() !== "" && (
+        {/* CANCELLED contextual note (if no remarks) */}
+        {isCancelled && !approval?.remarks ? (
+          <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-start gap-2 min-w-0">
+            <Ban size={14} className="shrink-0 mt-0.5" />
+            <p className="break-words">
+              <strong>Auto-cancelled:</strong> A previous approver rejected this
+              request.
+            </p>
+          </div>
+        ) : null}
+
+        {/* Remarks */}
+        {approval?.remarks && String(approval.remarks).trim() !== "" && (
           <div
-            className={`mt-4 rounded-lg p-4 text-sm leading-relaxed border ${
+            className={`mt-4 rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2 min-w-0 ${
               isDenied
-                ? "bg-rose-50 border-rose-100 text-rose-800"
-                : "bg-slate-50 border-slate-100 text-slate-700"
+                ? "bg-red-50 border-red-100 text-red-700"
+                : isCancelled
+                  ? "bg-slate-50 border-slate-200 text-slate-700"
+                  : "bg-gray-50 border-gray-200 text-gray-700"
             }`}
           >
-            <div className="flex items-start gap-3">
-              {isDenied ? (
-                <AlertCircle size={18} className="mt-0.5 shrink-0" />
-              ) : (
-                <StickyNote
-                  size={18}
-                  className="mt-0.5 shrink-0 text-slate-400"
-                />
-              )}
-              <div className="w-full">
-                <p className="font-bold text-xs uppercase opacity-70 mb-1">
-                  {isDenied ? "Rejection Reason" : "Approver Remarks"}
-                </p>
-                <p className="whitespace-pre-wrap break-words">
-                  {approval.remarks}
-                </p>
-              </div>
-            </div>
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <p className="break-words">
+              <strong>Note:</strong> {approval.remarks}
+            </p>
           </div>
         )}
       </div>
@@ -263,36 +288,43 @@ const CtoApplicationDetails = ({ app }) => {
 
           {/* RIGHT COLUMN: The Narrative (Timeline) - Takes 2/3 width */}
           <div className="lg:col-span-2">
-            <div className="bg-white shadow-sm p-3 rounded-xl">
-              <div className="flex items-center gap-2 mb-6 ml-1">
-                <History size={18} className="text-slate-400" />
-                <h3 className="text-sm font-bold text-slate-600 uppercase tracking-widest">
-                  Processing Timeline
-                </h3>
+            {/* ✅ ONLY THIS SECTION WAS RESTYLED */}
+            <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 flex-none">
+                  <History size={18} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-gray-900">
+                    Processing Timeline
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Step-by-step approval progress
+                  </p>
+                </div>
               </div>
 
               {sortedApprovals.length > 0 ? (
-                <div className="space-y-0">
+                <div className="relative space-y-6 sm:space-y-8 t-1">
+                  {/* background spine */}
+                  <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
+
                   {sortedApprovals.map((approval, idx) => (
                     <TimelineCard
                       key={approval._id}
                       approval={approval}
                       index={idx}
-                      isLast={
-                        idx === sortedApprovals.length - 1 &&
-                        app.overallStatus !== "Approved"
-                      }
+                      isLast={idx === sortedApprovals.length - 1}
                     />
                   ))}
 
                   {/* Success State End of Timeline */}
                   {app.overallStatus === "Approved" && (
-                    <div className="relative pl-8 md:pl-12 pt-2">
-                      <div className="absolute left-[15px] md:left-[19px] -top-4 h-6 w-0.5 bg-slate-200" />
-                      <div className="absolute left-0 top-0 z-10 w-8 h-8 md:w-10 md:h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center border-4 border-white shadow-sm">
-                        <CheckCircle2 size={20} />
+                    <div className="relative flex gap-2 sm:gap-4 items-start">
+                      <div className="relative z-10 h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center border-4 border-white shadow-md flex-none">
+                        <CheckCircle2 size={18} className="text-white" />
                       </div>
-                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 ml-1">
+                      <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 shadow-sm">
                         <p className="text-emerald-800 font-bold text-sm">
                           Application Fully Approved
                         </p>

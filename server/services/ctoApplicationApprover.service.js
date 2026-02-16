@@ -55,8 +55,12 @@ const fetchPendingCtoCountService = async (approverId) => {
     if (userStepIndex === -1) return count;
 
     const userStep = steps[userStepIndex];
+
+    // ✅ ignore if already rejected/cancelled
     if (userStep.status === "REJECTED") return count;
+    if (userStep.status === "CANCELLED") return count;
     if (app.overallStatus === "REJECTED") return count;
+    if (app.overallStatus === "CANCELLED") return count;
 
     const pendingStep = steps.find((s) => s.status === "PENDING");
     const isTheirTurn =
@@ -111,8 +115,13 @@ const getCtoApplicationsForApproverService = async (
 
       const userStep = steps[userStepIndex];
 
+      // ✅ allow viewing your REJECTED / CANCELLED steps
       if (userStep.status === "REJECTED") return true;
+      if (userStep.status === "CANCELLED") return true;
+
+      // ✅ if app is rejected/cancelled and you didn't reject, hide it
       if (app.overallStatus === "REJECTED") return false;
+      if (app.overallStatus === "CANCELLED") return false;
 
       const pendingStep = steps.find((s) => s.status === "PENDING");
       if (userStepIndex === 0) return true;
@@ -124,7 +133,7 @@ const getCtoApplicationsForApproverService = async (
       return isTheirTurn || alreadyActed;
     });
 
-  const statusCounts = { PENDING: 0, APPROVED: 0, REJECTED: 0 };
+  const statusCounts = { PENDING: 0, APPROVED: 0, REJECTED: 0, CANCELLED: 0 };
   ctoApplications.forEach((app) => {
     const myStep = app.approvals.find(
       (s) => s.approver?._id?.toString() === approverId.toString(),
@@ -132,6 +141,7 @@ const getCtoApplicationsForApproverService = async (
     if (myStep?.status === "PENDING") statusCounts.PENDING++;
     if (myStep?.status === "APPROVED") statusCounts.APPROVED++;
     if (myStep?.status === "REJECTED") statusCounts.REJECTED++;
+    if (myStep?.status === "CANCELLED") statusCounts.CANCELLED++;
   });
 
   if (status) {
@@ -230,6 +240,14 @@ const approveCtoApplicationService = async ({
     const updatedSteps = await ApprovalStep.find({
       _id: { $in: application.approvals },
     }).session(session);
+
+    // ✅ If any step is rejected -> app rejected (shouldn't happen here, but safe)
+    const anyRejected = updatedSteps.some((s) => s.status === "REJECTED");
+    if (anyRejected) {
+      application.overallStatus = "REJECTED";
+      await application.save({ session });
+    }
+
     const allApproved = updatedSteps.every((s) => s.status === "APPROVED");
 
     if (allApproved) {
@@ -240,7 +258,7 @@ const approveCtoApplicationService = async ({
 
       // Update CTO credits using memo entries
       for (const memoItem of application.memo || []) {
-        const memoId = memoItem.memoId; // FIX: memoId is already ObjectId in most cases
+        const memoId = memoItem.memoId;
         const credit = await CtoCredit.findById(memoId).session(session);
         if (!credit) continue;
 
@@ -296,6 +314,7 @@ const approveCtoApplicationService = async ({
     const approver = await Employee.findById(approverId)
       .select("username")
       .lean();
+
     const auditBody = {
       approverId,
       applicationId,
@@ -459,6 +478,7 @@ const rejectCtoApplicationService = async ({
       }
     }
 
+    // ✅ mark current step as rejected
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
       {
@@ -469,6 +489,30 @@ const rejectCtoApplicationService = async ({
       { session },
     );
 
+    // ✅ cancel all future approver steps (higher level)
+    const futureStepIds = (application.approvals || [])
+      .filter((s) => Number(s.level) > Number(currentStep.level))
+      .map((s) => s._id);
+
+    if (futureStepIds.length) {
+      await ApprovalStep.updateMany(
+        {
+          _id: { $in: futureStepIds },
+          status: "PENDING", // only cancel pending (keep approved as is, though shouldn't happen)
+        },
+        {
+          $set: {
+            status: "CANCELLED",
+            reviewedAt: new Date(),
+            remarks:
+              "Auto-cancelled due to rejection at an earlier approval level.",
+          },
+        },
+        { session },
+      );
+    }
+
+    // ✅ overall status becomes rejected (not cancelled)
     application.overallStatus = "REJECTED";
     await application.save({ session });
 

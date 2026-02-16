@@ -136,7 +136,7 @@ const Modal = ({
 
               {/* Footer (optional) */}
               {showFooter && (
-                <div className="flex justify-center gap-4">
+                <div className="flex justify-center gap-4 pt-3">
                   {/* Close button (hide if closeLabel === null) */}
                   {closeLabel !== null && (
                     <button

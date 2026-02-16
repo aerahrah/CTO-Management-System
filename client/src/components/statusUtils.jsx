@@ -11,6 +11,7 @@ import {
   Briefcase,
   Users,
   UserCog,
+  Ban,
 } from "lucide-react";
 
 /**
@@ -36,6 +37,9 @@ export const getStatusStyles = (status) => {
     case "INACTIVE":
       return "text-gray-700 bg-gray-100 border-gray-300";
 
+    case "CANCELLED":
+      return "text-slate-700 bg-slate-50 border-slate-200";
+
     default:
       return "text-yellow-700 bg-yellow-50 border-yellow-200";
   }
@@ -56,6 +60,8 @@ export const StatusIcon = ({ status, className = "h-4 w-4" }) => {
     return <UserMinus className={`${className} text-orange-600`} />;
   if (s === "INACTIVE")
     return <UserX className={`${className} text-gray-500`} />;
+  if (s === "CANCELLED")
+    return <Ban className={`${className} text-slate-600`} />;
   return <AlertCircle className={`${className} text-yellow-600`} />;
 };
 
@@ -76,7 +82,7 @@ export const StatusBadge = ({
   return (
     <span
       className={`inline-flex items-center gap-1 font-medium rounded-full border ${getStatusStyles(
-        status
+        status,
       )} ${sizes[size]} ${className}`}
     >
       {showIcon && <StatusIcon status={status} className="h-3.5 w-3.5" />}
@@ -135,7 +141,7 @@ export const RoleBadge = ({
   return (
     <span
       className={`inline-flex capitalize items-center gap-1 font-medium rounded-full border ${getRoleStyles(
-        role
+        role,
       )} ${sizes[size]} ${className}`}
     >
       {showIcon && <RoleIcon role={role} className="h-3.5 w-3.5" />}

@@ -43,7 +43,7 @@ const ctoApplicationSchema = new mongoose.Schema(
     ],
     overallStatus: {
       type: String,
-      enum: ["PENDING", "APPROVED", "REJECTED"],
+      enum: ["PENDING", "APPROVED", "REJECTED", "CANCELLED"],
       default: "PENDING",
     },
     attachment: {
@@ -53,7 +53,7 @@ const ctoApplicationSchema = new mongoose.Schema(
       uploadedAt: { type: Date, default: Date.now },
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("CtoApplication", ctoApplicationSchema);

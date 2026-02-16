@@ -9,8 +9,13 @@ import {
   ExternalLink,
   MessageCircle,
   ShieldCheck,
+  XCircle,
   AlertCircle,
   Info,
+  Ban,
+  CheckCircle2,
+  Users,
+  History,
 } from "lucide-react";
 import { StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
@@ -100,6 +105,157 @@ function useIsXlUp() {
   return isXlUp;
 }
 
+/* =========================
+   Status helpers (CANCELLED-aware)
+========================= */
+const STATUS_META = {
+  APPROVED: { label: "APPROVED", tone: "emerald" },
+  REJECTED: { label: "REJECTED", tone: "rose" },
+  PENDING: { label: "PENDING", tone: "amber" },
+  CANCELLED: { label: "CANCELLED", tone: "slate" },
+};
+
+const getToneClasses = (tone) => {
+  switch (tone) {
+    case "emerald":
+      return {
+        pill: "bg-emerald-50 text-emerald-700 border-emerald-100",
+        chip: "bg-emerald-50 text-emerald-700",
+        iconWrap: "bg-emerald-50 text-emerald-600",
+      };
+    case "rose":
+      return {
+        pill: "bg-rose-50 text-rose-700 border-rose-100",
+        chip: "bg-rose-50 text-rose-700",
+        iconWrap: "bg-rose-50 text-rose-600",
+      };
+    case "slate":
+      return {
+        pill: "bg-slate-50 text-slate-700 border-slate-200",
+        chip: "bg-slate-50 text-slate-700",
+        iconWrap: "bg-slate-50 text-slate-600",
+      };
+    case "amber":
+    default:
+      return {
+        pill: "bg-amber-50 text-amber-700 border-amber-100",
+        chip: "bg-amber-50 text-amber-700",
+        iconWrap: "bg-amber-50 text-amber-600",
+      };
+  }
+};
+
+/* =========================
+   Timeline helpers (DESIGN ONLY)
+========================= */
+const StepDotIcon = ({ status }) => {
+  const s = String(status || "").toUpperCase();
+  if (s === "APPROVED")
+    return <CheckCircle2 size={16} className="text-white" />;
+  if (s === "REJECTED") return <XCircle size={16} className="text-white" />;
+  if (s === "CANCELLED") return <Ban size={16} className="text-white" />;
+  return <Users size={16} className="text-white" />;
+};
+
+const StepDotClass = (status) => {
+  const s = String(status || "").toUpperCase();
+  if (s === "APPROVED") return "bg-emerald-500";
+  if (s === "REJECTED") return "bg-red-500";
+  if (s === "CANCELLED") return "bg-slate-400";
+  return "bg-gray-200";
+};
+
+// --- Helper: Timeline Card (Updated design only) ---
+const TimelineCard = ({ approval, index, isLast }) => {
+  const status = String(approval?.status || "").toUpperCase();
+  const isDenied = status === "REJECTED";
+  const isPending = status === "PENDING";
+  const isCancelled = status === "CANCELLED";
+
+  return (
+    <div className="relative flex gap-2 sm:gap-4 items-start min-w-0">
+      {/* Connector Line */}
+      {!isLast && (
+        <div className="absolute left-5 top-10 bottom-0 w-0.5 bg-gray-100" />
+      )}
+
+      {/* Status Dot */}
+      <div
+        className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md transition-transform hover:scale-110 flex-none ${StepDotClass(
+          status,
+        )}`}
+        title={status}
+      >
+        <StepDotIcon status={status} />
+      </div>
+
+      {/* Card */}
+      <div
+        className={`flex-1 bg-white border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0 transition-all ${
+          isPending ? "border-gray-100 opacity-90" : "border-gray-200"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3 min-w-0">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                Approver {index + 1}
+              </span>
+
+              {/* {approval?.updatedAt && (
+                <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+                  {new Date(approval.updatedAt).toLocaleString()}
+                </span>
+              )} */}
+            </div>
+
+            <p className="text-sm font-semibold text-gray-900 break-words mt-1">
+              {approval.approver?.firstName} {approval.approver?.lastName}
+            </p>
+
+            <p className="text-xs text-blue-700 font-medium break-words">
+              {approval.approver?.position || "Approver"}
+            </p>
+          </div>
+
+          <div className="flex-none">
+            <StatusBadge status={status} size="sm" />
+          </div>
+        </div>
+
+        {/* CANCELLED contextual note (if no remarks) */}
+        {isCancelled && !approval?.remarks ? (
+          <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-start gap-2 min-w-0">
+            <Ban size={14} className="shrink-0 mt-0.5" />
+            <p className="break-words">
+              <strong>Auto-cancelled:</strong> A previous approver rejected this
+              request.
+            </p>
+          </div>
+        ) : null}
+
+        {/* Remarks */}
+        {approval?.remarks && String(approval.remarks).trim() !== "" && (
+          <div
+            className={`mt-4 rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2 min-w-0 ${
+              isDenied
+                ? "bg-red-50 border-red-100 text-red-700"
+                : isCancelled
+                  ? "bg-slate-50 border-slate-200 text-slate-700"
+                  : "bg-gray-50 border-gray-200 text-gray-700"
+            }`}
+          >
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <p className="break-words">
+              <strong>Note:</strong> {approval.remarks}
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const CtoApplicationDetails = () => {
   const { admin } = useAuth();
   const { id } = useParams();
@@ -140,6 +296,13 @@ const CtoApplicationDetails = () => {
       )
       .join(", ");
   }, [application?.inclusiveDates]);
+
+  const sortedApprovals = useMemo(() => {
+    if (!Array.isArray(application?.approvals)) return [];
+    return [...application.approvals].sort(
+      (a, b) => (a.level || 0) - (b.level || 0),
+    );
+  }, [application?.approvals]);
 
   // Approve mutation
   const approveMutation = useMutation({
@@ -209,15 +372,28 @@ const CtoApplicationDetails = () => {
     application.employee?.lastName?.[0] || ""
   }`;
 
+  // ✅ currentStep find should be robust: id can be string or objectId-like
   const currentStep = application.approvals?.find(
-    (step) => step.approver?._id === admin?.id,
+    (step) => String(step.approver?._id) === String(admin?.id),
   );
-  const canApproveOrReject = currentStep?.status === "PENDING" && !isProcessed;
+
+  // ✅ Only allow action if:
+  // - my step is PENDING
+  // - app overallStatus is PENDING
+  // - not locally processed
+  const canApproveOrReject =
+    currentStep?.status === "PENDING" &&
+    application.overallStatus === "PENDING" &&
+    !isProcessed;
+
+  const overallMeta =
+    STATUS_META[application.overallStatus] || STATUS_META.PENDING;
+  const overallTone = getToneClasses(overallMeta.tone);
 
   return (
-    <div className="flex-1 h-full border border-gray-200  bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border-b-26 border-neutral-50/50 ">
+    <div className="flex-1 h-full border border-gray-200 bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border-b-26 border-neutral-50/50">
       {/* HEADER */}
-      <header className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-300  backdrop-blur supports-[backdrop-filter]:bg-white px-3 sm:px-4 py-2 z-10 ">
+      <header className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-300 backdrop-blur supports-[backdrop-filter]:bg-white px-3 sm:px-4 py-2 z-10">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
           <div className="flex items-center gap-3 sm:gap-4 min-w-0">
             <div className="h-12 w-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg flex-none">
@@ -238,6 +414,17 @@ const CtoApplicationDetails = () => {
                 <span className="flex items-center gap-1">
                   <Clock size={12} />{" "}
                   {new Date(application.createdAt).toLocaleDateString()}
+                </span>
+
+                {/* ✅ show overallStatus chip (CANCELLED-aware) */}
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold ${overallTone.pill}`}
+                  title="Overall Status"
+                >
+                  {application.overallStatus === "CANCELLED" ? (
+                    <Ban size={12} />
+                  ) : null}
+                  {application.overallStatus}
                 </span>
               </div>
             </div>
@@ -306,19 +493,28 @@ const CtoApplicationDetails = () => {
             </div>
           </div>
 
+          {/* ✅ Global Status card now supports CANCELLED visuals */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0">
             <div
               className={`p-4 rounded-2xl ${
                 application.overallStatus === "APPROVED"
                   ? "bg-emerald-50 text-emerald-600"
-                  : "bg-amber-50 text-amber-600"
+                  : application.overallStatus === "REJECTED"
+                    ? "bg-rose-50 text-rose-600"
+                    : application.overallStatus === "CANCELLED"
+                      ? "bg-slate-50 text-slate-600"
+                      : "bg-amber-50 text-amber-600"
               }`}
             >
-              <StatusIcon
-                status={application.overallStatus}
-                size={32}
-                className="h-6 w-6"
-              />
+              {application.overallStatus === "CANCELLED" ? (
+                <Ban size={28} className="h-6 w-6" />
+              ) : (
+                <StatusIcon
+                  status={application.overallStatus}
+                  size={32}
+                  className="h-6 w-6"
+                />
+              )}
             </div>
 
             <div className="text-start min-w-0">
@@ -351,68 +547,65 @@ const CtoApplicationDetails = () => {
               </p>
             </section>
 
-            <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm min-w-0">
-              <div className="flex items-center gap-3 mb-8">
+            {/* ✅ Processing Timeline copied from the basis */}
+            <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+              <div className="flex items-center gap-3 mb-6">
                 <div className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 flex-none">
-                  <ShieldCheck size={20} />
+                  <History size={18} />
                 </div>
-                <h3 className="font-bold text-gray-900">Approval Progress</h3>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-gray-900">
+                    Processing Timeline
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Step-by-step approval progress
+                  </p>
+                </div>
               </div>
 
-              <div className="relative space-y-6 sm:space-y-8 left-1 sm:left-2 min-w-0">
-                <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
+              {sortedApprovals.length > 0 ? (
+                <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
+                  {/* background spine */}
+                  <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
 
-                {application.approvals?.map((step, idx) => (
-                  <div
-                    key={idx}
-                    className="relative flex gap-4 sm:gap-6 items-start group min-w-0"
-                  >
-                    <div
-                      className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md transition-transform group-hover:scale-110 flex-none
-                        ${
-                          step.status === "APPROVED"
-                            ? "bg-emerald-500"
-                            : step.status === "REJECTED"
-                              ? "bg-red-500"
-                              : "bg-gray-200"
-                        }`}
-                    >
-                      {step.status === "APPROVED" ? (
-                        <Check size={16} className="text-white" />
-                      ) : (
-                        <User size={16} className="text-white" />
-                      )}
-                    </div>
+                  {sortedApprovals.map((approval, idx) => (
+                    <TimelineCard
+                      key={approval?._id || idx}
+                      approval={approval}
+                      index={idx}
+                      isLast={idx === sortedApprovals.length - 1}
+                    />
+                  ))}
 
-                    <div className="flex-1 bg-white border border-gray-100 p-4 sm:p-5 rounded-2xl group-hover:border-blue-200 transition-all shadow-sm min-w-0">
-                      <div className="flex items-start justify-between gap-3 min-w-0">
-                        <div className="min-w-0">
-                          <p className="text-sm font-black text-gray-900 break-words">
-                            Level {step.level}: {step.approver?.firstName}{" "}
-                            {step.approver?.lastName}
-                          </p>
-                          <p className="text-xs text-gray-500 font-medium break-words">
-                            {step.approver?.position}
-                          </p>
-                        </div>
-
-                        <div className="flex-none">
-                          <StatusBadge status={step.status} size="sm" />
-                        </div>
+                  {/* Success State End of Timeline */}
+                  {String(application.overallStatus || "").toUpperCase() ===
+                    "APPROVED" && (
+                    <div className="relative flex gap-2 sm:gap-4 items-start">
+                      <div className="relative z-10 h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center border-4 border-white shadow-md flex-none">
+                        <CheckCircle2 size={18} className="text-white" />
                       </div>
-
-                      {step.remarks && (
-                        <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-700 flex items-start gap-2 min-w-0">
-                          <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                          <p className="break-words">
-                            <strong>Note:</strong> {step.remarks}
-                          </p>
-                        </div>
-                      )}
+                      <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 shadow-sm">
+                        <p className="text-emerald-800 font-bold text-sm">
+                          Application Fully Approved
+                        </p>
+                        <p className="text-emerald-600 text-xs mt-0.5">
+                          The CTO request has been finalized.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-12 bg-white border border-dashed border-slate-300 rounded-xl text-center">
+                  <Users size={32} className="text-slate-300 mb-3" />
+                  <p className="text-slate-500 font-medium">
+                    Waiting for workflow initiation
+                  </p>
+                  <p className="text-slate-400 text-sm">
+                    No approvers have acted on this request yet.
+                  </p>
+                </div>
+              )}
             </section>
           </div>
 
@@ -481,6 +674,7 @@ const CtoApplicationDetails = () => {
           title={
             modalType === "approve" ? "Confirm Approval" : "Decline Request"
           }
+          maxWidth="max-w-lg"
           action={{
             show: true,
             label:
