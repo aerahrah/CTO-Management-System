@@ -3,7 +3,10 @@ const Employee = require("../models/employeeModel");
 const Project = require("../models/projectModel");
 const Designation = require("../models/designationModel");
 const mongoose = require("mongoose");
-const { getGeneralSettings } = require("./generalSettings.service");
+
+// ✅ UPDATED: use the new separated session settings getter
+// (based on your refactor to separate Session + Working Days services)
+const { getSessionSettings } = require("./generalSettings.service");
 
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
@@ -12,6 +15,9 @@ const CtoCredit = require("../models/ctoCreditModel");
 
 const validRoles = ["employee", "supervisor", "hr", "admin"];
 const ALLOWED_LIMITS = [10, 20, 50, 100];
+
+// Keep consistent with your settings validation
+const MAX_SESSION_MINUTES = 60 * 24 * 30;
 
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
@@ -39,8 +45,7 @@ function normalizeToStringId(value) {
 }
 
 function parsePage(v) {
-  const page = Math.max(parseInt(v, 10) || 1, 1);
-  return page;
+  return Math.max(parseInt(v, 10) || 1, 1);
 }
 
 function parseLimit(v, def = 20) {
@@ -309,6 +314,7 @@ const getEmployeeByIdService = async (id) => {
   if (!employee) throw httpError(`Employee with ID ${id} not found`, 404);
   return employee;
 };
+
 const signInEmployeeService = async (username, password) => {
   const employee = await Employee.findOne({
     username: String(username).trim(),
@@ -329,20 +335,31 @@ const signInEmployeeService = async (username, password) => {
     role: employee.role,
   };
 
-  // ✅ pull from DB
-  const settingsDoc = await getGeneralSettings();
-  const enabled = Boolean(settingsDoc.sessionTimeoutEnabled);
-  const minutes = Number(settingsDoc.sessionTimeoutMinutes || 0);
+  // ✅ UPDATED: pull ONLY session settings (separated service)
+  const sessionSettings = await getSessionSettings();
+
+  const enabled =
+    typeof sessionSettings?.sessionTimeoutEnabled === "boolean"
+      ? sessionSettings.sessionTimeoutEnabled
+      : true;
+
+  const minutesRaw = Number(sessionSettings?.sessionTimeoutMinutes ?? 0);
+
+  // fallbacks (keep behavior stable even if settings doc is missing/invalid)
+  const minutes =
+    Number.isFinite(minutesRaw) && minutesRaw > 0
+      ? Math.min(Math.max(Math.trunc(minutesRaw), 1), MAX_SESSION_MINUTES)
+      : 1440;
 
   const options = {
     issuer: process.env.JWT_ISSUER || "hrms-api",
     audience: process.env.JWT_AUDIENCE || "hrms-client",
   };
 
-  // ✅ if enabled -> backend converts minutes to seconds
+  // ✅ if enabled -> set expiresIn
   // ✅ if disabled -> DO NOT set expiresIn (token won't expire)
   if (enabled) {
-    options.expiresIn = Math.max(1, Math.trunc(minutes)) * 60; // seconds
+    options.expiresIn = minutes * 60; // seconds
   }
 
   const token = jwt.sign(payload, process.env.JWT_SECRET, options);
