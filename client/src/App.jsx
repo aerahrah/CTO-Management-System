@@ -1,8 +1,10 @@
 import React from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+
 import SessionGuard from "./components/sessionExpiredModal";
+
 /* Pages */
 import Login from "./pages/loginPage";
 import Dashboard from "./pages/dashboardPage";
@@ -36,6 +38,7 @@ import ProjectSettings from "./components/generalSettingsComponents/projectSetti
 import DesignationSettings from "./components/generalSettingsComponents/designationSettings/designationSettings";
 import BackupSettings from "./components/generalSettingsComponents/backupSettings/backupSettings";
 import GeneralSettings from "./components/generalSettingsComponents/generalSettings";
+import WorkingDaysSettings from "./components/generalSettingsComponents/workingDaysSettings";
 
 /* Profile */
 import MyProfile from "./components/userProfile/myProfile";
@@ -46,9 +49,15 @@ import ResetPassword from "./components/userProfile/myProfileResetPassword";
 import ProtectedRoute from "./components/protectedRoute";
 
 function App() {
+  const location = useLocation();
+
+  // ✅ Don't mount SessionGuard on login ("/")
+  const isLoginRoute = location.pathname === "/";
+
   return (
     <>
-      <SessionGuard />
+      {!isLoginRoute && <SessionGuard />}
+
       <Routes>
         {/* PUBLIC */}
         <Route path="/" element={<Login />} />
@@ -86,29 +95,26 @@ function App() {
             />
             <Route path="employees/:id" element={<EmployeeInformation />} />
             <Route path="employees/:id/update" element={<AddEmployeeForm />} />
-
             <Route path="audit-logs" element={<AuditLogTable />} />
-
             <Route path="cto-credit" element={<CtoCredits />} />
             <Route
               path="cto-all-applications"
               element={<AllCtoApplications />}
             />
-
             <Route path="cto-records" element={<CtoRecords />}>
               <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
-
             {/* ✅ CTO SETTINGS (NESTED LIKE CtoRecords) */}
             <Route path="cto-settings" element={<CtoSettings />}>
               <Route index element={<CtoSettingsPlaceholder />} />
               <Route path=":designationId" element={<ApproverSettings />} />
             </Route>
-
             <Route path="designations" element={<DesignationSettings />} />
             <Route path="projects" element={<ProjectSettings />} />
             <Route path="backups" element={<BackupSettings />} />
+            <Route path="general-settings" element={<WorkingDaysSettings />} />
+
             <Route path="session-settings" element={<GeneralSettings />} />
           </Route>
 
@@ -128,6 +134,7 @@ function App() {
         {/* FALLBACK */}
         <Route path="*" element={<div>404 - Page Not Found</div>} />
       </Routes>
+
       {/* TOASTS */}
       <ToastContainer
         position="top-right"

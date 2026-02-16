@@ -102,7 +102,6 @@ const EmployeeList = ({ selectedId, setSelectedId, setIsEmployeeLoading }) => {
             ))
           : filteredEmployees.map((item) => {
               const initials = `${item.firstName[0]}${item.lastName[0]}`;
-              console.log(item);
               return (
                 <li
                   key={item._id}

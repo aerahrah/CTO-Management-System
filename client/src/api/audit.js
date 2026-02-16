@@ -5,10 +5,8 @@ export const getAuditLogs = async (params = {}) => {
     const res = await API.get("/audit-logs", {
       params,
     });
-    console.log(res.data);
     return res.data;
   } catch (err) {
-    console.error("Error fetching audit logs:", err);
     throw err;
   }
 };

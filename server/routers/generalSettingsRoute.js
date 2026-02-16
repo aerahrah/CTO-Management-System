@@ -1,7 +1,12 @@
 const express = require("express");
 const {
-  getGeneralSettingsController,
-  updateGeneralSettingsController,
+  // ✅ session controllers
+  getSessionSettingsController,
+  updateSessionSettingsController,
+
+  // ✅ working days controllers
+  getWorkingDaysSettingsController,
+  updateWorkingDaysSettingsController,
 } = require("../controllers/generalSettingsController");
 
 const {
@@ -11,18 +16,23 @@ const {
 
 const router = express.Router();
 
-router.get(
-  "/session",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  getGeneralSettingsController,
-);
+// ✅ reuse auth middleware for these routes
+const settingsAuth = [authenticateToken, authorizeRoles("admin", "hr")];
 
+/* =========================
+   SESSION SETTINGS
+   ========================= */
+router.get("/session", ...settingsAuth, getSessionSettingsController);
+router.put("/session", ...settingsAuth, updateSessionSettingsController);
+
+/* =========================
+   WORKING DAYS SETTINGS
+   ========================= */
+router.get("/working-days", ...settingsAuth, getWorkingDaysSettingsController);
 router.put(
-  "/session",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  updateGeneralSettingsController,
+  "/working-days",
+  ...settingsAuth,
+  updateWorkingDaysSettingsController,
 );
 
 module.exports = router;

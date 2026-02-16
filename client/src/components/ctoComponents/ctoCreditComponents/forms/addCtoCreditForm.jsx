@@ -465,8 +465,8 @@ const AddCtoCreditForm = ({ onClose, onPendingChange }) => {
                 onClose?.();
               }}
               disabled={busy}
-              className={`w-full px-4 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 font-semibold ${
-                busy ? "opacity-50 cursor-not-allowed" : ""
+              className={`w-full px-4 py-2 rounded border border-neutral-200 bg-neutral-100 hover:bg-neutral-200 cursor-pointer ${
+                busy ? "opacity-70 cursor-not-allowed" : ""
               }`}
             >
               Close
@@ -475,7 +475,7 @@ const AddCtoCreditForm = ({ onClose, onPendingChange }) => {
             <button
               type="submit"
               disabled={busy}
-              className={`w-full px-4 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 ${
+              className={`w-full px-4 py-2 rounded bg-blue-600 text-white  hover:bg-blue-700 cursor-pointer ${
                 busy ? "opacity-70 cursor-not-allowed" : ""
               }`}
             >

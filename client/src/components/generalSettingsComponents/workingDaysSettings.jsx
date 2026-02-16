@@ -1,19 +1,18 @@
-// pages/settings/GeneralSettings.jsx
+// pages/settings/WorkingDaysSettings.jsx
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Breadcrumbs from "../breadCrumbs";
 import {
-  fetchSessionsGeneralSettings,
-  updateSessionsGeneralSettings,
+  fetchWorkingDaysGeneralSettings,
+  updateWorkingDaysGeneralSettings,
 } from "../../api/generalSettings";
 import {
   RotateCcw,
   Save,
-  ShieldAlert,
-  Clock,
-  Zap,
   Info,
+  CalendarDays,
   CheckCircle2,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "react-toastify";
 
@@ -30,22 +29,8 @@ const toInt = (v, fallback) => {
 
 const clamp = (n, min, max) => Math.min(Math.max(n, min), max);
 
-const formatDuration = (minutes) => {
-  const m = toInt(minutes, 0);
-  if (!m) return "-";
-  if (m < 60) return `${m} minute${m === 1 ? "" : "s"}`;
-  const hours = m / 60;
-  if (hours < 24) {
-    const h = Math.round(hours * 10) / 10;
-    return `${h} hour${h === 1 ? "" : "s"}`;
-  }
-  const days = m / (60 * 24);
-  const d = Math.round(days * 10) / 10;
-  return `${d} day${d === 1 ? "" : "s"}`;
-};
-
 /* =========================
-   UI primitives (match ProjectSettings typography)
+   UI primitives (same style as GeneralSettings.jsx)
 ========================= */
 const Card = ({ children, className = "" }) => (
   <div
@@ -194,65 +179,58 @@ const SkeletonBlock = () => (
 /* =========================
    Main Page
 ========================= */
-const QK = ["generalSettings"];
+const QK = ["workingDaysSettings"];
 
 const presets = [
-  { label: "15m", value: 15 },
-  { label: "30m", value: 30 },
-  { label: "1h", value: 60 },
-  { label: "4h", value: 240 },
-  { label: "8h", value: 480 },
-  { label: "1d", value: 1440 },
-  { label: "7d", value: 10080 },
+  { label: "4 days", value: 4 },
+  { label: "5 days", value: 5 },
+  { label: "6 days", value: 6 },
+  { label: "7 days", value: 7 },
 ];
 
-export default function GeneralSettings() {
+export default function WorkingDaysSettings() {
   const queryClient = useQueryClient();
 
   const [inlineError, setInlineError] = useState("");
 
   // form state
-  const [sessionTimeoutEnabled, setSessionTimeoutEnabled] = useState(true);
-  const [sessionTimeoutMinutes, setSessionTimeoutMinutes] = useState(1440);
+  const [workingDaysEnable, setWorkingDaysEnable] = useState(true);
+  const [workingDaysValue, setWorkingDaysValue] = useState(5);
 
-  // initial snapshot for "dirty" detection
+  // initial snapshot for dirty detection
   const [initial, setInitial] = useState(null);
 
   const settingsQuery = useQuery({
     queryKey: QK,
-    queryFn: fetchSessionsGeneralSettings,
+    queryFn: fetchWorkingDaysGeneralSettings,
     staleTime: 1000 * 60 * 5,
   });
 
-  // Your API returns { ok, data } → doc is in .data
+  // API returns { ok, data } → settings inside .data
   const doc = settingsQuery.data?.data;
 
   useEffect(() => {
     if (!doc) return;
 
-    const enabled = Boolean(doc.sessionTimeoutEnabled);
-    const minutes = clamp(
-      toInt(doc.sessionTimeoutMinutes, 1440),
-      1,
-      60 * 24 * 30,
-    );
+    const enabled = Boolean(doc.workingDaysEnable);
+    const days = clamp(toInt(doc.workingDaysValue, 5), 1, 7);
 
-    setSessionTimeoutEnabled(enabled);
-    setSessionTimeoutMinutes(minutes);
+    setWorkingDaysEnable(enabled);
+    setWorkingDaysValue(days);
 
     setInitial({
-      sessionTimeoutEnabled: enabled,
-      sessionTimeoutMinutes: minutes,
+      workingDaysEnable: enabled,
+      workingDaysValue: days,
     });
   }, [doc]);
 
   const isDirty = useMemo(() => {
     if (!initial) return false;
     return (
-      initial.sessionTimeoutEnabled !== sessionTimeoutEnabled ||
-      initial.sessionTimeoutMinutes !== sessionTimeoutMinutes
+      initial.workingDaysEnable !== workingDaysEnable ||
+      initial.workingDaysValue !== workingDaysValue
     );
-  }, [initial, sessionTimeoutEnabled, sessionTimeoutMinutes]);
+  }, [initial, workingDaysEnable, workingDaysValue]);
 
   const refetch = useCallback(async () => {
     setInlineError("");
@@ -261,14 +239,14 @@ export default function GeneralSettings() {
   }, [settingsQuery]);
 
   const saveMutation = useMutation({
-    mutationFn: (payload) => updateSessionsGeneralSettings(payload),
+    mutationFn: (payload) => updateWorkingDaysGeneralSettings(payload),
     onSuccess: async () => {
       setInlineError("");
       toast.success("Settings saved");
       await queryClient.invalidateQueries({ queryKey: QK });
       setInitial({
-        sessionTimeoutEnabled,
-        sessionTimeoutMinutes,
+        workingDaysEnable,
+        workingDaysValue,
       });
     },
     onError: (err) => {
@@ -281,31 +259,31 @@ export default function GeneralSettings() {
   const onSave = () => {
     setInlineError("");
 
-    const minutes = clamp(toInt(sessionTimeoutMinutes, NaN), 1, 60 * 24 * 30);
-    if (!Number.isFinite(minutes)) {
-      const msg = "Session timeout must be a valid number of minutes.";
+    const days = clamp(toInt(workingDaysValue, NaN), 1, 7);
+    if (!Number.isFinite(days)) {
+      const msg = "Working days must be a valid number.";
       setInlineError(msg);
       toast.error(msg);
       return;
     }
 
     saveMutation.mutate({
-      sessionTimeoutEnabled: Boolean(sessionTimeoutEnabled),
-      sessionTimeoutMinutes: minutes,
+      workingDaysEnable: Boolean(workingDaysEnable),
+      workingDaysValue: days,
     });
   };
 
   const onResetToDefault = () => {
     setInlineError("");
-    setSessionTimeoutEnabled(true);
-    setSessionTimeoutMinutes(1440);
+    setWorkingDaysEnable(true);
+    setWorkingDaysValue(5);
     toast.info("Default values applied (not saved yet)");
   };
 
   const effectiveText = useMemo(() => {
-    if (!sessionTimeoutEnabled) return "Tokens will NOT expire (no expiresIn).";
-    return `Tokens expire after ${formatDuration(sessionTimeoutMinutes)}.`;
-  }, [sessionTimeoutEnabled, sessionTimeoutMinutes]);
+    if (!workingDaysEnable) return "Working-days rules are disabled.";
+    return `System assumes a ${workingDaysValue}-day work week.`;
+  }, [workingDaysEnable, workingDaysValue]);
 
   const isRefreshing = settingsQuery.isRefetching;
   const isSaving = saveMutation.isPending;
@@ -315,15 +293,14 @@ export default function GeneralSettings() {
       <div className="px-1 w-full mx-auto py-2 pb-2">
         <Breadcrumbs items={[{ label: "SETTINGS", to: "/app/settings" }]} />
 
-        {/* Header (match ProjectSettings typography) */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
-              Session <span className="font-bold">Settings</span>
+              Lead Working <span className="font-bold">Days</span>
             </h1>
             <p className="text-sm text-gray-500 mt-1">
-              Manage security defaults like session timeout and token expiry
-              behavior.
+              Configure your organization’s default work-week settings.
             </p>
           </div>
 
@@ -344,13 +321,14 @@ export default function GeneralSettings() {
             <Card>
               <div className="px-4 py-3 border-b border-gray-100 bg-white">
                 <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-gray-600" />
+                  <CalendarDays className="w-4 h-4 text-gray-600" />
                   <div className="text-sm font-semibold text-gray-900">
-                    Session timeout
+                    Work-week policy
                   </div>
                 </div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Control whether JWT tokens expire, and how long sessions last.
+                  Defines the number of working days used for calculations and
+                  defaults throughout the system.
                 </div>
               </div>
 
@@ -359,33 +337,36 @@ export default function GeneralSettings() {
               ) : settingsQuery.isError ? (
                 <div className="p-4">
                   <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700 font-medium">
-                    {getErrMsg(settingsQuery.error, "Failed to load settings")}
+                    {getErrMsg(
+                      settingsQuery.error,
+                      "Failed to load working days settings",
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="p-4 space-y-4">
                   <Toggle
-                    checked={sessionTimeoutEnabled}
+                    checked={workingDaysEnable}
                     disabled={isSaving}
-                    onChange={(v) => setSessionTimeoutEnabled(v)}
-                    label="Enable session timeout"
-                    hint="If disabled, the backend will sign JWT tokens without expiresIn (they won’t expire)."
+                    onChange={(v) => setWorkingDaysEnable(v)}
+                    label="Enable working days"
+                    hint="If disabled, working-day based rules won’t be applied."
                   />
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-gray-900">
-                          Timeout duration (minutes)
+                          Working days per week
                         </div>
-                        {/* <div className="text-xs text-gray-500 mt-0.5">
-                          Input minutes
-                        </div> */}
+                        <div className="text-xs text-gray-500 mt-0.5">
+                          Choose a value from 1–7. Common defaults are 5 or 6.
+                        </div>
                       </div>
 
                       <div className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border bg-gray-50 border-gray-200 text-gray-700">
-                        <Zap className="w-4 h-4" />
-                        {formatDuration(sessionTimeoutMinutes)}
+                        {workingDaysValue} day
+                        {workingDaysValue === 1 ? "" : "s"}
                       </div>
                     </div>
 
@@ -395,27 +376,25 @@ export default function GeneralSettings() {
                           type="number"
                           inputMode="numeric"
                           min={1}
-                          max={60 * 24 * 30}
-                          value={sessionTimeoutMinutes}
-                          disabled={isSaving || !sessionTimeoutEnabled}
+                          max={7}
+                          value={workingDaysValue}
+                          disabled={isSaving || !workingDaysEnable}
                           onChange={(e) => {
                             const next = toInt(e.target.value, 0);
                             if (!Number.isFinite(next)) return;
-                            setSessionTimeoutMinutes(
-                              clamp(next, 1, 60 * 24 * 30),
-                            );
+                            setWorkingDaysValue(clamp(next, 1, 7));
                           }}
                           className={[
                             "w-full h-11 rounded-lg border px-3 text-sm text-gray-900 outline-none transition",
-                            !sessionTimeoutEnabled
+                            !workingDaysEnable
                               ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                               : "bg-gray-50 border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500",
                             isSaving ? "opacity-70" : "",
                           ].join(" ")}
-                          placeholder="e.g. 60"
+                          placeholder="e.g. 5"
                         />
                         <div className="mt-2 text-[11px] text-gray-500">
-                          Range: 1 minute to 30 days (43,200 minutes)
+                          Range: 1 to 7 days
                         </div>
                       </div>
 
@@ -424,14 +403,14 @@ export default function GeneralSettings() {
                           <button
                             key={p.value}
                             type="button"
-                            disabled={isSaving || !sessionTimeoutEnabled}
-                            onClick={() => setSessionTimeoutMinutes(p.value)}
+                            disabled={isSaving || !workingDaysEnable}
+                            onClick={() => setWorkingDaysValue(p.value)}
                             className={[
                               "px-3 py-2 rounded-full text-xs font-bold border transition",
-                              sessionTimeoutMinutes === p.value
+                              workingDaysValue === p.value
                                 ? "bg-blue-50 text-blue-700 border-blue-100"
                                 : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300",
-                              !sessionTimeoutEnabled
+                              !workingDaysEnable
                                 ? "opacity-50 cursor-not-allowed"
                                 : "",
                             ].join(" ")}
@@ -444,17 +423,17 @@ export default function GeneralSettings() {
                   </div>
 
                   <SoftNotice
-                    icon={sessionTimeoutEnabled ? CheckCircle2 : ShieldAlert}
-                    tone={sessionTimeoutEnabled ? "green" : "amber"}
+                    icon={workingDaysEnable ? CheckCircle2 : ShieldAlert}
+                    tone={workingDaysEnable ? "green" : "amber"}
                     title="Effective behavior"
                   >
                     {effectiveText}
                   </SoftNotice>
 
-                  <SoftNotice icon={Info} tone="blue" title="Security note">
-                    Disabling expiry can be risky (stolen tokens remain valid).
-                    If you need long sessions, consider enabling expiry and
-                    using refresh tokens later.
+                  <SoftNotice icon={Info} tone="blue" title="Note">
+                    This setting is often used for credit calculations, SLA
+                    expectations, and reporting. Keep it aligned with your HR
+                    policy.
                   </SoftNotice>
 
                   <InlineError message={inlineError} />
@@ -507,15 +486,17 @@ export default function GeneralSettings() {
               <div className="p-4 space-y-3">
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                    Session timeout
+                    Working days
                   </div>
                   <div className="mt-1 text-sm font-semibold text-gray-900">
-                    {sessionTimeoutEnabled ? "Enabled" : "Disabled"}
+                    {workingDaysEnable ? "Enabled" : "Disabled"}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {sessionTimeoutEnabled
-                      ? `Expires after ${formatDuration(sessionTimeoutMinutes)}`
-                      : "Tokens do not expire"}
+                    {workingDaysEnable
+                      ? `${workingDaysValue} day${
+                          workingDaysValue === 1 ? "" : "s"
+                        } per week`
+                      : "Not applied"}
                   </div>
                 </div>
 
@@ -524,9 +505,9 @@ export default function GeneralSettings() {
                     Limits
                   </div>
                   <div className="mt-2 text-xs text-gray-600 leading-relaxed">
-                    • Minimum: 1 minute
+                    • Minimum: 1 day
                     <br />
-                    • Maximum: 30 days
+                    • Maximum: 7 days
                     <br />
                   </div>
                 </div>

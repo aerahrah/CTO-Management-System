@@ -27,6 +27,7 @@ import {
   SlidersHorizontal, // For CTO Settings
   FolderKanban, // Projects icon
   HardDrive, // ✅ NEW: Backup & Restore icon
+  CalendarDays, // ✅ NEW: Working Day Settings icon
 } from "lucide-react";
 
 const Sidebar = ({
@@ -150,6 +151,11 @@ const Sidebar = ({
           name: "Session Settings",
           path: "/app/session-settings",
           icon: <Sliders size={14} />,
+        },
+        {
+          name: "Working Day Settings",
+          path: "/app/general-settings",
+          icon: <CalendarDays size={14} />,
         },
         {
           // ✅ NEW: Backup & Restore

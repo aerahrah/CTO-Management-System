@@ -5,6 +5,7 @@ import {
   addApplicationRequest,
   fetchMyCtoMemos,
 } from "../../../../api/cto";
+import { fetchWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
 import { useAuth } from "../../../../store/authStore";
 import {
   Clock,
@@ -29,14 +30,55 @@ const clampNumber = (v, min, max) => {
   return Math.min(Math.max(n, min), max);
 };
 
-const getMinSelectableDateISO = () => {
+const clampInt = (v, min, max, fallback) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  const t = Math.trunc(n);
+  return Math.min(Math.max(t, min), max);
+};
+
+const isWeekendISO = (iso) => {
+  const d = new Date(`${iso}T00:00:00`);
+  const day = d.getDay();
+  return day === 0 || day === 6;
+};
+
+const isFullISODate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+
+/**
+ * Lead-time rule:
+ * "At least N working days in advance" means there must be N working days
+ * between today (exclusive) and the selected date (exclusive).
+ *
+ * Example (today=16):
+ *  N=1 => working day between is 17, so earliest selectable is 18.
+ */
+const getMinSelectableDateISO = (leadTimeDays = 5) => {
+  const lead = Number(leadTimeDays);
   const date = new Date();
+
+  // If disabled/invalid => earliest is tomorrow
+  if (!Number.isFinite(lead) || lead <= 0) {
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split("T")[0];
+  }
+
+  // Count working days that must pass BEFORE the selected date
   let count = 0;
-  while (count < 5) {
+  while (count < lead) {
     date.setDate(date.getDate() + 1);
     const day = date.getDay();
     if (day !== 0 && day !== 6) count++;
   }
+
+  // Earliest selectable is the NEXT day after those working days have passed
+  date.setDate(date.getDate() + 1);
+
+  // Ensure min date is not weekend
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
+
   return date.toISOString().split("T")[0];
 };
 
@@ -46,6 +88,59 @@ const makeClientRequestId = () => {
       return crypto.randomUUID();
   } catch {}
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+};
+
+// ✅ validation that supports "typing" (inline errors) + "commit" (no toast spam)
+const validateDate = ({
+  value,
+  requestedHours,
+  inclusiveDates,
+  minDate,
+  leadTimeMsg,
+}) => {
+  if (!value) return "";
+
+  // while typing partial values, don't error-spam
+  if (!isFullISODate(value)) return "";
+
+  if (!requestedHours) return "Please enter requested hours first.";
+
+  if (value < minDate) return leadTimeMsg;
+
+  if (isWeekendISO(value)) return "Please select a working day (Mon–Fri).";
+
+  if (inclusiveDates.includes(value)) return "That date is already selected.";
+
+  const maxSelectableDates = Math.ceil(Number(requestedHours || 0) / 8);
+  if (inclusiveDates.length >= maxSelectableDates) {
+    return `You can only select up to ${maxSelectableDates} day(s) for ${requestedHours} hours.`;
+  }
+
+  return "";
+};
+
+const Banner = ({ tone = "error", message }) => {
+  if (!message) return null;
+
+  const styles =
+    tone === "info"
+      ? "border-blue-100 bg-blue-50 text-blue-800"
+      : tone === "success"
+        ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+        : "border-rose-100 bg-rose-50 text-rose-800";
+
+  return (
+    <div
+      className={[
+        "rounded-xl border px-3 py-2 text-xs font-medium flex items-start gap-2",
+        styles,
+      ].join(" ")}
+      role={tone === "error" ? "alert" : "status"}
+    >
+      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 opacity-80" />
+      <div className="leading-relaxed">{message}</div>
+    </div>
+  );
 };
 
 const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
@@ -58,15 +153,22 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
   const [maxRequestedHours, setMaxRequestedHours] = useState(0);
 
   const dateInputRef = useRef(null);
-  const minDate = useMemo(() => getMinSelectableDateISO(), []);
+
+  // ✅ date input UX: show errors while typing (inline), no toast per error
+  const [dateValue, setDateValue] = useState("");
+  const [dateError, setDateError] = useState("");
+
+  // ✅ single banner for form-level errors/notices (instead of toasts)
+  const [banner, setBanner] = useState({ tone: "error", message: "" });
+  const clearBanner = () => setBanner({ tone: "error", message: "" });
+  const showBanner = (tone, message) => setBanner({ tone, message });
 
   /**
    * ✅ HARD SUCCESS LATCH
    * Once success happens, keep submit disabled until the component unmounts.
-   * This prevents the "button re-enables before modal closes" double submit.
    */
-  const successLatchRef = useRef(false); // survives renders
-  const [successLatchUI, setSuccessLatchUI] = useState(false); // forces UI disabled
+  const successLatchRef = useRef(false);
+  const [successLatchUI, setSuccessLatchUI] = useState(false);
 
   // For ultra-fast double clicks BEFORE react rerender:
   const submitInFlightRef = useRef(false);
@@ -92,20 +194,61 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     setShowRouting(false);
     setIsMemoModalOpen(false);
 
-    // reset latches (ONLY when user closes without success, or on unmount)
+    setDateValue("");
+    setDateError("");
+    clearBanner();
+
     successLatchRef.current = false;
     setSuccessLatchUI(false);
     submitInFlightRef.current = false;
   }, [initialState]);
 
-  // Optional: ensure we reset when component unmounts (modal removed)
   useEffect(() => {
     return () => {
-      // reset refs only (state is gone anyway)
       successLatchRef.current = false;
       submitInFlightRef.current = false;
     };
   }, []);
+
+  // ✅ Working Days Settings (Lead time source)
+  const {
+    data: workingDaysRes,
+    isLoading: workingDaysLoading,
+    isError: workingDaysIsError,
+  } = useQuery({
+    queryKey: ["workingDaysSettings"],
+    queryFn: fetchWorkingDaysGeneralSettings,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const workingDoc = workingDaysRes?.data;
+
+  const leadTimeDays = useMemo(() => {
+    const enabled =
+      typeof workingDoc?.workingDaysEnable === "boolean"
+        ? workingDoc.workingDaysEnable
+        : true;
+
+    if (!enabled) return 0;
+
+    // using workingDaysValue as lead time days
+    return clampInt(workingDoc?.workingDaysValue, 1, 7, 5);
+  }, [workingDoc]);
+
+  const minDate = useMemo(
+    () => getMinSelectableDateISO(leadTimeDays),
+    [leadTimeDays],
+  );
+
+  useEffect(() => {
+    if (workingDaysIsError) {
+      showBanner(
+        "info",
+        "Could not load Working Days settings. Using default lead time.",
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workingDaysIsError]);
 
   const { data: approverResponse, isLoading: isApproverLoading } = useQuery({
     queryKey: ["approverSettings", admin?.designation],
@@ -154,6 +297,42 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     }
   }, [approverResponse]);
 
+  const leadTimeMsg = useMemo(() => {
+    if (leadTimeDays <= 0)
+      return "Applications must be filed at least 1 day in advance.";
+    return `Applications must be filed at least ${leadTimeDays} working day(s) in advance.`;
+  }, [leadTimeDays]);
+
+  // If min date changes (settings load), drop any dates that become invalid
+  useEffect(() => {
+    if (!formData.inclusiveDates?.length) return;
+    const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
+    if (filtered.length !== formData.inclusiveDates.length) {
+      setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
+      showBanner("info", "Some selected dates were removed (lead-time rule).");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minDate]);
+
+  // Re-validate currently typed date when rules change
+  useEffect(() => {
+    const err = validateDate({
+      value: dateValue,
+      requestedHours: formData.requestedHours,
+      inclusiveDates: formData.inclusiveDates,
+      minDate,
+      leadTimeMsg,
+    });
+    setDateError(err);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    dateValue,
+    formData.requestedHours,
+    formData.inclusiveDates,
+    minDate,
+    leadTimeMsg,
+  ]);
+
   const allocateMemosForHours = useCallback(
     (hours) => {
       let remaining = hours;
@@ -188,6 +367,8 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
   const handleChange = (e) => {
     const { name, value } = e.target;
 
+    clearBanner();
+
     if (name === "requestedHours") {
       const cap = maxRequestedHours || 0;
       const requested = clampNumber(value, 0, cap);
@@ -200,6 +381,8 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
           memos: [],
         }));
         setSelectedMemos([]);
+        setDateValue("");
+        setDateError("");
         return;
       }
 
@@ -211,6 +394,9 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
         inclusiveDates: [],
         memos: newFormMemos,
       }));
+
+      setDateValue("");
+      setDateError("");
       return;
     }
 
@@ -225,49 +411,69 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleDateAdd = (e) => {
-    const value = e.target.value;
-    if (!value) return;
+  // ✅ while typing (or selecting) update value + show inline error immediately
+  const handleDateInput = (e) => {
+    clearBanner();
+    const v = e.target.value;
+    setDateValue(v);
 
-    const requestedHours = Number(formData.requestedHours || 0);
-    if (!requestedHours) {
-      toast.warn("Please enter requested hours first.");
-      e.target.value = "";
+    const err = validateDate({
+      value: v,
+      requestedHours: formData.requestedHours,
+      inclusiveDates: formData.inclusiveDates,
+      minDate,
+      leadTimeMsg,
+    });
+
+    setDateError(err);
+  };
+
+  // ✅ on commit (picker selection or finished typing) add date if valid; no toast per error
+  const handleDateCommit = (e) => {
+    clearBanner();
+    const v = e.target.value;
+    setDateValue(v);
+
+    const err = validateDate({
+      value: v,
+      requestedHours: formData.requestedHours,
+      inclusiveDates: formData.inclusiveDates,
+      minDate,
+      leadTimeMsg,
+    });
+
+    setDateError(err);
+
+    // don't commit until it's a complete date
+    if (!isFullISODate(v)) return;
+
+    if (workingDaysLoading) {
+      showBanner("info", "Working-days settings are still loading.");
       return;
     }
 
-    if (value < minDate) {
-      toast.error(
-        "Applications must be filed at least 5 working days in advance.",
-      );
-      e.target.value = "";
+    if (err) {
+      // keep it inline; no toast
       return;
     }
 
-    const maxSelectableDates = Math.ceil(requestedHours / 8);
-
-    if (formData.inclusiveDates.includes(value)) {
-      e.target.value = "";
-      return;
-    }
-
-    if (formData.inclusiveDates.length >= maxSelectableDates) {
-      toast.warn(
-        `You can only select up to ${maxSelectableDates} day(s) for ${requestedHours} hours.`,
-      );
-      e.target.value = "";
-      return;
-    }
-
+    // ✅ add
     setFormData((prev) => ({
       ...prev,
-      inclusiveDates: [...prev.inclusiveDates, value],
+      inclusiveDates: [...prev.inclusiveDates, v],
     }));
 
-    e.target.value = "";
+    // ✅ clear for next pick
+    setDateValue("");
+    setDateError("");
+
+    try {
+      dateInputRef.current?.focus?.();
+    } catch {}
   };
 
   const handleDateRemove = (date) => {
+    clearBanner();
     setFormData((prev) => ({
       ...prev,
       inclusiveDates: prev.inclusiveDates.filter((d) => d !== date),
@@ -278,18 +484,25 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     const requestedHours = Number(formData.requestedHours || 0);
 
     if (!requestedHours || requestedHours <= 0) {
-      toast.error("Please enter requested hours");
-      return { ok: false };
+      return { ok: false, message: "Please enter requested hours." };
     }
 
     if (requestedHours > (maxRequestedHours || 0)) {
-      toast.error("Requested hours exceed your available balance");
-      return { ok: false };
+      return {
+        ok: false,
+        message: "Requested hours exceed your available balance.",
+      };
     }
 
     if (memoLoading) {
-      toast.warn("Please wait while memos are loading.");
-      return { ok: false };
+      return { ok: false, message: "Please wait while memos are loading." };
+    }
+
+    if (workingDaysLoading) {
+      return {
+        ok: false,
+        message: "Please wait while working-days settings are loading.",
+      };
     }
 
     const memos = (formData.memos || [])
@@ -301,8 +514,10 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
     const memoSum = memos.reduce((sum, m) => sum + m.appliedHours, 0);
     if (!memos.length || memoSum < requestedHours) {
-      toast.error("Insufficient memo credits to cover requested hours.");
-      return { ok: false };
+      return {
+        ok: false,
+        message: "Insufficient memo credits to cover requested hours.",
+      };
     }
 
     const inclusiveDates = Array.from(
@@ -310,28 +525,33 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     ).sort();
 
     if (inclusiveDates.length === 0) {
-      toast.error("Please select inclusive dates");
-      return { ok: false };
+      return { ok: false, message: "Please select inclusive dates." };
     }
 
     if (inclusiveDates.some((d) => d < minDate)) {
-      toast.error(
-        "One or more selected dates violate the 5 working days lead time rule.",
-      );
-      return { ok: false };
+      return { ok: false, message: leadTimeMsg };
+    }
+
+    if (inclusiveDates.some((d) => isWeekendISO(d))) {
+      return {
+        ok: false,
+        message: "One or more selected dates are not working days (Mon–Fri).",
+      };
     }
 
     const maxSelectableDates = Math.ceil(requestedHours / 8);
     if (inclusiveDates.length > maxSelectableDates) {
-      toast.error(
-        `Too many dates selected for ${requestedHours} hours (max ${maxSelectableDates}).`,
-      );
-      return { ok: false };
+      return {
+        ok: false,
+        message: `Too many dates selected for ${requestedHours} hours (max ${maxSelectableDates}).`,
+      };
     }
 
     if (!formData.approver1) {
-      toast.error("Approver routing is not available. Please contact HR.");
-      return { ok: false };
+      return {
+        ok: false,
+        message: "Approver routing is not available. Please contact HR.",
+      };
     }
 
     const reason = String(formData.reason || "")
@@ -354,39 +574,40 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
   };
 
   const startSubmit = async () => {
-    // ✅ if success already happened, never allow another submit while mounted
-    if (successLatchRef.current) return;
+    clearBanner();
 
-    // ✅ beat rapid double clicks before state updates
+    if (successLatchRef.current) return;
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
 
-    // also block if UI says busy
     if (isBusy) return;
 
-    const { ok, payload } = sanitizeAndValidatePayload();
-    if (!ok) {
+    const result = sanitizeAndValidatePayload();
+    if (!result.ok) {
+      showBanner("error", result.message || "Please review the form.");
       submitInFlightRef.current = false;
       return;
     }
 
     try {
-      await mutation.mutateAsync(payload);
+      await mutation.mutateAsync(result.payload);
 
-      // ✅ lock forever until unmount (prevents “re-enable before close”)
       successLatchRef.current = true;
       setSuccessLatchUI(true);
 
+      // ✅ keep toast only for real action success
       toast.success("CTO application submitted successfully!");
+
       queryClient.invalidateQueries({ queryKey: ["ctoApplications"] });
       queryClient.invalidateQueries({ queryKey: ["myCtoMemos"] });
 
-      // ✅ DO NOT reset/unlock here — wait for modal to fully close/unmount
       onSuccess?.();
     } catch (err) {
-      toast.error(err?.response?.data?.error || "Failed to submit");
+      // ✅ keep toast optional; using banner for the UI feedback
+      const msg = err?.response?.data?.error || "Failed to submit";
+      showBanner("error", msg);
+      toast.error(msg);
 
-      // allow retry on error
       submitInFlightRef.current = false;
       successLatchRef.current = false;
       setSuccessLatchUI(false);
@@ -401,24 +622,33 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       ? (formData.inclusiveDates.length / maxDatesPossible) * 100
       : 0;
 
+  const leadTimeLabel = useMemo(() => {
+    if (workingDaysLoading) return "Min. Lead Time: Loading…";
+    if (leadTimeDays <= 0) return "Min. Lead Time: 1 day";
+    return `Min. Lead Time: ${leadTimeDays} Work Day${leadTimeDays === 1 ? "" : "s"}`;
+  }, [leadTimeDays, workingDaysLoading]);
+
+  const dateDisabled = !formData.requestedHours || isBusy || workingDaysLoading;
+
   return (
-    <div className="max-w-xl mx-auto bg-white rounded-xl border border-gray-200 overflow-hidden">
+    <div className="w-full max-w-xl mx-auto bg-white rounded-xl border border-gray-200 overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-4 border-b flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+      <div className="px-4 py-4 border-b flex items-start sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
             <Clock className="w-6 h-6 text-blue-600" />
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-gray-900 truncate">
               CTO Application
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-gray-500 truncate">
               Compensatory Time-Off Request
             </p>
           </div>
         </div>
-        <div className="text-right">
+
+        <div className="text-right shrink-0">
           <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
             Available
           </p>
@@ -433,12 +663,15 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
           e.preventDefault();
           startSubmit();
         }}
-        className="flex flex-col h-[calc(100vh-16rem)]"
+        className="flex flex-col h-[calc(100dvh-16rem)] sm:h-[calc(100vh-16rem)]"
       >
         {/* Scroll Area */}
-        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-7">
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
+          {/* Banner */}
+          <Banner tone={banner.tone} message={banner.message} />
+
           {/* Hours + Dates */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
@@ -454,11 +687,12 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                 placeholder="0"
                 min={0}
                 disabled={isBusy}
-                className="w-full h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50"
+                className="w-full h-11 sm:h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50"
               />
             </div>
 
-            <div className="space-y-2 relative">
+            {/* Date picker - inline error while typing */}
+            <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
                   <Calendar className="w-4 h-4 text-gray-600" />
@@ -467,54 +701,50 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
               </div>
 
               <div className="relative">
-                <button
-                  type="button"
-                  disabled={!formData.requestedHours || isBusy}
-                  onClick={() => {
-                    if (dateInputRef.current?.showPicker)
-                      dateInputRef.current.showPicker();
-                    else {
-                      dateInputRef.current?.focus();
-                      dateInputRef.current?.click();
-                    }
-                  }}
-                  className={`w-full h-10 px-3 border rounded-lg flex items-center justify-between transition ${
-                    !formData.requestedHours || isBusy
-                      ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-400"
-                      : "border-neutral-400 text-gray-500 hover:bg-gray-50"
-                  }`}
-                >
-                  <span className="text-sm">
-                    {!formData.requestedHours
-                      ? "Enter hours first"
-                      : "Select dates..."}
-                  </span>
-                  <Calendar className="w-4 h-4" />
-                </button>
-
                 <input
-                  type="date"
                   ref={dateInputRef}
+                  type="date"
                   min={minDate}
-                  onChange={handleDateAdd}
-                  className="absolute inset-0 opacity-0 w-full"
-                  aria-hidden="true"
-                  tabIndex={-1}
+                  value={dateValue}
+                  onInput={handleDateInput}
+                  onChange={handleDateCommit}
+                  disabled={dateDisabled}
+                  aria-invalid={!!dateError}
+                  className={[
+                    "w-full h-11 sm:h-10 px-3 border rounded-lg outline-none transition",
+                    "text-[16px] sm:text-sm",
+                    dateDisabled
+                      ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-400"
+                      : dateError
+                        ? "border-rose-300 bg-rose-50/40 focus:ring-1 focus:ring-rose-300 focus:border-rose-400"
+                        : "border-neutral-400 text-gray-700 hover:bg-gray-50 focus:ring-1 focus:ring-blue-500 focus:border-blue-500",
+                  ].join(" ")}
                 />
               </div>
+
+              {dateError ? (
+                <div className="text-[11px] text-rose-700 font-medium">
+                  {dateError}
+                </div>
+              ) : (
+                <div className="text-[10px] text-gray-400 leading-relaxed">
+                  Earliest selectable date:{" "}
+                  <span className="font-semibold text-gray-500">{minDate}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Dates Progress */}
           {Number(formData.requestedHours) > 0 && (
             <div className="space-y-3 animate-in fade-in duration-300">
-              <div className="flex justify-between items-end">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-1">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                   Dates Selected ({formData.inclusiveDates.length} /{" "}
-                  {maxDatesPossible})
+                  {Math.ceil(Number(formData.requestedHours || 0) / 8) || 0})
                 </span>
                 <span className="text-[10px] text-gray-400 italic">
-                  Min. Lead Time: 5 Work Days
+                  {leadTimeLabel}
                 </span>
               </div>
 
@@ -536,12 +766,13 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                       key={date}
                       className="flex items-center gap-2 px-2.5 py-1 bg-white border border-blue-100 rounded-lg text-xs font-semibold text-blue-700 shadow-sm"
                     >
-                      {date}
+                      <span className="truncate max-w-[150px]">{date}</span>
                       <button
                         type="button"
                         disabled={isBusy}
                         onClick={() => handleDateRemove(date)}
                         className="text-blue-300 hover:text-red-500 transition-colors disabled:opacity-50"
+                        aria-label={`Remove ${date}`}
                       >
                         <X size={14} />
                       </button>
@@ -564,7 +795,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
               name="reason"
               value={formData.reason}
               onChange={handleChange}
-              rows="3"
+              rows="4"
               maxLength={MAX_REASON_LEN}
               placeholder="Type your justification here..."
               disabled={isBusy}
@@ -577,7 +808,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
           {/* Deductions */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
                 <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
                   <AlertCircle className="w-4 h-4 text-gray-600" />
@@ -588,7 +819,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                 type="button"
                 disabled={isBusy}
                 onClick={() => setIsMemoModalOpen(true)}
-                className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50"
+                className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 shrink-0"
               >
                 View Memos
               </button>
@@ -600,39 +831,41 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                   <Skeleton height={30} count={2} />
                 </div>
               ) : selectedMemos.length === 0 ? (
-                <div className="p-8 text-center bg-gray-50/50">
+                <div className="p-6 sm:p-8 text-center bg-gray-50/50">
                   <p className="text-xs text-gray-400 italic">
                     No hours allocated yet
                   </p>
                 </div>
               ) : (
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase">
-                        Memo Reference
-                      </th>
-                      <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase text-right">
-                        Deduction
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {selectedMemos.map((memo) => (
-                      <tr
-                        key={memo.id}
-                        className="hover:bg-gray-50/50 transition-colors"
-                      >
-                        <td className="px-4 py-2.5 font-medium text-gray-700">
-                          {memo.memoNo}
-                        </td>
-                        <td className="px-4 py-2.5 text-right font-bold text-blue-600">
-                          -{memo.appliedHours}h
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="min-w-[420px] w-full text-left text-sm">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase">
+                          Memo Reference
+                        </th>
+                        <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase text-right">
+                          Deduction
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {selectedMemos.map((memo) => (
+                        <tr
+                          key={memo.id}
+                          className="hover:bg-gray-50/50 transition-colors"
+                        >
+                          <td className="px-4 py-2.5 font-medium text-gray-700">
+                            {memo.memoNo}
+                          </td>
+                          <td className="px-4 py-2.5 text-right font-bold text-blue-600">
+                            -{memo.appliedHours}h
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>
@@ -658,7 +891,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
             <div
               className={`overflow-hidden transition-all duration-300 ${
-                showRouting ? "max-h-[400px] opacity-100" : "max-h-0 opacity-0"
+                showRouting ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"
               }`}
             >
               <div className="space-y-2 pt-1">
@@ -674,16 +907,16 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                       key={idx}
                       className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-sm"
                     >
-                      <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-[10px] font-bold text-blue-600">
+                      <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-[10px] font-bold text-blue-600 shrink-0">
                         {idx + 1}
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold text-gray-800">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-gray-800 truncate">
                           {app
                             ? `${app.firstName} ${app.lastName}`
                             : "Not Assigned"}
                         </p>
-                        <p className="text-[10px] text-gray-400 uppercase tracking-tight">
+                        <p className="text-[10px] text-gray-400 uppercase tracking-tight truncate">
                           {app?.position || "Position not specified"}
                         </p>
                       </div>
@@ -695,35 +928,33 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
           </div>
         </div>
 
-        {/* Fixed Footer */}
-        <div className="border-t border-gray-100 bg-white px-4 py-3 flex items-center gap-3">
+        {/* Sticky Footer */}
+        <div className="border-t border-gray-100 bg-white px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sticky bottom-0">
           <button
             type="button"
             disabled={mutation.isPending}
             onClick={() => {
               if (mutation.isPending) return;
-
-              // ✅ Only reset if NOT already successfully submitted
-              // (prevents unlock during closing animation)
               if (!successLatchRef.current) resetForm();
-
               onClose?.();
             }}
-            className="flex-1 px-4 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-sm font-bold text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded border border-gray-200 bg-neutral-100 hover:bg-neutral-200/70 cursor-pointer font-semibold text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Close
           </button>
 
           <button
             type="submit"
-            disabled={isBusy}
-            className="flex-1 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-sm font-bold text-white disabled:opacity-70 disabled:cursor-not-allowed"
+            disabled={isBusy || workingDaysLoading}
+            className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            {mutation.isPending
-              ? "Submitting..."
-              : successLatchUI
-                ? "Submitted"
-                : "Submit"}
+            {workingDaysLoading
+              ? "Loading..."
+              : mutation.isPending
+                ? "Submitting..."
+                : successLatchUI
+                  ? "Submitted"
+                  : "Submit"}
           </button>
         </div>
       </form>

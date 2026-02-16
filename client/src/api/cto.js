@@ -1,205 +1,304 @@
+// src/api/cto.js
 import API from "./api";
 
-export const addCreditRequest = async (formData) => {
-  formData.forEach((value, key) => {
-    console.log(key, value);
-  });
-  const res = await API.post("/cto/credits", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+const unwrap = (res) => res?.data;
 
-  return res.data;
+const withParams = (params = {}) => ({ params });
+
+const withCreds = (params = {}) => ({ params, withCredentials: true });
+
+const safeError = (err, fallback = "Request failed") => {
+  // keep message minimal + safe (avoid dumping full response objects)
+  const msg =
+    err?.response?.data?.message ||
+    err?.response?.data?.error ||
+    err?.message ||
+    fallback;
+  const e = new Error(msg);
+  e.status = err?.response?.status;
+  throw e;
+};
+
+/* =========================
+   CREDITS
+========================= */
+
+export const addCreditRequest = async (formData) => {
+  try {
+    const res = await API.post("/cto/credits", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      // if API already has withCredentials default, remove this
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to add credit request");
+  }
 };
 
 export const fetchAllCreditRequests = async (params = {}) => {
-  const res = await API.get("/cto/credits/all", {
-    params,
-    withCredentials: true,
-  });
-  console.log(res.data);
-  return res.data;
+  try {
+    const res = await API.get("/cto/credits/all", withCreds(params));
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch all credit requests");
+  }
 };
 
 export const fetchMyCreditRequests = async (params = {}) => {
-  const res = await API.get(`/cto/credits/my-credits`, {
-    params,
-  });
-  console.log(res.data);
-  return res.data;
+  try {
+    const res = await API.get("/cto/credits/my-credits", withCreds(params));
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch my credit requests");
+  }
 };
 
-// export const fetchRecentCreditRequest = async () => {
-//   const res = await API.get("/cto/credits/recent", {
-//     withCredentials: true,
-//   });
-//   return res.data.credits;
-// };
-
 export const cancelCreditRequest = async (creditId) => {
-  const res = await API.patch(
-    `/cto/credits/${creditId}/cancel`,
-    {},
-    {
-      withCredentials: true,
-    },
-  );
-  return res.data.credit;
+  try {
+    const res = await API.patch(
+      `/cto/credits/${creditId}/cancel`,
+      {},
+      withCreds(),
+    );
+    // your old code returned res.data.credit — keep that behavior if needed:
+    return unwrap(res)?.credit ?? unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to cancel credit request");
+  }
 };
 
 export const rollbackCreditCto = async (creditId) => {
-  const res = await API.patch(
-    `/cto/credits/${creditId}/rollback`,
-    {},
-    {
-      withCredentials: true,
-    },
-  );
-  return res.data.credit;
+  try {
+    const res = await API.patch(
+      `/cto/credits/${creditId}/rollback`,
+      {},
+      withCreds(),
+    );
+    return unwrap(res)?.credit ?? unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to rollback credit request");
+  }
 };
 
 export const fetchEmployeeCredits = async (employeeId, params = {}) => {
-  console.log(employeeId);
-  const res = await API.get(`/cto/credits/${employeeId}/history`, {
-    params,
-  });
-  console.log(res.data);
-  return res.data;
+  try {
+    const res = await API.get(
+      `/cto/credits/${employeeId}/history`,
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch employee credit history");
+  }
 };
 
-export const fetchEmployeeApplications = async (employeeId, params = {}) => {
-  console.log(employeeId);
-  console.log(params);
-  const res = await API.get(`/cto/applications/employee/${employeeId}`, {
-    params,
-  });
-  console.log(res.data);
-  return res.data;
-};
+/* =========================
+   APPLICATIONS
+========================= */
 
-export const fetchEmployeeDetails = async (employeeId) => {
-  console.log(employeeId);
-  const res = await API.get(`/cto/employee/${employeeId}/details`);
-  return res.data;
-};
-
-export const fetchProvincialOffices = async () => {
-  console.log();
-  const res = await API.get("/settings/provincial-office");
-
-  return res.data;
-};
-
-export const fetchApproverSettings = async (designationId) => {
-  console.log(designationId);
-  const res = await API.get(`/cto/settings/${designationId}`);
-  console.log(res.data);
-  return res.data;
-};
-
-export const fetchApprovers = async () => {
-  const res = await API.get(`/cto/applications/approvers`);
-  console.log(res.data);
-  return res.data;
-};
-
-export const fetchCtoApplicationsPendingRequest = async () => {
-  const res = await API.get(`/cto/applications/pending-count`);
-  console.log(res.data.pending);
-  return res.data.pending;
-};
-
-export const upsertApproverSetting = async (payload) => {
-  console.log(payload);
-  const res = await API.post("/cto/settings", payload);
-
-  return res.data;
-};
-
-export const addApplicationRequest = async (formData) => {
-  console.log(formData);
-  const res = await API.post("/cto/applications/apply", formData);
-
-  return res.data;
-};
-
-export const approveApplicationRequest = async (applicationId) => {
-  console.log(applicationId);
-  const res = await API.post(
-    `/cto/applications/approver/${applicationId}/approve`,
-  );
-
-  return res.data;
-};
-
-export const rejectApplicationRequest = async (applicationId, remarks) => {
-  console.log(applicationId);
-  console.log(remarks);
-  const res = await API.put(
-    `/cto/applications/approver/${applicationId}/reject`,
-    { remarks },
-  );
-
-  return res.data;
+export const addApplicationRequest = async (payload) => {
+  try {
+    const res = await API.post("/cto/applications/apply", payload, {
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to submit CTO application");
+  }
 };
 
 export const fetchMyCtoApplications = async (params = {}) => {
-  console.log(params);
-  const { data } = await API.get(`cto/applications/my-application`, {
-    params,
-  });
-  console.log(data);
-  return data;
+  try {
+    const res = await API.get(
+      "cto/applications/my-application",
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch my CTO applications");
+  }
 };
 
 export const fetchAllCtoApplications = async (params = {}) => {
-  console.log(params);
-  const { data } = await API.get(`cto/applications/all`, {
-    params,
-  });
-  console.log(data);
-  return data;
+  try {
+    const res = await API.get("cto/applications/all", withCreds(params));
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch all CTO applications");
+  }
 };
+
+export const fetchEmployeeApplications = async (employeeId, params = {}) => {
+  try {
+    const res = await API.get(
+      `/cto/applications/employee/${employeeId}`,
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch employee applications");
+  }
+};
+
+export const approveApplicationRequest = async (applicationId) => {
+  try {
+    const res = await API.post(
+      `/cto/applications/approver/${applicationId}/approve`,
+      {},
+      { withCredentials: true },
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to approve application");
+  }
+};
+
+export const rejectApplicationRequest = async (applicationId, remarks) => {
+  try {
+    const res = await API.put(
+      `/cto/applications/approver/${applicationId}/reject`,
+      { remarks },
+      { withCredentials: true },
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to reject application");
+  }
+};
+
 export const fetchMyCtoApplicationsApprovals = async (params = {}) => {
-  const { data } = await API.get(`cto/applications/approvers/my-approvals`, {
-    params,
-  });
-  console.log(data);
-  return data;
+  try {
+    const res = await API.get(
+      "cto/applications/approvers/my-approvals",
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch my approvals");
+  }
 };
 
 export const getCtoApplicationById = async (id) => {
-  console.log(id);
-  const { data } = await API.get(
-    `cto/applications/approvers/my-approvals/${id}`,
-  );
-  console.log(data);
-  return data.data;
+  try {
+    const res = await API.get(`cto/applications/approvers/my-approvals/${id}`, {
+      withCredentials: true,
+    });
+    // your original returns data.data
+    return unwrap(res)?.data ?? unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch application details");
+  }
 };
 
+/**
+ * This endpoint seems identical to getCtoApplicationById in your code.
+ * If it actually returns a count, keep it. Otherwise, you can delete it.
+ */
 export const getCtoApplicationPendingCount = async (id) => {
-  console.log(id);
-  const { data } = await API.get(
-    `cto/applications/approvers/my-approvals/${id}`,
-  );
-  console.log(data);
-  return data.data;
+  try {
+    const res = await API.get(`cto/applications/approvers/my-approvals/${id}`, {
+      withCredentials: true,
+    });
+    return unwrap(res)?.data ?? unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch pending count");
+  }
+};
+
+export const fetchCtoApplicationsPendingRequest = async () => {
+  try {
+    const res = await API.get("/cto/applications/pending-count", {
+      withCredentials: true,
+    });
+    return unwrap(res)?.pending ?? 0;
+  } catch (err) {
+    safeError(err, "Failed to fetch pending applications count");
+  }
+};
+
+/* =========================
+   APPROVERS / SETTINGS
+========================= */
+
+export const fetchApproverSettings = async (designationId) => {
+  try {
+    const res = await API.get(`/cto/settings/${designationId}`, {
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch approver settings");
+  }
+};
+
+export const upsertApproverSetting = async (payload) => {
+  try {
+    const res = await API.post("/cto/settings", payload, {
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to save approver settings");
+  }
+};
+
+export const fetchApprovers = async () => {
+  try {
+    const res = await API.get("/cto/applications/approvers", {
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch approvers");
+  }
+};
+
+/* =========================
+   EMPLOYEE / MEMOS / OFFICES
+========================= */
+
+export const fetchEmployeeDetails = async (employeeId) => {
+  try {
+    const res = await API.get(`/cto/employee/${employeeId}/details`, {
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch employee details");
+  }
 };
 
 export const fetchMyCtoMemos = async () => {
-  const { data } = await API.get(`employee/memos/me`);
-  console.log(data);
-  return data;
+  try {
+    const res = await API.get("employee/memos/me", { withCredentials: true });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch my CTO memos");
+  }
 };
+
+export const fetchProvincialOffices = async () => {
+  try {
+    const res = await API.get("/settings/provincial-office", {
+      withCredentials: true,
+    });
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch provincial offices");
+  }
+};
+
+/* =========================
+   DASHBOARD
+========================= */
 
 export const fetchDashboard = async () => {
   try {
-    const res = await API.get("/cto/dashboard", {
-      withCredentials: true,
-    });
-    console.log(res);
-    return res.data.data;
+    const res = await API.get("/cto/dashboard", { withCredentials: true });
+    // your old code returned res.data.data
+    return unwrap(res)?.data ?? unwrap(res);
   } catch (err) {
-    console.error("Error fetching dashboard:", err);
-    throw err;
+    safeError(err, "Failed to fetch dashboard");
   }
 };
