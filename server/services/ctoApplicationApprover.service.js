@@ -31,6 +31,22 @@ function getClientIp(req) {
   return req?.socket?.remoteAddress || null;
 }
 
+const U = (v) => String(v || "").toUpperCase();
+const sameId = (a, b) => String(a) === String(b);
+
+const sortByLevel = (steps = []) =>
+  [...steps].sort((a, b) => Number(a?.level || 0) - Number(b?.level || 0));
+
+const getEffectiveStatusForApprover = (app, myStep) => {
+  const overall = U(app?.overallStatus);
+  if (overall === "CANCELLED") return "CANCELLED";
+  if (overall === "REJECTED") return "REJECTED";
+  return U(myStep?.status);
+};
+
+const clampPage = (v) => Math.max(parseInt(v, 10) || 1, 1);
+const clampLimit = (v) => Math.min(Math.max(parseInt(v, 10) || 10, 1), 100);
+
 const fetchPendingCtoCountService = async (approverId) => {
   if (!approverId) throw httpError("Approver ID is required", 400);
 
@@ -56,7 +72,6 @@ const fetchPendingCtoCountService = async (approverId) => {
 
     const userStep = steps[userStepIndex];
 
-    // ✅ ignore if already rejected/cancelled
     if (userStep.status === "REJECTED") return count;
     if (userStep.status === "CANCELLED") return count;
     if (app.overallStatus === "REJECTED") return count;
@@ -88,6 +103,9 @@ const getCtoApplicationsForApproverService = async (
 ) => {
   if (!approverId) throw httpError("Approver ID is required.", 400);
 
+  const safePage = clampPage(page);
+  const safeLimit = clampLimit(limit);
+
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
       path: "ctoApplication",
@@ -95,81 +113,119 @@ const getCtoApplicationsForApproverService = async (
         { path: "employee", select: "firstName lastName position" },
         {
           path: "approvals",
-          populate: { path: "approver", select: "firstName lastName position" },
+          populate: {
+            path: "approver",
+            select: "firstName lastName position _id",
+          },
         },
       ],
     })
     .sort({ createdAt: -1 });
 
-  let ctoApplications = approvalSteps
-    .map((step) => step.ctoApplication)
-    .filter(Boolean)
-    .filter((app) => {
-      if (!app.approvals || app.approvals.length === 0) return false;
+  const appMap = new Map();
+  for (const step of approvalSteps) {
+    const app = step?.ctoApplication;
+    if (app?._id) appMap.set(String(app._id), app);
+  }
 
-      const steps = app.approvals;
-      const userStepIndex = steps.findIndex(
-        (s) => s.approver?._id?.toString() === approverId.toString(),
-      );
-      if (userStepIndex === -1) return false;
+  let apps = Array.from(appMap.values()).filter(Boolean);
 
-      const userStep = steps[userStepIndex];
+  apps = apps.filter((app) => {
+    const steps = Array.isArray(app?.approvals) ? app.approvals : [];
+    if (!steps.length) return false;
 
-      // ✅ allow viewing your REJECTED / CANCELLED steps
-      if (userStep.status === "REJECTED") return true;
-      if (userStep.status === "CANCELLED") return true;
+    const ordered = sortByLevel(steps);
 
-      // ✅ if app is rejected/cancelled and you didn't reject, hide it
-      if (app.overallStatus === "REJECTED") return false;
-      if (app.overallStatus === "CANCELLED") return false;
-
-      const pendingStep = steps.find((s) => s.status === "PENDING");
-      if (userStepIndex === 0) return true;
-
-      const isTheirTurn =
-        pendingStep?.approver?._id?.toString() === approverId.toString();
-      const alreadyActed = userStep.status === "APPROVED";
-
-      return isTheirTurn || alreadyActed;
-    });
-
-  const statusCounts = { PENDING: 0, APPROVED: 0, REJECTED: 0, CANCELLED: 0 };
-  ctoApplications.forEach((app) => {
-    const myStep = app.approvals.find(
-      (s) => s.approver?._id?.toString() === approverId.toString(),
+    const myStep = ordered.find((s) =>
+      sameId(s?.approver?._id || s?.approver, approverId),
     );
-    if (myStep?.status === "PENDING") statusCounts.PENDING++;
-    if (myStep?.status === "APPROVED") statusCounts.APPROVED++;
-    if (myStep?.status === "REJECTED") statusCounts.REJECTED++;
-    if (myStep?.status === "CANCELLED") statusCounts.CANCELLED++;
+    if (!myStep) return false;
+
+    const myStatus = U(myStep.status);
+    const overall = U(app.overallStatus);
+
+    if (overall === "CANCELLED") return true;
+
+    const hasActed = myStatus !== "PENDING";
+    if (hasActed) return true;
+
+    if (overall !== "PENDING") return false;
+
+    const pendingStep = ordered.find((s) => U(s.status) === "PENDING");
+    if (!pendingStep) return false;
+
+    const isTheirTurn = sameId(
+      pendingStep?.approver?._id || pendingStep?.approver,
+      approverId,
+    );
+    if (!isTheirTurn) return false;
+
+    const blockedByPrev = ordered.some(
+      (s) =>
+        Number(s.level) < Number(myStep.level) && U(s.status) !== "APPROVED",
+    );
+    if (blockedByPrev) return false;
+
+    return true;
   });
 
-  if (status) {
-    ctoApplications = ctoApplications.filter((app) => {
-      const myStep = app.approvals.find(
-        (s) => s.approver?._id?.toString() === approverId.toString(),
-      );
-      return myStep?.status === status;
-    });
-  }
-
-  const s = String(search || "")
+  const searchText = String(search || "")
     .trim()
     .toLowerCase();
-  if (s) {
-    ctoApplications = ctoApplications.filter((app) => {
-      const fullName =
-        `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
-      return fullName.includes(s);
-    });
-  }
+  const appsAfterSearch = !searchText
+    ? apps
+    : apps.filter((app) => {
+        const fullName =
+          `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
+        return fullName.includes(searchText);
+      });
 
-  const total = ctoApplications.length;
-  const totalPages = Math.ceil(total / limit);
-  const startIndex = (page - 1) * limit;
-  const paginatedData = ctoApplications.slice(startIndex, startIndex + limit);
+  const statusCounts = {
+    PENDING: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+    CANCELLED: 0,
+    total: 0,
+  };
 
-  return { data: paginatedData, total, totalPages, statusCounts };
+  appsAfterSearch.forEach((app) => {
+    const ordered = sortByLevel(app.approvals || []);
+    const myStep = ordered.find((s) =>
+      sameId(s?.approver?._id || s?.approver, approverId),
+    );
+    const effective = getEffectiveStatusForApprover(app, myStep);
+
+    statusCounts.total++;
+    if (effective === "PENDING") statusCounts.PENDING++;
+    if (effective === "APPROVED") statusCounts.APPROVED++;
+    if (effective === "REJECTED") statusCounts.REJECTED++;
+    if (effective === "CANCELLED") statusCounts.CANCELLED++;
+  });
+
+  const statusFilter = U(status);
+  const appsAfterStatus = !statusFilter
+    ? appsAfterSearch
+    : appsAfterSearch.filter((app) => {
+        const ordered = sortByLevel(app.approvals || []);
+        const myStep = ordered.find((s) =>
+          sameId(s?.approver?._id || s?.approver, approverId),
+        );
+        const effective = getEffectiveStatusForApprover(app, myStep);
+        return effective === statusFilter;
+      });
+
+  const total = appsAfterStatus.length;
+  const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
+  const startIndex = (safePage - 1) * safeLimit;
+
+  const data = appsAfterStatus.slice(startIndex, startIndex + safeLimit);
+
+  return {
+    data,
+    total,
+    totalPages,
+    statusCounts,
+  };
 };
 
 const getCtoApplicationByIdService = async (ctoApplicationId) => {
@@ -218,7 +274,6 @@ const approveCtoApplicationService = async ({
     if (!currentStep)
       throw httpError("You are not an approver for this application.", 403);
 
-    // Prevent double-approve
     if (currentStep.status !== "PENDING")
       throw httpError("This step has already been processed.", 400);
 
@@ -241,7 +296,6 @@ const approveCtoApplicationService = async ({
       _id: { $in: application.approvals },
     }).session(session);
 
-    // ✅ If any step is rejected -> app rejected (shouldn't happen here, but safe)
     const anyRejected = updatedSteps.some((s) => s.status === "REJECTED");
     if (anyRejected) {
       application.overallStatus = "REJECTED";
@@ -256,7 +310,6 @@ const approveCtoApplicationService = async ({
 
       const employeeId = application.employee._id;
 
-      // Update CTO credits using memo entries
       for (const memoItem of application.memo || []) {
         const memoId = memoItem.memoId;
         const credit = await CtoCredit.findById(memoId).session(session);
@@ -296,7 +349,6 @@ const approveCtoApplicationService = async ({
         );
       }
 
-      // Deduct employee CTO balance (don’t allow negative)
       const newBal =
         (application.employee.balances?.ctoHours || 0) -
         (application.requestedHours || 0);
@@ -310,7 +362,6 @@ const approveCtoApplicationService = async ({
     await session.commitTransaction();
     session.endSession();
 
-    // Audit log after commit
     const approver = await Employee.findById(approverId)
       .select("username")
       .lean();
@@ -345,7 +396,6 @@ const approveCtoApplicationService = async ({
       timestamp: new Date(),
     });
 
-    // Emails
     if (!allApproved) {
       const nextStep = updatedSteps.find(
         (s) => s.level === currentStep.level + 1,
@@ -354,6 +404,7 @@ const approveCtoApplicationService = async ({
         const nextApprover = await Employee.findById(nextStep.approver)
           .select("email firstName lastName")
           .lean();
+
         if (nextApprover?.email) {
           await sendEmail(
             nextApprover.email,
@@ -369,17 +420,15 @@ const approveCtoApplicationService = async ({
           );
         }
       }
-    } else {
-      if (application.employee.email) {
-        await sendEmail(
-          application.employee.email,
-          "CTO Application Approved",
-          ctoFinalApprovalEmail({
-            employeeName: application.employee.firstName,
-            requestedHours: application.requestedHours,
-          }),
-        );
-      }
+    } else if (application.employee.email) {
+      await sendEmail(
+        application.employee.email,
+        "CTO Application Approved",
+        ctoFinalApprovalEmail({
+          employeeName: application.employee.firstName,
+          requestedHours: application.requestedHours,
+        }),
+      );
     }
 
     return CtoApplication.findById(applicationId)
@@ -430,6 +479,7 @@ const rejectCtoApplicationService = async ({
         "You are not authorized to reject this application.",
         403,
       );
+
     if (currentStep.status !== "PENDING")
       throw httpError("This step has already been processed.", 400);
 
@@ -444,7 +494,6 @@ const rejectCtoApplicationService = async ({
 
     const employeeId = application.employee._id;
 
-    // Release reserved hours (transactional)
     for (const memoItem of application.memo || []) {
       const memoId = memoItem.memoId?._id || memoItem.memoId;
       const appliedHours = Number(memoItem.appliedHours || 0);
@@ -478,7 +527,6 @@ const rejectCtoApplicationService = async ({
       }
     }
 
-    // ✅ mark current step as rejected
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
       {
@@ -489,17 +537,13 @@ const rejectCtoApplicationService = async ({
       { session },
     );
 
-    // ✅ cancel all future approver steps (higher level)
     const futureStepIds = (application.approvals || [])
       .filter((s) => Number(s.level) > Number(currentStep.level))
       .map((s) => s._id);
 
     if (futureStepIds.length) {
       await ApprovalStep.updateMany(
-        {
-          _id: { $in: futureStepIds },
-          status: "PENDING", // only cancel pending (keep approved as is, though shouldn't happen)
-        },
+        { _id: { $in: futureStepIds }, status: "PENDING" },
         {
           $set: {
             status: "CANCELLED",
@@ -512,17 +556,16 @@ const rejectCtoApplicationService = async ({
       );
     }
 
-    // ✅ overall status becomes rejected (not cancelled)
     application.overallStatus = "REJECTED";
     await application.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    // Audit log after commit
     const approver = await Employee.findById(approverId)
       .select("username")
       .lean();
+
     const auditBody = {
       approverId,
       applicationId,

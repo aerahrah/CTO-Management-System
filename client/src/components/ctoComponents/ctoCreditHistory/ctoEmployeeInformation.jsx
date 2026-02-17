@@ -66,11 +66,11 @@ const EmployeeInfoSkeleton = () => (
 ========================= */
 const StatCard = ({ title, value, hint, tone = "neutral" }) => {
   const tones = {
-    blue: { wrap: "bg-blue-50/60 border-blue-100", value: "text-blue-700" },
-    green: { wrap: "bg-green-50/60 border-green-100", value: "text-green-700" },
-    red: { wrap: "bg-red-50/60 border-red-100", value: "text-red-700" },
-    amber: { wrap: "bg-amber-50/60 border-amber-100", value: "text-amber-700" },
-    neutral: { wrap: "bg-white border-gray-100", value: "text-gray-900" },
+    blue: { wrap: "bg-white border-neutral-100", value: "text-blue-700" },
+    green: { wrap: "bg-white border-neutral-100", value: "text-green-700" },
+    red: { wrap: "bg-white border-neutral-100", value: "text-red-700" },
+    amber: { wrap: "bg-white border-neutral-100", value: "text-amber-700" },
+    neutral: { wrap: "bg-white border-neutral-100", value: "text-gray-900" },
   };
 
   const t = tones[tone] || tones.neutral;
@@ -279,10 +279,10 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     `${employee.firstName || ""} ${employee.lastName || ""}`.trim();
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-4 min-w-0">
+    <div className="h-full min-h-0 flex flex-col gap-3 min-w-0">
       {/* HEADER */}
       <div className="bg-white border border-neutral-200 rounded-xl shadow-sm p-4">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 min-w-0">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 min-w-0">
           <div className="min-w-0 flex-1">
             <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 truncate">
               {fullName || "Employee"}
@@ -298,9 +298,9 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
           </div>
 
           {/* Stats */}
-          <div className="w-full lg:w-auto min-w-0">
+          <div className="flex-1 lg:flex-none w-full md:w-auto min-w-0">
             {/* Tablet/Desktop */}
-            <div className="hidden sm:grid sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="hidden lg:grid md:grid-cols-2 xl:grid-cols-4 gap-3">
               <StatCard
                 title="Total Credited"
                 value={`${fmtHours(summary.totalCredited)}h`}
@@ -328,8 +328,8 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
             </div>
 
             {/* Mobile compact */}
-            <div className="sm:hidden grid grid-cols-2 gap-2">
-              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+            <div className="lg:hidden grid grid-cols-2 gap-2">
+              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                 <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
                   Balance
                 </div>
@@ -337,7 +337,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   {fmtHours(summary.remainingHours)}h
                 </div>
               </div>
-              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                 <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
                   Used
                 </div>
@@ -345,7 +345,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   {fmtHours(summary.usedHours)}h
                 </div>
               </div>
-              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                 <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
                   Reserved
                 </div>
@@ -353,7 +353,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   {fmtHours(summary.reservedHours)}h
                 </div>
               </div>
-              <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-2 min-w-0">
+              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                 <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
                   Credited
                 </div>

@@ -8,7 +8,6 @@ const withParams = (params = {}) => ({ params });
 const withCreds = (params = {}) => ({ params, withCredentials: true });
 
 const safeError = (err, fallback = "Request failed") => {
-  // keep message minimal + safe (avoid dumping full response objects)
   const msg =
     err?.response?.data?.message ||
     err?.response?.data?.error ||
@@ -27,7 +26,6 @@ export const addCreditRequest = async (formData) => {
   try {
     const res = await API.post("/cto/credits", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-      // if API already has withCredentials default, remove this
       withCredentials: true,
     });
     return unwrap(res);
@@ -61,7 +59,6 @@ export const cancelCreditRequest = async (creditId) => {
       {},
       withCreds(),
     );
-    // your old code returned res.data.credit — keep that behavior if needed:
     return unwrap(res)?.credit ?? unwrap(res);
   } catch (err) {
     safeError(err, "Failed to cancel credit request");
@@ -114,7 +111,6 @@ export const fetchMyCtoApplications = async (params = {}) => {
       "cto/applications/my-application",
       withCreds(params),
     );
-    console.log(unwrap(res));
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch my CTO applications");
@@ -139,6 +135,23 @@ export const fetchEmployeeApplications = async (employeeId, params = {}) => {
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch employee applications");
+  }
+};
+
+/**
+ * ✅ Cancel CTO application
+ * Matches backend route: PATCH /cto/applications/:id/cancel
+ */
+export const cancelCtoApplicationRequest = async (applicationId) => {
+  try {
+    const res = await API.patch(
+      `/cto/applications/${applicationId}/cancel`,
+      {},
+      { withCredentials: true },
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to cancel CTO application");
   }
 };
 
@@ -174,6 +187,7 @@ export const fetchMyCtoApplicationsApprovals = async (params = {}) => {
       "cto/applications/approvers/my-approvals",
       withCreds(params),
     );
+    console.log(res.data);
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch my approvals");
@@ -185,7 +199,6 @@ export const getCtoApplicationById = async (id) => {
     const res = await API.get(`cto/applications/approvers/my-approvals/${id}`, {
       withCredentials: true,
     });
-    // your original returns data.data
     return unwrap(res)?.data ?? unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch application details");
@@ -297,7 +310,6 @@ export const fetchProvincialOffices = async () => {
 export const fetchDashboard = async () => {
   try {
     const res = await API.get("/cto/dashboard", { withCredentials: true });
-    // your old code returned res.data.data
     return unwrap(res)?.data ?? unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch dashboard");

@@ -1,7 +1,6 @@
 // ctoEmployeeCreditTable.jsx
 import React, { useMemo, useState, useCallback } from "react";
 import Modal from "../../modal";
-import { TableActionButton } from "../../customButton";
 import { StatusBadge } from "../../statusUtils";
 import FilterSelect from "../../filterSelect";
 import Skeleton from "react-loading-skeleton";
@@ -18,6 +17,9 @@ import {
   AlertCircle,
   CheckCircle2,
   Layers,
+  Calendar,
+  Clock as ClockIcon,
+  Eye,
 } from "lucide-react";
 
 /* =========================
@@ -144,6 +146,87 @@ const CompactPagination = ({
 };
 
 /* =========================
+   CARD (Mobile/Tablet) — copied design from MyCtoCreditHistory
+========================= */
+const CreditCard = ({
+  credit,
+  onViewMemo,
+  formatDuration,
+  leftStripClassName,
+}) => {
+  const dateLabel = credit?.dateApproved
+    ? new Date(credit.dateApproved).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "-";
+
+  const hasMemo = Boolean(credit?.uploadedMemo);
+
+  return (
+    <div
+      className={`bg-white rounded-xl shadow-sm overflow-hidden border-y border-r border-gray-200 ${leftStripClassName}`}
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-900 truncate">
+                {credit?.memoNo || "-"}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <span className="truncate">{dateLabel}</span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2 flex-none">
+            <StatusBadge status={credit?.employeeStatus} />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <ClockIcon className="w-3.5 h-3.5" /> Duration
+            </div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">
+              {formatDuration(credit?.duration)}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <Layers className="w-3.5 h-3.5" /> Remaining
+            </div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">
+              {typeof credit?.remainingHours === "number"
+                ? `${credit.remainingHours}h`
+                : `${credit?.remainingHours || 0}h`}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 bg-white p-3">
+        <button
+          onClick={onViewMemo}
+          disabled={!hasMemo}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
+          type="button"
+        >
+          <Eye className="w-4 h-4" />
+          View Memo
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* =========================
    COMPONENT
 ========================= */
 const CreditCtoTable = ({
@@ -232,16 +315,29 @@ const CreditCtoTable = ({
     [getStatusTabs, normalizedCounts],
   );
 
+  // ✅ left strip class like MyCtoCreditHistory
+  const getLeftStripClass = useCallback((employeeStatus) => {
+    switch (String(employeeStatus || "").toUpperCase()) {
+      case "ACTIVE":
+        return "border-l-4 border-l-emerald-500";
+      case "EXHAUSTED":
+        return "border-l-4 border-l-rose-500";
+      case "ROLLEDBACK":
+        return "border-l-4 border-l-amber-500";
+      default:
+        return "border-l-4 border-l-slate-300";
+    }
+  }, []);
+
   return (
     <div className="w-full h-full flex flex-col min-h-0 min-w-0 bg-white overflow-hidden">
       {/* Toolbar */}
-      <div className="border-b border-neutral-100  bg-white space-y-3 py-2">
+      <div className="border-b border-neutral-100 bg-white space-y-3 py-2">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           {/* ✅ Status tabs (colored like MyCtoCreditHistory) */}
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             {tabs.map((tab) => {
               const isActive = status === tab.id;
-              const Icon = tab.icon;
 
               return (
                 <button
@@ -255,7 +351,6 @@ const CreditCtoTable = ({
                     }`}
                   type="button"
                 >
-                  {/* <Icon className="w-3.5 h-3.5" /> */}
                   <span>{tab.label}</span>
                   <span
                     className={`px-1 py-0.5 rounded-full text-[10px] font-bold
@@ -281,7 +376,7 @@ const CreditCtoTable = ({
                 placeholder="Search memo..."
                 value={search}
                 onChange={(e) => onSearchChange?.(e.target.value)}
-                className="w-full h-8 pl-9 pr-9 bg-neutral-50 border border-neutral-200 rounded-lg text-sm outline-none
+                className="w-full py-2 pl-9 pr-9 bg-neutral-50 border border-neutral-200 rounded-lg text-sm outline-none
                            focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               />
               {search && (
@@ -335,7 +430,7 @@ const CreditCtoTable = ({
         {/* Active filters row */}
         {isFiltered && (
           <div className="flex px-1.5 items-center justify-between gap-3">
-            <div className=" flex flex-wrap items-center gap-2 min-w-0">
+            <div className="flex flex-wrap items-center gap-2 min-w-0">
               <span className="text-[10px] font-bold text-neutral-400 uppercase">
                 Active:
               </span>
@@ -376,11 +471,83 @@ const CreditCtoTable = ({
           </div>
         ) : (
           <>
-            {/* TABLE (sm+) */}
-            <div className="hidden sm:block h-full overflow-auto">
+            {/* ✅ Mobile: cards (1 per row) */}
+            <div className="block md:hidden p-4">
+              <div className="space-y-3">
+                {isLoading
+                  ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                      <div
+                        key={`sk-m-${i}`}
+                        className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                      >
+                        <Skeleton height={18} />
+                        <div className="mt-3">
+                          <Skeleton height={12} count={2} />
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Skeleton height={52} />
+                          <Skeleton height={52} />
+                        </div>
+                        <div className="mt-4">
+                          <Skeleton height={40} />
+                        </div>
+                      </div>
+                    ))
+                  : credits.map((c, i) => (
+                      <CreditCard
+                        key={c._id || `${c.memoNo}-${i}`}
+                        credit={c}
+                        formatDuration={formatDuration}
+                        leftStripClassName={getLeftStripClass(
+                          c?.employeeStatus,
+                        )}
+                        onViewMemo={() => openMemoModal(c)}
+                      />
+                    ))}
+              </div>
+            </div>
+
+            {/* ✅ Tablet: 2 cards per row (md) */}
+            <div className="hidden md:block lg:hidden p-4">
+              <div className="grid grid-cols-2 gap-3">
+                {isLoading
+                  ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                      <div
+                        key={`sk-t-${i}`}
+                        className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                      >
+                        <Skeleton height={18} />
+                        <div className="mt-3">
+                          <Skeleton height={12} count={2} />
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Skeleton height={52} />
+                          <Skeleton height={52} />
+                        </div>
+                        <div className="mt-4">
+                          <Skeleton height={40} />
+                        </div>
+                      </div>
+                    ))
+                  : credits.map((c, i) => (
+                      <CreditCard
+                        key={c._id || `${c.memoNo}-${i}`}
+                        credit={c}
+                        formatDuration={formatDuration}
+                        leftStripClassName={getLeftStripClass(
+                          c?.employeeStatus,
+                        )}
+                        onViewMemo={() => openMemoModal(c)}
+                      />
+                    ))}
+              </div>
+            </div>
+
+            {/* ✅ Desktop: table ONLY at lg+ (rows/columns unchanged) */}
+            <div className="hidden lg:block h-full overflow-auto">
               <table className="w-full text-left">
-                <thead className="bg-white sticky top-0 z-10 border-b border-neutral-100">
-                  <tr className="text-[10px] uppercase tracking-[0.12em] text-neutral-400 font-bold">
+                <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
+                  <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
                     <th className="px-4 md:px-6 py-4">Memo No.</th>
                     <th className="px-4 md:px-6 py-4">Date Credited</th>
                     <th className="px-4 md:px-6 py-4 text-center">Status</th>
@@ -389,7 +556,7 @@ const CreditCtoTable = ({
                   </tr>
                 </thead>
 
-                <tbody className="divide-y divide-neutral-50">
+                <tbody className="divide-y divide-gray-50">
                   {isLoading
                     ? [...Array(Math.min(limit, 10) || 6)].map((_, i) => (
                         <tr key={i}>
@@ -404,14 +571,14 @@ const CreditCtoTable = ({
                         <tr
                           key={c._id || `${c.memoNo}-${i}`}
                           className={`group hover:bg-gray-50/80 transition-colors ${
-                            i % 2 === 0 ? "bg-white" : "bg-neutral-50/40"
+                            i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
                           }`}
                         >
-                          <td className="px-4 md:px-6 py-4 font-semibold text-neutral-900">
+                          <td className="px-4 md:px-6 py-4 font-semibold text-gray-900">
                             {c.memoNo || "-"}
                           </td>
 
-                          <td className="px-4 md:px-6 py-4 text-neutral-600">
+                          <td className="px-4 md:px-6 py-4 text-gray-600">
                             {c.dateApproved
                               ? new Date(c.dateApproved).toLocaleDateString(
                                   "en-US",
@@ -428,7 +595,7 @@ const CreditCtoTable = ({
                             <StatusBadge status={c.employeeStatus} />
                           </td>
 
-                          <td className="px-4 md:px-6 py-4 text-center text-neutral-700 font-semibold">
+                          <td className="px-4 md:px-6 py-4 text-center text-gray-700 font-semibold">
                             {formatDuration(c.duration)}
                           </td>
 
@@ -437,11 +604,13 @@ const CreditCtoTable = ({
                               <button
                                 className="group inline-flex items-center gap-2 rounded-md px-3 py-1.5 bg-white border border-gray-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition cursor-pointer"
                                 onClick={() => openMemoModal(c)}
+                                type="button"
                               >
+                                <FileText className="w-4 h-4" />
                                 View Memo
                               </button>
                             ) : (
-                              <span className="text-neutral-400 text-sm">
+                              <span className="text-gray-400 text-sm">
                                 No memo
                               </span>
                             )}
@@ -450,78 +619,6 @@ const CreditCtoTable = ({
                       ))}
                 </tbody>
               </table>
-            </div>
-
-            {/* MOBILE LIST */}
-            <div className="sm:hidden h-full overflow-y-auto p-3 space-y-2">
-              {isLoading
-                ? [...Array(6)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="border border-neutral-200 rounded-xl p-3 bg-white"
-                    >
-                      <Skeleton height={14} width="60%" />
-                      <div className="mt-2">
-                        <Skeleton height={12} width="40%" />
-                      </div>
-                      <div className="mt-3 flex gap-2">
-                        <Skeleton height={20} width={70} />
-                        <Skeleton height={20} width={70} />
-                      </div>
-                    </div>
-                  ))
-                : credits.map((c, i) => (
-                    <div
-                      key={c._id || `${c.memoNo}-${i}`}
-                      className="border border-neutral-200 rounded-xl p-3 bg-white shadow-sm"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-bold text-neutral-900 truncate">
-                            Memo {c.memoNo || "-"}
-                          </div>
-                          <div className="text-xs text-neutral-500 mt-0.5">
-                            {c.dateApproved
-                              ? new Date(c.dateApproved).toLocaleDateString(
-                                  "en-US",
-                                  {
-                                    year: "numeric",
-                                    month: "short",
-                                    day: "numeric",
-                                  },
-                                )
-                              : "-"}
-                          </div>
-                        </div>
-                        <div className="flex-none">
-                          <StatusBadge status={c.employeeStatus} />
-                        </div>
-                      </div>
-
-                      <div className="mt-2 text-xs text-neutral-600">
-                        <span className="font-semibold text-neutral-800">
-                          Duration:
-                        </span>{" "}
-                        {formatDuration(c.duration)}
-                      </div>
-
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <div className="inline-flex items-center gap-2 text-xs text-neutral-500">
-                          <FileText className="w-4 h-4 text-neutral-400" />
-                          <span className="truncate">
-                            {c.uploadedMemo ? "Memo attached" : "No memo"}
-                          </span>
-                        </div>
-                        {c.uploadedMemo && (
-                          <TableActionButton
-                            label="View"
-                            variant="secondary"
-                            onClick={() => openMemoModal(c)}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ))}
             </div>
           </>
         )}

@@ -1,9 +1,10 @@
-import { useState, useRef, useMemo, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
 import {
   fetchMyCtoApplications,
   fetchMyCreditRequests,
+  cancelCtoApplicationRequest,
 } from "../../../api/cto";
 import Modal from "../../modal";
 import Skeleton from "react-loading-skeleton";
@@ -25,13 +26,15 @@ import {
   XCircle,
   AlertCircle,
   LayoutGrid,
-  ArrowRight,
   Layers,
+  Ban,
+  Info,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 import MemoList from "../ctoMemoModal";
+import { toast } from "react-toastify";
 
 const pageSizeOptions = [20, 50, 100];
 
@@ -72,7 +75,13 @@ const BalanceHoursCard = ({ hours, loading }) => {
   );
 };
 
-const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
+const ApplicationActionMenu = ({
+  app,
+  onViewDetails,
+  onViewMemos,
+  onCancel,
+  cancelling,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -96,6 +105,9 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
     cb?.();
     setIsOpen(false);
   };
+
+  const canCancel =
+    String(app?.overallStatus || "").toUpperCase() === "PENDING";
 
   return (
     <div className="relative inline-flex justify-end" ref={menuRef}>
@@ -131,8 +143,144 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
           >
             <FileText size={14} /> View Memos
           </button>
+
+          <button
+            disabled={!canCancel || cancelling}
+            onClick={() => handle(onCancel)}
+            className="w-full px-4 py-2.5 text-xs font-medium text-rose-600 hover:bg-rose-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left"
+            type="button"
+            title={
+              !canCancel ? "Only PENDING applications can be cancelled" : ""
+            }
+          >
+            <Ban size={14} /> {cancelling ? "Cancelling..." : "Cancel Request"}
+          </button>
         </div>
       )}
+    </div>
+  );
+};
+
+/* =========================
+   Card view (same “viewpoint” as MyCtoCreditHistory)
+   - Mobile: list (1 per row)
+   - Tablet: grid-cols-2
+   - Desktop: table at lg+
+========================= */
+const ApplicationCard = ({
+  app,
+  leftStripClassName,
+  onViewDetails,
+  onViewMemos,
+  onCancel,
+  cancelling,
+}) => {
+  const canCancel =
+    String(app?.overallStatus || "").toUpperCase() === "PENDING";
+
+  const memoLabel =
+    Array.isArray(app?.memo) && app.memo.length
+      ? app.memo
+          .map((m) => m?.memoId?.memoNo)
+          .filter(Boolean)
+          .join(", ")
+      : "No Memo Reference";
+
+  const submittedLabel = app?.createdAt
+    ? new Date(app.createdAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "-";
+
+  const coveredCount = Array.isArray(app?.inclusiveDates)
+    ? app.inclusiveDates.length
+    : 0;
+
+  return (
+    <div
+      className={`bg-white rounded-xl shadow-sm overflow-hidden border-y border-r border-gray-200 ${leftStripClassName}`}
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-900 truncate">
+                {memoLabel || "No Memo Reference"}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <span className="truncate">{submittedLabel}</span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2 flex-none">
+            <StatusBadge status={app?.overallStatus} />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <Clock className="w-3.5 h-3.5" /> Hours
+            </div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">
+              {typeof app?.requestedHours === "number"
+                ? `${app.requestedHours}h`
+                : `${Number(app?.requestedHours || 0)}h`}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <Layers className="w-3.5 h-3.5" /> Covered
+            </div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">
+              {coveredCount} day(s)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 bg-white p-3">
+        <div
+          className={`grid gap-2 ${canCancel ? "grid-cols-3" : "grid-cols-2"}`}
+        >
+          <button
+            onClick={onViewMemos}
+            disabled={!app?.memo || app.memo.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            type="button"
+          >
+            <FileText className="w-4 h-4" />
+            Memos
+          </button>
+
+          <button
+            onClick={onViewDetails}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600"
+            type="button"
+          >
+            <Eye className="w-4 h-4" />
+            Details
+          </button>
+
+          {canCancel && (
+            <button
+              onClick={onCancel}
+              disabled={cancelling}
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              type="button"
+            >
+              <Ban className="w-4 h-4" />
+              {cancelling ? "Cancelling..." : "Cancel"}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -214,6 +362,8 @@ const CompactPagination = ({
 );
 
 const MyCtoApplications = () => {
+  const queryClient = useQueryClient();
+
   const [selectedApp, setSelectedApp] = useState(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
@@ -224,19 +374,26 @@ const MyCtoApplications = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  // ✅ Add status-colored left strip for MOBILE cards
-  const getStatusColor = (status) => {
-    switch (status) {
+  // ✅ cancel confirm modal state
+  const [cancelModal, setCancelModal] = useState({ isOpen: false, app: null });
+  const openCancelModal = (app) => setCancelModal({ isOpen: true, app });
+  const closeCancelModal = () => setCancelModal({ isOpen: false, app: null });
+
+  // ✅ status-colored left strip for cards
+  const getStatusColor = useCallback((status) => {
+    switch (String(status || "").toUpperCase()) {
       case "APPROVED":
         return "border-l-4 border-l-emerald-500";
       case "REJECTED":
         return "border-l-4 border-l-rose-500";
       case "PENDING":
         return "border-l-4 border-l-amber-500";
+      case "CANCELLED":
+        return "border-l-4 border-l-slate-400";
       default:
         return "border-l-4 border-l-slate-300";
     }
-  };
+  }, []);
 
   // debounce search
   const searchTimeout = useRef(null);
@@ -261,10 +418,38 @@ const MyCtoApplications = () => {
     placeholderData: (prev) => prev,
   });
 
-  const { data: creditSummaryData, isLoading: isBalanceLoading } = useQuery({
+  const {
+    data: creditSummaryData,
+    isLoading: isBalanceLoading,
+    refetch: refetchBalance,
+  } = useQuery({
     queryKey: ["myCtoBalanceHours"],
     queryFn: () => fetchMyCreditRequests({ page: 1, limit: 1 }),
     staleTime: 1000 * 60,
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (applicationId) => cancelCtoApplicationRequest(applicationId),
+    onSuccess: (payload) => {
+      toast.success("Application cancelled.");
+
+      const updatedApp = payload?.application ?? payload?.data ?? payload;
+      if (updatedApp?._id && selectedApp?._id === updatedApp._id) {
+        setSelectedApp(updatedApp);
+      }
+
+      closeCancelModal();
+
+      queryClient.invalidateQueries({ queryKey: ["ctoApplications"] });
+      queryClient.invalidateQueries({ queryKey: ["myCtoBalanceHours"] });
+
+      queryClient.refetchQueries({ queryKey: ["ctoApplications"] });
+      queryClient.refetchQueries({ queryKey: ["myCtoBalanceHours"] });
+
+      refetch();
+      refetchBalance();
+    },
+    onError: (err) => toast.error(err?.message || "Failed to cancel request."),
   });
 
   const applications = useMemo(() => data?.data || [], [data]);
@@ -305,6 +490,7 @@ const MyCtoApplications = () => {
 
   const isFiltered = statusFilter !== "" || searchFilter !== "";
 
+  // same tab factory as before
   const statusTabs = (statusCounts = {}) => [
     {
       id: "",
@@ -334,6 +520,13 @@ const MyCtoApplications = () => {
       count: statusCounts.REJECTED || 0,
       activeColor: "bg-rose-100 text-rose-700 border-rose-200",
     },
+    {
+      id: "CANCELLED",
+      label: "Cancelled",
+      icon: Ban,
+      count: statusCounts.CANCELLED || 0,
+      activeColor: "bg-slate-100 text-slate-700 border-slate-200",
+    },
   ];
 
   const formatSubmitted = (iso) =>
@@ -361,13 +554,12 @@ const MyCtoApplications = () => {
     data?.totals?.totalRemainingHours ??
     data?.totals?.remainingHours ??
     creditSummaryData?.totals?.totalRemainingHours ??
-    creditSummaryData?.totals?.totalRemainingHours ??
     null;
 
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
-      <div className="pt-2 pb-3 sm:pb-6 px-1">
+      <div className="pt-2 pb-3 md:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <Breadcrumbs rootLabel="home" rootTo="/app" />
@@ -397,17 +589,18 @@ const MyCtoApplications = () => {
 
       {/* MAIN */}
       <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* TOOLBAR */}
+        {/* TOOLBAR (✅ copied layout from CtoCreditHistory) */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               {statusTabs(data?.statusCounts || {}).map((tab) => {
                 const isActive = statusFilter === tab.id;
                 const Icon = tab.icon;
 
                 return (
                   <button
-                    key={tab.id}
+                    type="button"
+                    key={tab.id || "all-status"}
                     onClick={() => {
                       setStatusFilter(tab.id);
                       setPage(1);
@@ -419,7 +612,6 @@ const MyCtoApplications = () => {
                           : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                       }`}
                     aria-pressed={isActive}
-                    type="button"
                   >
                     <Icon className="w-3.5 h-3.5" />
                     <span>{tab.label}</span>
@@ -438,30 +630,30 @@ const MyCtoApplications = () => {
               })}
             </div>
 
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
+            <div className="flex items-center gap-3 w-full lg:w-auto">
+              <div className="relative flex-1 lg:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by memo..."
+                  placeholder="Search memo..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                 />
                 {searchInput && (
                   <button
+                    type="button"
                     onClick={() => setSearchInput("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear search"
                     title="Clear"
-                    type="button"
                   >
                     <RotateCcw size={14} />
                   </button>
                 )}
               </div>
 
-              <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
+              <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-gray-200">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Show
                 </span>
@@ -481,7 +673,7 @@ const MyCtoApplications = () => {
                 </select>
               </div>
 
-              <div className="md:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
+              <div className="lg:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
                 <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Rows
                 </span>
@@ -516,10 +708,11 @@ const MyCtoApplications = () => {
                   </span>
                 )}
               </div>
+
               <button
-                onClick={handleResetFilters}
-                className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase"
                 type="button"
+                onClick={handleResetFilters}
+                className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
               >
                 <RotateCcw size={10} /> Reset
               </button>
@@ -553,8 +746,96 @@ const MyCtoApplications = () => {
             </div>
           ) : (
             <>
-              {/* DESKTOP TABLE (unchanged) */}
-              <div className="hidden md:block w-full align-middle">
+              {/* ✅ Mobile: cards */}
+              <div className="block md:hidden p-4">
+                <div className="space-y-3">
+                  {isLoading
+                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                        >
+                          <Skeleton height={18} />
+                          <div className="mt-3">
+                            <Skeleton height={12} count={2} />
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <Skeleton height={52} />
+                            <Skeleton height={52} />
+                          </div>
+                          <div className="mt-4">
+                            <Skeleton height={40} />
+                          </div>
+                        </div>
+                      ))
+                    : applications.map((app) => {
+                        const cancelling =
+                          cancelMutation.isPending &&
+                          cancelMutation.variables === app._id;
+
+                        return (
+                          <ApplicationCard
+                            key={app._id}
+                            app={app}
+                            leftStripClassName={getStatusColor(
+                              app.overallStatus,
+                            )}
+                            cancelling={cancelling}
+                            onViewDetails={() => setSelectedApp(app)}
+                            onViewMemos={() => openMemoModal(app.memo)}
+                            onCancel={() => openCancelModal(app)}
+                          />
+                        );
+                      })}
+                </div>
+              </div>
+
+              {/* ✅ Tablet: 2 cards per row */}
+              <div className="hidden md:block lg:hidden p-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {isLoading
+                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                        >
+                          <Skeleton height={18} />
+                          <div className="mt-3">
+                            <Skeleton height={12} count={2} />
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <Skeleton height={52} />
+                            <Skeleton height={52} />
+                          </div>
+                          <div className="mt-4">
+                            <Skeleton height={40} />
+                          </div>
+                        </div>
+                      ))
+                    : applications.map((app) => {
+                        const cancelling =
+                          cancelMutation.isPending &&
+                          cancelMutation.variables === app._id;
+
+                        return (
+                          <ApplicationCard
+                            key={app._id}
+                            app={app}
+                            leftStripClassName={getStatusColor(
+                              app.overallStatus,
+                            )}
+                            cancelling={cancelling}
+                            onViewDetails={() => setSelectedApp(app)}
+                            onViewMemos={() => openMemoModal(app.memo)}
+                            onCancel={() => openCancelModal(app)}
+                          />
+                        );
+                      })}
+                </div>
+              </div>
+
+              {/* ✅ Desktop: table ONLY at lg+ */}
+              <div className="hidden lg:block w-full align-middle">
                 <table className="w-full text-left">
                   <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
                     <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
@@ -639,6 +920,11 @@ const MyCtoApplications = () => {
                                   app={app}
                                   onViewDetails={() => setSelectedApp(app)}
                                   onViewMemos={() => openMemoModal(app.memo)}
+                                  onCancel={() => openCancelModal(app)}
+                                  cancelling={
+                                    cancelMutation.isPending &&
+                                    cancelMutation.variables === app._id
+                                  }
                                 />
                               </td>
                             </tr>
@@ -646,101 +932,6 @@ const MyCtoApplications = () => {
                         })}
                   </tbody>
                 </table>
-              </div>
-
-              {/* ✅ MOBILE CARDS with LEFT STATUS COLOR STRIP */}
-              <div className="md:hidden flex flex-col p-3 gap-3 bg-gray-50">
-                {isLoading
-                  ? [...Array(5)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3"
-                      >
-                        <Skeleton count={3} />
-                      </div>
-                    ))
-                  : applications.map((app) => (
-                      <div
-                        key={app._id}
-                        onClick={() => setSelectedApp(app)}
-                        className={[
-                          "bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)]",
-                          "border-y border-r border-gray-100 overflow-hidden",
-                          "active:scale-[0.99] transition-transform",
-                          getStatusColor(app.overallStatus), // ✅ left strip here
-                        ].join(" ")}
-                        role="button"
-                        tabIndex={0}
-                      >
-                        <div className="px-4 py-3 flex justify-between items-center border-b border-gray-50">
-                          <span className="text-xs font-mono text-gray-400">
-                            #{app._id ? app._id.slice(-6).toUpperCase() : "-"}
-                          </span>
-                          <StatusBadge status={app.overallStatus} />
-                        </div>
-
-                        <div className="p-4 space-y-4">
-                          <div>
-                            <h4 className="text-sm font-bold text-gray-900 mb-1">
-                              {Array.isArray(app.memo) && app.memo.length
-                                ? app.memo
-                                    .map((m) => m?.memoId?.memoNo)
-                                    .filter(Boolean)
-                                    .join(", ")
-                                : "No Memo Reference"}
-                            </h4>
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                              <Clock size={12} /> Filed on{" "}
-                              {new Date(app.createdAt).toLocaleDateString()}
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-gray-100">
-                            <div className="flex-1">
-                              <span className="block text-[10px] uppercase font-bold text-gray-400">
-                                Total Hours
-                              </span>
-                              <span className="text-sm font-bold text-gray-900">
-                                {app.requestedHours} hrs
-                              </span>
-                            </div>
-                            <div className="w-px h-6 bg-gray-200" />
-                            <div className="flex-1 pl-2">
-                              <span className="block text-[10px] uppercase font-bold text-gray-400">
-                                Dates
-                              </span>
-                              <span className="text-xs font-medium text-gray-700 truncate block">
-                                {app.inclusiveDates?.length || 0} day(s)
-                                selected
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openMemoModal(app.memo);
-                            }}
-                            className="py-3 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2"
-                            type="button"
-                          >
-                            <FileText size={14} /> Memos
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedApp(app);
-                            }}
-                            className="py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
-                            type="button"
-                          >
-                            View Details <ArrowRight size={14} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
               </div>
             </>
           )}
@@ -770,6 +961,67 @@ const MyCtoApplications = () => {
         </Modal>
       )}
 
+      {/* Cancel Confirm Modal */}
+      <Modal
+        isOpen={cancelModal.isOpen}
+        onClose={closeCancelModal}
+        title="Cancel CTO Application"
+        maxWidth="max-w-lg"
+        preventCloseWhenBusy={true}
+        isBusy={cancelMutation.isPending}
+        action={{
+          show: true,
+          variant: "cancel",
+          label: cancelMutation.isPending ? "Cancelling..." : "Yes, Cancel",
+          onClick: async () => {
+            const app = cancelModal.app;
+            if (!app?._id) return;
+
+            const status = String(app?.overallStatus || "").toUpperCase();
+            if (status !== "PENDING") {
+              toast.error("Only PENDING applications can be cancelled.");
+              closeCancelModal();
+              return;
+            }
+
+            await cancelMutation.mutateAsync(app._id);
+          },
+          disabled: cancelMutation.isPending,
+        }}
+      >
+        <div className="p-2">
+          <div className="mb-5 flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="mt-0.5 p-1.5 bg-white rounded-lg border border-slate-200 shadow-sm text-slate-400">
+              <Info size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                You are about to cancel this request
+              </p>
+              <p className="text-sm font-bold text-slate-900 break-words">
+                Ref:{" "}
+                {cancelModal.app?._id
+                  ? `#${cancelModal.app._id.slice(-6).toUpperCase()}`
+                  : "-"}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-center py-2">
+            <div className="mx-auto h-20 w-20 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-4 border-4 border-rose-100/50 shadow-inner">
+              <Ban size={40} strokeWidth={3} />
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900">
+              Are you sure you want to cancel this CTO application?
+            </h2>
+            <p className="text-sm text-slate-500 mt-2">
+              This will stop the approval workflow and update your balances
+              accordingly.
+            </p>
+          </div>
+        </div>
+      </Modal>
+
       {/* Form Modal */}
       <Modal
         isOpen={isFormModalOpen}
@@ -784,6 +1036,7 @@ const MyCtoApplications = () => {
             onSuccess={() => {
               setIsFormModalOpen(false);
               refetch();
+              refetchBalance();
             }}
           />
         </div>

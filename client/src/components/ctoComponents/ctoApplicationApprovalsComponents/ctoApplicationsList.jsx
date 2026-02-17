@@ -1,5 +1,5 @@
 // ctoApplicationsList.jsx
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -12,6 +12,7 @@ import {
   XCircle,
   AlertCircle,
   LayoutGrid,
+  Ban,
 } from "lucide-react";
 import Skeleton from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -33,7 +34,6 @@ function useDebounce(value, delay) {
 
 /* ================================
    HOOK: MEDIA QUERY (xl and up)
-   - We only auto-navigate on xl screens (2-pane layout)
 ================================ */
 function useIsXlUp() {
   const [isXlUp, setIsXlUp] = useState(() => {
@@ -60,14 +60,14 @@ function useIsXlUp() {
 }
 
 /* ================================
-   PAGINATION (same Next/Prev UI as your basis)
+   PAGINATION
 ================================ */
 const CompactPagination = ({
   page,
   totalPages,
-  total, // can be undefined
-  startItem, // can be null
-  endItem, // can be null
+  total,
+  startItem,
+  endItem,
   onPrev,
   onNext,
   label = "items",
@@ -76,7 +76,6 @@ const CompactPagination = ({
 
   return (
     <div className="px-4 py-3 border-t border-neutral-100 bg-neutral-50/50">
-      {/* Mobile */}
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
           onClick={onPrev}
@@ -110,7 +109,6 @@ const CompactPagination = ({
         </button>
       </div>
 
-      {/* Desktop */}
       <div className="hidden md:flex items-center justify-between gap-4">
         <div className="text-xs text-neutral-500 font-medium">
           {hasTotal ? (
@@ -176,31 +174,50 @@ const CtoApplicationsList = () => {
 
   const debouncedSearch = useDebounce(searchTerm, 450);
 
-  const { data, isLoading, isError, isFetching } = useQuery({
-    queryKey: ["ctoApplications", debouncedSearch, page, limit, statusFilter],
+  const { data, isLoading, isError } = useQuery({
+    queryKey: [
+      "ctoApplicationsApprovals",
+      String(admin?.id || ""),
+      debouncedSearch,
+      page,
+      limit,
+      statusFilter,
+    ],
     queryFn: () =>
       fetchMyCtoApplicationsApprovals({
         search: debouncedSearch,
         page,
         limit,
         status: statusFilter || undefined,
-        // sort removed
       }),
     placeholderData: keepPreviousData,
     staleTime: 1000 * 60 * 2,
   });
 
-  // Auto navigate to first item ONLY on xl screens (2-pane)
+  const statusCounts = data?.statusCounts || {};
+
+  const computedTotalCount = useMemo(() => {
+    if (typeof statusCounts?.total === "number") return statusCounts.total;
+    return ["PENDING", "APPROVED", "REJECTED", "CANCELLED"].reduce(
+      (sum, k) => sum + (Number(statusCounts?.[k]) || 0),
+      0,
+    );
+  }, [statusCounts]);
+
+  const getCountForTab = (id) => {
+    if (id === "") return computedTotalCount;
+    return Number(statusCounts?.[id]) || 0;
+  };
+
   const hasNavigatedRef = useRef(false);
   useEffect(() => {
-    if (!isXlUp) return; // IMPORTANT: do not auto-open on mobile/tablet
+    if (!isXlUp) return;
     if (!hasNavigatedRef.current && data?.data?.length > 0 && !selectedId) {
       navigate(`/app/cto-approvals/${data.data[0]._id}`, { replace: true });
       hasNavigatedRef.current = true;
     }
   }, [data, selectedId, navigate, isXlUp]);
 
-  // Reset page on filters/limit
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter, limit]);
@@ -211,13 +228,14 @@ const CtoApplicationsList = () => {
     1,
   );
 
-  // Try to infer a total if backend provides one
   const total =
     typeof data?.total === "number"
       ? data.total
       : typeof data?.pagination?.total === "number"
         ? data.pagination.total
-        : undefined;
+        : typeof computedTotalCount === "number"
+          ? computedTotalCount
+          : undefined;
 
   const startItem =
     typeof total === "number"
@@ -258,6 +276,12 @@ const CtoApplicationsList = () => {
       icon: XCircle,
       activeColor: "bg-rose-100 text-rose-700 border-rose-200",
     },
+    {
+      id: "CANCELLED",
+      label: "Cancelled",
+      icon: Ban,
+      activeColor: "bg-neutral-200 text-neutral-800 border-neutral-300",
+    },
   ];
 
   if (isError) {
@@ -270,25 +294,32 @@ const CtoApplicationsList = () => {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-white rounded-xl border border-neutral-200 shadow-sm overflow-hidden min-w-0">
-      {/* HEADER */}
       <div className="px-4 py-3 border-b border-neutral-100 bg-neutral-50/50">
-        <h1 className="text-lg font-bold text-neutral-800">CTO Requests</h1>
-        <p className="text-xs text-neutral-500">Review and approve time off</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-bold text-neutral-800">CTO Requests</h1>
+            <p className="text-xs text-neutral-500">
+              Review and approve time off
+            </p>
+          </div>
+
+          <div className="text-right">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-neutral-400">
+              Total
+            </div>
+            <div className="text-sm font-extrabold text-neutral-800">
+              {isLoading ? <Skeleton width={40} /> : computedTotalCount}
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* STATUS FILTER PILLS (keep concept) */}
       <div className="px-3 pt-2 bg-white">
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide no-scrollbar">
           {tabs.map((tab) => {
             const isActive = statusFilter === tab.id;
-
-            const count =
-              tab.id === ""
-                ? Object.values(data?.statusCounts || {}).reduce(
-                    (a, b) => a + b,
-                    0,
-                  )
-                : data?.statusCounts?.[tab.id] || 0;
+            const Icon = tab.icon;
+            const count = getCountForTab(tab.id);
 
             return (
               <button
@@ -301,12 +332,17 @@ const CtoApplicationsList = () => {
                       : "bg-white text-neutral-500 border-neutral-200 hover:bg-neutral-50"
                   }`}
               >
+                {/* <Icon className="w-3.5 h-3.5" /> */}
                 <span className="text-[10px] font-bold uppercase tracking-wider">
                   {tab.label}
                 </span>
                 <span
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-black leading-none 
-                    ${isActive ? "bg-white/50" : "bg-neutral-100 text-neutral-600"}`}
+                  className={`px-1 py-0.5 rounded text-[9px] font-black leading-none 
+                    ${
+                      isActive
+                        ? "bg-white/50"
+                        : "bg-neutral-100 text-neutral-600"
+                    }`}
                 >
                   {count}
                 </span>
@@ -316,10 +352,8 @@ const CtoApplicationsList = () => {
         </div>
       </div>
 
-      {/* SEARCH + SHOW (top) */}
       <div className="flex flex-col gap-2 px-3 py-2 border-b border-neutral-100 bg-white">
         <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-          {/* Search */}
           <div className="relative flex-1 group min-w-0">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400 group-focus-within:text-blue-600 transition-colors" />
             <input
@@ -343,7 +377,6 @@ const CtoApplicationsList = () => {
             )}
           </div>
 
-          {/* Show */}
           <div className="flex items-center justify-between sm:justify-end gap-2 sm:pl-2 sm:border-l sm:border-neutral-200">
             <span className="text-[10px] font-bold text-neutral-400 uppercase tracking-wider">
               Show
@@ -364,15 +397,8 @@ const CtoApplicationsList = () => {
             </select>
           </div>
         </div>
-
-        {/* {isFetching && (
-          // <div className="text-[11px] text-neutral-400 font-medium px-1">
-          //   Updating…
-          // </div>
-        )} */}
       </div>
 
-      {/* LIST */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2">
         <ul className="flex flex-col gap-1">
           {isLoading ? (
@@ -386,9 +412,12 @@ const CtoApplicationsList = () => {
               const isActive = selectedId === app._id;
               const initials = `${app.employee?.firstName?.[0] || ""}${app.employee?.lastName?.[0] || ""}`;
 
-              const status =
-                app.approvals?.find((step) => step.approver?._id === admin?.id)
-                  ?.status || app.overallStatus;
+              const myStep = app.approvals?.find(
+                (step) =>
+                  String(step?.approver?._id || "") === String(admin?.id || ""),
+              );
+
+              const status = myStep?.status || app.overallStatus;
 
               return (
                 <li
@@ -403,7 +432,11 @@ const CtoApplicationsList = () => {
                 >
                   <div
                     className={`h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full text-sm font-bold shadow-sm transition-colors
-                      ${isActive ? "bg-blue-600 text-white" : "bg-neutral-100 text-neutral-600"}`}
+                      ${
+                        isActive
+                          ? "bg-blue-600 text-white"
+                          : "bg-neutral-100 text-neutral-600"
+                      }`}
                   >
                     {initials || "?"}
                   </div>
@@ -457,7 +490,6 @@ const CtoApplicationsList = () => {
         </ul>
       </div>
 
-      {/* PAGINATION */}
       <CompactPagination
         page={page}
         totalPages={totalPages}

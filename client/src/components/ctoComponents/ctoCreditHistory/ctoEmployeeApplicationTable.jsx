@@ -6,7 +6,6 @@ import React, {
   useState,
   useCallback,
 } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
 import FilterSelect from "../../filterSelect";
 import Modal from "../../modal";
@@ -24,12 +23,12 @@ import {
   Eye,
   Calendar,
   Clock,
-  ArrowRight,
   LayoutGrid,
   AlertCircle,
   CheckCircle2,
   XCircle,
   Filter,
+  Layers,
 } from "lucide-react";
 
 /* =========================
@@ -73,15 +72,17 @@ const memoLabelFromApp = (app) => {
   return labels.length ? labels.join(", ") : "No Memo Attached";
 };
 
-// ✅ Left status strip for mobile cards (copied pattern)
+// ✅ Left status strip for cards (MyCtoApplications basis)
 const getStatusColor = (status) => {
-  switch (status) {
+  switch (String(status || "").toUpperCase()) {
     case "APPROVED":
       return "border-l-4 border-l-emerald-500";
     case "REJECTED":
       return "border-l-4 border-l-rose-500";
     case "PENDING":
       return "border-l-4 border-l-amber-500";
+    case "CANCELLED":
+      return "border-l-4 border-l-slate-400";
     default:
       return "border-l-4 border-l-slate-300";
   }
@@ -190,6 +191,104 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
 };
 
 /* =========================
+   APPLICATION CARD (COPY from MyCtoApplications basis)
+   - Mobile: list
+   - Tablet: grid-cols-2
+========================= */
+const ApplicationCard = ({
+  app,
+  leftStripClassName,
+  onViewDetails,
+  onViewMemos,
+}) => {
+  const memoLabel = memoLabelFromApp(app);
+
+  const submittedLabel = app?.createdAt
+    ? new Date(app.createdAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "-";
+
+  const coveredCount = Array.isArray(app?.inclusiveDates)
+    ? app.inclusiveDates.length
+    : 0;
+
+  return (
+    <div
+      className={`bg-white rounded-xl shadow-sm overflow-hidden border-y border-r border-gray-200 ${leftStripClassName}`}
+    >
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-gray-900 truncate">
+                {memoLabel || "No Memo Reference"}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-center gap-2 text-xs text-gray-600">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <span className="truncate">{submittedLabel}</span>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2 flex-none">
+            <StatusBadge status={app?.overallStatus} />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <Clock className="w-3.5 h-3.5" /> Hours
+            </div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">
+              {typeof app?.requestedHours === "number"
+                ? `${app.requestedHours}h`
+                : `${Number(app?.requestedHours || 0)}h`}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">
+              <Layers className="w-3.5 h-3.5" /> Covered
+            </div>
+            <div className="mt-1 text-sm font-semibold text-gray-900">
+              {coveredCount} day(s)
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t border-gray-100 bg-white p-3">
+        <div className="grid gap-2 grid-cols-2">
+          <button
+            onClick={onViewMemos}
+            disabled={!app?.memo || app.memo.length === 0}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            type="button"
+          >
+            <FileText className="w-4 h-4" />
+            Memos
+          </button>
+
+          <button
+            onClick={onViewDetails}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600"
+            type="button"
+          >
+            <Eye className="w-4 h-4" />
+            Details
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* =========================
    PAGINATION (copied style)
 ========================= */
 const CompactPagination = ({
@@ -203,7 +302,7 @@ const CompactPagination = ({
   label = "items",
   disabled = false,
 }) => (
-  <div className="px-4 md:px-6 pt-3 border-t border-gray-100 bg-white">
+  <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
     <div className="flex md:hidden items-center justify-between gap-3">
       <button
         onClick={onPrev}
@@ -270,7 +369,10 @@ const CompactPagination = ({
 );
 
 /* =========================
-   MAIN COMPONENT (copied content/design from MyCtoApplications)
+   MAIN COMPONENT
+   ✅ Desktop: table ONLY at lg+ (MyCtoApplications)
+   ✅ Mobile: cards list
+   ✅ Tablet: cards grid-cols-2
 ========================= */
 const ApplicationCtoTable = ({
   applications = [],
@@ -310,7 +412,7 @@ const ApplicationCtoTable = ({
         ? true
         : String(memoLabelFromApp(app) || "")
             .toLowerCase()
-            .includes(search.toLowerCase());
+            .includes(String(search || "").toLowerCase());
 
       return matchesStatus && matchesSearch;
     });
@@ -365,11 +467,11 @@ const ApplicationCtoTable = ({
 
   return (
     <div className="w-full flex-1 flex h-full flex-col bg-white overflow-hidden">
-      {/* TOOLBAR (copied style) */}
+      {/* TOOLBAR (keep exactly) */}
       <div className="py-2 border-b border-gray-100 bg-white space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           {/* Status Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             {tabs.map((tab) => {
               const isActive = status === tab.id;
               const Icon = tab.icon;
@@ -412,7 +514,7 @@ const ApplicationCtoTable = ({
                 placeholder="Search memo..."
                 value={search}
                 onChange={(e) => onSearchChange?.(e.target.value)}
-                className="w-full h-8 pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
               />
               {search && (
                 <button
@@ -471,7 +573,7 @@ const ApplicationCtoTable = ({
             </div>
             <button
               onClick={handleResetFilters}
-              className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase"
+              className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
               type="button"
             >
               <RotateCcw size={10} /> Reset
@@ -506,8 +608,76 @@ const ApplicationCtoTable = ({
           </div>
         ) : (
           <>
-            {/* DESKTOP TABLE (copied columns + action menu) */}
-            <div className="hidden md:block w-full align-middle">
+            {/* ✅ Mobile: cards (MyCtoApplications basis) */}
+            <div className="block md:hidden p-4">
+              <div className="space-y-3">
+                {isLoading
+                  ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                      >
+                        <Skeleton height={18} />
+                        <div className="mt-3">
+                          <Skeleton height={12} count={2} />
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Skeleton height={52} />
+                          <Skeleton height={52} />
+                        </div>
+                        <div className="mt-4">
+                          <Skeleton height={40} />
+                        </div>
+                      </div>
+                    ))
+                  : filteredApps.map((app) => (
+                      <ApplicationCard
+                        key={app._id}
+                        app={app}
+                        leftStripClassName={getStatusColor(app?.overallStatus)}
+                        onViewDetails={() => setSelectedApp(app)}
+                        onViewMemos={() => openMemoModal(app?.memo || [])}
+                      />
+                    ))}
+              </div>
+            </div>
+
+            {/* ✅ Tablet: 2 cards per row (MyCtoApplications basis) */}
+            <div className="hidden md:block lg:hidden p-4">
+              <div className="grid grid-cols-2 gap-3">
+                {isLoading
+                  ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                      >
+                        <Skeleton height={18} />
+                        <div className="mt-3">
+                          <Skeleton height={12} count={2} />
+                        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <Skeleton height={52} />
+                          <Skeleton height={52} />
+                        </div>
+                        <div className="mt-4">
+                          <Skeleton height={40} />
+                        </div>
+                      </div>
+                    ))
+                  : filteredApps.map((app) => (
+                      <ApplicationCard
+                        key={app._id}
+                        app={app}
+                        leftStripClassName={getStatusColor(app?.overallStatus)}
+                        onViewDetails={() => setSelectedApp(app)}
+                        onViewMemos={() => openMemoModal(app?.memo || [])}
+                      />
+                    ))}
+              </div>
+            </div>
+
+            {/* ✅ Desktop: table ONLY at lg+ (MyCtoApplications basis) */}
+            <div className="hidden lg:block w-full align-middle">
               <table className="w-full text-left">
                 <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
                   <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
@@ -595,97 +765,6 @@ const ApplicationCtoTable = ({
                 </tbody>
               </table>
             </div>
-
-            {/* MOBILE CARDS (copied layout + actions row) */}
-            <div className="md:hidden flex flex-col p-3 gap-3 bg-gray-50">
-              {isLoading
-                ? [...Array(5)].map((_, i) => (
-                    <div
-                      key={i}
-                      className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 space-y-3"
-                    >
-                      <Skeleton count={3} />
-                    </div>
-                  ))
-                : filteredApps.map((app) => (
-                    <div
-                      key={app._id}
-                      onClick={() => setSelectedApp(app)}
-                      className={[
-                        "bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)]",
-                        "border-y border-r border-gray-100 overflow-hidden",
-                        "active:scale-[0.99] transition-transform",
-                        getStatusColor(app?.overallStatus),
-                      ].join(" ")}
-                      role="button"
-                      tabIndex={0}
-                    >
-                      <div className="px-4 py-3 flex justify-between items-center border-b border-gray-50">
-                        <span className="text-xs font-mono text-gray-400">
-                          #{app?._id ? app._id.slice(-6).toUpperCase() : "-"}
-                        </span>
-                        <StatusBadge status={app?.overallStatus} />
-                      </div>
-
-                      <div className="p-4 space-y-4">
-                        <div>
-                          <h4 className="text-sm font-bold text-gray-900 mb-1">
-                            {memoLabelFromApp(app)}
-                          </h4>
-                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                            <Clock size={12} /> Filed on{" "}
-                            {app?.createdAt
-                              ? new Date(app.createdAt).toLocaleDateString()
-                              : "-"}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-gray-100">
-                          <div className="flex-1">
-                            <span className="block text-[10px] uppercase font-bold text-gray-400">
-                              Total Hours
-                            </span>
-                            <span className="text-sm font-bold text-gray-900">
-                              {app?.requestedHours ?? 0} hrs
-                            </span>
-                          </div>
-                          <div className="w-px h-6 bg-gray-200" />
-                          <div className="flex-1 pl-2">
-                            <span className="block text-[10px] uppercase font-bold text-gray-400">
-                              Dates
-                            </span>
-                            <span className="text-xs font-medium text-gray-700 truncate block">
-                              {app?.inclusiveDates?.length || 0} day(s) selected
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openMemoModal(app?.memo || []);
-                          }}
-                          className="py-3 text-xs font-bold text-gray-600 hover:bg-gray-50 flex items-center justify-center gap-2"
-                          type="button"
-                        >
-                          <FileText size={14} /> Memos
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedApp(app);
-                          }}
-                          className="py-3 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
-                          type="button"
-                        >
-                          View Details <ArrowRight size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-            </div>
           </>
         )}
       </div>
@@ -703,7 +782,7 @@ const ApplicationCtoTable = ({
         onNext={onNextPage}
       />
 
-      {/* DETAILS MODAL (copied behavior; safe fallback UI) */}
+      {/* DETAILS MODAL */}
       {selectedApp && (
         <Modal
           isOpen={!!selectedApp}

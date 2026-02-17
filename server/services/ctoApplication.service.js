@@ -6,6 +6,91 @@ const mongoose = require("mongoose");
 const sendEmail = require("../utils/sendEmail");
 const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
 
+/* =========================
+   Helpers
+========================= */
+const AUTO_CANCEL_REMARK_REJECT =
+  "Auto-cancelled: A previous approver rejected this request.";
+
+const AUTO_CANCEL_REMARK_EMPLOYEE =
+  "Auto-cancelled: The employee cancelled this request.";
+
+const populateApplicationById = async (applicationId) => {
+  const app = await CtoApplication.findById(applicationId)
+    .populate("employee", "firstName lastName position email employeeId")
+    .populate({
+      path: "approvals",
+      populate: {
+        path: "approver",
+        select: "firstName lastName position email",
+      },
+      options: { sort: { level: 1 } },
+    })
+    .populate("memo.memoId", "memoNo uploadedMemo duration totalHours");
+
+  // normalize memoId.uploadedMemo (if present)
+  if (app?.memo && Array.isArray(app.memo)) {
+    app.memo.forEach((m) => {
+      if (m?.memoId?.uploadedMemo) {
+        m.memoId.uploadedMemo = m.memoId.uploadedMemo.replace(/\\/g, "/");
+      }
+    });
+  }
+
+  return app;
+};
+
+/**
+ * Cancels all PENDING approval steps of a CTO application.
+ * Optionally cancels only those AFTER a certain level.
+ */
+const cancelApprovalSteps = async ({
+  applicationId,
+  approvalIds,
+  reason,
+  afterLevel = 0,
+}) => {
+  await ApprovalStep.updateMany(
+    {
+      _id: { $in: approvalIds },
+      status: "PENDING",
+      level: { $gt: afterLevel },
+      ctoApplication: applicationId,
+    },
+    {
+      $set: {
+        status: "CANCELLED",
+        remarks: reason,
+        reviewedAt: new Date(),
+      },
+    },
+  );
+};
+
+/**
+ * Restores reserved hours back to remaining hours for employee credits used.
+ */
+const restoreMemoHours = async ({ employeeId, memoItems }) => {
+  if (!memoItems?.length) return;
+
+  for (const m of memoItems) {
+    if (!m?.memoId || !m?.appliedHours) continue;
+
+    await CtoCredit.updateOne(
+      { _id: m.memoId, "employees.employee": employeeId },
+      {
+        $inc: {
+          "employees.$.reservedHours": -Number(m.appliedHours),
+          "employees.$.remainingHours": Number(m.appliedHours),
+        },
+      },
+    );
+  }
+};
+
+/* =========================
+   Services
+========================= */
 const addCtoApplicationService = async ({
   userId,
   requestedHours,
@@ -88,7 +173,6 @@ const addCtoApplicationService = async ({
     memoUsage.push({
       memoId: credit._id,
       uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"),
-      memoNo: credit.memoNo,
       appliedHours: input.appliedHours,
     });
 
@@ -131,39 +215,19 @@ const addCtoApplicationService = async ({
   await newApplication.save();
 
   // 7️⃣ Populate for frontend
-  const populatedApp = await CtoApplication.findById(newApplication._id)
-    .populate("employee", "firstName lastName position email")
-    .populate({
-      path: "approvals",
-      populate: {
-        path: "approver",
-        select: "firstName lastName position email",
-      },
-    })
-    .populate("memo.memoId", "memoNo uploadedMemo duration");
+  const populatedApp = await populateApplicationById(newApplication._id);
 
-  // Fix uploadedMemo paths
-  if (populatedApp.memo && Array.isArray(populatedApp.memo)) {
-    populatedApp.memo.forEach((m) => {
-      if (m.memoId?.uploadedMemo) {
-        m.memoId.uploadedMemo = m.memoId.uploadedMemo.replace(/\\/g, "/");
-      }
-    });
-  }
-
-  // 8️⃣ Notify FIRST approver only (best practice)
+  // 8️⃣ Notify FIRST approver only
   try {
     const firstApproval = approvalSteps.find((a) => a.level === 1);
     const approverUser = await Employee.findById(firstApproval.approver);
     const applicant = employee;
 
-    console.log(approverUser.email);
     if (approverUser?.email) {
       await sendEmail(
-        approverUser.email, // string
-        "CTO Approval Request", // subject
+        approverUser.email,
+        "CTO Approval Request",
         ctoApprovalEmail({
-          // html content
           approverName: `${approverUser.firstName} ${approverUser.lastName}`,
           employeeName: `${applicant.firstName} ${applicant.lastName}`,
           requestedHours,
@@ -178,6 +242,55 @@ const addCtoApplicationService = async ({
   }
 
   return populatedApp;
+};
+
+const cancelCtoApplicationService = async ({ userId, applicationId }) => {
+  if (!applicationId || !mongoose.Types.ObjectId.isValid(applicationId)) {
+    throw Object.assign(new Error("Invalid application ID."), { status: 400 });
+  }
+
+  const app = await CtoApplication.findById(applicationId);
+  if (!app)
+    throw Object.assign(new Error("Application not found."), { status: 404 });
+
+  // Only owner can cancel (adjust if you want admin override)
+  if (String(app.employee) !== String(userId)) {
+    throw Object.assign(
+      new Error("Not authorized to cancel this application."),
+      {
+        status: 403,
+      },
+    );
+  }
+
+  // Only pending can be cancelled
+  if (app.overallStatus !== "PENDING") {
+    throw Object.assign(
+      new Error("Only PENDING applications can be cancelled."),
+      { status: 400 },
+    );
+  }
+
+  // 1) Set application to CANCELLED
+  app.overallStatus = "CANCELLED";
+  await app.save();
+
+  // 2) Cancel all pending approval steps + auto remarks
+  await cancelApprovalSteps({
+    applicationId: app._id,
+    approvalIds: app.approvals || [],
+    reason: AUTO_CANCEL_REMARK_EMPLOYEE,
+    afterLevel: 0,
+  });
+
+  // 3) Restore memo hours (reserved -> remaining)
+  await restoreMemoHours({
+    employeeId: app.employee,
+    memoItems: app.memo || [],
+  });
+
+  // 4) Return populated
+  return populateApplicationById(app._id);
 };
 
 const getAllCtoApplicationsService = async (
@@ -202,6 +315,9 @@ const getAllCtoApplicationsService = async (
       $lte: new Date(filters.to),
     };
   }
+
+  // NOTE: This search won't match memoNo reliably because memoId is an ObjectId.
+  // Kept as-is (per your existing code).
   if (filters.search) {
     query["memo.memoId.memoNo"] = {
       $regex: filters.search,
@@ -260,13 +376,13 @@ const getAllCtoApplicationsService = async (
     },
   ]);
 
-  // Global total (ALL applications)
   const totalAll = await CtoApplication.countDocuments({});
 
   const statusCounts = {
     PENDING: 0,
     APPROVED: 0,
     REJECTED: 0,
+    CANCELLED: 0,
     total: totalAll,
   };
 
@@ -274,18 +390,15 @@ const getAllCtoApplicationsService = async (
     if (s._id) statusCounts[s._id] = s.count;
   });
 
-  // -----------------------------
-  // RESPONSE
-  // -----------------------------
   return {
     data: transformed,
     pagination: {
       page,
       limit,
-      total, // filtered total (table)
+      total,
       totalPages: Math.ceil(total / limit),
     },
-    statusCounts, // global counts (dashboard)
+    statusCounts,
   };
 };
 
@@ -306,17 +419,14 @@ const getCtoApplicationsByEmployeeService = async (
   limit = Math.min(parseInt(limit) || 20, 100);
   const skip = (page - 1) * limit;
 
-  // ---------- Build pipeline for the DATA (this one respects filters/search/pagination) ----------
   const pipeline = [{ $match: { employee: employeeObjectId } }];
 
-  // Apply status filter (if provided)
   if (filters.status) {
     pipeline.push({
       $match: { overallStatus: filters.status.toUpperCase() },
     });
   }
 
-  // Apply date range filter (if provided)
   if (filters.from && filters.to) {
     pipeline.push({
       $match: {
@@ -328,7 +438,6 @@ const getCtoApplicationsByEmployeeService = async (
     });
   }
 
-  // Lookup memo details (we keep this even if search is not present because we use memoDetails later)
   pipeline.push({
     $lookup: {
       from: "ctocredits",
@@ -342,6 +451,9 @@ const getCtoApplicationsByEmployeeService = async (
             memoNo: 1,
             status: 1,
             employees: 1,
+            uploadedMemo: 1,
+            duration: 1,
+            totalHours: 1,
           },
         },
         {
@@ -363,7 +475,6 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
-  // Apply search on memoNo (if provided)
   if (filters.search) {
     pipeline.push({
       $match: {
@@ -372,7 +483,6 @@ const getCtoApplicationsByEmployeeService = async (
     });
   }
 
-  // Lookup approvals with approver info
   pipeline.push({
     $lookup: {
       from: "approvalsteps",
@@ -392,32 +502,30 @@ const getCtoApplicationsByEmployeeService = async (
           $project: {
             level: 1,
             status: 1,
+            reviewedAt: 1,
+            remarks: 1,
             approver: {
               _id: "$approver._id",
               firstName: "$approver.firstName",
               lastName: "$approver.lastName",
               position: "$approver.position",
             },
-            remarks: 1,
           },
         },
+        { $sort: { level: 1 } },
       ],
       as: "approvals",
     },
   });
 
-  // Sort and paginate for data
   pipeline.push({ $sort: { createdAt: -1 } });
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: limit });
 
-  // ---------- Run aggregation to fetch paginated applications ----------
   let applications = await CtoApplication.aggregate(pipeline);
 
-  // Map memoDetails back to memo memoId (match by id to be safe)
   applications = applications.map((app) => {
     if (app.memo && Array.isArray(app.memo)) {
-      // make a lookup map for memoDetails by id string
       const memoMap = (app.memoDetails || []).reduce((acc, md) => {
         if (md && md._id) acc[md._id.toString()] = md;
         return acc;
@@ -430,13 +538,10 @@ const getCtoApplicationsByEmployeeService = async (
         };
       });
     }
-    // remove the helper field
     delete app.memoDetails;
     return app;
   });
 
-  // ---------- Total count for pagination (RESPECTS filters/search) ----------
-  // Build countPipeline by removing skip/limit/sort from the data pipeline
   const countPipeline = [
     { $match: { employee: employeeObjectId } },
     ...pipeline.filter(
@@ -448,8 +553,6 @@ const getCtoApplicationsByEmployeeService = async (
   const totalResult = await CtoApplication.aggregate(countPipeline);
   const total = totalResult[0]?.total || 0;
 
-  // ---------- Status counts (IGNORES filters/search/limit) ----------
-  // Only filter by employee so status counts are global for the employee
   const statusCountsAgg = await CtoApplication.aggregate([
     { $match: { employee: employeeObjectId } },
     {
@@ -460,8 +563,6 @@ const getCtoApplicationsByEmployeeService = async (
     },
   ]);
 
-  // Get total across all statuses (not limited/paginated/filtered)
-  // Using countDocuments is efficient and straightforward
   const totalAll = await CtoApplication.countDocuments({
     employee: employeeObjectId,
   });
@@ -470,6 +571,7 @@ const getCtoApplicationsByEmployeeService = async (
     PENDING: 0,
     APPROVED: 0,
     REJECTED: 0,
+    CANCELLED: 0,
     total: totalAll,
   };
 
@@ -477,21 +579,21 @@ const getCtoApplicationsByEmployeeService = async (
     if (s._id) statusCounts[s._id] = s.count;
   });
 
-  // ---------- Return payload ----------
   return {
     data: applications,
     pagination: {
       page,
       limit,
-      total, // <-- pagination total (RESPECTS filters/search)
+      total,
       totalPages: Math.ceil(total / limit),
     },
-    statusCounts, // <-- global counts (IGNORE filters/search/limit)
+    statusCounts,
   };
 };
 
 module.exports = {
   addCtoApplicationService,
+  cancelCtoApplicationService,
   getAllCtoApplicationsService,
   getCtoApplicationsByEmployeeService,
 };

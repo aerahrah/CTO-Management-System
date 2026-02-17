@@ -522,7 +522,7 @@ const CtoDashboard = () => {
               disabled={teamPendingApprovals === 0}
               onClick={() => {
                 if (teamPendingApprovals > 0)
-                  window.location.href = "/app/cto/approvals";
+                  window.location.href = "/app/cto-approvals";
               }}
               className={`w-full py-2.5 rounded-lg text-[11px] font-bold transition-all transform active:scale-95
                 ${
@@ -668,7 +668,7 @@ const CtoDashboard = () => {
                 subtitle={`Last ${myCtoSummary?.recentRequests?.length || 0} submissions`}
                 action={
                   <Link
-                    to={`/app/cto/apply/`}
+                    to={`/app/cto-apply/`}
                     className="flex-shrink-0 translate-x-1 group-hover:translate-x-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700 transition-all duration-200"
                   >
                     ({myCtoSummary?.totalRequests || 0}) View all my request
@@ -804,7 +804,7 @@ const PendingRequestItem = ({ request }) => {
       </div>
 
       <Link
-        to={`/app/cto/approvals/${request.id}`}
+        to={`/app/cto-approvals/${request.id}`}
         className="flex-shrink-0 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all duration-200"
       >
         Review

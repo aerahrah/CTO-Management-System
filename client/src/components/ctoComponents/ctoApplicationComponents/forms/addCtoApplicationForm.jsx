@@ -45,13 +45,16 @@ const isWeekendISO = (iso) => {
 
 const isFullISODate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 
+const requiredDaysFromHours = (hours) => {
+  const h = Number(hours || 0);
+  if (!Number.isFinite(h) || h <= 0) return 0;
+  return Math.ceil(h / 8);
+};
+
 /**
  * Lead-time rule:
  * "At least N working days in advance" means there must be N working days
  * between today (exclusive) and the selected date (exclusive).
- *
- * Example (today=16):
- *  N=1 => working day between is 17, so earliest selectable is 18.
  */
 const getMinSelectableDateISO = (leadTimeDays = 5) => {
   const lead = Number(leadTimeDays);
@@ -103,7 +106,8 @@ const validateDate = ({
   // while typing partial values, don't error-spam
   if (!isFullISODate(value)) return "";
 
-  if (!requestedHours) return "Please enter requested hours first.";
+  const rh = Number(requestedHours || 0);
+  if (!rh || rh <= 0) return "Please enter requested hours first.";
 
   if (value < minDate) return leadTimeMsg;
 
@@ -111,9 +115,12 @@ const validateDate = ({
 
   if (inclusiveDates.includes(value)) return "That date is already selected.";
 
-  const maxSelectableDates = Math.ceil(Number(requestedHours || 0) / 8);
-  if (inclusiveDates.length >= maxSelectableDates) {
-    return `You can only select up to ${maxSelectableDates} day(s) for ${requestedHours} hours.`;
+  // ✅ REQUIRED DAYS RULE: required dates = ceil(hours/8)
+  const requiredDays = requiredDaysFromHours(rh);
+
+  // If user already selected the required number of dates, stop adding more
+  if (requiredDays > 0 && inclusiveDates.length >= requiredDays) {
+    return `You must select exactly ${requiredDays} day(s) for ${rh} hours.`;
   }
 
   return "";
@@ -303,6 +310,11 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     return `Applications must be filed at least ${leadTimeDays} working day(s) in advance.`;
   }, [leadTimeDays]);
 
+  const requiredDays = useMemo(
+    () => requiredDaysFromHours(formData.requestedHours),
+    [formData.requestedHours],
+  );
+
   // If min date changes (settings load), drop any dates that become invalid
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
@@ -313,6 +325,21 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minDate]);
+
+  // ✅ If requiredDays decreases (hours changed), trim extra selected dates
+  useEffect(() => {
+    if (!requiredDays) return;
+    if (formData.inclusiveDates.length <= requiredDays) return;
+    setFormData((prev) => ({
+      ...prev,
+      inclusiveDates: prev.inclusiveDates.slice(0, requiredDays),
+    }));
+    showBanner(
+      "info",
+      `Selected dates were trimmed to ${requiredDays} day(s) based on requested hours.`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requiredDays]);
 
   // Re-validate currently typed date when rules change
   useEffect(() => {
@@ -428,7 +455,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     setDateError(err);
   };
 
-  // ✅ on commit (picker selection or finished typing) add date if valid; no toast per error
+  // ✅ on commit add date only if valid AND does not exceed requiredDays
   const handleDateCommit = (e) => {
     clearBanner();
     const v = e.target.value;
@@ -452,8 +479,16 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       return;
     }
 
-    if (err) {
-      // keep it inline; no toast
+    if (err) return;
+
+    const rh = Number(formData.requestedHours || 0);
+    const reqDays = requiredDaysFromHours(rh);
+
+    // ✅ hard guard (even if validateDate already caught it)
+    if (reqDays > 0 && formData.inclusiveDates.length >= reqDays) {
+      setDateError(
+        `You must select exactly ${reqDays} day(s) for ${rh} hours.`,
+      );
       return;
     }
 
@@ -524,8 +559,19 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       new Set((formData.inclusiveDates || []).filter(Boolean)),
     ).sort();
 
-    if (inclusiveDates.length === 0) {
-      return { ok: false, message: "Please select inclusive dates." };
+    // ✅ REQUIRED DAYS RULE (FIX):
+    // must select EXACTLY ceil(requestedHours/8) days
+    const reqDays = requiredDaysFromHours(requestedHours);
+
+    if (reqDays <= 0) {
+      return { ok: false, message: "Please enter requested hours." };
+    }
+
+    if (inclusiveDates.length !== reqDays) {
+      return {
+        ok: false,
+        message: `Please select exactly ${reqDays} date(s) for ${requestedHours} hour(s).`,
+      };
     }
 
     if (inclusiveDates.some((d) => d < minDate)) {
@@ -536,14 +582,6 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       return {
         ok: false,
         message: "One or more selected dates are not working days (Mon–Fri).",
-      };
-    }
-
-    const maxSelectableDates = Math.ceil(requestedHours / 8);
-    if (inclusiveDates.length > maxSelectableDates) {
-      return {
-        ok: false,
-        message: `Too many dates selected for ${requestedHours} hours (max ${maxSelectableDates}).`,
       };
     }
 
@@ -595,7 +633,6 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       successLatchRef.current = true;
       setSuccessLatchUI(true);
 
-      // ✅ keep toast only for real action success
       toast.success("CTO application submitted successfully!");
 
       queryClient.invalidateQueries({ queryKey: ["ctoApplications"] });
@@ -603,7 +640,6 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
       onSuccess?.();
     } catch (err) {
-      // ✅ keep toast optional; using banner for the UI feedback
       const msg = err?.response?.data?.error || "Failed to submit";
       showBanner("error", msg);
       toast.error(msg);
@@ -614,8 +650,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     }
   };
 
-  const maxDatesPossible =
-    Math.ceil(Number(formData.requestedHours || 0) / 8) || 0;
+  const maxDatesPossible = requiredDays;
 
   const progressPercentage =
     maxDatesPossible > 0
@@ -689,6 +724,19 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                 disabled={isBusy}
                 className="w-full h-11 sm:h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50"
               />
+              {!!Number(formData.requestedHours || 0) && requiredDays > 0 ? (
+                <div className="text-[10px] text-gray-400 leading-relaxed">
+                  Required dates for{" "}
+                  <span className="font-semibold text-gray-600">
+                    {Number(formData.requestedHours || 0)}
+                  </span>{" "}
+                  hour(s):{" "}
+                  <span className="font-semibold text-gray-600">
+                    {requiredDays}
+                  </span>{" "}
+                  day(s)
+                </div>
+              ) : null}
             </div>
 
             {/* Date picker - inline error while typing */}
@@ -741,7 +789,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-1">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                   Dates Selected ({formData.inclusiveDates.length} /{" "}
-                  {Math.ceil(Number(formData.requestedHours || 0) / 8) || 0})
+                  {requiredDays})
                 </span>
                 <span className="text-[10px] text-gray-400 italic">
                   {leadTimeLabel}
@@ -780,6 +828,15 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                   ))
                 )}
               </div>
+
+              {requiredDays > 0 &&
+              formData.inclusiveDates.length > 0 &&
+              formData.inclusiveDates.length !== requiredDays ? (
+                <div className="text-[11px] text-rose-700 font-medium">
+                  Please select exactly {requiredDays} date(s) for{" "}
+                  {Number(formData.requestedHours || 0)} hour(s).
+                </div>
+              ) : null}
             </div>
           )}
 

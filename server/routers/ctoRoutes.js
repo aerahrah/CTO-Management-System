@@ -1,6 +1,15 @@
 const express = require("express");
 const router = express.Router();
+
+const uploadCtoMemo = require("../middlewares/uploadCtoMemo.middleware.js");
 const {
+  authenticateToken,
+  authorizeRoles,
+} = require("../middlewares/authMiddleware.js");
+
+// --- CONTROLLERS ---
+const {
+  // Approver-side
   getApproverOptions,
   getPendingCountForApproverController,
   getCtoApplicationsForApprover,
@@ -8,161 +17,133 @@ const {
   approveCtoApplication,
   rejectCtoApplication,
 } = require("../controllers/ctoApplicationApproverController.js");
+
 const {
+  // Credits
   addCtoCreditRequest,
   rollbackCreditedRequest,
-  getRecentCreditRequests,
   getAllCreditRequests,
   getEmployeeDetails,
   getEmployeeCredits,
-  // approveOrRejectCredit,
-  // cancelCreditRequest,
-  // getEmployeeById,
 } = require("../controllers/ctoCreditController.js");
 
-const uploadCtoMemo = require("../middlewares/uploadCtoMemo.middleware.js");
-
 const {
+  // Applications (employee/admin view)
   addCtoApplicationRequest,
   getAllCtoApplicationsRequest,
   getCtoApplicationsByEmployeeRequest,
+  cancelCtoApplicationRequest,
 } = require("../controllers/ctoApplicationController.js");
 
-const {
-  authenticateToken,
-  authorizeRoles,
-} = require("../middlewares/authMiddleware.js");
+// --- AUTH HELPERS ---
+const allow = (...roles) => [authenticateToken, authorizeRoles(...roles)];
 
+/* =========================================
+   CTO CREDITS
+========================================= */
 router.post(
   "/credits",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...allow("admin", "hr"),
   uploadCtoMemo,
   addCtoCreditRequest,
 );
 
-// router.patch(
-//   "/credits/:creditId/decision",
-//   authenticateToken,
-//   authorizeRoles("admin", "hr"),
-//   approveOrRejectCredit
-// );
-
-// router.patch(
-//   "/credits/:creditId/cancel",
-//   authenticateToken,
-//   authorizeRoles("admin", "hr"),
-//   cancelCreditRequest
-// );
-
 router.patch(
   "/credits/:creditId/rollback",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...allow("admin", "hr"),
   rollbackCreditedRequest,
 );
-router.get(
-  "/credits/all",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  getAllCreditRequests,
-);
+
+router.get("/credits/all", ...allow("admin", "hr"), getAllCreditRequests);
 
 router.get(
   "/credits/:employeeId/history",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...allow("admin", "hr"),
   getEmployeeCredits,
 );
 
 router.get(
   "/credits/my-credits",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "employee", "supervisor"),
+  ...allow("admin", "hr", "employee", "supervisor"),
   getEmployeeCredits,
 );
 
 router.get(
   "/employee/:employeeId/details",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...allow("admin", "hr"),
   getEmployeeDetails,
 );
 
+/* =========================================
+   CTO APPLICATIONS (EMPLOYEE / ADMIN VIEW)
+========================================= */
 router.post(
   "/applications/apply",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   addCtoApplicationRequest,
 );
 
 router.get(
   "/applications/all",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   getAllCtoApplicationsRequest,
 );
 
 router.get(
   "/applications/my-application",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   getCtoApplicationsByEmployeeRequest,
 );
 
 router.get(
   "/applications/employee/:employeeId",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   getCtoApplicationsByEmployeeRequest,
 );
 
+router.patch(
+  "/applications/:id/cancel",
+  ...allow("admin", "hr", "supervisor", "employee"),
+  cancelCtoApplicationRequest,
+);
+
+/* =========================================
+   APPROVER FLOW
+========================================= */
 router.get(
   "/applications/pending-count",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   getPendingCountForApproverController,
 );
 
 router.get(
-  "/applications/approvers/",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  "/applications/approvers",
+  ...allow("admin", "hr", "supervisor", "employee"),
   getApproverOptions,
 );
 
 router.get(
   "/applications/approvers/my-approvals",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   getCtoApplicationsForApprover,
 );
 
 router.get(
   "/applications/approvers/my-approvals/:id",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   getCtoApplicationById,
 );
 
 router.post(
   "/applications/approver/:applicationId/approve",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   approveCtoApplication,
 );
 
 router.put(
   "/applications/approver/:applicationId/reject",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "supervisor", "employee"),
+  ...allow("admin", "hr", "supervisor", "employee"),
   rejectCtoApplication,
 );
-// router.get(
-//   "/employees/:id",
-//   authenticateToken,
-//   authorizeRoles("admin", "hr", "supervisor"),
-//   getEmployeeById
-// );
 
 module.exports = router;

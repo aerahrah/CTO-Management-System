@@ -2,6 +2,7 @@ const {
   addCtoApplicationService,
   getAllCtoApplicationsService,
   getCtoApplicationsByEmployeeService,
+  cancelCtoApplicationService,
 } = require("../services/ctoApplication.service");
 
 const addCtoApplicationRequest = async (req, res) => {
@@ -13,7 +14,7 @@ const addCtoApplicationRequest = async (req, res) => {
       approver2,
       approver3,
       inclusiveDates,
-      memos, // <-- match the service parameter
+      memos,
     } = req.body;
 
     const userId = req.user.id;
@@ -24,7 +25,7 @@ const addCtoApplicationRequest = async (req, res) => {
       reason,
       approvers: [approver1, approver2, approver3],
       inclusiveDates,
-      memos, // <-- now correctly passed to service
+      memos,
     });
 
     res.status(201).json({
@@ -83,8 +84,35 @@ const getCtoApplicationsByEmployeeRequest = async (req, res) => {
   }
 };
 
+/**
+ * ✅ Cancel CTO application (employee-initiated)
+ * Route suggestion: PATCH /cto/applications/:id/cancel
+ */
+const cancelCtoApplicationRequest = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const applicationId = req.params.id;
+
+    const application = await cancelCtoApplicationService({
+      userId,
+      applicationId,
+    });
+
+    res.status(200).json({
+      message: "CTO application cancelled successfully",
+      application,
+    });
+  } catch (error) {
+    console.error("Error cancelling CTO application:", error);
+    res.status(error.status || 500).json({
+      error: error.message || "Server error while cancelling CTO application",
+    });
+  }
+};
+
 module.exports = {
   addCtoApplicationRequest,
   getAllCtoApplicationsRequest,
   getCtoApplicationsByEmployeeRequest,
+  cancelCtoApplicationRequest,
 };

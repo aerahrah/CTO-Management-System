@@ -451,7 +451,7 @@ const CtoCreditHistory = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0">
       {/* HEADER */}
-      <div className="pt-2 pb-3 sm:pb-6 px-1">
+      <div className="pt-2 pb-3 md:pb-6 px-1">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <Breadcrumbs rootLabel="home" rootTo="/app" />
@@ -479,7 +479,7 @@ const CtoCreditHistory = () => {
         {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 lg:pb-0">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               {getStatusTabs(grandTotals).map((tab) => {
                 const isActive = statusFilter === tab.id;
                 const Icon = tab.icon;
@@ -628,9 +628,12 @@ const CtoCreditHistory = () => {
             </div>
           ) : (
             <>
-              {/* Mobile/tablet cards */}
+              {/* ✅ Mobile/tablet cards:
+                  - 1 column on mobile
+                  - 2 columns on tablet (md)
+                  - hidden on desktop (lg+) */}
               <div className="block lg:hidden p-4">
-                <div className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {(isLoading || isPending
                     ? [...Array(Math.min(limit, 6))]
                     : credits
@@ -830,6 +833,7 @@ const CtoCreditHistory = () => {
       </Modal>
 
       {/* Memo modal left as your implementation */}
+      {/* <Modal ... /> */}
     </div>
   );
 };

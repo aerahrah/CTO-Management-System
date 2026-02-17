@@ -45,31 +45,31 @@ const useDebouncedValue = (value, delay = 500) => {
 const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
   const tones = {
     blue: {
-      wrap: "bg-blue-50/60 border-blue-100",
+      wrap: "bg-white border-neutral-100",
       iconWrap: "bg-blue-100/70",
       icon: "text-blue-600",
       value: "text-blue-700",
     },
     green: {
-      wrap: "bg-green-50/60 border-green-100",
+      wrap: "bg-white border-neutral-100",
       iconWrap: "bg-green-100/70",
       icon: "text-green-600",
       value: "text-green-700",
     },
     red: {
-      wrap: "bg-red-50/60 border-red-100",
+      wrap: "bg-white border-neutral-100",
       iconWrap: "bg-red-100/70",
       icon: "text-red-600",
       value: "text-red-700",
     },
     amber: {
-      wrap: "bg-amber-50/60 border-amber-100",
+      wrap: "bg-white border-neutral-100",
       iconWrap: "bg-amber-100/70",
       icon: "text-amber-600",
       value: "text-amber-700",
     },
     neutral: {
-      wrap: "bg-white border-gray-100",
+      wrap: "bg-white border-neutral-100",
       iconWrap: "bg-gray-50",
       icon: "text-gray-600",
       value: "text-gray-900",
@@ -80,7 +80,7 @@ const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
 
   return (
     <div
-      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${tones.neutral.wrap}`}
+      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${t.wrap}`}
       role="status"
     >
       <div
@@ -375,7 +375,7 @@ const MyCtoCreditHistory = () => {
     return Number.isInteger(n) ? String(n) : n.toFixed(2);
   }, []);
 
-  // summary now uses backend totals (independent of filters/search)
+  // summary uses backend totals (independent of filters/search)
   const summary = useMemo(() => {
     return {
       remainingHours: Number(totals.totalRemainingHours || 0),
@@ -406,8 +406,8 @@ const MyCtoCreditHistory = () => {
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
       {/* HEADER */}
-      <div className="pt-2 pb-3 sm:pb-6 px-1">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+      <div className="pt-2 pb-3 md:pb-6 px-1">
+        <div className="flex flex-col md:flex-row md:items-start gap-4">
           <div className="flex items-start gap-4 flex-1 min-w-0">
             <div>
               <Breadcrumbs rootLabel="home" rootTo="/app" />
@@ -421,8 +421,8 @@ const MyCtoCreditHistory = () => {
           </div>
 
           {/* Stat Cards */}
-          <div className="w-full md:w-auto flex flex-col gap-3 md:ml-4">
-            <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
+          <div className="w-full md:w-auto flex-1 lg:flex-none flex flex-col gap-3 md:ml-4">
+            <div className="hidden lg:grid  lg:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
               <StatCard
                 title="Total Credited"
                 value={`${fmtHours(summary.totalCredited)}h`}
@@ -437,7 +437,6 @@ const MyCtoCreditHistory = () => {
                 hint="Total used"
                 tone="red"
               />
-
               <StatCard
                 title="Reserved"
                 value={`${fmtHours(summary.reservedHours)}h`}
@@ -454,17 +453,17 @@ const MyCtoCreditHistory = () => {
               />
             </div>
 
-            <div className="flex md:hidden flex-col gap-2">
+            <div className="flex lg:hidden flex-col gap-2">
               <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                   <div className="text-[10px] text-gray-400 uppercase font-bold">
-                    Balance
+                    Balance:
                   </div>
                   <div className="text-sm font-bold text-gray-900">
                     {fmtHours(summary.remainingHours)}h
                   </div>
                 </div>
-                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                   <div className="text-[10px] text-gray-400 uppercase font-bold">
                     Used
                   </div>
@@ -472,7 +471,7 @@ const MyCtoCreditHistory = () => {
                     {fmtHours(summary.usedHours)}h
                   </div>
                 </div>
-                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                   <div className="text-[10px] text-gray-400 uppercase font-bold">
                     Reserved
                   </div>
@@ -480,7 +479,7 @@ const MyCtoCreditHistory = () => {
                     {fmtHours(summary.reservedHours)}h
                   </div>
                 </div>
-                <div className="bg-white border border-gray-100 rounded-lg p-2">
+                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
                   <div className="text-[10px] text-gray-400 uppercase font-bold">
                     Credited
                   </div>
@@ -496,14 +495,17 @@ const MyCtoCreditHistory = () => {
 
       {/* MAIN CARD */}
       <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* TOOLBAR */}
+        {/* TOOLBAR (✅ layout copied from CtoCreditHistory) */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
               {getStatusTabs(statusCounts).map((tab) => {
                 const isActive = statusFilter === tab.id;
+                const Icon = tab.icon;
+
                 return (
                   <button
+                    type="button"
                     key={tab.id}
                     onClick={() => {
                       setStatusFilter(tab.id);
@@ -515,9 +517,9 @@ const MyCtoCreditHistory = () => {
                           ? tab.activeColor
                           : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                       }`}
-                    type="button"
+                    aria-pressed={isActive}
                   >
-                    <tab.icon className="w-3.5 h-3.5" />
+                    <Icon className="w-3.5 h-3.5" />
                     <span>{tab.label}</span>
                     <span
                       className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold
@@ -534,8 +536,8 @@ const MyCtoCreditHistory = () => {
               })}
             </div>
 
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
+            <div className="flex items-center gap-3 w-full lg:w-auto">
+              <div className="relative flex-1 lg:w-64">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
@@ -546,17 +548,18 @@ const MyCtoCreditHistory = () => {
                 />
                 {searchInput && (
                   <button
+                    type="button"
                     onClick={() => setSearchInput("")}
                     className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
                     aria-label="Clear search"
-                    type="button"
+                    title="Clear"
                   >
                     <RotateCcw size={14} />
                   </button>
                 )}
               </div>
 
-              <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
+              <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-gray-200">
                 <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                   Show
                 </span>
@@ -576,7 +579,7 @@ const MyCtoCreditHistory = () => {
                 </select>
               </div>
 
-              <div className="md:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
+              <div className="lg:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
                 <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                   Rows
                 </span>
@@ -611,10 +614,11 @@ const MyCtoCreditHistory = () => {
                   </span>
                 )}
               </div>
+
               <button
+                type="button"
                 onClick={handleResetFilters}
                 className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
-                type="button"
               >
                 <RotateCcw size={10} /> Reset
               </button>
@@ -693,14 +697,14 @@ const MyCtoCreditHistory = () => {
                           formatDuration={formatDuration}
                           leftStripClassName={getLeftStripClass(
                             credit?.employeeStatus,
-                          )} // ✅ left color strip
+                          )}
                           onViewMemo={() => openMemo(credit)}
                         />
                       ))}
                 </div>
               </div>
 
-              {/* Tablet (md) use cards too, Desktop (lg+) use table */}
+              {/* Tablet (md) cards, Desktop (lg+) table */}
               <div className="hidden md:block lg:hidden p-4">
                 <div className="grid grid-cols-2 gap-3">
                   {isLoading
@@ -729,7 +733,7 @@ const MyCtoCreditHistory = () => {
                           formatDuration={formatDuration}
                           leftStripClassName={getLeftStripClass(
                             credit?.employeeStatus,
-                          )} // ✅ left color strip
+                          )}
                           onViewMemo={() => openMemo(credit)}
                         />
                       ))}

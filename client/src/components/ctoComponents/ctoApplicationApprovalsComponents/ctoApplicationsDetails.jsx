@@ -536,7 +536,9 @@ const CtoApplicationDetails = () => {
                 <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 flex-none">
                   <MessageCircle size={20} />
                 </div>
-                <h3 className="font-bold text-gray-900">Purpose of Leave</h3>
+                <h3 className="text-sm font-bold text-gray-900">
+                  Purpose of Leave
+                </h3>
               </div>
 
               <p className="text-gray-700 leading-relaxed italic bg-gray-50 p-4 rounded-2xl border border-gray-100 break-words">

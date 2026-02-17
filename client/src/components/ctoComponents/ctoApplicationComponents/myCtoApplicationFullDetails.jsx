@@ -103,11 +103,11 @@ const TimelineCard = ({ approval, index, isLast }) => {
                 Approver {index + 1}
               </span>
 
-              {approval?.updatedAt && (
+              {/* {approval?.updatedAt && (
                 <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
                   {new Date(approval.updatedAt).toLocaleString()}
                 </span>
-              )}
+              )} */}
             </div>
 
             <p className="text-sm font-semibold text-gray-900 break-words mt-1">
