@@ -518,6 +518,30 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
+  // ✅ Include employee name + position (similar to getAllCtoApplicationsService)
+  pipeline.push({
+    $lookup: {
+      from: "employees",
+      localField: "employee",
+      foreignField: "_id",
+      as: "employeeDoc",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$employeeDoc", preserveNullAndEmptyArrays: true },
+  });
+  pipeline.push({
+    $addFields: {
+      employee: {
+        _id: "$employeeDoc._id",
+        firstName: "$employeeDoc.firstName",
+        lastName: "$employeeDoc.lastName",
+        position: "$employeeDoc.position",
+      },
+    },
+  });
+  pipeline.push({ $project: { employeeDoc: 0 } });
+
   pipeline.push({ $sort: { createdAt: -1 } });
   pipeline.push({ $skip: skip });
   pipeline.push({ $limit: limit });

@@ -24,13 +24,17 @@ import {
   Eye,
   Layers,
   User,
+  FileDown,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 
+// ✅ PDF Modal (the one you made earlier)
+import CtoApplicationPdfModal from "./ctoApplicationPDFModal";
+
 const pageSizeOptions = [20, 50, 100];
 
-/* ------------------ Small hook: debounce (same behavior/layout as Credit History) ------------------ */
+/* ------------------ Small hook: debounce ------------------ */
 const useDebouncedValue = (value, delay = 500) => {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -41,7 +45,7 @@ const useDebouncedValue = (value, delay = 500) => {
 };
 
 /* =========================
-   StatCard (same pattern as MyCtoCreditHistory)
+   StatCard
 ========================= */
 const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
   const tones = {
@@ -108,7 +112,12 @@ const StatCard = ({ title, value, icon: Icon, hint, tone = "neutral" }) => {
 /* =========================
    Per-row action menu (table)
 ========================= */
-const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
+const ApplicationActionMenu = ({
+  app,
+  onViewDetails,
+  onViewPdf,
+  onViewMemos,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -153,13 +162,22 @@ const ApplicationActionMenu = ({ app, onViewDetails, onViewMemos }) => {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-xl shadow-gray-200/50 z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-100 rounded-lg shadow-xl shadow-gray-200/50 z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           <button
             type="button"
             onClick={() => handle(onViewDetails)}
             className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 transition-colors text-left"
           >
             <Eye size={14} /> View Details
+          </button>
+
+          {/* ✅ View PDF */}
+          <button
+            type="button"
+            onClick={() => handle(onViewPdf)}
+            className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 transition-colors text-left"
+          >
+            <FileDown size={14} /> View PDF
           </button>
 
           <button
@@ -183,6 +201,7 @@ const ApplicationCard = ({
   app,
   leftStripClassName,
   onViewDetails,
+  onViewPdf,
   onViewMemos,
 }) => {
   const memoLabel =
@@ -276,7 +295,8 @@ const ApplicationCard = ({
       </div>
 
       <div className="border-t border-gray-100 bg-white p-3">
-        <div className="grid grid-cols-2 gap-2">
+        {/* ✅ 3 buttons: Memos / Details / PDF */}
+        <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
             onClick={onViewMemos}
@@ -294,6 +314,15 @@ const ApplicationCard = ({
           >
             <Eye className="w-4 h-4" />
             Details
+          </button>
+
+          <button
+            type="button"
+            onClick={onViewPdf}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-800"
+          >
+            <FileDown className="w-4 h-4" />
+            PDF
           </button>
         </div>
       </div>
@@ -439,6 +468,9 @@ const AllCtoApplicationsHistory = () => {
   const [selectedApp, setSelectedApp] = useState(null);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
 
+  // ✅ PDF modal state
+  const [pdfApp, setPdfApp] = useState(null);
+
   // ---- Filters / pagination ----
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -447,7 +479,7 @@ const AllCtoApplicationsHistory = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  // reset to page 1 when filters change (same pattern as credit history)
+  // reset to page 1 when filters change
   useEffect(() => setPage(1), [debouncedSearch, statusFilter, limit]);
 
   // ---- Data fetching ----
@@ -840,6 +872,7 @@ const AllCtoApplicationsHistory = () => {
                             app.overallStatus,
                           )}
                           onViewDetails={() => setSelectedApp(app)}
+                          onViewPdf={() => setPdfApp(app)} // ✅
                           onViewMemos={() => openMemoModal(app.memo)}
                         />
                       ))}
@@ -876,6 +909,7 @@ const AllCtoApplicationsHistory = () => {
                             app.overallStatus,
                           )}
                           onViewDetails={() => setSelectedApp(app)}
+                          onViewPdf={() => setPdfApp(app)} // ✅
                           onViewMemos={() => openMemoModal(app.memo)}
                         />
                       ))}
@@ -980,6 +1014,7 @@ const AllCtoApplicationsHistory = () => {
                                 <ApplicationActionMenu
                                   app={app}
                                   onViewDetails={() => setSelectedApp(app)}
+                                  onViewPdf={() => setPdfApp(app)} // ✅
                                   onViewMemos={() => openMemoModal(app.memo)}
                                 />
                               </td>
@@ -1005,6 +1040,13 @@ const AllCtoApplicationsHistory = () => {
           onNext={() => setPage((p) => Math.min(p + 1, pagination.totalPages))}
         />
       </div>
+
+      {/* ✅ PDF Modal */}
+      <CtoApplicationPdfModal
+        app={pdfApp}
+        isOpen={!!pdfApp}
+        onClose={() => setPdfApp(null)}
+      />
 
       {/* Details modal */}
       {selectedApp && (

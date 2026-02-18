@@ -29,12 +29,15 @@ import {
   Layers,
   Ban,
   Info,
+  FileDown, // ✅ if not available in your lucide version, replace with FileText
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 import MemoList from "../ctoMemoModal";
 import { toast } from "react-toastify";
+
+import CtoApplicationPdfModal from "./ctoApplicationPDFModal";
 
 const pageSizeOptions = [20, 50, 100];
 
@@ -79,6 +82,7 @@ const ApplicationActionMenu = ({
   app,
   onViewDetails,
   onViewMemos,
+  onViewPdf, // ✅ add
   onCancel,
   cancelling,
 }) => {
@@ -126,13 +130,22 @@ const ApplicationActionMenu = ({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-xl shadow-gray-200/50 z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute right-0 top-full mt-1 w-48 bg-white border border-gray-100 rounded-lg shadow-xl shadow-gray-200/50 z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           <button
             onClick={() => handle(onViewDetails)}
             className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 transition-colors text-left"
             type="button"
           >
             <Eye size={14} /> View Details
+          </button>
+
+          {/* ✅ View PDF */}
+          <button
+            onClick={() => handle(onViewPdf)}
+            className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 transition-colors text-left"
+            type="button"
+          >
+            <FileDown size={14} /> View PDF
           </button>
 
           <button
@@ -171,6 +184,7 @@ const ApplicationCard = ({
   app,
   leftStripClassName,
   onViewDetails,
+  onViewPdf, // ✅ add
   onViewMemos,
   onCancel,
   cancelling,
@@ -197,6 +211,9 @@ const ApplicationCard = ({
   const coveredCount = Array.isArray(app?.inclusiveDates)
     ? app.inclusiveDates.length
     : 0;
+
+  // 3 actions (Memos/Details/PDF) + optional Cancel
+  const actionCols = canCancel ? "grid-cols-4" : "grid-cols-3";
 
   return (
     <div
@@ -246,14 +263,13 @@ const ApplicationCard = ({
       </div>
 
       <div className="border-t border-gray-100 bg-white p-3">
-        <div
-          className={`grid gap-2 ${canCancel ? "grid-cols-3" : "grid-cols-2"}`}
-        >
+        <div className={`grid gap-2 ${actionCols}`}>
           <button
             onClick={onViewMemos}
             disabled={!app?.memo || app.memo.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
             type="button"
+            title="View Memos"
           >
             <FileText className="w-4 h-4" />
             Memos
@@ -261,22 +277,35 @@ const ApplicationCard = ({
 
           <button
             onClick={onViewDetails}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600"
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600"
             type="button"
+            title="View Details"
           >
             <Eye className="w-4 h-4" />
             Details
+          </button>
+
+          {/* ✅ PDF */}
+          <button
+            onClick={onViewPdf}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-800"
+            type="button"
+            title="View PDF"
+          >
+            <FileDown className="w-4 h-4" />
+            PDF
           </button>
 
           {canCancel && (
             <button
               onClick={onCancel}
               disabled={cancelling}
-              className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
               type="button"
+              title="Cancel"
             >
               <Ban className="w-4 h-4" />
-              {cancelling ? "Cancelling..." : "Cancel"}
+              {cancelling ? "..." : "Cancel"}
             </button>
           )}
         </div>
@@ -367,6 +396,9 @@ const MyCtoApplications = () => {
   const [selectedApp, setSelectedApp] = useState(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+
+  // ✅ PDF modal state
+  const [pdfApp, setPdfApp] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -577,7 +609,7 @@ const MyCtoApplications = () => {
 
             <button
               onClick={() => setIsFormModalOpen(true)}
-              className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
+              className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 min-w-42 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
               type="button"
             >
               <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
@@ -589,7 +621,7 @@ const MyCtoApplications = () => {
 
       {/* MAIN */}
       <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* TOOLBAR (✅ copied layout from CtoCreditHistory) */}
+        {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -782,6 +814,7 @@ const MyCtoApplications = () => {
                             )}
                             cancelling={cancelling}
                             onViewDetails={() => setSelectedApp(app)}
+                            onViewPdf={() => setPdfApp(app)} // ✅
                             onViewMemos={() => openMemoModal(app.memo)}
                             onCancel={() => openCancelModal(app)}
                           />
@@ -826,6 +859,7 @@ const MyCtoApplications = () => {
                             )}
                             cancelling={cancelling}
                             onViewDetails={() => setSelectedApp(app)}
+                            onViewPdf={() => setPdfApp(app)} // ✅
                             onViewMemos={() => openMemoModal(app.memo)}
                             onCancel={() => openCancelModal(app)}
                           />
@@ -919,6 +953,7 @@ const MyCtoApplications = () => {
                                 <ApplicationActionMenu
                                   app={app}
                                   onViewDetails={() => setSelectedApp(app)}
+                                  onViewPdf={() => setPdfApp(app)} // ✅
                                   onViewMemos={() => openMemoModal(app.memo)}
                                   onCancel={() => openCancelModal(app)}
                                   cancelling={
@@ -948,6 +983,13 @@ const MyCtoApplications = () => {
           onNext={() => setPage((p) => Math.min(p + 1, pagination.totalPages))}
         />
       </div>
+
+      {/* ✅ PDF Modal */}
+      <CtoApplicationPdfModal
+        app={pdfApp}
+        isOpen={!!pdfApp}
+        onClose={() => setPdfApp(null)}
+      />
 
       {/* Details Modal */}
       {selectedApp && (

@@ -23,10 +23,12 @@ import {
   Calendar,
   Clock,
   FileText,
+  ExternalLink,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoCreditForm from "./forms/addCtoCreditForm";
 import CtoCreditDetails from "./ctoCreditFullDetails";
+import { buildApiUrl } from "../../../config/env";
 
 const pageSizeOptions = [20, 50, 100];
 
@@ -343,7 +345,6 @@ const CtoCreditHistory = () => {
     credit: null,
   });
 
-  // ✅ left strip class based on status (for mobile/tablet cards)
   const getStatusStripClass = useCallback((status) => {
     switch (status) {
       case "CREDITED":
@@ -447,6 +448,13 @@ const CtoCreditHistory = () => {
     const rolledBack = data?.grandTotals?.rolledBack || 0;
     return { credited, rolledBack, total: credited + rolledBack };
   }, [data]);
+
+  // ✅ Build memo pdf url similar to CtoCreditDetails
+  const memoPdfUrl = useMemo(() => {
+    const p = memoModal?.memo?.uploadedMemo;
+    if (!p) return "";
+    return buildApiUrl(String(p).replace(/\\/g, "/"));
+  }, [memoModal?.memo?.uploadedMemo]);
 
   return (
     <div className="w-full flex-1 flex h-full flex-col md:p-0">
@@ -628,10 +636,7 @@ const CtoCreditHistory = () => {
             </div>
           ) : (
             <>
-              {/* ✅ Mobile/tablet cards:
-                  - 1 column on mobile
-                  - 2 columns on tablet (md)
-                  - hidden on desktop (lg+) */}
+              {/* Mobile/tablet cards */}
               <div className="block lg:hidden p-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {(isLoading || isPending
@@ -664,9 +669,11 @@ const CtoCreditHistory = () => {
                         key={credit._id}
                         credit={credit}
                         isPending={isPending}
-                        formatDuration={formatDuration}
+                        formatDuration={(d) =>
+                          d ? `${d.hours || 0}h ${d.minutes || 0}m` : "-"
+                        }
                         formatDate={formatDate}
-                        leftStripClassName={getStatusStripClass(credit.status)} // ✅ left color strip
+                        leftStripClassName={getStatusStripClass(credit.status)}
                         onViewMemo={() =>
                           setMemoModal({ isOpen: true, memo: credit })
                         }
@@ -739,7 +746,11 @@ const CtoCreditHistory = () => {
                             </td>
 
                             <td className="px-6 py-4 text-center text-gray-600">
-                              {formatDuration(credit.duration)}
+                              {credit.duration
+                                ? `${credit.duration.hours || 0}h ${
+                                    credit.duration.minutes || 0
+                                  }m`
+                                : "-"}
                             </td>
 
                             <td className="px-6 py-4 text-center text-gray-600">
@@ -832,8 +843,35 @@ const CtoCreditHistory = () => {
         <CtoCreditDetails credit={detailsModal.credit} />
       </Modal>
 
-      {/* Memo modal left as your implementation */}
-      {/* <Modal ... /> */}
+      {/* Memo modal (PDF URL built the same way as CtoCreditDetails) */}
+      <Modal
+        isOpen={memoModal.isOpen}
+        onClose={() => setMemoModal({ isOpen: false, memo: null })}
+        title="CTO Credit Memo"
+        maxWidth="max-w-4xl"
+      >
+        <div className="w-full h-[70vh] flex flex-col">
+          {/* <div className="flex items-center justify-end mb-3">
+            <a
+              href={memoPdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+            >
+              View <ExternalLink size={14} />
+            </a>
+          </div> */}
+
+          <iframe
+            title="CTO Credit Memo PDF"
+            src={
+              memoPdfUrl ? `${memoPdfUrl}#toolbar=1&navpanes=1&scrollbar=1` : ""
+            }
+            className="w-full flex-1 rounded-md border border-gray-200 bg-white"
+            allow="fullscreen"
+          />
+        </div>
+      </Modal>
     </div>
   );
 };
