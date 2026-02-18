@@ -122,7 +122,11 @@ function App() {
           {/* ADMIN + SUPERVISOR */}
           {/* ===================== */}
           <Route
-            element={<ProtectedRoute allowedRoles={["admin", "supervisor"]} />}
+            element={
+              <ProtectedRoute
+                allowedRoles={["admin", "supervisor", "hr", "employee"]}
+              />
+            }
           >
             <Route path="cto-approvals" element={<CtoApplicationApprovals />}>
               <Route index element={<EmployeePlaceholder />} />

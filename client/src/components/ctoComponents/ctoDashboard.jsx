@@ -1,3 +1,4 @@
+// pages/cto/CtoDashboard.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -5,359 +6,249 @@ import { fetchDashboard } from "../../api/cto";
 import { useAuth } from "../../store/authStore";
 import Breadcrumbs from "../breadCrumbs";
 import {
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  TrendingUp,
-  Briefcase,
-  ArrowUpRight,
-  ChevronRight,
   Activity,
+  AlertCircle,
+  ArrowUpRight,
+  Briefcase,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
   History,
   ShieldCheck,
+  TrendingUp,
   User,
-  Calendar,
 } from "lucide-react";
 
-// --- ENHANCED UI COMPONENTS ---
-
-const DashboardCard = ({
-  children,
-  className = "",
-  title,
-  action,
-  subtitle,
-}) => (
+/* =========================
+   UI Primitives (Premium SaaS vibe)
+========================= */
+const Card = ({ children, className = "" }) => (
   <div
-    className={`bg-white rounded-2xl border border-slate-200/60 shadow-sm flex flex-col transition-all hover:shadow-md hover:border-indigo-100 ${className}`}
-  >
-    {(title || action) && (
-      <div className="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
-        <div>
-          {title && (
-            <h3 className="font-bold text-slate-800 text-sm tracking-tight">
-              {title}
-            </h3>
-          )}
-          {subtitle && (
-            <p className="text-[11px] text-slate-400 mt-0.5">{subtitle}</p>
-          )}
-        </div>
-        {action}
-      </div>
-    )}
-    <div className="px-6 py-1 flex-1 relative">{children}</div>
-  </div>
-);
-
-const StatBadge = ({ label, value, icon: Icon, colorClass, trend }) => (
-  <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between group hover:border-indigo-100 transition-all duration-300">
-    <div className="space-y-1">
-      <p className="text-slate-500 text-[11px] font-bold uppercase tracking-widest">
-        {label}
-      </p>
-      <div className="flex items-baseline gap-2">
-        <p className="text-2xl font-extrabold text-slate-900">{value}</p>
-        {trend && (
-          <span className="text-[10px] text-emerald-500 font-bold">
-            ↑ {trend}
-          </span>
-        )}
-      </div>
-    </div>
-    <div
-      className={`p-3 rounded-xl transition-transform group-hover:scale-110 duration-300 ${colorClass}`}
-    >
-      <Icon size={22} />
-    </div>
-  </div>
-);
-
-const ActionButton = ({ label, link, icon: Icon, variant = "default" }) => (
-  <button
-    onClick={() => (window.location.href = link)}
-    className={`
-      group flex items-center bg-slate-50 border-slate-200 gap-4 p-2 rounded-xl transition-all duration-200 border w-full text-left
-      ${
-        variant === "urgent"
-          ? "bg-rose-50 border-rose-100 text-rose-700 hover:bg-rose-100"
-          : "bg-slate-50 border-slate-100 text-slate-700 hover:bg-white hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-500/5"
-      }
-    `}
-  >
-    <div
-      className={`p-2 rounded-lg ${
-        variant === "urgent"
-          ? "bg-rose-200/50"
-          : "bg-white border border-slate-200 group-hover:border-indigo-100 group-hover:text-indigo-600 transition-colors"
-      }`}
-    >
-      <Icon size={18} />
-    </div>
-    <div className="flex-1">
-      <span className="text-[13.5px] font-bold block">{label}</span>
-      <span className="text-[10px] text-slate-400 block mt-0.5">
-        Quick Access
-      </span>
-    </div>
-    <ChevronRight
-      size={14}
-      className="text-slate-300 group-hover:text-indigo-400 transition-transform group-hover:translate-x-1"
-    />
-  </button>
-);
-
-const SectionHeader = ({ title, icon: Icon }) => (
-  <div className="flex items-center gap-2 mb-4 mt-8 first:mt-0">
-    <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-600">
-      <Icon size={16} />
-    </div>
-    <h2 className="text-sm font-bold text-slate-700 uppercase tracking-widest">
-      {title}
-    </h2>
-  </div>
-);
-
-const getStatusStyles = (status) => {
-  switch (status) {
-    case "APPROVED":
-      return "bg-emerald-100 text-emerald-700";
-    case "REJECTED":
-      return "bg-red-100 text-red-700";
-    case "PENDING":
-      return "bg-amber-100 text-amber-700";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-};
-
-// --- BETTER SKELETON BUILDING BLOCKS ---
-
-const Skeleton = ({ className = "", rounded = "rounded-xl" }) => (
-  <div
-    className={`relative overflow-hidden bg-slate-200/70 ${rounded} ${className}`}
-    aria-hidden="true"
-  >
-    <div className="absolute inset-0 -translate-x-full motion-reduce:hidden animate-shimmer bg-gradient-to-r from-transparent via-white/70 to-transparent" />
-  </div>
-);
-
-const SkeletonLine = ({ className = "" }) => (
-  <Skeleton className={`h-3 ${className}`} rounded="rounded-lg" />
-);
-const SkeletonCircle = ({ className = "" }) => (
-  <Skeleton className={`rounded-full ${className}`} rounded="rounded-full" />
-);
-
-const SkeletonCard = ({ className = "", children }) => (
-  <div
-    className={`bg-white rounded-2xl border border-slate-200/60 shadow-sm ${className}`}
+    className={[
+      "bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden",
+      className,
+    ].join(" ")}
   >
     {children}
   </div>
 );
 
-// Loading Skeleton Component (layout-matched + shimmer)
+const CardHeader = ({ title, icon: Icon, subtitle, action }) => (
+  <div className="px-4 py-3 border-b border-gray-100 bg-white">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          {Icon ? <Icon className="w-4 h-4 text-gray-600" /> : null}
+          {title ? (
+            <div className="text-sm font-semibold text-gray-900">{title}</div>
+          ) : null}
+        </div>
+        {subtitle ? (
+          <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+            {subtitle}
+          </div>
+        ) : null}
+      </div>
+      {action ? <div className="flex-shrink-0">{action}</div> : null}
+    </div>
+  </div>
+);
+
+const Pill = ({ children, tone = "neutral", className = "" }) => {
+  const tones = {
+    neutral: "bg-gray-50 border-gray-200 text-gray-700",
+    blue: "bg-blue-50 border-blue-100 text-blue-700",
+    amber: "bg-amber-50 border-amber-100 text-amber-700",
+    green: "bg-emerald-50 border-emerald-100 text-emerald-700",
+    rose: "bg-rose-50 border-rose-100 text-rose-700",
+    dark: "bg-gray-900 border-gray-900 text-white",
+  };
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider border",
+        tones[tone] || tones.neutral,
+        className,
+      ].join(" ")}
+    >
+      {children}
+    </span>
+  );
+};
+
+const SectionTitle = ({ icon: Icon, title, subtitle }) => (
+  <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <div className="flex items-center gap-2">
+        {Icon ? (
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-700 border border-gray-200">
+            <Icon className="w-4 h-4" />
+          </span>
+        ) : null}
+        <h2 className="text-sm font-bold text-gray-900 tracking-tight">
+          {title}
+        </h2>
+      </div>
+      {subtitle ? (
+        <p className="text-xs text-gray-500 mt-1 leading-relaxed">{subtitle}</p>
+      ) : null}
+    </div>
+  </div>
+);
+
+const PrimaryButton = ({
+  children,
+  onClick,
+  disabled,
+  className = "",
+  type = "button",
+}) => (
+  <button
+    type={type}
+    onClick={onClick}
+    disabled={disabled}
+    className={[
+      "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2",
+      "text-sm font-bold border transition",
+      disabled
+        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+        : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700",
+      className,
+    ].join(" ")}
+  >
+    {children}
+  </button>
+);
+
+const MetricTile = ({ label, value, icon: Icon, tone = "blue" }) => {
+  const toneMap = {
+    blue: "bg-blue-50 border-blue-100 text-blue-700",
+    green: "bg-emerald-50 border-emerald-100 text-emerald-700",
+    amber: "bg-amber-50 border-amber-100 text-amber-700",
+    rose: "bg-rose-50 border-rose-100 text-rose-700",
+    gray: "bg-gray-50 border-gray-200 text-gray-700",
+  };
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+            {label}
+          </div>
+          <div className="mt-1 text-2xl font-extrabold text-gray-900">
+            {value}
+          </div>
+        </div>
+
+        <div
+          className={[
+            "w-10 h-10 rounded-xl border flex items-center justify-center",
+            toneMap[tone] || toneMap.gray,
+          ].join(" ")}
+        >
+          <Icon className="w-5 h-5" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Progress = ({ reservedPct = 0, usedPct = 0 }) => {
+  const clamp = (n) => Math.min(Math.max(Number(n) || 0, 0), 100);
+
+  let r = clamp(reservedPct);
+  let u = clamp(usedPct);
+
+  const sum = r + u;
+  if (sum > 100 && sum > 0) {
+    r = (r / sum) * 100;
+    u = (u / sum) * 100;
+  }
+
+  return (
+    <div className="w-full rounded-full bg-gray-100 border border-gray-200 h-3 overflow-hidden">
+      <div className="h-full flex">
+        <div
+          className="h-full bg-amber-500 transition-all duration-700"
+          style={{ width: `${r}%` }}
+          aria-label="Reserved"
+        />
+        <div
+          className="h-full bg-rose-500 transition-all duration-700"
+          style={{ width: `${u}%` }}
+          aria-label="Used"
+        />
+      </div>
+    </div>
+  );
+};
+
+const getStatusStyles = (status) => {
+  switch (status) {
+    case "APPROVED":
+      return "bg-emerald-50 border-emerald-100 text-emerald-700";
+    case "REJECTED":
+      return "bg-rose-50 border-rose-100 text-rose-700";
+    case "PENDING":
+      return "bg-amber-50 border-amber-100 text-amber-700";
+    default:
+      return "bg-gray-50 border-gray-200 text-gray-700";
+  }
+};
+
+/* =========================
+   Loading Skeleton (layout-matched)
+========================= */
+const Skeleton = ({ className = "" }) => (
+  <div className={["bg-gray-100 rounded-lg", className].join(" ")} />
+);
+
 const LoadingSkeleton = ({ role }) => {
   const showOrg = role === "admin" || role === "hr";
 
   return (
     <div
-      className="min-h-screen font-sans text-slate-800"
+      className="w-full flex-1 min-h-screen flex flex-col"
       role="status"
       aria-live="polite"
       aria-busy="true"
     >
-      <style>{`
-        @keyframes shimmer { 100% { transform: translateX(100%); } }
-        .animate-shimmer { animation: shimmer 1.6s infinite linear; }
-      `}</style>
-
-      <span className="sr-only">Loading dashboard…</span>
-
-      <div className="max-w-7xl mx-auto space-y-10">
-        {/* HEADER */}
-        <header className="pb-3 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-3">
-            <SkeletonLine className="w-40" />
-            <Skeleton className="h-9 w-56" rounded="rounded-xl" />
+      <div className=" w-full mx-auto py-3 sm:py-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-9 w-56" />
+              <Skeleton className="h-4 w-80" />
+            </div>
+            <Skeleton className="h-9 w-28" />
           </div>
 
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
-            <SkeletonCircle className="w-2 h-2" />
-            <SkeletonLine className="w-20" />
-          </div>
-        </header>
-
-        {/* ORG INSIGHTS (only if admin/hr) */}
-        {showOrg && (
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <SkeletonCircle className="w-7 h-7" />
-              <SkeletonLine className="w-56" />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <SkeletonCard key={i} className="p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-3">
-                      <SkeletonLine className="w-28" />
-                      <Skeleton className="h-7 w-16" rounded="rounded-lg" />
-                    </div>
-                    <Skeleton className="w-12 h-12" rounded="rounded-xl" />
-                  </div>
-                </SkeletonCard>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* URGENT + RECENT PENDING */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="relative overflow-hidden rounded-2xl p-5 bg-white border border-slate-200/60 shadow-sm">
-            <div className="space-y-4">
-              <Skeleton className="h-5 w-28" rounded="rounded-md" />
-              <Skeleton className="h-12 w-20" rounded="rounded-lg" />
-              <SkeletonLine className="w-56" />
-              <Skeleton className="h-10 w-full" rounded="rounded-lg" />
-            </div>
-          </div>
-
-          <SkeletonCard className="p-5">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-50">
-              <div className="space-y-2">
-                <SkeletonLine className="w-44" />
-                <SkeletonLine className="w-28" />
-              </div>
-              <Skeleton className="h-5 w-12" rounded="rounded-full" />
-            </div>
-
-            <div className="pt-4 space-y-3">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0"
-                >
-                  <SkeletonCircle className="w-10 h-10" />
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <SkeletonLine className="w-36" />
-                      <Skeleton className="h-4 w-10" rounded="rounded-md" />
-                    </div>
-                    <SkeletonLine className="w-40" />
-                  </div>
-                  <Skeleton className="h-7 w-16" rounded="rounded-lg" />
-                </div>
-              ))}
-            </div>
-          </SkeletonCard>
-        </div>
-
-        {/* CORE GRID */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* LEFT */}
-          <div className="lg:col-span-8 space-y-8">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <SkeletonCircle className="w-7 h-7" />
-                <SkeletonLine className="w-48" />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <SkeletonCard className="p-6">
-                  <div className="space-y-5">
-                    <div className="space-y-2">
-                      <SkeletonLine className="w-28" />
-                      <SkeletonLine className="w-40" />
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-baseline gap-2">
-                        <Skeleton className="h-12 w-28" rounded="rounded-lg" />
-                        <SkeletonLine className="w-20" />
-                      </div>
-                      <Skeleton className="h-6 w-24" rounded="rounded-md" />
-                    </div>
-
-                    <Skeleton className="h-4 w-full" rounded="rounded-full" />
-                    <div className="flex justify-between">
-                      <SkeletonLine className="w-28" />
-                      <SkeletonLine className="w-28" />
-                    </div>
-                  </div>
-                </SkeletonCard>
-
-                <div className="grid grid-cols-2 gap-4">
+          {/* Stack until XL so tablet width isn't cramped (sidebar eats space) */}
+          <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
+            <div className="xl:col-span-8 space-y-4">
+              {showOrg ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
                   {Array.from({ length: 4 }).map((_, i) => (
-                    <SkeletonCard key={i} className="p-6">
-                      <div className="space-y-3">
-                        <SkeletonLine className="w-24" />
-                        <Skeleton className="h-7 w-14" rounded="rounded-lg" />
-                      </div>
-                    </SkeletonCard>
+                    <Skeleton key={i} className="h-24 w-full" />
                   ))}
                 </div>
-              </div>
-            </section>
+              ) : null}
 
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <SkeletonCircle className="w-7 h-7" />
-                <SkeletonLine className="w-40" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Skeleton className="h-52 w-full" />
+                <Skeleton className="h-52 w-full" />
               </div>
 
-              <SkeletonCard className="p-6">
-                <div className="flex items-center justify-between pb-4 border-b border-slate-50">
-                  <div className="space-y-2">
-                    <SkeletonLine className="w-40" />
-                    <SkeletonLine className="w-32" />
-                  </div>
-                  <Skeleton className="h-7 w-28" rounded="rounded-lg" />
-                </div>
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-72 w-full" />
+            </div>
 
-                <div className="pt-4 space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-3 py-3 border-b border-slate-50 last:border-0"
-                    >
-                      <SkeletonCircle className="w-10 h-10" />
-                      <div className="flex-1 space-y-2">
-                        <SkeletonLine className="w-48" />
-                        <SkeletonLine className="w-36" />
-                      </div>
-                      <Skeleton className="h-6 w-20" rounded="rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-              </SkeletonCard>
-            </section>
-          </div>
-
-          {/* RIGHT */}
-          <div className="lg:col-span-4 space-y-8">
-            <section className="space-y-4">
-              <div className="flex items-center gap-2">
-                <SkeletonCircle className="w-7 h-7" />
-                <SkeletonLine className="w-36" />
-              </div>
-
-              <div className="space-y-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <SkeletonCard key={i} className="p-3">
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="w-9 h-9" rounded="rounded-lg" />
-                      <div className="flex-1 space-y-2">
-                        <SkeletonLine className="w-40" />
-                        <SkeletonLine className="w-24" />
-                      </div>
-                      <Skeleton className="h-4 w-4" rounded="rounded-md" />
-                    </div>
-                  </SkeletonCard>
-                ))}
-              </div>
-            </section>
+            <div className="xl:col-span-4 space-y-4">
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-80 w-full" />
+            </div>
           </div>
         </div>
       </div>
@@ -365,404 +256,34 @@ const LoadingSkeleton = ({ role }) => {
   );
 };
 
-// --- MAIN DASHBOARD ---
-
-const CtoDashboard = () => {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["ctoDashboard"],
-    queryFn: fetchDashboard,
-  });
-
-  const { admin } = useAuth();
-  const role = admin?.role;
-
-  if (isLoading) return <LoadingSkeleton role={role} />;
-
-  if (isError || !data)
-    return (
-      <div className="p-10 text-center text-rose-500 font-medium">
-        System currently unavailable. Please try again later.
-      </div>
-    );
-
-  const {
-    myCtoSummary,
-    teamPendingApprovals,
-    totalRequests,
-    approvedRequests,
-    rejectedRequests,
-    quickActions,
-    quickLinks,
-    totalCreditedCount, // (kept from payload, not used currently)
-    totalRolledBackCount,
-    totalPendingRequests,
-    pendingRequests = [],
-  } = data;
-
-  const balance = Number(myCtoSummary?.balance || 0);
-  const used = Number(myCtoSummary?.used || 0);
-  const totalPotential = balance + used;
-  const usagePercentage =
-    totalPotential > 0 ? (used / totalPotential) * 100 : 0;
-
-  const formatDate = (dateString) => {
-    if (!dateString) return "Date N/A";
-    return new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    })
-      .format(new Date(dateString))
-      .replace(",", " •");
-  };
-
-  return (
-    <div className="min-h-screen py-2 px-1 font-sans text-slate-800">
-      {/* 1. HEADER */}
-      <header className="pb-3 sm:mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-indigo-600 mb-1">
-            <Breadcrumbs rootLabel="home" rootTo="/app" />
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
-            CTO Overview
-          </h1>
+/* =========================
+   Sub-components
+========================= */
+const ActionItem = ({ label, link, icon: Icon }) => (
+  <button
+    type="button"
+    onClick={() => (window.location.href = link)}
+    className={[
+      "w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2.5",
+      "border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition",
+      "text-left",
+    ].join(" ")}
+  >
+    <div className="flex items-center gap-3 min-w-0">
+      <span className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-gray-700">
+        <Icon className="w-4 h-4" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-gray-900 truncate">
+          {label}
         </div>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-xs font-bold text-slate-600">
-              System Live
-            </span>
-          </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto space-y-10">
-        {/* 2. ORGANIZATION VITALS */}
-        {(role === "admin" || role === "hr") && (
-          <section>
-            <SectionHeader title="Organization Insights" icon={ShieldCheck} />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              <StatBadge
-                label="Total Requests"
-                value={totalRequests || 0}
-                icon={Activity}
-                colorClass="bg-indigo-50 text-indigo-600"
-              />
-              <StatBadge
-                label="Approved"
-                value={approvedRequests || 0}
-                icon={CheckCircle}
-                colorClass="bg-emerald-50 text-emerald-600"
-              />
-              <StatBadge
-                label="Pending Review"
-                value={totalPendingRequests || 0}
-                icon={Clock}
-                colorClass="bg-amber-50 text-amber-600"
-              />
-              <StatBadge
-                label="Total Rejected"
-                value={(rejectedRequests || 0) + (totalRolledBackCount || 0)}
-                icon={AlertCircle}
-                colorClass="bg-rose-50 text-rose-600"
-              />
-            </div>
-          </section>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* CARD 1: URGENT APPROVALS */}
-          <div
-            className={`relative overflow-hidden rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 shadow-lg 
-              ${
-                teamPendingApprovals > 0
-                  ? "bg-slate-900 text-white shadow-slate-200"
-                  : "bg-slate-50 border border-slate-200 text-slate-500 shadow-none"
-              }`}
-          >
-            <div className="absolute -right-2 -top-2 opacity-10 rotate-12">
-              <AlertCircle size={120} />
-            </div>
-
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-3">
-                <span
-                  className={`px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider
-                    ${
-                      teamPendingApprovals > 0
-                        ? "bg-amber-500 text-white"
-                        : "bg-slate-200 text-slate-500"
-                    }`}
-                >
-                  {teamPendingApprovals > 0 ? "Pending Request" : "Cleared"}
-                </span>
-              </div>
-
-              <p
-                className={`text-5xl font-black leading-none mb-2 ${
-                  teamPendingApprovals > 0 ? "text-white" : "text-slate-300"
-                }`}
-              >
-                {teamPendingApprovals}
-              </p>
-              <p className="text-[12px] font-medium leading-tight opacity-80 max-w-[180px]">
-                {teamPendingApprovals > 0
-                  ? "Some employees are waiting for approval."
-                  : "All caught up! No approvals currently pending."}
-              </p>
-            </div>
-
-            <button
-              disabled={teamPendingApprovals === 0}
-              onClick={() => {
-                if (teamPendingApprovals > 0)
-                  window.location.href = "/app/cto-approvals";
-              }}
-              className={`w-full py-2.5 rounded-lg text-[11px] font-bold transition-all transform active:scale-95
-                ${
-                  teamPendingApprovals > 0
-                    ? "bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20"
-                    : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                }`}
-            >
-              {teamPendingApprovals > 0 ? "Process Approvals" : "Complete"}
-            </button>
-          </div>
-
-          {/* CARD 2: RECENT INBOUND */}
-          <DashboardCard
-            title="Recent Pending Request"
-            className="h-70 border border-slate-100 shadow-sm flex flex-col"
-            action={
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-bold
-                  ${
-                    pendingRequests.length > 0
-                      ? "bg-amber-100 text-amber-700"
-                      : "bg-slate-100 text-slate-400"
-                  }`}
-              >
-                {pendingRequests.length} New
-              </span>
-            }
-          >
-            <div className="flex flex-col h-50">
-              {pendingRequests.length > 0 ? (
-                <div className="space-y-1 overflow-y-auto pr-1 flex-1 custom-scrollbar">
-                  {pendingRequests.map((req) => (
-                    <PendingRequestItem key={req.id} request={req} />
-                  ))}
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                  <p className="text-[11px] font-medium text-slate-400">
-                    No new requests
-                  </p>
-                </div>
-              )}
-            </div>
-          </DashboardCard>
-        </div>
-
-        {/* 3. CORE CONTENT GRID */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* LEFT COLUMN: PERSONAL SUMMARY */}
-          <div className="lg:col-span-8 space-y-8">
-            <section>
-              <SectionHeader title="My CTO Dashboard" icon={History} />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* My Balance Card */}
-                <DashboardCard
-                  title="Time Credits"
-                  subtitle="Usage vs Available Balance"
-                >
-                  <div className="flex flex-col h-full justify-between py-2">
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <span className="text-5xl font-black text-slate-900 tracking-tighter">
-                          {balance.toFixed(1)}
-                        </span>
-                        <span className="ml-2 text-slate-400 font-bold text-sm uppercase">
-                          Hours Left
-                        </span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
-                          {usagePercentage.toFixed(0)}% Utilized
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="w-full bg-slate-100 rounded-full h-4 overflow-hidden p-1">
-                        <div
-                          className="bg-indigo-500 h-full rounded-full shadow-[0_0_10px_rgba(99,102,241,0.4)] transition-all duration-1000 ease-out"
-                          style={{ width: `${usagePercentage}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-wider">
-                        <span className="text-slate-400">
-                          Consumed:{" "}
-                          <span className="text-slate-700">{used}h</span>
-                        </span>
-                        <span className="text-slate-400">
-                          Total Allotted:{" "}
-                          <span className="text-slate-700">
-                            {totalPotential.toFixed(1)}h
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </DashboardCard>
-
-                {/* Quick Mini Stats */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      My Requests
-                    </p>
-                    <p className="text-2xl font-black text-slate-800">
-                      {myCtoSummary?.totalRequests || 0}
-                    </p>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      Approved
-                    </p>
-                    <p className="text-2xl font-black text-emerald-600">
-                      {myCtoSummary?.approved || 0}
-                    </p>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      Rejected
-                    </p>
-                    <p className="text-2xl font-black text-rose-500">
-                      {myCtoSummary?.rejected || 0}
-                    </p>
-                  </div>
-                  <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
-                      Pending
-                    </p>
-                    <p className="text-2xl font-black text-indigo-600">
-                      {myCtoSummary?.pending || 0}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Recent Activity */}
-            <section>
-              <SectionHeader title="Recent Activity" icon={Calendar} />
-              <DashboardCard
-                title="My Recent Requests"
-                subtitle={`Last ${myCtoSummary?.recentRequests?.length || 0} submissions`}
-                action={
-                  <Link
-                    to={`/app/cto-apply/`}
-                    className="flex-shrink-0 translate-x-1 group-hover:translate-x-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20 hover:bg-blue-700 transition-all duration-200"
-                  >
-                    ({myCtoSummary?.totalRequests || 0}) View all my request
-                  </Link>
-                }
-              >
-                <div className="space-y-1">
-                  {myCtoSummary?.recentRequests &&
-                  myCtoSummary.recentRequests.length > 0 ? (
-                    myCtoSummary.recentRequests.map((request) => (
-                      <div
-                        key={request._id}
-                        className="flex items-center gap-3 py-3 group hover:bg-slate-50 rounded-xl px-2 transition-all duration-200 border-b border-slate-50 last:border-0"
-                      >
-                        <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm group-hover:border-blue-200 transition-colors">
-                          <User size={18} className="text-blue-600" />
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-bold text-slate-800 text-[13px] truncate leading-none">
-                              Request #{request._id.slice(-6).toUpperCase()}
-                            </p>
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[9px] font-black uppercase tracking-tight">
-                              {request.requestedHours}h
-                            </span>
-                          </div>
-
-                          <div className="mt-1 flex flex-col">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-                              Date Submitted
-                            </span>
-                            <span className="text-[11px] text-slate-500 font-medium leading-tight">
-                              {formatDate(request.createdAt)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex-shrink-0">
-                          <span
-                            className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg shadow-sm transition-all duration-200 ${getStatusStyles(
-                              request.overallStatus,
-                            )}`}
-                          >
-                            {request.overallStatus}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-8 text-center">
-                      <p className="text-sm font-medium text-slate-400">
-                        No recent requests found.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </DashboardCard>
-            </section>
-          </div>
-
-          {/* RIGHT COLUMN: ACTIONS */}
-          <div className="lg:col-span-4 space-y-8">
-            <section>
-              <SectionHeader title="Action Center" icon={TrendingUp} />
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3">
-                  {quickActions?.slice(0, 4).map((action, idx) => (
-                    <ActionButton
-                      key={idx}
-                      label={action.name}
-                      link={action.link}
-                      icon={Briefcase}
-                    />
-                  ))}
-                  {quickLinks?.slice(0, 4).map((link, idx) => (
-                    <ActionButton
-                      key={idx}
-                      label={link.name}
-                      link={link.link}
-                      icon={ArrowUpRight}
-                    />
-                  ))}
-                </div>
-              </div>
-            </section>
-          </div>
-        </div>
+        <div className="text-xs text-gray-500">Quick access</div>
       </div>
     </div>
-  );
-};
+    <ChevronRight className="w-4 h-4 text-gray-300" />
+  </button>
+);
 
-// Sub-component refinement
 const PendingRequestItem = ({ request }) => {
   const initial = request.employeeName?.charAt(0).toUpperCase() || "?";
 
@@ -778,37 +299,533 @@ const PendingRequestItem = ({ request }) => {
     : "Date N/A";
 
   return (
-    <div className="flex items-center gap-3 py-3 group hover:bg-slate-50 rounded-xl px-2 transition-all duration-200 border-b border-slate-50 last:border-0">
-      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center shadow-sm group-hover:border-blue-200 transition-colors">
-        <span className="text-blue-600 font-bold text-sm">{initial}</span>
-      </div>
+    <div className="py-3 border-b border-gray-100 last:border-0">
+      <div className="flex flex-row items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200 flex-none">
+            {initial}
+          </div>
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <p className="font-bold text-slate-800 text-[13px] truncate leading-none">
-            {request.employeeName}
-          </p>
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[9px] font-black uppercase tracking-tight">
-            {request.requestedHours}h
-          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <div className="text-sm font-semibold text-gray-900 truncate">
+                {request.employeeName}
+              </div>
+              <Pill tone="blue" className="normal-case">
+                {request.requestedHours}h
+              </Pill>
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              Submitted: {formattedDate}
+            </div>
+          </div>
         </div>
 
-        <div className="mt-1 flex flex-col">
-          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
-            Date Submitted
-          </span>
-          <span className="text-[11px] text-slate-500 font-medium leading-tight">
-            {formattedDate}
-          </span>
+        <Link
+          to={`/app/cto-approvals/${request.id}`}
+          className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-bold border border-blue-600 bg-blue-600 text-white hover:bg-blue-700 transition "
+        >
+          Review
+        </Link>
+      </div>
+    </div>
+  );
+};
+
+/* =========================
+   Main Page (logic unchanged)
+========================= */
+const CtoDashboard = () => {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["ctoDashboard"],
+    queryFn: fetchDashboard,
+  });
+
+  const { admin } = useAuth();
+  const role = admin?.role;
+
+  if (isLoading) return <LoadingSkeleton role={role} />;
+
+  if (isError || !data)
+    return (
+      <div className="p-10 text-center text-rose-600 font-medium">
+        System currently unavailable. Please try again later.
+      </div>
+    );
+
+  const {
+    myCtoSummary,
+    teamPendingApprovals,
+    totalRequests,
+    approvedRequests,
+    rejectedRequests,
+    quickActions,
+    quickLinks,
+    totalCreditedCount,
+    totalRolledBackCount,
+    totalPendingRequests,
+    pendingRequests = [],
+  } = data;
+
+  const totalCreditRaw = Number(myCtoSummary?.totalCredit || 0);
+  const balance = Number(myCtoSummary?.balance || 0);
+  const used = Number(myCtoSummary?.used || 0);
+  const reserved = Number(myCtoSummary?.reserved || 0);
+
+  const totalBase =
+    totalCreditRaw > 0 ? totalCreditRaw : balance + used + reserved;
+  const totalCredit = totalCreditRaw > 0 ? totalCreditRaw : totalBase;
+
+  const reservedPct = totalBase > 0 ? (reserved / totalBase) * 100 : 0;
+  const usedPct = totalBase > 0 ? (used / totalBase) * 100 : 0;
+  const utilized = used + reserved;
+  const utilizationPct = totalBase > 0 ? (utilized / totalBase) * 100 : 0;
+
+  const formatDate = (dateString) => {
+    if (!dateString) return "Date N/A";
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: true,
+    })
+      .format(new Date(dateString))
+      .replace(",", " •");
+  };
+
+  const pendingCount = Number(teamPendingApprovals || 0);
+
+  return (
+    <div className="w-full flex-1 min-h-screen flex flex-col">
+      <div className="w-full mx-auto py-3 sm:py-4">
+        <div className="mx-auto">
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="min-w-0">
+              <Breadcrumbs rootLabel="home" rootTo="/app" />
+              <h1 className="mt-2 text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
+                CTO <span className="font-bold">Overview</span>
+              </h1>
+              <p className="text-sm text-gray-500 mt-1">
+                Track requests, approvals, balances, and recent activity in one
+                place.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Pill tone="green" className="normal-case">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  System Live
+                </span>
+              </Pill>
+            </div>
+          </div>
+
+          {/* Stack main + right rail until XL (better with sidebar on tablet) */}
+          <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
+            {/* MAIN */}
+            <div className="xl:col-span-8 space-y-4">
+              {/* Organization Insights */}
+              {(role === "admin" || role === "hr") && (
+                <div className="space-y-3">
+                  <SectionTitle
+                    icon={ShieldCheck}
+                    title="Organization insights"
+                    subtitle="View total, approved, pending, rejected requests across the organization."
+                  />
+
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                    <MetricTile
+                      label="Total Requests"
+                      value={totalRequests || 0}
+                      icon={Activity}
+                      tone="blue"
+                    />
+                    <MetricTile
+                      label="Approved"
+                      value={approvedRequests || 0}
+                      icon={CheckCircle2}
+                      tone="green"
+                    />
+                    <MetricTile
+                      label="Pending Review"
+                      value={totalPendingRequests || 0}
+                      icon={Clock}
+                      tone="amber"
+                    />
+                    <MetricTile
+                      label="Total Rejected"
+                      value={
+                        (rejectedRequests || 0) + (totalRolledBackCount || 0)
+                      }
+                      icon={AlertCircle}
+                      tone="rose"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Priority row (2-up on tablet, stacked on phone) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Urgent Approvals */}
+                <Card className="relative">
+                  <CardHeader
+                    title="Approvals queue"
+                    icon={AlertCircle}
+                    subtitle="Items awaiting your review."
+                    action={
+                      pendingCount > 0 ? (
+                        <Pill tone="amber">{pendingCount} pending</Pill>
+                      ) : (
+                        <Pill tone="green">Cleared</Pill>
+                      )
+                    }
+                  />
+
+                  <div className="p-4">
+                    <div className="rounded-xl flex flex-col justify-between h-56 border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 ">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                            Pending approvals
+                          </div>
+                          <div className="mt-1 text-5xl font-extrabold text-blue-700">
+                            {pendingCount}
+                          </div>
+                          <div className="mt-2 text-sm text-gray-600 leading-relaxed">
+                            {pendingCount > 0
+                              ? "Some employees are waiting for approval."
+                              : "All caught up! No approvals currently pending."}
+                          </div>
+                        </div>
+
+                        <div className="flex-shrink-0 w-12 h-12 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-700">
+                          <TrendingUp className="w-5 h-5" />
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <PrimaryButton
+                          disabled={pendingCount === 0}
+                          onClick={() => {
+                            if (pendingCount > 0)
+                              window.location.href = "/app/cto-approvals";
+                          }}
+                          className="w-full"
+                        >
+                          {pendingCount > 0 ? "Process approvals" : "Complete"}
+                        </PrimaryButton>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* Recent Pending */}
+                <Card>
+                  <CardHeader
+                    title="Recent pending requests"
+                    icon={History}
+                    subtitle="Latest inbound submissions needing review."
+                    action={
+                      <Pill tone={pendingRequests.length ? "amber" : "neutral"}>
+                        {pendingRequests.length} new
+                      </Pill>
+                    }
+                  />
+                  <div className="p-4">
+                    {pendingRequests.length > 0 ? (
+                      <div className="max-h-56 overflow-y-auto pr-1">
+                        {pendingRequests.map((req) => (
+                          <PendingRequestItem key={req.id} request={req} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center">
+                        <div className="text-sm font-semibold text-gray-900">
+                          No new requests
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          You’re all set—nothing to review right now.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
+
+              {/* My CTO Dashboard */}
+              <div className="space-y-3">
+                <SectionTitle
+                  icon={History}
+                  title="My CTO dashboard"
+                  subtitle="Your balance, usage, and request outcomes."
+                />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Time Credits */}
+                  <Card>
+                    <CardHeader
+                      title="Time credits"
+                      icon={Clock}
+                      subtitle="Total credit, utilization, and available balance."
+                      action={
+                        <Pill tone="blue">
+                          {utilizationPct.toFixed(0)}% utilized
+                        </Pill>
+                      }
+                    />
+                    <div className="p-4">
+                      <div className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div className="flex items-end justify-between gap-3">
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              Hours left
+                            </div>
+                            <div className="mt-1 text-5xl font-extrabold text-gray-900 tracking-tight">
+                              {balance.toFixed(1)}
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <div className="text-xs font-semibold text-gray-700">
+                              Total Credited Hours:{" "}
+                              <span className="font-bold">
+                                {totalCredit.toFixed(1)}h
+                              </span>
+                            </div>
+                            <div className="text-xs font-semibold text-gray-700 mt-0.5">
+                              Reserved:{" "}
+                              <span className="font-bold">
+                                {reserved.toFixed(1)}h
+                              </span>
+                            </div>
+                            <div className="text-xs font-semibold text-gray-700 mt-0.5">
+                              Used:{" "}
+                              <span className="font-bold">
+                                {used.toFixed(1)}h
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              Balance:{" "}
+                              <span className="font-semibold text-gray-700">
+                                {balance.toFixed(1)}h
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-4 space-y-2">
+                          <Progress
+                            reservedPct={reservedPct}
+                            usedPct={usedPct}
+                          />
+
+                          {/* Legend: Balance (grey) + Reserved (amber) + Used (rose) */}
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-gray-500">
+                            <div className="inline-flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-gray-300 border border-gray-200" />
+                              <span>Balance</span>
+                            </div>
+
+                            {reserved > 0 ? (
+                              <div className="inline-flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                                <span>Reserved</span>
+                              </div>
+                            ) : null}
+
+                            {used > 0 ? (
+                              <div className="inline-flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                                <span>Used</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-4 gap-2">
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              Total
+                            </div>
+                            <div className="mt-1 text-sm font-bold text-gray-900">
+                              {totalCredit.toFixed(1)}h
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              Balance
+                            </div>
+                            <div className="mt-1 text-sm font-bold text-gray-900">
+                              {balance.toFixed(1)}h
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              Reserved
+                            </div>
+                            <div className="mt-1 text-sm font-bold text-gray-900">
+                              {reserved.toFixed(1)}h
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                              Used
+                            </div>
+                            <div className="mt-1 text-sm font-bold text-gray-900">
+                              {used.toFixed(1)}h
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Mini stats */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <MetricTile
+                      label="My Requests"
+                      value={myCtoSummary?.totalRequests || 0}
+                      icon={Activity}
+                      tone="gray"
+                    />
+                    <MetricTile
+                      label="Approved"
+                      value={myCtoSummary?.approved || 0}
+                      icon={CheckCircle2}
+                      tone="green"
+                    />
+                    <MetricTile
+                      label="Rejected"
+                      value={myCtoSummary?.rejected || 0}
+                      icon={AlertCircle}
+                      tone="rose"
+                    />
+                    <MetricTile
+                      label="Pending"
+                      value={myCtoSummary?.pending || 0}
+                      icon={Clock}
+                      tone="amber"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Recent Activity */}
+              <Card>
+                <CardHeader
+                  title="My recent requests"
+                  icon={Calendar}
+                  subtitle={`Last ${
+                    myCtoSummary?.recentRequests?.length || 0
+                  } submissions`}
+                  action={
+                    <Link
+                      to={`/app/cto-apply/`}
+                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold border border-blue-600 bg-blue-600 text-white hover:bg-blue-700 transition"
+                    >
+                      ({myCtoSummary?.totalRequests || 0}) View all
+                      <ChevronRight className="w-4 h-4" />
+                    </Link>
+                  }
+                />
+                <div className="p-4">
+                  {myCtoSummary?.recentRequests &&
+                  myCtoSummary.recentRequests.length > 0 ? (
+                    <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden bg-white">
+                      {myCtoSummary.recentRequests.map((request) => (
+                        <div
+                          key={request._id}
+                          className="p-4 hover:bg-gray-50 transition"
+                        >
+                          <div className="flex flex-row items-start justify-between gap-3">
+                            <div className="flex items-start gap-3 min-w-0">
+                              <div className="w-10 h-10 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-gray-700 flex-shrink-0">
+                                <User className="w-4 h-4" />
+                              </div>
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                  <div className="text-sm font-semibold text-gray-900 truncate">
+                                    Request #
+                                    {request._id.slice(-6).toUpperCase()}
+                                  </div>
+                                  <Pill tone="blue" className="normal-case">
+                                    {request.requestedHours}h
+                                  </Pill>
+                                </div>
+                                <div className="mt-1 text-xs text-gray-500">
+                                  Submitted: {formatDate(request.createdAt)}
+                                </div>
+                              </div>
+                            </div>
+
+                            <span
+                              className={[
+                                "inline-flex items-center rounded-full px-2.5 py-1 text-[10px]",
+                                "font-bold uppercase tracking-wider border w-fit",
+                                getStatusStyles(request.overallStatus),
+                              ].join(" ")}
+                            >
+                              {request.overallStatus}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 p-6 text-center">
+                      <div className="text-sm font-semibold text-gray-900">
+                        No recent requests found.
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        Submit a request to start tracking activity here.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {/* RIGHT RAIL (stacks below main until XL) */}
+            <div className="xl:col-span-4 space-y-4">
+              <Card>
+                <CardHeader
+                  title="Action center"
+                  icon={TrendingUp}
+                  subtitle="Shortcuts to common tasks and links."
+                />
+                <div className="p-4 space-y-3">
+                  <div className="space-y-2">
+                    {quickActions?.slice(0, 4).map((action, idx) => (
+                      <ActionItem
+                        key={`qa-${idx}`}
+                        label={action.name}
+                        link={action.link}
+                        icon={Briefcase}
+                      />
+                    ))}
+                    {quickLinks?.slice(0, 4).map((link, idx) => (
+                      <ActionItem
+                        key={`ql-${idx}`}
+                        label={link.name}
+                        link={link.link}
+                        icon={ArrowUpRight}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+
+          {/* NOTE: totalCreditedCount kept from payload (unused), per original */}
+          {typeof totalCreditedCount !== "undefined" ? null : null}
         </div>
       </div>
-
-      <Link
-        to={`/app/cto-approvals/${request.id}`}
-        className="flex-shrink-0 opacity-0 group-hover:opacity-100 translate-x-1 group-hover:translate-x-0 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 transition-all duration-200"
-      >
-        Review
-      </Link>
     </div>
   );
 };

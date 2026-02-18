@@ -1,4 +1,5 @@
 // services/ctoDashboard.service.js
+const mongoose = require("mongoose");
 const Employee = require("../models/employeeModel");
 const CtoApplication = require("../models/ctoApplicationModel");
 const CtoCredit = require("../models/ctoCreditModel");
@@ -12,6 +13,49 @@ async function sumApprovedHours(employeeId) {
   return agg?.usedHours || 0;
 }
 
+async function getEmployeeCreditTotals(employeeId) {
+  try {
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId))
+      return null;
+
+    const employeeObjId = new mongoose.Types.ObjectId(employeeId);
+
+    const [totalsAgg] = await CtoCredit.aggregate([
+      { $match: { "employees.employee": employeeObjId } },
+      { $unwind: "$employees" },
+      { $match: { "employees.employee": employeeObjId } },
+      {
+        $addFields: {
+          _usedHours: { $ifNull: ["$employees.usedHours", 0] },
+          _reservedHours: { $ifNull: ["$employees.reservedHours", 0] },
+          _creditedHours: { $ifNull: ["$employees.creditedHours", 0] },
+          _remainingHours: { $ifNull: ["$employees.remainingHours", 0] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalUsedHours: { $sum: "$_usedHours" },
+          totalReservedHours: { $sum: "$_reservedHours" },
+          totalRemainingHours: { $sum: "$_remainingHours" },
+          totalCreditedHours: { $sum: "$_creditedHours" },
+        },
+      },
+    ]);
+
+    if (!totalsAgg) return null;
+
+    return {
+      totalUsedHours: totalsAgg?.totalUsedHours ?? 0,
+      totalReservedHours: totalsAgg?.totalReservedHours ?? 0,
+      totalRemainingHours: totalsAgg?.totalRemainingHours ?? 0,
+      totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 const ctoDashboardService = {
   getPersonalCtoSummary: async (employeeId) => {
     const employee = await Employee.findById(employeeId)
@@ -20,8 +64,10 @@ const ctoDashboardService = {
 
     if (!employee) {
       return {
+        totalCredit: 0,
         balance: 0,
         used: 0,
+        reserved: 0,
         pending: 0,
         approved: 0,
         rejected: 0,
@@ -30,23 +76,30 @@ const ctoDashboardService = {
       };
     }
 
-    const [approvedCount, pendingCount, rejectedCount, totalCount, usedHours] =
-      await Promise.all([
-        CtoApplication.countDocuments({
-          employee: employeeId,
-          overallStatus: "APPROVED",
-        }),
-        CtoApplication.countDocuments({
-          employee: employeeId,
-          overallStatus: "PENDING",
-        }),
-        CtoApplication.countDocuments({
-          employee: employeeId,
-          overallStatus: "REJECTED",
-        }),
-        CtoApplication.countDocuments({ employee: employeeId }),
-        sumApprovedHours(employeeId),
-      ]);
+    const [
+      approvedCount,
+      pendingCount,
+      rejectedCount,
+      totalCount,
+      usedHours,
+      creditTotals,
+    ] = await Promise.all([
+      CtoApplication.countDocuments({
+        employee: employeeId,
+        overallStatus: "APPROVED",
+      }),
+      CtoApplication.countDocuments({
+        employee: employeeId,
+        overallStatus: "PENDING",
+      }),
+      CtoApplication.countDocuments({
+        employee: employeeId,
+        overallStatus: "REJECTED",
+      }),
+      CtoApplication.countDocuments({ employee: employeeId }),
+      sumApprovedHours(employeeId),
+      getEmployeeCreditTotals(employeeId),
+    ]);
 
     const recentRequests = await CtoApplication.find({ employee: employeeId })
       .sort({ createdAt: -1 })
@@ -54,9 +107,21 @@ const ctoDashboardService = {
       .select("requestedHours overallStatus inclusiveDates reason createdAt")
       .lean();
 
+    const totals = creditTotals || {
+      totalUsedHours: 0,
+      totalReservedHours: 0,
+      totalRemainingHours: 0,
+      totalCreditedHours: 0,
+    };
+
     return {
-      balance: employee.balances?.ctoHours || 0,
-      used: usedHours,
+      totalCredit: totals.totalCreditedHours,
+      balance: creditTotals
+        ? totals.totalRemainingHours
+        : employee.balances?.ctoHours || 0,
+      used: creditTotals ? totals.totalUsedHours : usedHours,
+      reserved: totals.totalReservedHours,
+
       pending: pendingCount,
       approved: approvedCount,
       rejected: rejectedCount,

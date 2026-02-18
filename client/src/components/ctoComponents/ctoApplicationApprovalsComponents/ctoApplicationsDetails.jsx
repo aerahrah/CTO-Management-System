@@ -470,7 +470,7 @@ const CtoApplicationDetails = () => {
       <div className="flex h-full flex-1 min-h-0 overflow-y-auto flex-col gap-4 px-3 sm:px-4 py-2">
         {/* QUICK STATS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
-          <div className="md:col-span-2 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-4 sm:p-6 text-white flex justify-between items-center relative overflow-hidden shadow-sm shadow-blue-100 min-w-0">
+          <div className="md:col-span-2 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-4 sm:p-6 text-white flex gap-3 justify-between items-center relative overflow-hidden shadow-sm shadow-blue-100 min-w-0">
             <CalendarDays className="absolute right-[-20px] top-[-20px] h-40 w-40 text-white/10 rotate-12" />
             <div className="min-w-0">
               <p className="text-blue-50 text-xs font-bold uppercase tracking-widest mb-1">
@@ -486,7 +486,7 @@ const CtoApplicationDetails = () => {
                 <p className="text-[10px] text-blue-100 uppercase font-bold">
                   Total Duration
                 </p>
-                <p className="text-lg font-bold">
+                <p className="text-xl font-bold">
                   {application.requestedHours} Hours
                 </p>
               </div>
