@@ -198,14 +198,297 @@ const getStatusStyles = (status) => {
 };
 
 /* =========================
-   Loading Skeleton (layout-matched)
+   Loading Skeleton (layout-matched) — further improved
+   Goal: match real layout/spacing/breakpoints to minimize layout shift.
 ========================= */
+const SkeletonStyles = () => (
+  <style>
+    {`
+      @keyframes ctoShimmer {
+        0% { background-position: 100% 0; }
+        100% { background-position: 0 0; }
+      }
+      @keyframes ctoPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: .85; }
+      }
+      .cto-skeleton {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(
+          90deg,
+          rgba(243,244,246,1) 25%,
+          rgba(229,231,235,1) 37%,
+          rgba(243,244,246,1) 63%
+        );
+        background-size: 400% 100%;
+        animation: ctoShimmer 1.25s ease-in-out infinite, ctoPulse 1.8s ease-in-out infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .cto-skeleton { animation: none; }
+      }
+    `}
+  </style>
+);
+
 const Skeleton = ({ className = "" }) => (
-  <div className={["bg-gray-100 rounded-lg", className].join(" ")} />
+  <div className={["cto-skeleton", className].join(" ")} />
 );
 
 const LoadingSkeleton = ({ role }) => {
   const showOrg = role === "admin" || role === "hr";
+
+  const SkIconBox = ({ sizeClass = "w-10 h-10", inner = "w-5 h-5" }) => (
+    <div
+      className={[
+        sizeClass,
+        "rounded-xl border border-gray-200 bg-gray-50 flex items-center justify-center",
+      ].join(" ")}
+    >
+      <Skeleton className={[inner, "rounded-md"].join(" ")} />
+    </div>
+  );
+
+  const SkPill = ({ w = "w-24" }) => (
+    <span className="inline-flex items-center rounded-full px-2.5 py-1 border border-gray-200 bg-white">
+      <Skeleton className={["h-3", w, "rounded-md"].join(" ")} />
+    </span>
+  );
+
+  const SkCardHeader = ({ withAction = true }) => (
+    <div className="px-4 py-3 border-b border-gray-100 bg-white">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center">
+              <Skeleton className="h-3 w-3 rounded-sm" />
+            </div>
+            <Skeleton className="h-5 w-36 rounded-md" />
+          </div>
+          <Skeleton className="mt-2 h-4 w-64 max-w-full rounded-md" />
+        </div>
+        {withAction ? (
+          <div className="flex-shrink-0">
+            <SkPill w="w-20" />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const SkSectionTitle = () => (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 text-gray-700 border border-gray-200">
+            <Skeleton className="w-4 h-4 rounded-md" />
+          </span>
+          <Skeleton className="h-5 w-44 rounded-md" />
+        </div>
+        <Skeleton className="mt-2 h-4 w-80 max-w-full rounded-md" />
+      </div>
+    </div>
+  );
+
+  const SkMetricTile = () => (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-3 w-24 rounded-md" />
+          <Skeleton className="mt-2 h-8 w-20 rounded-md" />
+        </div>
+        <SkIconBox sizeClass="w-10 h-10" inner="w-5 h-5" />
+      </div>
+    </div>
+  );
+
+  const SkActionItem = () => (
+    <div
+      className={[
+        "w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2.5",
+        "border border-gray-200 bg-white",
+      ].join(" ")}
+    >
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="w-9 h-9 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center">
+          <Skeleton className="h-4 w-4 rounded-md" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-5 w-40 max-w-full rounded-md" />
+          <Skeleton className="mt-2 h-4 w-24 rounded-md" />
+        </div>
+      </div>
+      <Skeleton className="h-4 w-4 rounded-md" />
+    </div>
+  );
+
+  const SkPendingRow = () => (
+    <div className="py-3 border-b border-gray-100 last:border-0">
+      <div className="flex flex-row items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton className="h-5 w-44 max-w-full rounded-md" />
+              <span className="inline-flex items-center rounded-full px-2.5 py-1 border border-gray-200 bg-white">
+                <Skeleton className="h-3 w-8 rounded-md" />
+              </span>
+            </div>
+            <Skeleton className="mt-2 h-4 w-40 max-w-full rounded-md" />
+          </div>
+        </div>
+        <div className="flex-shrink-0">
+          <Skeleton className="h-9 w-20 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+
+  const SkApprovalsHero = () => (
+    <div className="rounded-xl flex flex-col justify-between h-56 border border-gray-200 bg-gray-50 p-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <Skeleton className="h-3 w-28 rounded-md" />
+          <Skeleton className="mt-2 h-12 w-16 rounded-lg" />
+          <Skeleton className="mt-3 h-5 w-64 max-w-full rounded-md" />
+          <Skeleton className="mt-2 h-5 w-52 max-w-full rounded-md" />
+        </div>
+
+        <div className="flex-shrink-0 w-12 h-12 rounded-xl border border-gray-200 bg-white flex items-center justify-center">
+          <Skeleton className="h-5 w-5 rounded-md" />
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <Skeleton className="h-10 w-full rounded-lg" />
+      </div>
+    </div>
+  );
+
+  const SkTimeCredits = () => (
+    <Card>
+      <SkCardHeader withAction />
+      <div className="p-4">
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <Skeleton className="h-3 w-16 rounded-md" />
+              {/* Matches text-5xl */}
+              <Skeleton className="mt-2 h-12 w-32 rounded-lg" />
+            </div>
+
+            <div className="text-right space-y-2">
+              <Skeleton className="h-4 w-44 rounded-md ml-auto" />
+              <Skeleton className="h-4 w-32 rounded-md ml-auto" />
+              <Skeleton className="h-4 w-28 rounded-md ml-auto" />
+              <Skeleton className="h-4 w-24 rounded-md ml-auto" />
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {/* Matches Progress wrapper */}
+            <div className="w-full rounded-full bg-gray-100 border border-gray-200 h-3 overflow-hidden">
+              <div className="h-full flex">
+                <Skeleton className="h-full w-[28%] rounded-none" />
+                <Skeleton className="h-full w-[22%] rounded-none" />
+                <div className="flex-1 bg-transparent" />
+              </div>
+            </div>
+
+            {/* Legend rows */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] text-gray-500">
+              <div className="inline-flex items-center gap-2">
+                <Skeleton className="w-2.5 h-2.5 rounded-full" />
+                <Skeleton className="h-4 w-12 rounded-md" />
+              </div>
+              <div className="inline-flex items-center gap-2">
+                <Skeleton className="w-2.5 h-2.5 rounded-full" />
+                <Skeleton className="h-4 w-14 rounded-md" />
+              </div>
+              <div className="inline-flex items-center gap-2">
+                <Skeleton className="w-2.5 h-2.5 rounded-full" />
+                <Skeleton className="h-4 w-10 rounded-md" />
+              </div>
+            </div>
+          </div>
+
+          {/* Summary tiles */}
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+              >
+                <Skeleton className="h-3 w-10 rounded-md" />
+                <Skeleton className="mt-2 h-5 w-16 rounded-md" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+
+  const SkMiniStats = () => (
+    <div className="grid grid-cols-2 gap-3">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <Skeleton className="h-3 w-20 rounded-md" />
+              <Skeleton className="mt-2 h-8 w-16 rounded-md" />
+            </div>
+            <SkIconBox sizeClass="w-10 h-10" inner="w-5 h-5" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const SkRecentRequestsHeader = () => (
+    <div className="px-4 py-3 border-b border-gray-100 bg-white">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center">
+              <Skeleton className="h-3 w-3 rounded-sm" />
+            </div>
+            <Skeleton className="h-5 w-44 rounded-md" />
+          </div>
+          <Skeleton className="mt-2 h-4 w-40 rounded-md" />
+        </div>
+        {/* Mimic the "View all" button size */}
+        <Skeleton className="h-9 w-32 rounded-lg" />
+      </div>
+    </div>
+  );
+
+  const SkRecentRequestRow = () => (
+    <div className="p-4">
+      <div className="flex flex-row items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <div className="w-10 h-10 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center flex-shrink-0">
+            <Skeleton className="h-4 w-4 rounded-md" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Skeleton className="h-5 w-48 max-w-full rounded-md" />
+              <span className="inline-flex items-center rounded-full px-2.5 py-1 border border-gray-200 bg-white">
+                <Skeleton className="h-3 w-8 rounded-md" />
+              </span>
+            </div>
+            <Skeleton className="mt-2 h-4 w-44 max-w-full rounded-md" />
+          </div>
+        </div>
+        <span className="inline-flex items-center rounded-full px-2.5 py-1 border border-gray-200 bg-white">
+          <Skeleton className="h-3 w-16 rounded-md" />
+        </span>
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -214,40 +497,117 @@ const LoadingSkeleton = ({ role }) => {
       aria-live="polite"
       aria-busy="true"
     >
-      <div className=" w-full mx-auto py-3 sm:py-4">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-9 w-56" />
-              <Skeleton className="h-4 w-80" />
+      <SkeletonStyles />
+
+      {/* Match real container classes exactly */}
+      <div className="w-full mx-auto py-3 sm:py-4">
+        <div className="mx-auto">
+          {/* Header (match real breakpoint layout) */}
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              {/* H1: text-2xl sm:text-3xl (use responsive height) */}
+              <Skeleton className="h-8 sm:h-9 w-64 sm:w-72 rounded-lg" />
+              {/* Subtitle: text-sm (line-height ~ 20px => h-5) */}
+              <Skeleton className="h-5 w-[32rem] max-w-full rounded-md" />
             </div>
-            <Skeleton className="h-9 w-28" />
+
+            <div className="flex items-center gap-2">
+              {/* System Live pill */}
+              <SkPill w="w-28" />
+            </div>
           </div>
 
-          {/* Stack until XL so tablet width isn't cramped (sidebar eats space) */}
+          {/* Main + right rail grid (same as real) */}
           <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
+            {/* MAIN */}
             <div className="xl:col-span-8 space-y-4">
+              {/* Org Insights (match real grid cols) */}
               {showOrg ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-                  {Array.from({ length: 4 }).map((_, i) => (
-                    <Skeleton key={i} className="h-24 w-full" />
-                  ))}
+                <div className="space-y-3">
+                  <SkSectionTitle />
+                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <SkMetricTile key={i} />
+                    ))}
+                  </div>
                 </div>
               ) : null}
 
+              {/* Priority row */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Skeleton className="h-52 w-full" />
-                <Skeleton className="h-52 w-full" />
+                {/* Approvals queue */}
+                <Card className="relative">
+                  <SkCardHeader withAction />
+                  <div className="p-4">
+                    <SkApprovalsHero />
+                  </div>
+                </Card>
+
+                {/* Recent pending */}
+                <Card>
+                  <SkCardHeader withAction />
+                  <div className="p-4">
+                    {/* Match real list wrapper */}
+                    <div className="max-h-56 overflow-y-auto pr-1">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <SkPendingRow key={i} />
+                      ))}
+                    </div>
+                  </div>
+                </Card>
               </div>
 
-              <Skeleton className="h-64 w-full" />
-              <Skeleton className="h-72 w-full" />
+              {/* My CTO Dashboard */}
+              <div className="space-y-3">
+                <SkSectionTitle />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <SkTimeCredits />
+                  <SkMiniStats />
+                </div>
+              </div>
+
+              {/* My recent requests */}
+              <Card>
+                <SkRecentRequestsHeader />
+                <div className="p-4">
+                  <div className="divide-y divide-gray-100 border border-gray-200 rounded-xl overflow-hidden bg-white">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} className="hover:bg-gray-50 transition">
+                        <SkRecentRequestRow />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </Card>
             </div>
 
+            {/* RIGHT RAIL */}
             <div className="xl:col-span-4 space-y-4">
-              <Skeleton className="h-64 w-full" />
-              <Skeleton className="h-80 w-full" />
+              <Card>
+                {/* Action center header has no action in real */}
+                <div className="px-4 py-3 border-b border-gray-100 bg-white">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 rounded-md border border-gray-200 bg-gray-50 flex items-center justify-center">
+                          <Skeleton className="h-3 w-3 rounded-sm" />
+                        </div>
+                        <Skeleton className="h-5 w-32 rounded-md" />
+                      </div>
+                      <Skeleton className="mt-2 h-4 w-64 max-w-full rounded-md" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="space-y-2">
+                    {/* Real can show up to 8 (4 actions + 4 links) */}
+                    {Array.from({ length: 1 }).map((_, i) => (
+                      <SkActionItem key={i} />
+                    ))}
+                  </div>
+                </div>
+              </Card>
             </div>
           </div>
         </div>

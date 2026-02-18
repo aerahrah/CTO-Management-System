@@ -78,10 +78,10 @@ const Login = () => {
           </div>
           <div>
             <h1 className="text-white text-xl font-bold tracking-tight">
-              Employee Portal
+              Employee CTO Portal
             </h1>
             <p className="text-blue-100 text-xs font-light mt-0.5">
-              Dept. of Information and Communications Technology
+              Department of Information and Communications Technology
             </p>
           </div>
         </div>
