@@ -81,12 +81,7 @@ const addCtoCreditRequest = async (req, res) => {
         await fs.rename(req.file.path, newPath);
         fileName = newFileName;
       } catch (err) {
-        // keep original filename if rename fails
         fileName = path.basename(req.file.path);
-        console.warn(
-          "File rename failed, keeping original filename:",
-          err?.message,
-        );
       }
     }
 
@@ -104,7 +99,6 @@ const addCtoCreditRequest = async (req, res) => {
       creditRequest,
     });
   } catch (error) {
-    console.error("Add CTO credit error:", error);
     return sendError(res, error);
   }
 };
@@ -184,7 +178,6 @@ const getEmployeeCredits = async (req, res) => {
       ...result,
     });
   } catch (error) {
-    console.error("Controller error:", error.message);
     return sendError(res, error);
   }
 };

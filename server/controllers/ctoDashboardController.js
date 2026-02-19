@@ -51,7 +51,6 @@ const ctoDashboardController = {
 
       return res.json({ success: true, data: dashboardData });
     } catch (err) {
-      console.error(err);
       return sendError(res, err);
     }
   },

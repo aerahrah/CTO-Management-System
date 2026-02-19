@@ -5,10 +5,8 @@ import {
   BadgeCheck,
   CalendarDays,
   Check,
-  User,
   ExternalLink,
   MessageCircle,
-  ShieldCheck,
   XCircle,
   AlertCircle,
   Info,
@@ -32,6 +30,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
 import MemoList from "../ctoMemoModal";
 import { buildApiUrl } from "../../../config/env";
+
+import CtoApplicationPdfModal from "../ctoApplicationComponents/ctoApplicationPDFModal";
 
 /* =========================
    LOADING SKELETON (FULL SCREEN INSIDE CARD)
@@ -174,12 +174,10 @@ const TimelineCard = ({ approval, index, isLast }) => {
 
   return (
     <div className="relative flex gap-2 sm:gap-4 items-start min-w-0">
-      {/* Connector Line */}
       {!isLast && (
         <div className="absolute left-5 top-10 bottom-0 w-0.5 bg-gray-100" />
       )}
 
-      {/* Status Dot */}
       <div
         className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md transition-transform hover:scale-110 flex-none ${StepDotClass(
           status,
@@ -189,7 +187,6 @@ const TimelineCard = ({ approval, index, isLast }) => {
         <StepDotIcon status={status} />
       </div>
 
-      {/* Card */}
       <div
         className={`flex-1 bg-white border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0 transition-all ${
           isPending ? "border-gray-100 opacity-90" : "border-gray-200"
@@ -201,12 +198,6 @@ const TimelineCard = ({ approval, index, isLast }) => {
               <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Approver {index + 1}
               </span>
-
-              {/* {approval?.updatedAt && (
-                <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                  {new Date(approval.updatedAt).toLocaleString()}
-                </span>
-              )} */}
             </div>
 
             <p className="text-sm font-semibold text-gray-900 break-words mt-1">
@@ -223,7 +214,6 @@ const TimelineCard = ({ approval, index, isLast }) => {
           </div>
         </div>
 
-        {/* CANCELLED contextual note (if no remarks) */}
         {isCancelled && !approval?.remarks ? (
           <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-start gap-2 min-w-0">
             <Ban size={14} className="shrink-0 mt-0.5" />
@@ -234,7 +224,6 @@ const TimelineCard = ({ approval, index, isLast }) => {
           </div>
         ) : null}
 
-        {/* Remarks */}
         {approval?.remarks && String(approval.remarks).trim() !== "" && (
           <div
             className={`mt-4 rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2 min-w-0 ${
@@ -269,6 +258,9 @@ const CtoApplicationDetails = () => {
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+
+  // ✅ PDF modal state
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
 
   const {
     data: application,
@@ -354,9 +346,10 @@ const CtoApplicationDetails = () => {
   useEffect(() => {
     setIsProcessed(false);
     setRemarks("");
+    setIsPdfOpen(false);
   }, [application]);
 
-  // --------- EARLY RETURNS (safe now) ----------
+  // --------- EARLY RETURNS ----------
   if (isLoading) return <CtoApplicationDetailsSkeleton />;
   if (isError) return <p>Error: {error?.message}</p>;
 
@@ -416,7 +409,6 @@ const CtoApplicationDetails = () => {
                   {new Date(application.createdAt).toLocaleDateString()}
                 </span>
 
-                {/* ✅ show overallStatus chip (CANCELLED-aware) */}
                 <span
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold ${overallTone.pill}`}
                   title="Overall Status"
@@ -493,7 +485,6 @@ const CtoApplicationDetails = () => {
             </div>
           </div>
 
-          {/* ✅ Global Status card now supports CANCELLED visuals */}
           <div className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0">
             <div
               className={`p-4 rounded-2xl ${
@@ -549,7 +540,7 @@ const CtoApplicationDetails = () => {
               </p>
             </section>
 
-            {/* ✅ Processing Timeline copied from the basis */}
+            {/* Timeline */}
             <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
               <div className="flex items-center gap-3 mb-6">
                 <div className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 flex-none">
@@ -567,7 +558,6 @@ const CtoApplicationDetails = () => {
 
               {sortedApprovals.length > 0 ? (
                 <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
-                  {/* background spine */}
                   <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
 
                   {sortedApprovals.map((approval, idx) => (
@@ -579,7 +569,6 @@ const CtoApplicationDetails = () => {
                     />
                   ))}
 
-                  {/* Success State End of Timeline */}
                   {String(application.overallStatus || "").toUpperCase() ===
                     "APPROVED" && (
                     <div className="relative flex gap-2 sm:gap-4 items-start">
@@ -613,13 +602,32 @@ const CtoApplicationDetails = () => {
 
           {/* SIDEBAR */}
           <aside className="space-y-6 min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsPdfOpen(true)}
+              className="flex-none inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 w-full"
+              title="View Application PDF"
+            >
+              <div className="h-8 w-8 bg-white rounded-lg flex items-center justify-center text-red-500 shadow-sm flex-none">
+                <FileText size={16} />
+              </div>
+              <span className="hidden sm:inline">View Application Form</span>
+              <span className="sm:hidden">PDF</span>
+            </button>
             <div className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6 shadow-sm min-w-0">
-              <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center justify-between gap-2 min-w-0">
-                <span className="truncate">Supporting Memos</span>
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex-none">
-                  {application.memo?.length || 0}
-                </span>
-              </h4>
+              <div className="flex items-center justify-between gap-3 mb-4 min-w-0">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 min-w-0">
+                  <span className="truncate">Supporting Memos</span>
+                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex-none">
+                    {application.memo?.length || 0}
+                  </span>
+                </h4>
+              </div>
+
+              {/* subtle helper text (keeps it clean, optional) */}
+              <p className="text-[11px] text-gray-400 mb-3">
+                Attached documents
+              </p>
 
               <div className="space-y-3">
                 {application.memo?.length > 0 ? (
@@ -642,6 +650,7 @@ const CtoApplicationDetails = () => {
                         target="_blank"
                         rel="noreferrer"
                         className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors flex-none"
+                        title="Open memo"
                       >
                         <ExternalLink size={14} />
                       </a>
@@ -774,6 +783,13 @@ const CtoApplicationDetails = () => {
           />
         </Modal>
       </div>
+
+      {/* PDF MODAL */}
+      <CtoApplicationPdfModal
+        app={application}
+        isOpen={isPdfOpen}
+        onClose={() => setIsPdfOpen(false)}
+      />
     </div>
   );
 };

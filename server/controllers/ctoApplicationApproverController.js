@@ -30,7 +30,6 @@ const getApproverOptions = async (req, res) => {
       data,
     });
   } catch (err) {
-    console.error("Failed to fetch approver options:", err);
     return res.status(500).json({
       success: false,
       message: "Failed to load approver options",

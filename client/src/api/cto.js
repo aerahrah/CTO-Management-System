@@ -37,7 +37,6 @@ export const addCreditRequest = async (formData) => {
 export const fetchAllCreditRequests = async (params = {}) => {
   try {
     const res = await API.get("/cto/credits/all", withCreds(params));
-    console.log(res.data);
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch all credit requests");

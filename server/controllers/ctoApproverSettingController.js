@@ -29,7 +29,6 @@ exports.getApproversByDesignation = async (req, res) => {
       data: approverSetting,
     });
   } catch (error) {
-    console.error("Error fetching approver settings:", error);
     return sendError(res, error);
   }
 };
@@ -44,7 +43,6 @@ exports.upsertApproverSetting = async (req, res) => {
       setting,
     });
   } catch (error) {
-    console.error("Error saving approver setting:", error);
     return sendError(res, error);
   }
 };
@@ -55,7 +53,6 @@ exports.getAllApproverSettings = async (req, res) => {
       await ctoApproverSettingService.getAllApproverSettingsService();
     return res.json(settings);
   } catch (error) {
-    console.error("Error fetching all approver settings:", error);
     return sendError(res, error);
   }
 };
@@ -71,7 +68,6 @@ exports.deleteApproverSetting = async (req, res) => {
       deleted,
     });
   } catch (error) {
-    console.error("Error deleting approver setting:", error);
     return sendError(res, error);
   }
 };

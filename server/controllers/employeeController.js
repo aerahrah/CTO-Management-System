@@ -41,7 +41,6 @@ const createEmployee = async (req, res) => {
 
     return res.status(201).json(response);
   } catch (err) {
-    console.error("Error creating employee:", err.message);
     return sendError(res, err);
   }
 };
@@ -81,10 +80,6 @@ const getEmployees = async (req, res) => {
       data: result.data,
     });
   } catch (err) {
-    console.error(
-      "Error fetching employees:",
-      err.originalMessage || err.message,
-    );
     return sendError(res, err);
   }
 };
@@ -120,7 +115,6 @@ const updateEmployee = async (req, res) => {
       data: employee,
     });
   } catch (err) {
-    console.error("Error updating employee:", err.message);
     return sendError(res, err);
   }
 };
@@ -131,7 +125,6 @@ const getEmployeeCtoMemosById = async (req, res) => {
     const memos = await getEmployeeCtoMemos(employeeId);
     return res.status(200).json({ memos });
   } catch (error) {
-    console.error(error);
     return res.status(500).json({ message: "Failed to fetch CTO memos" });
   }
 };
@@ -144,7 +137,6 @@ const getMyCtoMemos = async (req, res) => {
     const memos = await getEmployeeCtoMemos(employeeId);
     return res.status(200).json({ memos });
   } catch (error) {
-    console.error(error);
     return res.status(500).json({ message: "Failed to fetch your CTO memos" });
   }
 };
@@ -167,7 +159,6 @@ const updateRole = async (req, res) => {
       employee: updatedEmployee,
     });
   } catch (error) {
-    console.error(error);
     return sendError(res, error);
   }
 };

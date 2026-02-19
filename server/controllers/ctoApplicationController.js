@@ -33,7 +33,6 @@ const addCtoApplicationRequest = async (req, res) => {
       application,
     });
   } catch (error) {
-    console.error("Error applying CTO:", error);
     res.status(error.status || 500).json({ error: error.message });
   }
 };
@@ -53,7 +52,6 @@ const getAllCtoApplicationsRequest = async (req, res) => {
       ...result,
     });
   } catch (error) {
-    console.error("Error fetching CTO applications:", error);
     res.status(error.status || 500).json({
       error: error.message || "Server error while fetching CTO applications",
     });
@@ -77,7 +75,6 @@ const getCtoApplicationsByEmployeeRequest = async (req, res) => {
       ...result,
     });
   } catch (error) {
-    console.error("Error fetching CTO applications:", error);
     res.status(error.status || 500).json({
       error: error.message || "Server error while fetching CTO applications",
     });
@@ -103,7 +100,6 @@ const cancelCtoApplicationRequest = async (req, res) => {
       application,
     });
   } catch (error) {
-    console.error("Error cancelling CTO application:", error);
     res.status(error.status || 500).json({
       error: error.message || "Server error while cancelling CTO application",
     });
