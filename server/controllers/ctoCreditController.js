@@ -1,4 +1,3 @@
-// controllers/ctoCreditController.js
 const ctoCreditService = require("../services/ctoCredit.service");
 const path = require("path");
 const fs = require("fs/promises");
@@ -27,9 +26,15 @@ function parseJsonMaybe(value, fallback) {
 
 function safeDateStamp(dateApproved) {
   const d = dateApproved ? new Date(dateApproved) : new Date();
-  if (Number.isNaN(d.getTime()))
-    return new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  return d.toISOString().slice(0, 10).replace(/-/g, "");
+  const ok = !Number.isNaN(d.getTime()) ? d : new Date();
+  return ok.toISOString().slice(0, 10).replace(/-/g, "");
+}
+
+function cleanToken(s) {
+  return String(s ?? "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_]/g, "");
 }
 
 function sendError(res, err) {
@@ -43,7 +48,7 @@ const addCtoCreditRequest = async (req, res) => {
 
     const { employees, duration, memoNo, dateApproved } = req.body;
 
-    // robust parsing (supports form-data string OR JSON body array/object)
+    // robust parsing (supports form-data string OR JSON body)
     const employeesArray = parseJsonMaybe(employees, employees);
     const durationObj = parseJsonMaybe(duration, duration);
 
@@ -51,38 +56,40 @@ const addCtoCreditRequest = async (req, res) => {
       return res.status(400).json({ message: "memoNo is required" });
     }
 
-    let fileName = null;
+    let fileName = null; // just "xxx.pdf"
+    let filePath = null; // "/uploads/cto_memos/xxx.pdf" (what we store)
 
-    // Store only filename (avoid leaking absolute server paths)
+    // If a file was uploaded via multer
     if (req.file?.path && req.file?.originalname) {
       const extension = path.extname(req.file.originalname).toLowerCase();
 
-      // Optional: allow only pdf/images
+      // Allow only pdf/images
       const allowed = new Set([".pdf", ".png", ".jpg", ".jpeg"]);
       if (!allowed.has(extension)) {
-        // cleanup uploaded file if type not allowed
         await fs.unlink(req.file.path).catch(() => {});
         return res
           .status(400)
           .json({ message: "Invalid file type. Upload PDF/JPG/PNG only." });
       }
 
-      const cleanMemoNo = String(memoNo)
-        .trim()
-        .replace(/\s+/g, "_")
-        .replace(/[^a-zA-Z0-9_]/g, "");
-
+      const cleanMemoNo = cleanToken(memoNo) || "memo";
       const cleanDate = safeDateStamp(dateApproved);
-      const newFileName = `${cleanMemoNo || "memo"}_${cleanDate}${extension}`;
+      const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
 
-      const newPath = path.join(path.dirname(req.file.path), newFileName);
+      // Rename inside whatever folder multer saved to (usually uploads/cto_memos)
+      const uploadDir = path.dirname(req.file.path);
+      const newAbsPath = path.join(uploadDir, newFileName);
 
       try {
-        await fs.rename(req.file.path, newPath);
+        await fs.rename(req.file.path, newAbsPath);
         fileName = newFileName;
-      } catch (err) {
+      } catch {
+        // fallback: keep the multer-generated name, but still store filename only
         fileName = path.basename(req.file.path);
       }
+
+      // ✅ store the public URL path (matches your express.static mount)
+      filePath = `/uploads/cto_memos/${fileName}`;
     }
 
     const creditRequest = await ctoCreditService.addCredit({
@@ -91,7 +98,7 @@ const addCtoCreditRequest = async (req, res) => {
       memoNo,
       dateApproved,
       userId,
-      filePath: fileName, // store filename only
+      filePath, // ✅ "/uploads/cto_memos/<filename>" OR null
     });
 
     return res.status(201).json({

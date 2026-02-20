@@ -852,7 +852,7 @@ const CtoDashboard = () => {
                           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                             Pending approvals
                           </div>
-                          <div className="mt-1 text-5xl font-extrabold text-blue-700">
+                          <div className="mt-1 text-5xl font-extrabold text-neutral-900">
                             {pendingCount}
                           </div>
                           <div className="mt-2 text-sm text-gray-600 leading-relaxed">

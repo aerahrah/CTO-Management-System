@@ -147,35 +147,49 @@ const GhostButton = ({ children, disabled, onClick, className = "" }) => (
   </button>
 );
 
+/* =========================
+   ✅ Toggle (fixed for small widths)
+   - prevents shrinking/collapsing
+   - allows label/hint to wrap safely
+========================= */
 const Toggle = ({ checked, disabled, onChange, label, hint }) => (
-  <div className="flex items-start justify-between gap-4">
-    <div className="min-w-0">
-      <div className="text-sm font-semibold text-gray-900">{label}</div>
+  <div className="flex items-start gap-3">
+    {/* Left text */}
+    <div className="min-w-0 flex-1">
+      <div className="text-sm font-semibold text-gray-900 break-words">
+        {label}
+      </div>
       {hint ? (
-        <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+        <div className="text-xs text-gray-500 mt-0.5 leading-relaxed break-words">
           {hint}
         </div>
       ) : null}
     </div>
 
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onChange?.(!checked)}
-      className={[
-        "relative inline-flex h-7 w-12 items-center rounded-full transition border",
-        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-        checked ? "bg-blue-600 border-blue-600" : "bg-gray-100 border-gray-200",
-      ].join(" ")}
-      aria-pressed={checked}
-    >
-      <span
+    {/* Right switch (never shrink) */}
+    <div className="flex-none shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange?.(!checked)}
         className={[
-          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-          checked ? "translate-x-6" : "translate-x-1",
+          "relative inline-flex h-7 w-12 items-center rounded-full transition border",
+          "flex-none shrink-0",
+          disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+          checked
+            ? "bg-blue-600 border-blue-600"
+            : "bg-gray-100 border-gray-200",
         ].join(" ")}
-      />
-    </button>
+        aria-pressed={checked}
+      >
+        <span
+          className={[
+            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+            checked ? "translate-x-6" : "translate-x-1",
+          ].join(" ")}
+        />
+      </button>
+    </div>
   </div>
 );
 
@@ -204,6 +218,9 @@ const presets = [
   { label: "8h", value: 480 },
   { label: "1d", value: 1440 },
   { label: "7d", value: 10080 },
+  { label: "14d", value: 20160 },
+  { label: "21d", value: 30240 },
+  { label: "30d", value: 43200 },
 ];
 
 export default function GeneralSettings() {
@@ -372,15 +389,12 @@ export default function GeneralSettings() {
                     hint="If disabled, the backend will sign JWT tokens without expiresIn (they won’t expire)."
                   />
 
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="rounded-xl border border-gray-200 bg-white p-2 md:p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-gray-900">
                           Timeout duration (minutes)
                         </div>
-                        {/* <div className="text-xs text-gray-500 mt-0.5">
-                          Input minutes
-                        </div> */}
                       </div>
 
                       <div className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border bg-gray-50 border-gray-200 text-gray-700">
@@ -419,7 +433,7 @@ export default function GeneralSettings() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap md:w-72 gap-2">
                         {presets.map((p) => (
                           <button
                             key={p.value}
@@ -519,7 +533,7 @@ export default function GeneralSettings() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="rounded-xl border border-gray-200 bg-white p-2 md:p-4">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     Limits
                   </div>

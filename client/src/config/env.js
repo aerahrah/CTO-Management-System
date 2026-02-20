@@ -1,8 +1,6 @@
-const defaultApiBaseUrl = "http://localhost:3000";
+const defaultApiBaseUrl = "https://cto.dictr2.online";
 
-export const API_BASE_URL = String(
-  import.meta.env?.VITE_API_BASE_URL || defaultApiBaseUrl,
-).replace(/\/$/, "");
+export const API_BASE_URL = String(defaultApiBaseUrl).replace(/\/$/, "");
 
 export const buildApiUrl = (path = "") => {
   if (!path) {

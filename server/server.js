@@ -36,7 +36,7 @@ app.use(
 );
 
 // ---- CORS ----
-const allowedOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+const allowedOrigins = "https://cto.dictr2.online"
   .split(",")
   .map((o) => o.trim().replace(/^"(.+)"$/, "$1"))
   .filter(Boolean);
@@ -73,15 +73,15 @@ app.get("/health", (req, res) => res.json({ status: "ok", env: NODE_ENV }));
 app.use(auditLogger);
 
 // Routes
-app.use("/employee", employeeRoutes);
-app.use("/cto", ctoRoutes);
-app.use("/cto", ctoDashboardRoutes);
-app.use("/cto/settings", ctoSettingRoutes);
-app.use("/settings/designation", designationRoutes);
-app.use("/audit-logs", auditLogRoutes);
-app.use("/settings/projects", projectRoutes);
-app.use("/settings/mongodb", ctoBackupRoutes);
-app.use("/settings/general", generalSettingRoutes);
+app.use("/api/employee", employeeRoutes);
+app.use("/api/cto", ctoRoutes);
+app.use("/api/cto", ctoDashboardRoutes);
+app.use("/api/cto/settings", ctoSettingRoutes);
+app.use("/api/settings/designation", designationRoutes);
+app.use("/api/audit-logs", auditLogRoutes);
+app.use("/api/settings/projects", projectRoutes);
+app.use("/api/settings/mongodb", ctoBackupRoutes);
+app.use("/api/settings/general", generalSettingRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ message: "Not found" }));

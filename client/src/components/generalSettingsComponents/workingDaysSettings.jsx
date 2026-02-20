@@ -132,35 +132,47 @@ const GhostButton = ({ children, disabled, onClick, className = "" }) => (
   </button>
 );
 
+/* =========================
+   ✅ Toggle (fixed for small widths)
+   - prevents shrinking/collapsing
+   - allows label/hint to wrap safely
+========================= */
 const Toggle = ({ checked, disabled, onChange, label, hint }) => (
-  <div className="flex items-start justify-between gap-4">
-    <div className="min-w-0">
-      <div className="text-sm font-semibold text-gray-900">{label}</div>
+  <div className="flex items-start gap-3">
+    <div className="min-w-0 flex-1">
+      <div className="text-sm font-semibold text-gray-900 break-words">
+        {label}
+      </div>
       {hint ? (
-        <div className="text-xs text-gray-500 mt-0.5 leading-relaxed">
+        <div className="text-xs text-gray-500 mt-0.5 leading-relaxed break-words">
           {hint}
         </div>
       ) : null}
     </div>
 
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={() => onChange?.(!checked)}
-      className={[
-        "relative inline-flex h-7 w-12 items-center rounded-full transition border",
-        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-        checked ? "bg-blue-600 border-blue-600" : "bg-gray-100 border-gray-200",
-      ].join(" ")}
-      aria-pressed={checked}
-    >
-      <span
+    <div className="flex-none shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange?.(!checked)}
         className={[
-          "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-          checked ? "translate-x-6" : "translate-x-1",
+          "relative inline-flex h-7 w-12 items-center rounded-full transition border",
+          "flex-none shrink-0",
+          disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+          checked
+            ? "bg-blue-600 border-blue-600"
+            : "bg-gray-100 border-gray-200",
         ].join(" ")}
-      />
-    </button>
+        aria-pressed={checked}
+      >
+        <span
+          className={[
+            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+            checked ? "translate-x-6" : "translate-x-1",
+          ].join(" ")}
+        />
+      </button>
+    </div>
   </div>
 );
 
@@ -353,7 +365,7 @@ export default function WorkingDaysSettings() {
                     hint="If disabled, working-day based rules won’t be applied."
                   />
 
-                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                  <div className="rounded-xl border border-gray-200 bg-white p-2 md:p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-gray-900">
@@ -364,7 +376,7 @@ export default function WorkingDaysSettings() {
                         </div>
                       </div>
 
-                      <div className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border bg-gray-50 border-gray-200 text-gray-700">
+                      <div className="inline-flex items-center gap-2 rounded-full min-w-16 px-3 py-1.5 text-xs font-medium border bg-gray-50 border-gray-200 text-gray-700">
                         {workingDaysValue} day
                         {workingDaysValue === 1 ? "" : "s"}
                       </div>
@@ -500,7 +512,7 @@ export default function WorkingDaysSettings() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="rounded-xl border border-gray-200 bg-white p-2 md:p-4">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
                     Limits
                   </div>

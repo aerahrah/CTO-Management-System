@@ -253,7 +253,7 @@ const Sidebar = ({
           </button>
         </div>
 
-        <nav className="flex-1 mt-6 px-3 space-y-2 overflow-y-auto no-scrollbar">
+        <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto no-scrollbar">
           {filteredItems.map((item) => {
             const hasSubItems = item.subItems?.length > 0;
 

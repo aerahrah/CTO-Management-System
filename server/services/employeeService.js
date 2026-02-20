@@ -182,7 +182,7 @@ const createEmployeeService = async (employeeData) => {
 
   await employee.save();
 
-  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const frontendUrl = process.env.FRONTEND_URL || "http://cto.dictr2.online";
 
   if (employee.email) {
     try {

@@ -25,11 +25,12 @@ import {
   Layers,
   User,
   FileDown,
+  ArrowUp,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 
-// ✅ PDF Modal (the one you made earlier)
+// ✅ PDF Modal
 import CtoApplicationPdfModal from "./ctoApplicationPDFModal";
 
 const pageSizeOptions = [20, 50, 100];
@@ -171,7 +172,6 @@ const ApplicationActionMenu = ({
             <Eye size={14} /> View Details
           </button>
 
-          {/* ✅ View PDF */}
           <button
             type="button"
             onClick={() => handle(onViewPdf)}
@@ -295,7 +295,6 @@ const ApplicationCard = ({
       </div>
 
       <div className="border-t border-gray-100 bg-white p-3">
-        {/* ✅ 3 buttons: Memos / Details / PDF */}
         <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
@@ -479,6 +478,27 @@ const AllCtoApplicationsHistory = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
+  // ✅ Scroll container (mobile) + scroll-to-top (pattern copy)
+  const scrollRef = useRef(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onScroll = () => setShowScrollTop(el.scrollTop > 240);
+
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   // reset to page 1 when filters change
   useEffect(() => setPage(1), [debouncedSearch, statusFilter, limit]);
 
@@ -591,455 +611,479 @@ const AllCtoApplicationsHistory = () => {
       .join(", ");
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
-      {/* Header */}
-      <div className="pt-2 pb-3 md:pb-6 px-1">
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-          <div className="flex items-start gap-4 flex-1 min-w-0">
-            <div className="min-w-0">
-              <Breadcrumbs rootLabel="home" rootTo="/app" />
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
-                All CTO Applications
-              </h1>
-              <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-                View and manage all compensatory time-off applications
-              </p>
-            </div>
-          </div>
-
-          {/* Stat cards */}
-          <div className="w-full md:w-auto flex-1 lg:flex-none flex flex-col gap-3 md:ml-4">
-            <div className="hidden lg:grid  lg:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
-              <StatCard
-                title="Total Requests"
-                value={String(totalRequests || 0)}
-                icon={LayoutGrid}
-                hint="All applications"
-                tone="blue"
-              />
-              <StatCard
-                title="Total Pending"
-                value={String(statPending || 0)}
-                icon={AlertCircle}
-                hint="Awaiting action"
-                tone="amber"
-              />
-              <StatCard
-                title="Total Approved"
-                value={String(statApproved || 0)}
-                icon={CheckCircle2}
-                hint="Approved requests"
-                tone="green"
-              />
-              <StatCard
-                title="Total Rejected"
-                value={String(statRejected || 0)}
-                icon={XCircle}
-                hint="Rejected requests"
-                tone="red"
-              />
+    // ✅ Pattern: mobile scroll container + desktop contents
+    <div className="w-full h-full min-h-0 flex flex-col md:p-0 bg-gray-50/50">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents"
+      >
+        {/* HEADER (scrolls away on mobile) */}
+        <div className="pt-2 pb-3 md:pb-6 px-1">
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="flex items-start gap-4 flex-1 min-w-0">
+              <div className="min-w-0">
+                <Breadcrumbs rootLabel="home" rootTo="/app" />
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
+                  All CTO Applications
+                </h1>
+                <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+                  View and manage all compensatory time-off applications
+                </p>
+              </div>
             </div>
 
-            {/* Mobile compact */}
-            <div className="flex lg:hidden flex-col gap-2">
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                  <div className="text-[10px] text-gray-400 uppercase font-bold">
-                    Total
+            {/* Stat cards */}
+            <div className="w-full md:w-auto flex-1 lg:flex-none flex flex-col gap-3 md:ml-4">
+              <div className="hidden lg:grid lg:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
+                <StatCard
+                  title="Total Requests"
+                  value={String(totalRequests || 0)}
+                  icon={LayoutGrid}
+                  hint="All applications"
+                  tone="blue"
+                />
+                <StatCard
+                  title="Total Pending"
+                  value={String(statPending || 0)}
+                  icon={AlertCircle}
+                  hint="Awaiting action"
+                  tone="amber"
+                />
+                <StatCard
+                  title="Total Approved"
+                  value={String(statApproved || 0)}
+                  icon={CheckCircle2}
+                  hint="Approved requests"
+                  tone="green"
+                />
+                <StatCard
+                  title="Total Rejected"
+                  value={String(statRejected || 0)}
+                  icon={XCircle}
+                  hint="Rejected requests"
+                  tone="red"
+                />
+              </div>
+
+              {/* Mobile compact */}
+              <div className="flex lg:hidden flex-col gap-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
+                    <div className="text-[10px] text-gray-400 uppercase font-bold">
+                      Total
+                    </div>
+                    <div className="text-sm font-bold text-gray-900">
+                      {totalRequests || 0}
+                    </div>
                   </div>
-                  <div className="text-sm font-bold text-gray-900">
-                    {totalRequests || 0}
+                  <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
+                    <div className="text-[10px] text-gray-400 uppercase font-bold">
+                      Pending
+                    </div>
+                    <div className="text-sm font-bold text-gray-900">
+                      {statPending || 0}
+                    </div>
                   </div>
-                </div>
-                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                  <div className="text-[10px] text-gray-400 uppercase font-bold">
-                    Pending
+                  <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
+                    <div className="text-[10px] text-gray-400 uppercase font-bold">
+                      Approved
+                    </div>
+                    <div className="text-sm font-bold text-gray-900">
+                      {statApproved || 0}
+                    </div>
                   </div>
-                  <div className="text-sm font-bold text-gray-900">
-                    {statPending || 0}
-                  </div>
-                </div>
-                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                  <div className="text-[10px] text-gray-400 uppercase font-bold">
-                    Approved
-                  </div>
-                  <div className="text-sm font-bold text-gray-900">
-                    {statApproved || 0}
-                  </div>
-                </div>
-                <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                  <div className="text-[10px] text-gray-400 uppercase font-bold">
-                    Rejected
-                  </div>
-                  <div className="text-sm font-bold text-gray-900">
-                    {statRejected || 0}
+                  <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
+                    <div className="text-[10px] text-gray-400 uppercase font-bold">
+                      Rejected
+                    </div>
+                    <div className="text-sm font-bold text-gray-900">
+                      {statRejected || 0}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
+            {/* end stats */}
           </div>
-          {/* end stats */}
         </div>
-      </div>
 
-      {/* Main surface */}
-      <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            {/* Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-              {statusTabs(statusCounts, pagination.total).map((tab) => {
-                const isActive = statusFilter === tab.id;
-                const Icon = tab.icon;
+        {/* MAIN surface (desktop scroll region only; mobile uses outer scroll) */}
+        <div className="flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm overflow-visible md:flex-1 md:min-h-0 md:overflow-hidden">
+          {/* ✅ Sticky filters/search on mobile; static on md+ */}
+          <div className="p-4 border-b border-gray-100 bg-white space-y-4 sticky top-0 z-[1] bg-white/95 backdrop-blur md:static md:z-auto md:bg-white md:backdrop-blur-0">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {statusTabs(statusCounts, pagination.total).map((tab) => {
+                  const isActive = statusFilter === tab.id;
+                  const Icon = tab.icon;
 
-                return (
-                  <button
-                    key={tab.id || "all-status"}
-                    onClick={() => {
-                      setStatusFilter(tab.id);
-                      setPage(1);
-                    }}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap flex items-center gap-2
-                      ${
-                        isActive
-                          ? tab.activeColor
-                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                      }`}
-                    aria-pressed={isActive}
-                    type="button"
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{tab.label}</span>
-                    <span
-                      className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+                  return (
+                    <button
+                      key={tab.id || "all-status"}
+                      onClick={() => {
+                        setStatusFilter(tab.id);
+                        setPage(1);
+                      }}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap flex items-center gap-2
                         ${
                           isActive
-                            ? "bg-white/80 text-gray-900"
-                            : "bg-gray-100 text-gray-600"
+                            ? tab.activeColor
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                         }`}
+                      aria-pressed={isActive}
+                      type="button"
                     >
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                      <span
+                        className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+                          ${
+                            isActive
+                              ? "bg-white/80 text-gray-900"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                      >
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
 
-            {/* Search + rows */}
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search memo..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                />
-                {searchInput && (
-                  <button
-                    onClick={() => setSearchInput("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                    aria-label="Clear search"
-                    title="Clear"
-                    type="button"
+              {/* Search + rows */}
+              <div className="flex items-center gap-3 w-full md:w-auto">
+                <div className="relative flex-1 md:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search memo..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  />
+                  {searchInput && (
+                    <button
+                      onClick={() => setSearchInput("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                      aria-label="Clear search"
+                      title="Clear"
+                      type="button"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Show
+                  </span>
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
                   >
-                    <RotateCcw size={14} />
-                  </button>
-                )}
-              </div>
+                    {pageSizeOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Show
-                </span>
-                <select
-                  value={limit}
-                  onChange={(e) => {
-                    setLimit(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
-                >
-                  {pageSizeOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
-                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Rows
-                </span>
-                <FilterSelect
-                  label=""
-                  value={limit}
-                  onChange={(v) => {
-                    setLimit(v);
-                    setPage(1);
-                  }}
-                  options={pageSizeOptions}
-                  className="!mb-0 w-20 text-xs"
-                />
+                <div className="md:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    shows
+                  </span>
+                  <FilterSelect
+                    label=""
+                    value={limit}
+                    onChange={(v) => {
+                      setLimit(v);
+                      setPage(1);
+                    }}
+                    options={pageSizeOptions}
+                    className="!mb-0 w-20 text-xs"
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Active chips + reset */}
+            {isFiltered && (
+              <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">
+                    Active:
+                  </span>
+                  {debouncedSearch && (
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                      "{debouncedSearch}"
+                    </span>
+                  )}
+                  {statusFilter && (
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                      {statusFilter}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={handleResetFilters}
+                  className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
+                  type="button"
+                >
+                  <RotateCcw size={10} /> Reset
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Active chips + reset */}
-          {isFiltered && (
-            <div className="flex items-center justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">
-                  Active:
-                </span>
-                {debouncedSearch && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    "{debouncedSearch}"
-                  </span>
-                )}
-                {statusFilter && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {statusFilter}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={handleResetFilters}
-                className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
-                type="button"
-              >
-                <RotateCcw size={10} /> Reset
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Data view */}
-        <div className="flex-1 overflow-y-auto bg-white min-h-[300px]">
-          {!isLoading && applications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
-              <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                <Inbox className="w-10 h-10 text-gray-300" />
-              </div>
-              <h3 className="text-lg font-bold text-gray-900">
-                No Results Found
-              </h3>
-              <p className="text-sm text-gray-500 max-w-xs mt-1">
-                Try adjusting your search or filters to find what you're looking
-                for.
-              </p>
-              {isFiltered && (
-                <button
-                  type="button"
-                  onClick={handleResetFilters}
-                  className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <RotateCcw size={12} /> Clear Filters
-                </button>
-              )}
-            </div>
-          ) : (
-            <>
-              {/* Mobile: cards */}
-              <div className="block md:hidden p-4">
-                <div className="space-y-3">
-                  {isLoading
-                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                        <div
-                          key={`sk-m-${i}`}
-                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
-                        >
-                          <Skeleton height={18} />
-                          <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
-                          </div>
-                        </div>
-                      ))
-                    : applications.map((app) => (
-                        <ApplicationCard
-                          key={app._id}
-                          app={app}
-                          leftStripClassName={getStatusStripClass(
-                            app.overallStatus,
-                          )}
-                          onViewDetails={() => setSelectedApp(app)}
-                          onViewPdf={() => setPdfApp(app)} // ✅
-                          onViewMemos={() => openMemoModal(app.memo)}
-                        />
-                      ))}
+          {/* ✅ Data region: no nested scroll on mobile; scrolls on md+ */}
+          <div className="bg-gray-50/50 min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto">
+            {!isLoading && applications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
+                <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
+                  <Inbox className="w-10 h-10 text-gray-300" />
                 </div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  No Results Found
+                </h3>
+                <p className="text-sm text-gray-500 max-w-xs mt-1">
+                  Try adjusting your search or filters to find what you're
+                  looking for.
+                </p>
+                {isFiltered && (
+                  <button
+                    type="button"
+                    onClick={handleResetFilters}
+                    className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    <RotateCcw size={12} /> Clear Filters
+                  </button>
+                )}
               </div>
-
-              {/* Tablet: 2 cards */}
-              <div className="hidden md:block lg:hidden p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {isLoading
-                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                        <div
-                          key={`sk-t-${i}`}
-                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
-                        >
-                          <Skeleton height={18} />
-                          <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
-                          </div>
-                        </div>
-                      ))
-                    : applications.map((app) => (
-                        <ApplicationCard
-                          key={app._id}
-                          app={app}
-                          leftStripClassName={getStatusStripClass(
-                            app.overallStatus,
-                          )}
-                          onViewDetails={() => setSelectedApp(app)}
-                          onViewPdf={() => setPdfApp(app)} // ✅
-                          onViewMemos={() => openMemoModal(app.memo)}
-                        />
-                      ))}
-                </div>
-              </div>
-
-              {/* Desktop: table */}
-              <div className="hidden lg:block w-full align-middle">
-                <table className="w-full text-left">
-                  <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
-                    <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
-                      <th className="px-6 py-4 font-bold">Requestor</th>
-                      <th className="px-6 py-4 font-bold">Reference / Memo</th>
-                      <th className="px-6 py-4 text-center">Hours</th>
-                      <th className="px-6 py-4 text-center">Status</th>
-                      <th className="px-6 py-4 text-center">Submitted</th>
-                      <th className="px-6 py-4">Dates Covered</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-50">
+            ) : (
+              <>
+                {/* Mobile: cards */}
+                <div className="block md:hidden p-4">
+                  <div className="space-y-3">
                     {isLoading
-                      ? [...Array(8)].map((_, i) => (
-                          <tr key={i}>
-                            {[...Array(7)].map((__, j) => (
-                              <td key={j} className="px-6 py-4">
-                                <Skeleton />
-                              </td>
-                            ))}
-                          </tr>
+                      ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                          <div
+                            key={`sk-m-${i}`}
+                            className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                          >
+                            <Skeleton height={18} />
+                            <div className="mt-3">
+                              <Skeleton height={12} count={2} />
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <Skeleton height={52} />
+                              <Skeleton height={52} />
+                            </div>
+                            <div className="mt-4">
+                              <Skeleton height={40} />
+                            </div>
+                          </div>
                         ))
-                      : applications.map((app, i) => {
-                          const memoLabel =
-                            Array.isArray(app.memo) && app.memo.length
-                              ? app.memo
-                                  .map((m) => m?.memoId?.memoNo)
-                                  .filter(Boolean)
-                                  .join(", ")
-                              : "No Memo Attached";
+                      : applications.map((app) => (
+                          <ApplicationCard
+                            key={app._id}
+                            app={app}
+                            leftStripClassName={getStatusStripClass(
+                              app.overallStatus,
+                            )}
+                            onViewDetails={() => setSelectedApp(app)}
+                            onViewPdf={() => setPdfApp(app)}
+                            onViewMemos={() => openMemoModal(app.memo)}
+                          />
+                        ))}
+                  </div>
+                </div>
 
-                          return (
-                            <tr
-                              key={app._id}
-                              className={`group hover:bg-gray-50/80 transition-colors ${
-                                i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                              }`}
-                            >
-                              <td className="px-6 py-4">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-gray-900 text-sm">
-                                    {app?.employee?.firstName || ""}{" "}
-                                    {app?.employee?.lastName || ""}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 font-mono mt-0.5">
-                                    {app?.employee?.position || "-"}
-                                  </span>
-                                </div>
-                              </td>
+                {/* Tablet: 2 cards */}
+                <div className="hidden md:block lg:hidden p-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    {isLoading
+                      ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                          <div
+                            key={`sk-t-${i}`}
+                            className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                          >
+                            <Skeleton height={18} />
+                            <div className="mt-3">
+                              <Skeleton height={12} count={2} />
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <Skeleton height={52} />
+                              <Skeleton height={52} />
+                            </div>
+                            <div className="mt-4">
+                              <Skeleton height={40} />
+                            </div>
+                          </div>
+                        ))
+                      : applications.map((app) => (
+                          <ApplicationCard
+                            key={app._id}
+                            app={app}
+                            leftStripClassName={getStatusStripClass(
+                              app.overallStatus,
+                            )}
+                            onViewDetails={() => setSelectedApp(app)}
+                            onViewPdf={() => setPdfApp(app)}
+                            onViewMemos={() => openMemoModal(app.memo)}
+                          />
+                        ))}
+                  </div>
+                </div>
 
-                              <td className="px-6 py-4">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-gray-900 text-sm">
-                                    {memoLabel}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 font-mono mt-0.5">
-                                    ID:{" "}
-                                    {app._id
-                                      ? app._id.slice(-6).toUpperCase()
-                                      : "-"}
-                                  </span>
-                                </div>
-                              </td>
+                {/* Desktop: table */}
+                <div className="hidden lg:block w-full align-middle">
+                  <table className="w-full text-left">
+                    <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
+                      <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
+                        <th className="px-6 py-4 font-bold">Requestor</th>
+                        <th className="px-6 py-4 font-bold">
+                          Reference / Memo
+                        </th>
+                        <th className="px-6 py-4 text-center">Hours</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-center">Submitted</th>
+                        <th className="px-6 py-4">Dates Covered</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
 
-                              <td className="px-6 py-4 text-center">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-bold border border-gray-200">
-                                  {Number(app?.requestedHours || 0)}h
-                                </span>
-                              </td>
-
-                              <td className="px-6 py-4 text-center">
-                                <StatusBadge status={app.overallStatus} />
-                              </td>
-
-                              <td className="px-6 py-4 text-center text-sm text-gray-500">
-                                {formatSubmitted(app.createdAt)}
-                              </td>
-
-                              <td className="px-6 py-4 text-sm text-gray-500">
-                                <div className="flex items-center gap-2">
-                                  <Calendar
-                                    size={14}
-                                    className="text-gray-400"
-                                  />
-                                  <span className="truncate">
-                                    {formatCoveredDates(app.inclusiveDates)}
-                                  </span>
-                                </div>
-                              </td>
-
-                              <td className="px-6 py-4 text-right">
-                                <ApplicationActionMenu
-                                  app={app}
-                                  onViewDetails={() => setSelectedApp(app)}
-                                  onViewPdf={() => setPdfApp(app)} // ✅
-                                  onViewMemos={() => openMemoModal(app.memo)}
-                                />
-                              </td>
+                    <tbody className="divide-y divide-gray-50">
+                      {isLoading
+                        ? [...Array(8)].map((_, i) => (
+                            <tr key={i}>
+                              {[...Array(7)].map((__, j) => (
+                                <td key={j} className="px-6 py-4">
+                                  <Skeleton />
+                                </td>
+                              ))}
                             </tr>
-                          );
-                        })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+                          ))
+                        : applications.map((app, i) => {
+                            const memoLabel =
+                              Array.isArray(app.memo) && app.memo.length
+                                ? app.memo
+                                    .map((m) => m?.memoId?.memoNo)
+                                    .filter(Boolean)
+                                    .join(", ")
+                                : "No Memo Attached";
 
-        {/* Pagination */}
-        <CompactPagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          total={pagination.total}
-          startItem={startItem}
-          endItem={endItem}
-          label="applications"
-          onPrev={() => setPage((p) => Math.max(p - 1, 1))}
-          onNext={() => setPage((p) => Math.min(p + 1, pagination.totalPages))}
-        />
+                            return (
+                              <tr
+                                key={app._id}
+                                className={`group hover:bg-gray-50/80 transition-colors ${
+                                  i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                                }`}
+                              >
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-gray-900 text-sm">
+                                      {app?.employee?.firstName || ""}{" "}
+                                      {app?.employee?.lastName || ""}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                      {app?.employee?.position || "-"}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-gray-900 text-sm">
+                                      {memoLabel}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                      ID:{" "}
+                                      {app._id
+                                        ? app._id.slice(-6).toUpperCase()
+                                        : "-"}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4 text-center">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-bold border border-gray-200">
+                                    {Number(app?.requestedHours || 0)}h
+                                  </span>
+                                </td>
+
+                                <td className="px-6 py-4 text-center">
+                                  <StatusBadge status={app.overallStatus} />
+                                </td>
+
+                                <td className="px-6 py-4 text-center text-sm text-gray-500">
+                                  {formatSubmitted(app.createdAt)}
+                                </td>
+
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar
+                                      size={14}
+                                      className="text-gray-400"
+                                    />
+                                    <span className="truncate">
+                                      {formatCoveredDates(app.inclusiveDates)}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4 text-right">
+                                  <ApplicationActionMenu
+                                    app={app}
+                                    onViewDetails={() => setSelectedApp(app)}
+                                    onViewPdf={() => setPdfApp(app)}
+                                    onViewMemos={() => openMemoModal(app.memo)}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Pagination pinned */}
+          <CompactPagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            startItem={startItem}
+            endItem={endItem}
+            label="applications"
+            onPrev={() => setPage((p) => Math.max(p - 1, 1))}
+            onNext={() =>
+              setPage((p) => Math.min(p + 1, pagination.totalPages))
+            }
+          />
+        </div>
       </div>
+
+      {/* ✅ Back-to-top (mobile only) */}
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className="md:hidden fixed bottom-5 z-[1] h-10 w-10 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
+          aria-label="Scroll to top"
+          title="Back to top"
+        >
+          <ArrowUp className="w-5 h-5" />
+        </button>
+      )}
 
       {/* ✅ PDF Modal */}
       <CtoApplicationPdfModal

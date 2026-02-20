@@ -986,7 +986,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
         </div>
 
         {/* Sticky Footer */}
-        <div className="border-t border-gray-100 bg-white px-4 py-3 flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 sticky bottom-0">
+        <div className="border-t border-gray-100 bg-white px-4 py-3 flex flex-row items-stretch sm:items-center gap-2 sm:gap-3 sticky bottom-0">
           <button
             type="button"
             disabled={mutation.isPending}

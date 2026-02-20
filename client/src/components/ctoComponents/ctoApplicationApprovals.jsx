@@ -15,7 +15,7 @@ const CtoApplicationApprovals = () => {
         <Breadcrumbs rootLabel="home" rootTo="/app" />
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-3 h-[calc(100vh-3.5rem-2.5rem)] md:h-[calc(100vh-3.75rem-3.5rem)]">
+      <div className="flex flex-col xl:flex-row gap-3 h-[calc(100vh-3.5rem-2.25rem)] md:h-[calc(100vh-3.75rem-3.5rem)]">
         <CardMd
           className={[
             // Mobile/Tablet: show list only when no selection

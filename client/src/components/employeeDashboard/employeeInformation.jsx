@@ -96,7 +96,7 @@ const Card = ({ title, subtitle, action, children, className = "" }) => (
     ].join(" ")}
   >
     {(title || action) && (
-      <div className="px-6 py-4 border-b border-slate-200/60 flex items-center justify-between gap-3">
+      <div className="px-4 md:px-6 py-4 border-b border-slate-200/60 flex items-center justify-between gap-3">
         <div className="min-w-0">
           {title && (
             <h3 className="text-sm font-semibold text-slate-900 truncate">
@@ -112,7 +112,7 @@ const Card = ({ title, subtitle, action, children, className = "" }) => (
         {action && <div className="shrink-0 text-slate-400">{action}</div>}
       </div>
     )}
-    <div className="px-6 py-5">{children}</div>
+    <div className="px-4 md:px-6 py-5">{children}</div>
   </div>
 );
 
@@ -483,7 +483,7 @@ const EmployeeInformation = () => {
         {/* Header */}
         <Breadcrumbs rootLabel="home" rootTo="/app" />
         <div className="bg-white/80 backdrop-blur rounded-xl border border-slate-200/70 overflow-hidden shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="px-6 pt-5 pb-4 border-b border-slate-200/60">
+          <div className="px-1.5 md:px-6 pt-5 pb-4 border-b border-slate-200/60">
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
               <div className="min-w-0">
                 <div className="mt-3 flex items-start gap-4">
@@ -560,7 +560,7 @@ const EmployeeInformation = () => {
           </div>
 
           {/* Body */}
-          <div className="px-6 py-6 bg-transparent">
+          <div className="px-1.5 md:px-6 py-6 bg-transparent">
             <div className="max-w-5xl mx-auto space-y-6">
               {activeTab === "overview" && (
                 <>
@@ -953,7 +953,7 @@ const EmployeeSkeleton = () => (
   <div className="min-h-screen bg-slate-50 p-6 md:p-10 animate-pulse">
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 overflow-hidden shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="px-6 pt-5 pb-4 border-b border-slate-200/60">
+        <div className="px-4 md:px-6 pt-5 pb-4 border-b border-slate-200/60">
           <div className="flex gap-4 items-center">
             <div className="w-12 h-12 bg-slate-200/60 rounded-2xl" />
             <div className="flex-1 space-y-2">
@@ -969,7 +969,7 @@ const EmployeeSkeleton = () => (
           </div>
         </div>
 
-        <div className="px-6 py-6">
+        <div className="px-4 md:px-6 py-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="h-28 bg-white border border-slate-200/70 rounded-2xl" />
             <div className="h-28 bg-white border border-slate-200/70 rounded-2xl" />

@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Calendar,
   RotateCcw,
   FilterX,
   X,
@@ -46,6 +45,20 @@ const getMethodColor = (method) => {
     default:
       return "text-gray-700 bg-gray-50 border-gray-200";
   }
+};
+
+/* =========================
+   ✅ MOBILE CARD LEFT STRIP (by statusCode)
+========================= */
+const getLeftStripClassByStatus = (code) => {
+  const c = Number(code);
+  if (Number.isFinite(c)) {
+    if (c >= 200 && c < 300) return "border-l-4 border-l-emerald-500";
+    if (c >= 300 && c < 400) return "border-l-4 border-l-blue-500";
+    if (c >= 400 && c < 500) return "border-l-4 border-l-amber-500";
+    if (c >= 500) return "border-l-4 border-l-rose-500";
+  }
+  return "border-l-4 border-l-slate-300";
 };
 
 /* =========================
@@ -262,7 +275,6 @@ const AuditLogTable = () => {
     setEndDate("");
     setLimit(20);
     setPage(1);
-    // no manual refetch needed; queryKey changes will refetch automatically
   };
 
   // ✅ Refresh uses latest typed values immediately (flush debounce) then refetch
@@ -270,7 +282,7 @@ const AuditLogTable = () => {
     flushUsername();
     flushEndpoint();
     flushStatus();
-    await Promise.resolve(); // let state apply before refetch
+    await Promise.resolve();
     refetch({ cancelRefetch: false });
   }, [flushUsername, flushEndpoint, flushStatus, refetch]);
 
@@ -308,10 +320,10 @@ const AuditLogTable = () => {
       </div>
 
       {/* MAIN SURFACE */}
-      <div className="mb-6 flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="mb-1 flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {/* TOOLBAR */}
         <div className="p-4 border-b border-gray-100 bg-white">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-12 gap-3">
+          <div className="grid grid-cols-2 xl:grid-cols-12 gap-3">
             {/* Method */}
             <div className="sm:col-span-1 xl:col-span-2">
               <FieldLabel>Method</FieldLabel>
@@ -333,15 +345,11 @@ const AuditLogTable = () => {
             <div className="sm:col-span-1 xl:col-span-2">
               <FieldLabel>Start</FieldLabel>
               <div className="relative">
-                <Calendar
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className={`${iconInputBase} pr-3`}
+                  className={inputBase}
                 />
               </div>
             </div>
@@ -350,15 +358,11 @@ const AuditLogTable = () => {
             <div className="sm:col-span-1 xl:col-span-2">
               <FieldLabel>End</FieldLabel>
               <div className="relative">
-                <Calendar
-                  size={14}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                />
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className={`${iconInputBase} pr-3`}
+                  className={inputBase}
                 />
               </div>
             </div>
@@ -646,14 +650,15 @@ const AuditLogTable = () => {
           </div>
         </div>
 
-        {/* MOBILE LIST */}
+        {/* ✅ MOBILE LIST (Improved card width + left strip) */}
         <div className="sm:hidden flex-1 overflow-y-auto bg-white">
-          <div className="p-3 space-y-2">
+          {/* make sure cards have enough usable width and don't feel cramped */}
+          <div className="p-3 space-y-2 w-full">
             {(isPending && !data) || (isFetching && !data) ? (
               [...Array(6)].map((_, i) => (
                 <div
                   key={i}
-                  className="border border-gray-200 rounded-xl p-3 animate-pulse"
+                  className="w-full min-w-0 border border-gray-200 rounded-xl p-3 animate-pulse"
                 >
                   <div className="h-4 bg-gray-200 rounded w-40 mb-2" />
                   <div className="h-3 bg-gray-100 rounded w-24 mb-3" />
@@ -662,67 +667,81 @@ const AuditLogTable = () => {
                 </div>
               ))
             ) : rows.length > 0 ? (
-              rows.map((log) => (
-                <div
-                  key={log._id}
-                  className="border border-gray-200 rounded-xl p-3 bg-white shadow-sm"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-900">
-                        {log.username || "Unknown user"}
+              rows.map((log) => {
+                const leftStrip = getLeftStripClassByStatus(log.statusCode);
+
+                return (
+                  <div
+                    key={log._id}
+                    className={`w-full min-w-0 border border-gray-200 rounded-xl p-3 bg-white shadow-sm overflow-hidden ${leftStrip}`}
+                  >
+                    {/* Top row */}
+                    <div className="flex items-start justify-between gap-3 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-semibold text-gray-900 truncate">
+                          {log.username || "Unknown user"}
+                        </div>
+                        <div className="text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleDateString()} •{" "}
+                          {new Date(log.timestamp).toLocaleTimeString()}
+                        </div>
                       </div>
-                      <div className="text-xs text-gray-500">
-                        {new Date(log.timestamp).toLocaleDateString()} •{" "}
-                        {new Date(log.timestamp).toLocaleTimeString()}
+
+                      <span
+                        className={`flex-none inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${getStatusColor(
+                          log.statusCode,
+                        )}`}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                        {log.statusCode}
+                      </span>
+                    </div>
+
+                    {/* Method + endpoint */}
+                    <div className="mt-2 flex items-center gap-2 flex-wrap min-w-0">
+                      <span
+                        className={`flex-none px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider ${getMethodColor(
+                          log.method,
+                        )}`}
+                      >
+                        {log.method}
+                      </span>
+
+                      {/* ✅ ensures long endpoints don't shrink the card; wraps safely */}
+                      <span
+                        className="min-w-0 flex-1 font-mono text-xs text-gray-700 break-words"
+                        title={log.endpoint}
+                      >
+                        {log.endpoint}
+                      </span>
+                    </div>
+
+                    {/* Summary */}
+                    {log?.summary ? (
+                      <div className="mt-2 text-xs text-gray-600 break-words">
+                        {log.summary}
                       </div>
+                    ) : (
+                      <div className="mt-2 text-xs text-gray-300 italic">
+                        No summary
+                      </div>
+                    )}
+
+                    {/* Bottom row */}
+                    <div className="mt-2 text-[11px] text-gray-500 flex items-start justify-between gap-2 min-w-0">
+                      <span
+                        className="min-w-0 flex-1 font-mono break-words"
+                        title={
+                          log.url && log.url !== log.endpoint ? log.url : ""
+                        }
+                      >
+                        {log.url && log.url !== log.endpoint ? log.url : ""}
+                      </span>
+                      <span className="flex-none font-mono">{log.ip}</span>
                     </div>
-
-                    <span
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${getStatusColor(
-                        log.statusCode,
-                      )}`}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
-                      {log.statusCode}
-                    </span>
                   </div>
-
-                  <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider ${getMethodColor(
-                        log.method,
-                      )}`}
-                    >
-                      {log.method}
-                    </span>
-
-                    <span
-                      className="font-mono text-xs text-gray-700 max-w-full"
-                      title={log.endpoint}
-                    >
-                      {log.endpoint}
-                    </span>
-                  </div>
-
-                  {log?.summary ? (
-                    <div className="mt-2 text-xs text-gray-600 line-clamp-3">
-                      {log.summary}
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-xs text-gray-300 italic">
-                      No summary
-                    </div>
-                  )}
-
-                  <div className="mt-2 text-[11px] text-gray-500 flex items-center justify-between">
-                    <span className="font-mono max-w-[65%]">
-                      {log.url && log.url !== log.endpoint ? log.url : ""}
-                    </span>
-                    <span className="font-mono">{log.ip}</span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="px-4 py-14 text-center text-gray-500">
                 <div className="flex flex-col items-center justify-center">

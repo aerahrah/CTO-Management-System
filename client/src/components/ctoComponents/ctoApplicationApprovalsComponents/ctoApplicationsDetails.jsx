@@ -424,7 +424,7 @@ const CtoApplicationDetails = () => {
         </div>
 
         {/* ACTION BUTTONS */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-2 bg-gray-50 md:bg-transparent rounded-xl w-full md:w-auto">
+        <div className="flex flex-row items-center gap-2 sm:gap-3 pt-1 bg-transparent rounded-xl w-full md:w-auto">
           {canApproveOrReject ? (
             <>
               <button
@@ -611,8 +611,7 @@ const CtoApplicationDetails = () => {
               <div className="h-8 w-8 bg-white rounded-lg flex items-center justify-center text-red-500 shadow-sm flex-none">
                 <FileText size={16} />
               </div>
-              <span className="hidden sm:inline">View Application Form</span>
-              <span className="sm:hidden">PDF</span>
+              <span className="inline">View Application Form</span>
             </button>
             <div className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6 shadow-sm min-w-0">
               <div className="flex items-center justify-between gap-3 mb-4 min-w-0">

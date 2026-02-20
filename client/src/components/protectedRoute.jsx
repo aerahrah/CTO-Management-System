@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, Navigate } from "react-router-dom";
 import { useAuth } from "../store/authStore";
 import ForbiddenPage from "../pages/forbiddenPage";
 
@@ -10,6 +10,7 @@ const ProtectedRoute = ({ allowedRoles }) => {
     return <Navigate to="/" replace />;
   }
 
+  // Logged in but not allowed
   if (allowedRoles && !allowedRoles.includes(admin.role)) {
     return <ForbiddenPage />;
   }

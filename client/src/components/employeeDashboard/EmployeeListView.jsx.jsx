@@ -2,8 +2,8 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
-import { fetchProjectOptions } from "../../api/project"; // ✅ project options
-import { fetchDesignationOptions } from "../../api/designation"; // ✅ designation options (NEW)
+import { fetchProjectOptions } from "../../api/project";
+import { fetchDesignationOptions } from "../../api/designation";
 import { useNavigate } from "react-router-dom";
 import { RoleBadge } from "../statusUtils";
 import Skeleton from "react-loading-skeleton";
@@ -27,6 +27,7 @@ import {
   Building2,
   IdCard,
   Briefcase,
+  ArrowUp,
 } from "lucide-react";
 
 /* =========================
@@ -36,13 +37,8 @@ const DIVISION_OPTIONS = ["AFD", "TOD", "ORD"];
 const pageSizeOptions = [20, 50, 100];
 
 /* =========================
-   HELPERS (safe normalize)
+   HELPERS
 ========================= */
-const toInt = (v, fallback) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.trunc(n) : fallback;
-};
-
 const initials = (firstName, lastName) =>
   `${(firstName || " ")[0] || ""}${(lastName || " ")[0] || ""}`.toUpperCase();
 
@@ -67,6 +63,21 @@ const getStatusPill = (status) => {
   };
 };
 
+const getLeftStripClass = (status) => {
+  switch (String(status || "").toUpperCase()) {
+    case "ACTIVE":
+      return "border-l-4 border-l-emerald-500";
+    case "INACTIVE":
+      return "border-l-4 border-l-slate-400";
+    case "RESIGNED":
+      return "border-l-4 border-l-amber-500";
+    case "TERMINATED":
+      return "border-l-4 border-l-rose-500";
+    default:
+      return "border-l-4 border-l-slate-300";
+  }
+};
+
 /* =========================
    HOOK: DEBOUNCE
 ========================= */
@@ -80,7 +91,7 @@ function useDebounce(value, delay) {
 }
 
 /* =========================
-   ACTION MENU (hardened)
+   ACTION MENU
 ========================= */
 const ActionMenu = ({ onAction, disabled = false }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -244,7 +255,7 @@ const CompactPagination = ({
 };
 
 /* =========================
-   Small Select UI (value=id, label=text)
+   Small Select UI
 ========================= */
 const SelectField = ({
   label,
@@ -296,6 +307,155 @@ const DivisionBadge = ({ division }) => {
 };
 
 /* =========================
+   EMPLOYEE CARD
+========================= */
+const EmployeeCard = ({
+  emp,
+  onNavigate,
+  onAction,
+  isRoleModalOpen,
+  variant = "mobile", // "mobile" | "tablet"
+}) => {
+  const statusPill = getStatusPill(emp?.status);
+
+  const projectLabel =
+    typeof emp?.project === "string"
+      ? emp.project
+      : emp?.project?.name || emp?.project?._id || "—";
+
+  const designationLabel =
+    typeof emp?.designation === "string"
+      ? emp.designation
+      : emp?.designation?.name || "—";
+
+  const positionOrDesignation = emp?.position || designationLabel;
+
+  const leftStrip = getLeftStripClass(emp?.status);
+
+  const wrapClass =
+    variant === "tablet"
+      ? "bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
+      : "bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden";
+
+  return (
+    <div
+      className={`${wrapClass} ${leftStrip}`}
+      onClick={() => onNavigate(emp)}
+      role="button"
+      tabIndex={0}
+    >
+      <div className="px-3 py-2 flex justify-between items-center border-b border-gray-50">
+        <span className="text-[11px] font-mono text-gray-400">
+          #{emp?._id ? emp._id.slice(-6).toUpperCase() : "—"}
+        </span>
+        <span
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusPill.wrap}`}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`} />
+          {statusPill.label}
+        </span>
+      </div>
+
+      <div className="p-3 space-y-2">
+        <div className="flex items-start gap-2">
+          <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200 flex-none">
+            {initials(emp?.firstName, emp?.lastName)}
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <h4 className="text-sm font-bold text-gray-900 truncate leading-5">
+              {emp?.firstName} {emp?.lastName}
+            </h4>
+
+            <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+              <Mail size={12} className="text-gray-400" />
+              <span className="truncate">{emp?.email || "No email"}</span>
+            </div>
+
+            {emp?.username && (
+              <div className="mt-1 text-[11px] text-gray-400 font-mono truncate">
+                @{emp.username}
+              </div>
+            )}
+          </div>
+
+          <div className="flex-none -mt-1">
+            <ActionMenu
+              disabled={isRoleModalOpen}
+              onAction={(action) => onAction(action, emp)}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
+            <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+              <IdCard size={12} /> Position
+            </div>
+            <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
+              {positionOrDesignation || "—"}
+            </div>
+          </div>
+
+          <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
+            <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+              <Building2 size={12} /> Division
+            </div>
+            <div className="mt-1">
+              <DivisionBadge division={emp?.division} />
+            </div>
+          </div>
+
+          <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 col-span-2">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                  <Briefcase size={12} /> Project
+                </div>
+                <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
+                  {projectLabel || "—"}
+                </div>
+              </div>
+              <div className="flex-none text-right">
+                <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1 justify-end">
+                  <Shield size={12} /> Role
+                </div>
+                <div className="text-xs font-semibold text-gray-800 mt-0.5">
+                  {emp?.role ? <RoleBadge role={emp.role} /> : "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onNavigate(emp);
+          }}
+          className="py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
+        >
+          <User size={14} /> View
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAction("role", emp);
+          }}
+          className="py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-2"
+        >
+          <Shield size={14} /> Role
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* =========================
    MAIN COMPONENT
 ========================= */
 const EmployeeDirectory = () => {
@@ -316,11 +476,26 @@ const EmployeeDirectory = () => {
   // Store filter values as IDs
   const [filters, setFilters] = useState({
     division: "All",
-    designation: "All", // designationId
-    project: "All", // projectId
+    designation: "All",
+    project: "All",
   });
 
-  /* -------- Projects (options endpoint, no pagination) -------- */
+  // ✅ One scroll container for the whole screen
+  const pageScrollRef = useRef(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const handleScroll = useCallback(() => {
+    const el = pageScrollRef.current;
+    const st = el ? el.scrollTop : 0;
+    setShowScrollTop(st > 320);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    const el = pageScrollRef.current;
+    if (el) el.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  /* -------- Projects -------- */
   const projectsQuery = useQuery({
     queryKey: ["projectOptions", "Active"],
     queryFn: () => fetchProjectOptions({ status: "Active" }),
@@ -354,7 +529,7 @@ const EmployeeDirectory = () => {
     [projectOptions],
   );
 
-  /* -------- ✅ Designations (options endpoint, no pagination) -------- */
+  /* -------- Designations -------- */
   const designationsQuery = useQuery({
     queryKey: ["designationOptions", "Active"],
     queryFn: () => fetchDesignationOptions({ status: "Active" }),
@@ -435,7 +610,6 @@ const EmployeeDirectory = () => {
     placeholderData: keepPreviousData,
   });
 
-  // reset page on filter/search/limit change
   useEffect(() => {
     setPage(1);
   }, [safeFilters, debouncedSearch, limit]);
@@ -514,504 +688,493 @@ const EmployeeDirectory = () => {
   );
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
-      {/* HEADER */}
-      <div className="pt-2 pb-3 sm:pb-6 px-1">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <Breadcrumbs rootLabel="home" rootTo="/app" />
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
-              Employee Directory
-            </h1>
-            <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-              Manage your organization’s staffing and roles.
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleAddEmployee}
-            className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full md:w-auto"
-          >
-            <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-            Add Employee
-          </button>
-        </div>
-      </div>
-
-      {/* MAIN */}
-      <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* TOOLBAR */}
-        <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-            {/* Filters */}
-            <div className="w-full md:w-auto">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                <SelectField
-                  label="Division"
-                  value={safeFilters.division}
-                  onChange={(v) => setFilters((p) => ({ ...p, division: v }))}
-                  options={[
-                    { value: "All", label: "All" },
-                    ...DIVISION_OPTIONS.map((d) => ({ value: d, label: d })),
-                  ]}
-                />
-
-                <SelectField
-                  label="Designation"
-                  value={safeFilters.designation}
-                  onChange={(v) =>
-                    setFilters((p) => ({ ...p, designation: v }))
-                  }
-                  options={
-                    designationsQuery.isLoading
-                      ? [{ value: "All", label: "Loading designations..." }]
-                      : designationOptions
-                  }
-                  disabled={
-                    designationsQuery.isLoading ||
-                    designationOptions.length <= 1
-                  }
-                />
-
-                <SelectField
-                  label="Project"
-                  value={safeFilters.project}
-                  onChange={(v) => setFilters((p) => ({ ...p, project: v }))}
-                  options={
-                    projectsQuery.isLoading
-                      ? [{ value: "All", label: "Loading projects..." }]
-                      : projectOptions
-                  }
-                  disabled={
-                    projectsQuery.isLoading || projectOptions.length <= 1
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Search + rows */}
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-72">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search employee..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                />
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchInput("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                    aria-label="Clear search"
-                    title="Clear"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Show
-                </span>
-                <select
-                  value={limit}
-                  onChange={(e) => {
-                    setLimit(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
-                >
-                  {pageSizeOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* Active filters row */}
-          {hasActiveFilters && (
-            <div className="flex items-center justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">
-                  Active:
-                </span>
-                {debouncedSearch && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    "{debouncedSearch}"
-                  </span>
-                )}
-                {safeFilters.division !== "All" && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {safeFilters.division}
-                  </span>
-                )}
-                {safeFilters.designation !== "All" && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {selectedDesignationLabel || "Designation"}
-                  </span>
-                )}
-                {safeFilters.project !== "All" && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {selectedProjectLabel || "Project"}
-                  </span>
-                )}
+    <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50 min-h-0">
+      {/* ✅ Scroll container (sticky header works relative to this) */}
+      <div
+        ref={pageScrollRef}
+        onScroll={handleScroll}
+        className="flex-1 min-h-0 overflow-y-auto"
+      >
+        {/* ✅ STICKY HEADER */}
+        <div className="sticky top-0 z-1 bg-gray-50/90 backdrop-blur border-b border-gray-200">
+          <div className="pt-2 pb-3 sm:pb-6 px-1">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <Breadcrumbs rootLabel="home" rootTo="/app" />
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
+                  Employee Directory
+                </h1>
+                <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+                  Manage your organization’s staffing and roles.
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={clearFilters}
-                className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
+                onClick={handleAddEmployee}
+                className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full md:w-auto"
               >
-                <FilterX size={10} /> Reset
+                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                Add Employee
               </button>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto bg-white min-h-[300px]">
-          {/* Desktop table */}
-          <div className="hidden md:block overflow-auto">
-            <table className="w-full text-left">
-              <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
-                <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
-                  <th className="px-6 py-4 font-bold">Employee</th>
-                  <th className="px-6 py-4 font-bold">
-                    Position / Designation
-                  </th>
-                  <th className="px-6 py-4 font-bold">Division</th>
-                  <th className="px-6 py-4 font-bold">Project</th>
-                  <th className="px-6 py-4 font-bold">Role</th>
-                  <th className="px-6 py-4 font-bold">Status</th>
-                  <th className="px-6 py-4 text-right font-bold">Actions</th>
-                </tr>
-              </thead>
+        {/* MAIN */}
+        <div className="px-1 mb-1 pt-2">
+          <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+            {/* TOOLBAR */}
+            <div className="p-4 border-b border-gray-100 bg-white space-y-4">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                {/* Filters */}
+                <div className="w-full md:w-auto">
+                  <div className="grid grid-cols-3 gap-2">
+                    <SelectField
+                      label="Division"
+                      value={safeFilters.division}
+                      onChange={(v) =>
+                        setFilters((p) => ({ ...p, division: v }))
+                      }
+                      options={[
+                        { value: "All", label: "All" },
+                        ...DIVISION_OPTIONS.map((d) => ({
+                          value: d,
+                          label: d,
+                        })),
+                      ]}
+                    />
 
-              <tbody className="divide-y divide-gray-50">
-                {isLoading ? (
-                  [...Array(Math.min(limit, 10))].map((_, i) => (
-                    <tr key={i}>
-                      {[...Array(7)].map((__, j) => (
-                        <td key={j} className="px-6 py-4">
-                          <Skeleton />
-                        </td>
-                      ))}
-                    </tr>
-                  ))
-                ) : employees.length > 0 ? (
-                  employees.map((emp, i) => {
-                    const statusPill = getStatusPill(emp?.status);
+                    <SelectField
+                      label="Designation"
+                      value={safeFilters.designation}
+                      onChange={(v) =>
+                        setFilters((p) => ({ ...p, designation: v }))
+                      }
+                      options={
+                        designationsQuery.isLoading
+                          ? [{ value: "All", label: "Loading designations..." }]
+                          : designationOptions
+                      }
+                      disabled={
+                        designationsQuery.isLoading ||
+                        designationOptions.length <= 1
+                      }
+                    />
 
-                    const projectLabel =
-                      typeof emp?.project === "string"
-                        ? emp.project
-                        : emp?.project?.name || emp?.project?._id || "—";
-
-                    const designationLabel =
-                      typeof emp?.designation === "string"
-                        ? emp.designation
-                        : emp?.designation?.name || "—";
-
-                    const positionOrDesignation =
-                      emp?.position || designationLabel;
-
-                    return (
-                      <tr
-                        key={emp._id}
-                        className={`group hover:bg-gray-50/80 transition-colors ${
-                          i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                        }`}
-                      >
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200">
-                              {initials(emp.firstName, emp.lastName)}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 truncate">
-                                {emp.firstName} {emp.lastName}
-                              </p>
-                              <p className="text-xs text-gray-500 truncate">
-                                {emp.email || "No email"}
-                                {emp.username ? (
-                                  <span className="ml-2 font-mono text-[11px] text-gray-400">
-                                    @{emp.username}
-                                  </span>
-                                ) : null}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {positionOrDesignation || "—"}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <DivisionBadge division={emp.division} />
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {projectLabel && projectLabel !== "—" ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
-                              {projectLabel}
-                            </span>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {emp.role ? <RoleBadge role={emp.role} /> : "—"}
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusPill.wrap}`}
-                          >
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`}
-                            />
-                            {statusPill.label}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex justify-end">
-                            <ActionMenu
-                              disabled={isRoleModalOpen}
-                              onAction={(action) => handleAction(action, emp)}
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={7} className="px-6 py-16">
-                      <div className="flex flex-col items-center justify-center text-center">
-                        <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                          <Search className="w-10 h-10 text-gray-300" />
-                        </div>
-                        <h3 className="text-lg font-bold text-gray-900">
-                          No employees found
-                        </h3>
-                        <p className="text-sm text-gray-500 mt-1 max-w-md">
-                          Try adjusting your search or filters.
-                        </p>
-                        {hasActiveFilters && (
-                          <button
-                            type="button"
-                            onClick={clearFilters}
-                            className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
-                          >
-                            Clear all filters
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile cards */}
-          <div className="md:hidden flex flex-col p-3 gap-2 bg-gray-50">
-            {isLoading ? (
-              [...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 space-y-2"
-                >
-                  <Skeleton count={2} />
-                </div>
-              ))
-            ) : employees.length > 0 ? (
-              employees.map((emp) => {
-                const statusPill = getStatusPill(emp?.status);
-
-                const projectLabel =
-                  typeof emp?.project === "string"
-                    ? emp.project
-                    : emp?.project?.name || emp?.project?._id || "—";
-
-                const designationLabel =
-                  typeof emp?.designation === "string"
-                    ? emp.designation
-                    : emp?.designation?.name || "—";
-
-                const positionOrDesignation = emp?.position || designationLabel;
-
-                return (
-                  <div
-                    key={emp._id}
-                    className="bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden"
-                    onClick={() => navigate(`/app/employees/${emp._id}`)}
-                    role="button"
-                    tabIndex={0}
-                  >
-                    <div className="px-3 py-2 flex justify-between items-center border-b border-gray-50">
-                      <span className="text-[11px] font-mono text-gray-400">
-                        #{emp._id ? emp._id.slice(-6).toUpperCase() : "—"}
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusPill.wrap}`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`}
-                        />
-                        {statusPill.label}
-                      </span>
-                    </div>
-
-                    <div className="p-3 space-y-2">
-                      <div className="flex items-start gap-2">
-                        <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200 flex-none">
-                          {initials(emp.firstName, emp.lastName)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-sm font-bold text-gray-900 truncate leading-5">
-                            {emp.firstName} {emp.lastName}
-                          </h4>
-
-                          <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
-                            <Mail size={12} className="text-gray-400" />
-                            <span className="truncate">
-                              {emp.email || "No email"}
-                            </span>
-                          </div>
-
-                          {emp.username && (
-                            <div className="mt-1 text-[11px] text-gray-400 font-mono truncate">
-                              @{emp.username}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-none -mt-1">
-                          <ActionMenu
-                            disabled={isRoleModalOpen}
-                            onAction={(action) => handleAction(action, emp)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
-                          <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                            <IdCard size={12} /> Position
-                          </div>
-                          <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
-                            {positionOrDesignation || "—"}
-                          </div>
-                        </div>
-
-                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
-                          <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                            <Building2 size={12} /> Division
-                          </div>
-                          <div className="mt-1">
-                            <DivisionBadge division={emp.division} />
-                          </div>
-                        </div>
-
-                        <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 col-span-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
-                                <Briefcase size={12} /> Project
-                              </div>
-                              <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
-                                {projectLabel || "—"}
-                              </div>
-                            </div>
-                            <div className="flex-none text-right">
-                              <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1 justify-end">
-                                <Shield size={12} /> Role
-                              </div>
-                              <div className="text-xs font-semibold text-gray-800 mt-0.5">
-                                {emp.role ? <RoleBadge role={emp.role} /> : "—"}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/app/employees/${emp._id}`);
-                        }}
-                        className="py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
-                      >
-                        <User size={14} /> View
-                      </button>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openRoleModal(emp);
-                        }}
-                        className="py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-2"
-                      >
-                        <Shield size={14} /> Role
-                      </button>
-                    </div>
+                    <SelectField
+                      label="Project"
+                      value={safeFilters.project}
+                      onChange={(v) =>
+                        setFilters((p) => ({ ...p, project: v }))
+                      }
+                      options={
+                        projectsQuery.isLoading
+                          ? [{ value: "All", label: "Loading projects..." }]
+                          : projectOptions
+                      }
+                      disabled={
+                        projectsQuery.isLoading || projectOptions.length <= 1
+                      }
+                    />
                   </div>
-                );
-              })
-            ) : (
-              <div className="flex flex-col items-center justify-center py-14 px-4 text-center bg-white rounded-xl border border-gray-100">
-                <div className="bg-gray-50 p-5 rounded-full mb-3 ring-1 ring-gray-100">
-                  <Search className="w-8 h-8 text-gray-300" />
                 </div>
-                <h3 className="text-base font-bold text-gray-900">
-                  No employees found
-                </h3>
-                <p className="text-sm text-gray-500 mt-1 max-w-xs">
-                  Try adjusting your search or filters.
-                </p>
-                {hasActiveFilters && (
+
+                {/* Search + rows */}
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-72">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search employee..."
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                    />
+                    {searchInput && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchInput("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                        aria-label="Clear search"
+                        title="Clear"
+                      >
+                        <RotateCcw size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                      Show
+                    </span>
+                    <select
+                      value={limit}
+                      onChange={(e) => {
+                        setLimit(Number(e.target.value));
+                        setPage(1);
+                      }}
+                      className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
+                    >
+                      {pageSizeOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Active filters row */}
+              {hasActiveFilters && (
+                <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-bold text-gray-400 uppercase">
+                      Active:
+                    </span>
+                    {debouncedSearch && (
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                        "{debouncedSearch}"
+                      </span>
+                    )}
+                    {safeFilters.division !== "All" && (
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                        {safeFilters.division}
+                      </span>
+                    )}
+                    {safeFilters.designation !== "All" && (
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                        {selectedDesignationLabel || "Designation"}
+                      </span>
+                    )}
+                    {safeFilters.project !== "All" && (
+                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                        {selectedProjectLabel || "Project"}
+                      </span>
+                    )}
+                  </div>
+
                   <button
                     type="button"
                     onClick={clearFilters}
-                    className="mt-4 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                    className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
                   >
-                    Clear all filters
+                    <FilterX size={10} /> Reset
                   </button>
-                )}
+                </div>
+              )}
+            </div>
+
+            {/* CONTENT */}
+            <div className="bg-white min-h-[300px]">
+              {/* Desktop table (lg+) */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead className="bg-white sticky top-0 z-1 border-b border-gray-100">
+                    <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
+                      <th className="px-6 py-4 font-bold">Employee</th>
+                      <th className="px-6 py-4 font-bold">
+                        Position / Designation
+                      </th>
+                      <th className="px-6 py-4 font-bold">Division</th>
+                      <th className="px-6 py-4 font-bold">Project</th>
+                      <th className="px-6 py-4 font-bold">Role</th>
+                      <th className="px-6 py-4 font-bold">Status</th>
+                      <th className="px-6 py-4 text-right font-bold">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-gray-50">
+                    {isLoading ? (
+                      [...Array(Math.min(limit, 10))].map((_, i) => (
+                        <tr key={i}>
+                          {[...Array(7)].map((__, j) => (
+                            <td key={j} className="px-6 py-4">
+                              <Skeleton />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    ) : employees.length > 0 ? (
+                      employees.map((emp, i) => {
+                        const statusPill = getStatusPill(emp?.status);
+
+                        const projectLabel =
+                          typeof emp?.project === "string"
+                            ? emp.project
+                            : emp?.project?.name || emp?.project?._id || "—";
+
+                        const designationLabel =
+                          typeof emp?.designation === "string"
+                            ? emp.designation
+                            : emp?.designation?.name || "—";
+
+                        const positionOrDesignation =
+                          emp?.position || designationLabel;
+
+                        return (
+                          <tr
+                            key={emp._id}
+                            className={`group hover:bg-gray-50/80 transition-colors ${
+                              i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                            }`}
+                          >
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200">
+                                  {initials(emp.firstName, emp.lastName)}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-gray-900 truncate">
+                                    {emp.firstName} {emp.lastName}
+                                  </p>
+                                  <p className="text-xs text-gray-500 truncate">
+                                    {emp.email || "No email"}
+                                    {emp.username ? (
+                                      <span className="ml-2 font-mono text-[11px] text-gray-400">
+                                        @{emp.username}
+                                      </span>
+                                    ) : null}
+                                  </p>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {positionOrDesignation || "—"}
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <DivisionBadge division={emp.division} />
+                            </td>
+
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {projectLabel && projectLabel !== "—" ? (
+                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
+                                  {projectLabel}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+
+                            <td className="px-6 py-4 text-sm text-gray-600">
+                              {emp.role ? <RoleBadge role={emp.role} /> : "—"}
+                            </td>
+
+                            <td className="px-6 py-4">
+                              <span
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusPill.wrap}`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`}
+                                />
+                                {statusPill.label}
+                              </span>
+                            </td>
+
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex justify-end">
+                                <ActionMenu
+                                  disabled={isRoleModalOpen}
+                                  onAction={(action) =>
+                                    handleAction(action, emp)
+                                  }
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-16">
+                          <div className="flex flex-col items-center justify-center text-center">
+                            <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
+                              <Search className="w-10 h-10 text-gray-300" />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900">
+                              No employees found
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-1 max-w-md">
+                              Try adjusting your search or filters.
+                            </p>
+                            {hasActiveFilters && (
+                              <button
+                                type="button"
+                                onClick={clearFilters}
+                                className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                              >
+                                Clear all filters
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
-            )}
+
+              {/* Mobile + Tablet cards */}
+              <div className="lg:hidden">
+                {/* Mobile */}
+                <div className="md:hidden flex flex-col p-3 gap-2 bg-gray-50">
+                  {isLoading ? (
+                    [...Array(6)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 space-y-2"
+                      >
+                        <Skeleton height={14} count={2} />
+                        <div className="mt-2">
+                          <Skeleton height={10} count={2} />
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <Skeleton height={52} />
+                          <Skeleton height={52} />
+                          <Skeleton height={52} className="col-span-2" />
+                        </div>
+                        <div className="mt-3">
+                          <Skeleton height={38} />
+                        </div>
+                      </div>
+                    ))
+                  ) : employees.length > 0 ? (
+                    employees.map((emp) => (
+                      <EmployeeCard
+                        key={emp._id}
+                        emp={emp}
+                        isRoleModalOpen={isRoleModalOpen}
+                        onNavigate={() => navigate(`/app/employees/${emp._id}`)}
+                        onAction={handleAction}
+                        variant="mobile"
+                      />
+                    ))
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-14 px-4 text-center bg-white rounded-xl border border-gray-100">
+                      <div className="bg-gray-50 p-5 rounded-full mb-3 ring-1 ring-gray-100">
+                        <Search className="w-8 h-8 text-gray-300" />
+                      </div>
+                      <h3 className="text-base font-bold text-gray-900">
+                        No employees found
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1 max-w-xs">
+                        Try adjusting your search or filters.
+                      </p>
+                      {hasActiveFilters && (
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className="mt-4 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                        >
+                          Clear all filters
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Tablet */}
+                <div className="hidden md:block lg:hidden p-4 bg-gray-50">
+                  {isLoading ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {[...Array(Math.min(limit, 6))].map((_, i) => (
+                        <div
+                          key={i}
+                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                        >
+                          <Skeleton height={18} />
+                          <div className="mt-3">
+                            <Skeleton height={12} count={2} />
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-2">
+                            <Skeleton height={52} />
+                            <Skeleton height={52} />
+                          </div>
+                          <div className="mt-3">
+                            <Skeleton height={52} />
+                          </div>
+                          <div className="mt-4">
+                            <Skeleton height={40} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : employees.length > 0 ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      {employees.map((emp) => (
+                        <EmployeeCard
+                          key={emp._id}
+                          emp={emp}
+                          isRoleModalOpen={isRoleModalOpen}
+                          onNavigate={() =>
+                            navigate(`/app/employees/${emp._id}`)
+                          }
+                          onAction={handleAction}
+                          variant="tablet"
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-white rounded-xl border border-gray-100">
+                      <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
+                        <Search className="w-10 h-10 text-gray-300" />
+                      </div>
+                      <h3 className="text-lg font-bold text-gray-900">
+                        No employees found
+                      </h3>
+                      <p className="text-sm text-gray-500 mt-1 max-w-md">
+                        Try adjusting your search or filters.
+                      </p>
+                      {hasActiveFilters && (
+                        <button
+                          type="button"
+                          onClick={clearFilters}
+                          className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                        >
+                          Clear all filters
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* PAGINATION */}
+            <CompactPagination
+              page={page}
+              totalPages={totalPages}
+              total={totalItems}
+              startItem={startItem}
+              endItem={endItem}
+              label="employees"
+              onPrev={() => setPage((p) => Math.max(p - 1, 1))}
+              onNext={() => {
+                if (!isPlaceholderData && page < totalPages)
+                  setPage((p) => p + 1);
+              }}
+            />
           </div>
         </div>
-
-        {/* PAGINATION */}
-        <CompactPagination
-          page={page}
-          totalPages={totalPages}
-          total={totalItems}
-          startItem={startItem}
-          endItem={endItem}
-          label="employees"
-          onPrev={() => setPage((p) => Math.max(p - 1, 1))}
-          onNext={() => {
-            if (!isPlaceholderData && page < totalPages) setPage((p) => p + 1);
-          }}
-        />
       </div>
+
+      {/* ✅ Back to top */}
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all w-11 h-11"
+          aria-label="Back to top"
+          title="Back to top"
+        >
+          <ArrowUp className="w-5 h-5" />
+        </button>
+      )}
 
       {/* ROLE MODAL */}
       {isRoleModalOpen && selectedEmployee && (

@@ -276,7 +276,7 @@ const AddCtoCreditForm = ({ onClose, onPendingChange }) => {
       {/* Form wrapper: scrollable content + sticky footer */}
       <form onSubmit={handleSubmit} className="flex flex-col">
         {/* Scrollable content */}
-        <div className="px-4 py-5 space-y-7 max-h-[calc(100vh-22rem)] overflow-y-auto">
+        <div className="px-4 py-5 space-y-7 max-h-[calc(100vh-20rem)] overflow-y-auto">
           {/* Employees */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-gray-700">

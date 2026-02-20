@@ -29,14 +29,14 @@ import {
   Layers,
   Ban,
   Info,
-  FileDown, // ✅ if not available in your lucide version, replace with FileText
+  FileDown,
+  ArrowUp,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
 import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 import MemoList from "../ctoMemoModal";
 import { toast } from "react-toastify";
-
 import CtoApplicationPdfModal from "./ctoApplicationPDFModal";
 
 const pageSizeOptions = [20, 50, 100];
@@ -59,7 +59,7 @@ const BalanceHoursCard = ({ hours, loading }) => {
 
   return (
     <div className="w-full bg-white/90 border border-gray-200 rounded-lg px-4 py-1.5 flex items-center gap-3 shadow-xs">
-      <div className="p-2 rounded-lg bg-blue-50 text-blue-600 flex-none">
+      <div className="md:p-2 rounded-lg bg-blue-50 text-blue-600 flex-none">
         <Layers className="w-5 h-5" />
       </div>
 
@@ -82,7 +82,7 @@ const ApplicationActionMenu = ({
   app,
   onViewDetails,
   onViewMemos,
-  onViewPdf, // ✅ add
+  onViewPdf,
   onCancel,
   cancelling,
 }) => {
@@ -139,7 +139,6 @@ const ApplicationActionMenu = ({
             <Eye size={14} /> View Details
           </button>
 
-          {/* ✅ View PDF */}
           <button
             onClick={() => handle(onViewPdf)}
             className="w-full px-4 py-2.5 text-xs font-medium text-gray-600 hover:bg-gray-50 hover:text-blue-600 flex items-center gap-2 transition-colors text-left"
@@ -175,16 +174,13 @@ const ApplicationActionMenu = ({
 };
 
 /* =========================
-   Card view (same “viewpoint” as MyCtoCreditHistory)
-   - Mobile: list (1 per row)
-   - Tablet: grid-cols-2
-   - Desktop: table at lg+
+   Card view
 ========================= */
 const ApplicationCard = ({
   app,
   leftStripClassName,
   onViewDetails,
-  onViewPdf, // ✅ add
+  onViewPdf,
   onViewMemos,
   onCancel,
   cancelling,
@@ -212,7 +208,6 @@ const ApplicationCard = ({
     ? app.inclusiveDates.length
     : 0;
 
-  // 3 actions (Memos/Details/PDF) + optional Cancel
   const actionCols = canCancel ? "grid-cols-4" : "grid-cols-3";
 
   return (
@@ -285,7 +280,6 @@ const ApplicationCard = ({
             Details
           </button>
 
-          {/* ✅ PDF */}
           <button
             onClick={onViewPdf}
             className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-800"
@@ -396,8 +390,6 @@ const MyCtoApplications = () => {
   const [selectedApp, setSelectedApp] = useState(null);
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
-
-  // ✅ PDF modal state
   const [pdfApp, setPdfApp] = useState(null);
 
   const [statusFilter, setStatusFilter] = useState("");
@@ -406,12 +398,30 @@ const MyCtoApplications = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  // ✅ cancel confirm modal state
   const [cancelModal, setCancelModal] = useState({ isOpen: false, app: null });
   const openCancelModal = (app) => setCancelModal({ isOpen: true, app });
   const closeCancelModal = () => setCancelModal({ isOpen: false, app: null });
 
-  // ✅ status-colored left strip for cards
+  const scrollRef = useRef(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onScroll = () => setShowScrollTop(el.scrollTop > 240);
+
+    onScroll();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const getStatusColor = useCallback((status) => {
     switch (String(status || "").toUpperCase()) {
       case "APPROVED":
@@ -427,7 +437,6 @@ const MyCtoApplications = () => {
     }
   }, []);
 
-  // debounce search
   const searchTimeout = useRef(null);
   useEffect(() => {
     clearTimeout(searchTimeout.current);
@@ -522,7 +531,6 @@ const MyCtoApplications = () => {
 
   const isFiltered = statusFilter !== "" || searchFilter !== "";
 
-  // same tab factory as before
   const statusTabs = (statusCounts = {}) => [
     {
       id: "",
@@ -589,399 +597,411 @@ const MyCtoApplications = () => {
     null;
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50">
-      {/* HEADER */}
-      <div className="pt-2 pb-3 md:pb-6 px-1">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-          <div>
-            <Breadcrumbs rootLabel="home" rootTo="/app" />
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
-              My Applications
-            </h1>
-            <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-              Browse your Compensatory Time-off history, track status updates,
-              and file new requests.
-            </p>
-          </div>
-
-          <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 sm:bg-neutral-200/50 sm:p-3 rounded-xl">
-            <BalanceHoursCard hours={balanceHours} loading={isBalanceLoading} />
-
-            <button
-              onClick={() => setIsFormModalOpen(true)}
-              className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 min-w-42 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
-              type="button"
-            >
-              <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-              New Application
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* MAIN */}
-      <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-        {/* TOOLBAR */}
-        <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-              {statusTabs(data?.statusCounts || {}).map((tab) => {
-                const isActive = statusFilter === tab.id;
-                const Icon = tab.icon;
-
-                return (
-                  <button
-                    type="button"
-                    key={tab.id || "all-status"}
-                    onClick={() => {
-                      setStatusFilter(tab.id);
-                      setPage(1);
-                    }}
-                    className={`px-4 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap flex items-center gap-2
-                      ${
-                        isActive
-                          ? tab.activeColor
-                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
-                      }`}
-                    aria-pressed={isActive}
-                  >
-                    <Icon className="w-3.5 h-3.5" />
-                    <span>{tab.label}</span>
-                    <span
-                      className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold
-                        ${
-                          isActive
-                            ? "bg-white/80 text-gray-900"
-                            : "bg-gray-100 text-gray-600"
-                        }`}
-                    >
-                      {tab.count}
-                    </span>
-                  </button>
-                );
-              })}
+    // ✅ Fill CardFull height; NO scrolling here
+    <div className="w-full h-full min-h-0 flex flex-col md:p-0 bg-gray-50/50">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents"
+      >
+        {/* HEADER (scrolls away on mobile) */}
+        <div className="pt-2 pb-3 md:pb-6 px-1">
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+              <Breadcrumbs rootLabel="home" rootTo="/app" />
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
+                My Applications
+              </h1>
+              <p className="block text-sm text-gray-500 mt-1 max-w-2xl">
+                Browse your Compensatory Time-off history, track status updates,
+                and file new requests.
+              </p>
             </div>
 
-            <div className="flex items-center gap-3 w-full lg:w-auto">
-              <div className="relative flex-1 lg:w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search memo..."
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                />
-                {searchInput && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchInput("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                    aria-label="Clear search"
-                    title="Clear"
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-gray-200">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                  Show
-                </span>
-                <select
-                  value={limit}
-                  onChange={(e) => {
-                    setLimit(Number(e.target.value));
-                    setPage(1);
-                  }}
-                  className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
-                >
-                  {pageSizeOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="lg:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
-                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Rows
-                </span>
-                <FilterSelect
-                  label=""
-                  value={limit}
-                  onChange={(v) => {
-                    setLimit(v);
-                    setPage(1);
-                  }}
-                  options={pageSizeOptions}
-                  className="!mb-0 w-20 text-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-          {isFiltered && (
-            <div className="flex items-center justify-between">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase">
-                  Active:
-                </span>
-                {searchFilter && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    "{searchFilter}"
-                  </span>
-                )}
-                {statusFilter && (
-                  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                    {statusFilter}
-                  </span>
-                )}
-              </div>
+            <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 sm:bg-neutral-200/50 sm:p-3 rounded-xl">
+              <BalanceHoursCard
+                hours={balanceHours}
+                loading={isBalanceLoading}
+              />
 
               <button
+                onClick={() => setIsFormModalOpen(true)}
+                className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 min-w-42 md:py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full"
                 type="button"
-                onClick={handleResetFilters}
-                className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
               >
-                <RotateCcw size={10} /> Reset
+                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                New Application
               </button>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* DATA */}
-        <div className="flex-1 overflow-y-auto bg-white min-h-[300px]">
-          {!isLoading && applications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
-              <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                <Filter className="w-10 h-10 text-gray-300" />
+        {/* MAIN (no mobile nested scroll) */}
+        <div className="flex flex-col bg-white border border-gray-200 sm:rounded-xl shadow-sm overflow-visible md:flex-1 md:min-h-0 md:overflow-hidden">
+          {/* ✅ STICKY FILTERS/SEARCH (mobile only) */}
+          <div className="p-4 border-b border-gray-100 bg-white space-y-4 sticky top-0 z-1 bg-white/95 backdrop-blur md:static md:z-auto md:bg-white md:backdrop-blur-0">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {statusTabs(data?.statusCounts || {}).map((tab) => {
+                  const isActive = statusFilter === tab.id;
+                  const Icon = tab.icon;
+
+                  return (
+                    <button
+                      type="button"
+                      key={tab.id || "all-status"}
+                      onClick={() => {
+                        setStatusFilter(tab.id);
+                        setPage(1);
+                      }}
+                      className={`px-4 py-1.5 text-xs font-bold rounded-full border transition-all whitespace-nowrap flex items-center gap-2
+                        ${
+                          isActive
+                            ? tab.activeColor
+                            : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                        }`}
+                      aria-pressed={isActive}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                      <span
+                        className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold
+                          ${
+                            isActive
+                              ? "bg-white/80 text-gray-900"
+                              : "bg-gray-100 text-gray-600"
+                          }`}
+                      >
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <h3 className="text-lg font-bold text-gray-900">
-                No Results Found
-              </h3>
-              <p className="text-sm text-gray-500 max-w-xs mt-1">
-                Try adjusting your search or filters to find what you're looking
-                for.
-              </p>
-              {isFiltered && (
-                <button
-                  onClick={handleResetFilters}
-                  className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                  type="button"
-                >
-                  <RotateCcw size={12} /> Clear Filters
-                </button>
-              )}
+
+              <div className="flex items-center gap-3 w-full lg:w-auto">
+                <div className="relative flex-1 lg:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search memo..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchInput("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                      aria-label="Clear search"
+                      title="Clear"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
+                </div>
+
+                <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-gray-200">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                    Show
+                  </span>
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setLimit(Number(e.target.value));
+                      setPage(1);
+                    }}
+                    className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
+                  >
+                    {pageSizeOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="lg:hidden flex items-center gap-1.5 px-2 border-l border-gray-200 ml-1">
+                  <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    shows
+                  </span>
+                  <FilterSelect
+                    label=""
+                    value={limit}
+                    onChange={(v) => {
+                      setLimit(v);
+                      setPage(1);
+                    }}
+                    options={pageSizeOptions}
+                    className="!mb-0 w-20 text-xs"
+                  />
+                </div>
+              </div>
             </div>
-          ) : (
-            <>
-              {/* ✅ Mobile: cards */}
-              <div className="block md:hidden p-4">
-                <div className="space-y-3">
-                  {isLoading
-                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                        <div
-                          key={i}
-                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
-                        >
-                          <Skeleton height={18} />
-                          <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
-                          </div>
-                        </div>
-                      ))
-                    : applications.map((app) => {
-                        const cancelling =
-                          cancelMutation.isPending &&
-                          cancelMutation.variables === app._id;
 
-                        return (
-                          <ApplicationCard
-                            key={app._id}
-                            app={app}
-                            leftStripClassName={getStatusColor(
-                              app.overallStatus,
-                            )}
-                            cancelling={cancelling}
-                            onViewDetails={() => setSelectedApp(app)}
-                            onViewPdf={() => setPdfApp(app)} // ✅
-                            onViewMemos={() => openMemoModal(app.memo)}
-                            onCancel={() => openCancelModal(app)}
-                          />
-                        );
-                      })}
+            {isFiltered && (
+              <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-400 uppercase">
+                    Active:
+                  </span>
+                  {searchFilter && (
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                      "{searchFilter}"
+                    </span>
+                  )}
+                  {statusFilter && (
+                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
+                      {statusFilter}
+                    </span>
+                  )}
                 </div>
+
+                <button
+                  type="button"
+                  onClick={handleResetFilters}
+                  className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
+                >
+                  <RotateCcw size={10} /> Reset
+                </button>
               </div>
+            )}
+          </div>
 
-              {/* ✅ Tablet: 2 cards per row */}
-              <div className="hidden md:block lg:hidden p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {isLoading
-                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                        <div
-                          key={i}
-                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
-                        >
-                          <Skeleton height={18} />
-                          <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
-                          </div>
-                        </div>
-                      ))
-                    : applications.map((app) => {
-                        const cancelling =
-                          cancelMutation.isPending &&
-                          cancelMutation.variables === app._id;
-
-                        return (
-                          <ApplicationCard
-                            key={app._id}
-                            app={app}
-                            leftStripClassName={getStatusColor(
-                              app.overallStatus,
-                            )}
-                            cancelling={cancelling}
-                            onViewDetails={() => setSelectedApp(app)}
-                            onViewPdf={() => setPdfApp(app)} // ✅
-                            onViewMemos={() => openMemoModal(app.memo)}
-                            onCancel={() => openCancelModal(app)}
-                          />
-                        );
-                      })}
+          <div className="bg-gray-50/50 min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto">
+            {!isLoading && applications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
+                <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
+                  <Filter className="w-10 h-10 text-gray-300" />
                 </div>
+                <h3 className="text-lg font-bold text-gray-900">
+                  No Results Found
+                </h3>
+                <p className="text-sm text-gray-500 max-w-xs mt-1">
+                  Try adjusting your search or filters to find what you're
+                  looking for.
+                </p>
+                {isFiltered && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+                    type="button"
+                  >
+                    <RotateCcw size={12} /> Clear Filters
+                  </button>
+                )}
               </div>
-
-              {/* ✅ Desktop: table ONLY at lg+ */}
-              <div className="hidden lg:block w-full align-middle">
-                <table className="w-full text-left">
-                  <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
-                    <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
-                      <th className="px-6 py-4 font-bold">Reference / Memo</th>
-                      <th className="px-6 py-4 text-center">Hours</th>
-                      <th className="px-6 py-4 text-center">Status</th>
-                      <th className="px-6 py-4 text-center">Submitted</th>
-                      <th className="px-6 py-4">Dates Covered</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-50">
+            ) : (
+              <>
+                {/* ✅ Mobile cards */}
+                <div className="block md:hidden p-4">
+                  <div className="space-y-3">
                     {isLoading
-                      ? [...Array(8)].map((_, i) => (
-                          <tr key={i}>
-                            {[...Array(6)].map((__, j) => (
-                              <td key={j} className="px-6 py-4">
-                                <Skeleton />
-                              </td>
-                            ))}
-                          </tr>
+                      ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                          <div
+                            key={i}
+                            className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                          >
+                            <Skeleton height={18} />
+                            <div className="mt-3">
+                              <Skeleton height={12} count={2} />
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <Skeleton height={52} />
+                              <Skeleton height={52} />
+                            </div>
+                            <div className="mt-4">
+                              <Skeleton height={40} />
+                            </div>
+                          </div>
                         ))
-                      : applications.map((app, i) => {
-                          const memoLabel =
-                            Array.isArray(app.memo) && app.memo.length
-                              ? app.memo
-                                  .map((m) => m?.memoId?.memoNo)
-                                  .filter(Boolean)
-                                  .join(", ")
-                              : "No Memo Attached";
+                      : applications.map((app) => {
+                          const cancelling =
+                            cancelMutation.isPending &&
+                            cancelMutation.variables === app._id;
 
                           return (
-                            <tr
+                            <ApplicationCard
                               key={app._id}
-                              className={`group hover:bg-gray-50/80 transition-colors ${
-                                i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                              }`}
-                            >
-                              <td className="px-6 py-4">
-                                <div className="flex flex-col">
-                                  <span className="font-semibold text-gray-900 text-sm">
-                                    {memoLabel}
-                                  </span>
-                                  <span className="text-[10px] text-gray-400 font-mono mt-0.5">
-                                    ID:{" "}
-                                    {app._id
-                                      ? app._id.slice(-6).toUpperCase()
-                                      : "-"}
-                                  </span>
-                                </div>
-                              </td>
-
-                              <td className="px-6 py-4 text-center">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-bold border border-gray-200">
-                                  {app.requestedHours}h
-                                </span>
-                              </td>
-
-                              <td className="px-6 py-4 text-center">
-                                <StatusBadge status={app.overallStatus} />
-                              </td>
-
-                              <td className="px-6 py-4 text-center text-sm text-gray-500">
-                                {formatSubmitted(app.createdAt)}
-                              </td>
-
-                              <td className="px-6 py-4 text-sm text-gray-500">
-                                <div className="flex items-center gap-2">
-                                  <Calendar
-                                    size={14}
-                                    className="text-gray-400"
-                                  />
-                                  <span>
-                                    {formatCoveredDates(app.inclusiveDates)}
-                                  </span>
-                                </div>
-                              </td>
-
-                              <td className="px-6 py-4 text-right">
-                                <ApplicationActionMenu
-                                  app={app}
-                                  onViewDetails={() => setSelectedApp(app)}
-                                  onViewPdf={() => setPdfApp(app)} // ✅
-                                  onViewMemos={() => openMemoModal(app.memo)}
-                                  onCancel={() => openCancelModal(app)}
-                                  cancelling={
-                                    cancelMutation.isPending &&
-                                    cancelMutation.variables === app._id
-                                  }
-                                />
-                              </td>
-                            </tr>
+                              app={app}
+                              leftStripClassName={getStatusColor(
+                                app.overallStatus,
+                              )}
+                              cancelling={cancelling}
+                              onViewDetails={() => setSelectedApp(app)}
+                              onViewPdf={() => setPdfApp(app)}
+                              onViewMemos={() => openMemoModal(app.memo)}
+                              onCancel={() => openCancelModal(app)}
+                            />
                           );
                         })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
+                  </div>
+                </div>
 
-        <CompactPagination
-          page={pagination.page}
-          totalPages={pagination.totalPages}
-          total={pagination.total}
-          startItem={startItem}
-          endItem={endItem}
-          label="applications"
-          onPrev={() => setPage((p) => Math.max(p - 1, 1))}
-          onNext={() => setPage((p) => Math.min(p + 1, pagination.totalPages))}
-        />
+                {/* ✅ Tablet */}
+                <div className="hidden md:block lg:hidden p-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    {isLoading
+                      ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                          <div
+                            key={i}
+                            className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                          >
+                            <Skeleton height={18} />
+                            <div className="mt-3">
+                              <Skeleton height={12} count={2} />
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <Skeleton height={52} />
+                              <Skeleton height={52} />
+                            </div>
+                            <div className="mt-4">
+                              <Skeleton height={40} />
+                            </div>
+                          </div>
+                        ))
+                      : applications.map((app) => {
+                          const cancelling =
+                            cancelMutation.isPending &&
+                            cancelMutation.variables === app._id;
+
+                          return (
+                            <ApplicationCard
+                              key={app._id}
+                              app={app}
+                              leftStripClassName={getStatusColor(
+                                app.overallStatus,
+                              )}
+                              cancelling={cancelling}
+                              onViewDetails={() => setSelectedApp(app)}
+                              onViewPdf={() => setPdfApp(app)}
+                              onViewMemos={() => openMemoModal(app.memo)}
+                              onCancel={() => openCancelModal(app)}
+                            />
+                          );
+                        })}
+                  </div>
+                </div>
+
+                {/* ✅ Desktop table (UNCHANGED) */}
+                <div className="hidden lg:block w-full align-middle">
+                  <table className="w-full text-left">
+                    <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
+                      <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
+                        <th className="px-6 py-4 font-bold">
+                          Reference / Memo
+                        </th>
+                        <th className="px-6 py-4 text-center">Hours</th>
+                        <th className="px-6 py-4 text-center">Status</th>
+                        <th className="px-6 py-4 text-center">Submitted</th>
+                        <th className="px-6 py-4">Dates Covered</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-gray-50">
+                      {isLoading
+                        ? [...Array(8)].map((_, i) => (
+                            <tr key={i}>
+                              {[...Array(6)].map((__, j) => (
+                                <td key={j} className="px-6 py-4">
+                                  <Skeleton />
+                                </td>
+                              ))}
+                            </tr>
+                          ))
+                        : applications.map((app, i) => {
+                            const memoLabel =
+                              Array.isArray(app.memo) && app.memo.length
+                                ? app.memo
+                                    .map((m) => m?.memoId?.memoNo)
+                                    .filter(Boolean)
+                                    .join(", ")
+                                : "No Memo Attached";
+
+                            return (
+                              <tr
+                                key={app._id}
+                                className={`group hover:bg-gray-50/80 transition-colors ${
+                                  i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                                }`}
+                              >
+                                <td className="px-6 py-4">
+                                  <div className="flex flex-col">
+                                    <span className="font-semibold text-gray-900 text-sm">
+                                      {memoLabel}
+                                    </span>
+                                    <span className="text-[10px] text-gray-400 font-mono mt-0.5">
+                                      ID:{" "}
+                                      {app._id
+                                        ? app._id.slice(-6).toUpperCase()
+                                        : "-"}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4 text-center">
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs font-bold border border-gray-200">
+                                    {app.requestedHours}h
+                                  </span>
+                                </td>
+
+                                <td className="px-6 py-4 text-center">
+                                  <StatusBadge status={app.overallStatus} />
+                                </td>
+
+                                <td className="px-6 py-4 text-center text-sm text-gray-500">
+                                  {formatSubmitted(app.createdAt)}
+                                </td>
+
+                                <td className="px-6 py-4 text-sm text-gray-500">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar
+                                      size={14}
+                                      className="text-gray-400"
+                                    />
+                                    <span>
+                                      {formatCoveredDates(app.inclusiveDates)}
+                                    </span>
+                                  </div>
+                                </td>
+
+                                <td className="px-6 py-4 text-right">
+                                  <ApplicationActionMenu
+                                    app={app}
+                                    onViewDetails={() => setSelectedApp(app)}
+                                    onViewPdf={() => setPdfApp(app)}
+                                    onViewMemos={() => openMemoModal(app.memo)}
+                                    onCancel={() => openCancelModal(app)}
+                                    cancelling={
+                                      cancelMutation.isPending &&
+                                      cancelMutation.variables === app._id
+                                    }
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+
+          <CompactPagination
+            page={pagination.page}
+            totalPages={pagination.totalPages}
+            total={pagination.total}
+            startItem={startItem}
+            endItem={endItem}
+            label="applications"
+            onPrev={() => setPage((p) => Math.max(p - 1, 1))}
+            onNext={() =>
+              setPage((p) => Math.min(p + 1, pagination.totalPages))
+            }
+          />
+        </div>
       </div>
 
       {/* ✅ PDF Modal */}
@@ -1064,11 +1084,21 @@ const MyCtoApplications = () => {
         </div>
       </Modal>
 
+      {showScrollTop && (
+        <button
+          type="button"
+          onClick={scrollToTop}
+          className="md:hidden fixed bottom-5  z-[1] h-10 w-10 rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center"
+          aria-label="Scroll to top"
+          title="Back to top"
+        >
+          <ArrowUp className="w-5 h-5" />
+        </button>
+      )}
       {/* Form Modal */}
       <Modal
         isOpen={isFormModalOpen}
         onClose={() => setIsFormModalOpen(false)}
-        title="New CTO Application"
         closeLabel={null}
         maxWidth=" max-w-lg"
       >

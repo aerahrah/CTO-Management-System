@@ -111,7 +111,7 @@ const Modal = ({
         </Transition.Child>
 
         {/* Panel */}
-        <div className="fixed inset-0 flex items-center justify-center p-4">
+        <div className="fixed inset-0 flex items-center justify-center p-2.5 md:p-3 lg:p-4">
           <Transition.Child
             as={Fragment}
             enter="ease-out duration-100"
@@ -122,7 +122,7 @@ const Modal = ({
             leaveTo="opacity-0 scale-95"
           >
             <Dialog.Panel
-              className={`bg-white rounded-lg shadow-lg p-5 relative w-full ${maxWidth} ${
+              className={`bg-white rounded-lg shadow-lg p-3 md:p-3.5 lg:p-5 relative w-full ${maxWidth} ${
                 pointerBlockWhileClosing ? "pointer-events-none" : ""
               }`}
             >
@@ -136,7 +136,7 @@ const Modal = ({
 
               {/* Footer (optional) */}
               {showFooter && (
-                <div className="flex justify-center gap-4 pt-3">
+                <div className="flex justify-center gap-4 pt-2 lg:pt-3">
                   {/* Close button (hide if closeLabel === null) */}
                   {closeLabel !== null && (
                     <button
