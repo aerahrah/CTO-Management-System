@@ -23,7 +23,6 @@ import {
   Calendar,
   Clock,
   FileText,
-  ExternalLink,
   ArrowUp,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
@@ -62,7 +61,7 @@ const ActionMenu = ({
   onViewMemo,
   onViewDetails,
   onRollback,
-  isPending,
+  isRollbackPending, // ✅ renamed for clarity
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
@@ -92,11 +91,13 @@ const ActionMenu = ({
     <div className="relative inline-flex justify-center" ref={menuRef}>
       <button
         type="button"
+        disabled={isRollbackPending}
         onClick={(e) => {
           e.stopPropagation();
+          if (isRollbackPending) return;
           setIsOpen((o) => !o);
         }}
-        className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800"
+        className="p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
         aria-haspopup="true"
         aria-expanded={isOpen}
         title="Actions"
@@ -108,16 +109,18 @@ const ActionMenu = ({
         <div className="absolute right-0 top-full mt-2 w-44 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1">
           <button
             type="button"
+            disabled={isRollbackPending}
             onClick={() => handle(onViewMemo)}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Eye size={14} /> View Memo
           </button>
 
           <button
             type="button"
+            disabled={isRollbackPending}
             onClick={() => handle(onViewDetails)}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Clipboard size={14} /> View Details
           </button>
@@ -126,11 +129,12 @@ const ActionMenu = ({
 
           <button
             type="button"
-            disabled={credit.status !== "CREDITED" || isPending}
+            disabled={credit.status !== "CREDITED" || isRollbackPending}
             onClick={() => handle(onRollback)}
-            className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-30"
+            className="w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            <RotateCcw size={14} /> Rollback
+            <RotateCcw size={14} />{" "}
+            {isRollbackPending ? "Rolling back..." : "Rollback"}
           </button>
         </div>
       )}
@@ -140,7 +144,7 @@ const ActionMenu = ({
 
 const CreditCard = ({
   credit,
-  isPending,
+  isRollbackPending,
   onViewMemo,
   onViewDetails,
   onRollback,
@@ -186,7 +190,7 @@ const CreditCard = ({
             <StatusBadge status={credit.status} />
             <ActionMenu
               credit={credit}
-              isPending={isPending}
+              isRollbackPending={isRollbackPending}
               onViewMemo={onViewMemo}
               onViewDetails={onViewDetails}
               onRollback={onRollback}
@@ -219,8 +223,9 @@ const CreditCard = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            disabled={isRollbackPending}
             onClick={onViewMemo}
-            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700"
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <FileText className="w-4 h-4" />
             Memo
@@ -228,8 +233,9 @@ const CreditCard = ({
 
           <button
             type="button"
+            disabled={isRollbackPending}
             onClick={onViewDetails}
-            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600"
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Clipboard className="w-4 h-4" />
             Details
@@ -237,12 +243,14 @@ const CreditCard = ({
 
           <button
             type="button"
-            disabled={credit.status !== "CREDITED" || isPending}
+            disabled={credit.status !== "CREDITED" || isRollbackPending}
             onClick={onRollback}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-30"
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
           >
             <RotateCcw className="w-4 h-4" />
-            <span className="hidden sm:inline">Rollback</span>
+            <span className="hidden sm:inline">
+              {isRollbackPending ? "Rolling..." : "Rollback"}
+            </span>
           </button>
         </div>
       </div>
@@ -346,7 +354,17 @@ const CtoCreditHistory = () => {
     credit: null,
   });
 
-  // ✅ Pattern: mobile scroll container + back-to-top
+  // ✅ Global rollback locks (similar style to add credit)
+  const rollbackInFlightRef = useRef(false);
+  const rollbackSuccessLatchRef = useRef(false);
+  const [rollbackLockUI, setRollbackLockUI] = useState(false);
+  const [rollbackSuccessLatchUI, setRollbackSuccessLatchUI] = useState(false);
+
+  const isRollbackBusy = isConfirmRollback
+    ? rollbackLockUI || rollbackSuccessLatchUI
+    : false;
+
+  // Mobile scroll container + back-to-top
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -417,20 +435,44 @@ const CtoCreditHistory = () => {
     });
   }, [pagination.totalPages]);
 
-  const { mutate: rollbackRequest, isPending } = useMutation({
+  // ✅ Rollback mutation (we still use react-query, but we add guard/lock like addCreditForm)
+  const rollbackMutation = useMutation({
     mutationFn: rollbackCreditCto,
+    retry: 0,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["allCredits"] });
-      setIsConfirmRollback(false);
+
+      rollbackSuccessLatchRef.current = true;
+      setRollbackSuccessLatchUI(true);
+
       toast.success("CTO credit successfully rolled back!");
+
+      setIsConfirmRollback(false);
+      setSelectedCreditId(null);
+
+      // reset locks after modal closes (short delay is fine)
+      setTimeout(() => {
+        rollbackInFlightRef.current = false;
+        rollbackSuccessLatchRef.current = false;
+        setRollbackLockUI(false);
+        setRollbackSuccessLatchUI(false);
+      }, 0);
     },
     onError: (error) => {
-      setIsConfirmRollback(false);
       toast.error(
         error?.response?.data?.message || error?.message || "Rollback failed.",
       );
+
+      rollbackInFlightRef.current = false;
+      rollbackSuccessLatchRef.current = false;
+      setRollbackLockUI(false);
+      setRollbackSuccessLatchUI(false);
+      setIsConfirmRollback(false);
     },
   });
+
+  const isRollbackPending =
+    rollbackMutation.isPending || rollbackLockUI || rollbackSuccessLatchUI;
 
   const formatDuration = useCallback(
     (d) => (d ? `${d.hours || 0}h ${d.minutes || 0}m` : "-"),
@@ -471,21 +513,34 @@ const CtoCreditHistory = () => {
     return { credited, rolledBack, total: credited + rolledBack };
   }, [data]);
 
-  // ✅ Build memo pdf url similar to CtoCreditDetails
   const memoPdfUrl = useMemo(() => {
     const p = memoModal?.memo?.uploadedMemo;
     if (!p) return "";
     return buildApiUrl(String(p).replace(/\\/g, "/"));
   }, [memoModal?.memo?.uploadedMemo]);
 
+  // ✅ Single place to start rollback (guard rapid-click)
+  const startRollback = useCallback(
+    (creditId) => {
+      if (!creditId) return;
+      if (rollbackSuccessLatchRef.current) return;
+      if (rollbackInFlightRef.current) return;
+      if (rollbackMutation.isPending) return;
+
+      rollbackInFlightRef.current = true;
+      setRollbackLockUI(true);
+
+      rollbackMutation.mutate(creditId);
+    },
+    [rollbackMutation],
+  );
+
   return (
     <div className="w-full h-full min-h-0 flex flex-col md:p-0 bg-gray-50/50">
-      {/* ✅ Single scroll container on mobile; md+ uses natural layout */}
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents"
       >
-        {/* HEADER (scrolls away on mobile) */}
         <div className="pt-2 pb-3 md:pb-6 px-1">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
             <div>
@@ -500,7 +555,12 @@ const CtoCreditHistory = () => {
 
             <button
               type="button"
-              onClick={() => setIsAddCtoOpen(true)}
+              onClick={() => {
+                queryClient.invalidateQueries({
+                  queryKey: ["ctoCreditEmployees"],
+                });
+                setIsAddCtoOpen(true);
+              }}
               className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full md:w-auto"
             >
               <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
@@ -509,9 +569,7 @@ const CtoCreditHistory = () => {
           </div>
         </div>
 
-        {/* MAIN */}
         <div className="flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm overflow-visible md:flex-1 md:min-h-0 md:overflow-hidden">
-          {/* ✅ Sticky toolbar on mobile, static on md+ */}
           <div className="p-4 border-b border-gray-100 bg-white space-y-4 sticky top-0 z-[1] bg-white/95 backdrop-blur md:static md:z-auto md:bg-white md:backdrop-blur-0">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -641,7 +699,6 @@ const CtoCreditHistory = () => {
             )}
           </div>
 
-          {/* ✅ Data region: no nested scroll on mobile; scrolls on md+ */}
           <div className="bg-gray-50/50 min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto">
             {!isLoading && credits.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
@@ -663,14 +720,13 @@ const CtoCreditHistory = () => {
               </div>
             ) : (
               <>
-                {/* Mobile/tablet cards */}
                 <div className="block lg:hidden p-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {(isLoading || isPending
+                    {(isLoading || isRollbackPending
                       ? [...Array(Math.min(limit, 6))]
                       : credits
                     ).map((credit, idx) => {
-                      if (isLoading || isPending) {
+                      if (isLoading || isRollbackPending) {
                         return (
                           <div
                             key={`sk-${idx}`}
@@ -695,10 +751,8 @@ const CtoCreditHistory = () => {
                         <CreditCard
                           key={credit._id}
                           credit={credit}
-                          isPending={isPending}
-                          formatDuration={(d) =>
-                            d ? `${d.hours || 0}h ${d.minutes || 0}m` : "-"
-                          }
+                          isRollbackPending={isRollbackPending}
+                          formatDuration={formatDuration}
                           formatDate={formatDate}
                           leftStripClassName={getStatusStripClass(
                             credit.status,
@@ -710,6 +764,7 @@ const CtoCreditHistory = () => {
                             setDetailsModal({ isOpen: true, credit })
                           }
                           onRollback={() => {
+                            if (isRollbackPending) return;
                             setSelectedCreditId(credit._id);
                             setIsConfirmRollback(true);
                           }}
@@ -719,7 +774,6 @@ const CtoCreditHistory = () => {
                   </div>
                 </div>
 
-                {/* Desktop table */}
                 <div className="hidden lg:block w-full align-middle">
                   <table className="w-full text-left">
                     <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
@@ -736,7 +790,7 @@ const CtoCreditHistory = () => {
                     </thead>
 
                     <tbody className="divide-y divide-gray-50">
-                      {isLoading || isPending
+                      {isLoading
                         ? [...Array(limit)].map((_, i) => (
                             <tr key={i}>
                               {[...Array(6)].map((__, j) => (
@@ -777,11 +831,7 @@ const CtoCreditHistory = () => {
                               </td>
 
                               <td className="px-6 py-4 text-center text-gray-600">
-                                {credit.duration
-                                  ? `${credit.duration.hours || 0}h ${
-                                      credit.duration.minutes || 0
-                                    }m`
-                                  : "-"}
+                                {formatDuration(credit.duration)}
                               </td>
 
                               <td className="px-6 py-4 text-center text-gray-600">
@@ -795,7 +845,7 @@ const CtoCreditHistory = () => {
                               <td className="px-6 py-4 text-right">
                                 <ActionMenu
                                   credit={credit}
-                                  isPending={isPending}
+                                  isRollbackPending={isRollbackPending}
                                   onViewMemo={() =>
                                     setMemoModal({ isOpen: true, memo: credit })
                                   }
@@ -803,6 +853,7 @@ const CtoCreditHistory = () => {
                                     setDetailsModal({ isOpen: true, credit })
                                   }
                                   onRollback={() => {
+                                    if (isRollbackPending) return;
                                     setSelectedCreditId(credit._id);
                                     setIsConfirmRollback(true);
                                   }}
@@ -831,7 +882,6 @@ const CtoCreditHistory = () => {
         </div>
       </div>
 
-      {/* ✅ Back-to-top (mobile only) */}
       {showScrollTop && (
         <button
           type="button"
@@ -843,28 +893,95 @@ const CtoCreditHistory = () => {
           <ArrowUp className="w-5 h-5" />
         </button>
       )}
-
-      {/* Rollback Confirm */}
       <Modal
         isOpen={isConfirmRollback}
-        onClose={() => setIsConfirmRollback(false)}
-        title="Confirm Rollback"
-        action={{
-          label: "Confirm Rollback",
-          variant: "delete",
-          show: true,
-          onClick: () => rollbackRequest(selectedCreditId),
+        onClose={() => {
+          if (isRollbackPending) return;
+          setIsConfirmRollback(false);
         }}
-        closeLabel="Cancel"
+        title="Rollback CTO Credit"
+        maxWidth="max-w-lg"
+        preventCloseWhenBusy={true}
+        isBusy={isRollbackPending}
+        action={{
+          show: true,
+          variant: "delete",
+          label: isRollbackPending ? "Rolling back..." : "Yes, Rollback",
+          onClick: async () => {
+            if (!selectedCreditId) return;
+
+            // Optional: only allow rollback if currently CREDITED
+            const credit = credits.find((c) => c._id === selectedCreditId);
+            const status = String(credit?.status || "").toUpperCase();
+            if (status !== "CREDITED") {
+              toast.error("Only CREDITED entries can be rolled back.");
+              setIsConfirmRollback(false);
+              return;
+            }
+
+            await startRollback(selectedCreditId);
+          },
+          disabled: isRollbackPending || !selectedCreditId,
+        }}
       >
-        <p className="py-2 text-gray-700">
-          Are you sure you want to rollback this CTO credit? This action will
-          deduct the credited hours from the respective employees&apos;
-          balances.
-        </p>
+        <div className="p-2">
+          {/* Top info box */}
+          <div className="mb-5 flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+            <div className="mt-0.5 p-1.5 bg-white rounded-lg border border-slate-200 shadow-sm text-slate-400">
+              <Clipboard size={16} />
+            </div>
+
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                You are about to rollback this CTO credit
+              </p>
+
+              <p className="text-sm font-bold text-slate-900 break-words">
+                Ref:{" "}
+                {selectedCreditId
+                  ? `#${selectedCreditId.slice(-6).toUpperCase()}`
+                  : "-"}
+              </p>
+
+              {/* Optional: show memoNo */}
+              <p className="text-xs text-slate-500 mt-1">
+                Memo:{" "}
+                <span className="font-semibold text-slate-700">
+                  {credits.find((c) => c._id === selectedCreditId)?.memoNo ||
+                    "-"}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Center icon + message */}
+          <div className="text-center py-2">
+            <div className="mx-auto h-20 w-20 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mb-4 border-4 border-rose-100/50 shadow-inner">
+              <RotateCcw size={40} strokeWidth={3} />
+            </div>
+
+            <h2 className="text-lg font-semibold text-slate-900">
+              Are you sure you want to rollback this CTO credit?
+            </h2>
+
+            <p className="text-sm text-slate-500 mt-2">
+              This will deduct the credited hours from the employees&apos;
+              balances and mark this credit as{" "}
+              <span className="font-semibold">ROLLEDBACK</span>.
+            </p>
+          </div>
+
+          {/* Optional: small warning note */}
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+            <p className="text-xs text-amber-900 leading-relaxed">
+              <span className="font-bold">Note:</span> Rollback will fail if any
+              employee has already used or reserved hours from this credit.
+            </p>
+          </div>
+        </div>
       </Modal>
 
-      {/* Add CTO Credit modal (NO action footer; form owns buttons) */}
+      {/* Add CTO Credit modal */}
       <Modal
         isOpen={isAddCtoOpen}
         onClose={() => setIsAddCtoOpen(false)}
@@ -889,7 +1006,7 @@ const CtoCreditHistory = () => {
         <CtoCreditDetails credit={detailsModal.credit} />
       </Modal>
 
-      {/* Memo modal (PDF URL built the same way as CtoCreditDetails) */}
+      {/* Memo modal */}
       <Modal
         isOpen={memoModal.isOpen}
         onClose={() => setMemoModal({ isOpen: false, memo: null })}
@@ -897,17 +1014,6 @@ const CtoCreditHistory = () => {
         maxWidth="max-w-4xl"
       >
         <div className="w-full h-[70vh] flex flex-col">
-          {/* <div className="flex items-center justify-end mb-3">
-            <a
-              href={memoPdfUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
-            >
-              View <ExternalLink size={14} />
-            </a>
-          </div> */}
-
           <iframe
             title="CTO Credit Memo PDF"
             src={

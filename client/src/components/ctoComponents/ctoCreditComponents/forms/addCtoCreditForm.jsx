@@ -73,12 +73,22 @@ const AddCtoCreditForm = ({ onClose, onPendingChange }) => {
     };
   }, []);
 
-  const { data: employeesData, isLoading } = useQuery({
-    queryKey: ["employees"],
+  const {
+    data: employeesData,
+    isLoading,
+    refetch,
+  } = useQuery({
+    queryKey: ["ctoCreditEmployees"],
     queryFn: fetchApprovers,
-    staleTime: Infinity,
     enabled: menuOpen,
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
   });
+
+  useEffect(() => {
+    if (menuOpen) refetch();
+  }, [menuOpen, refetch]);
 
   const mutation = useMutation({
     mutationFn: addCreditRequest,
@@ -93,14 +103,13 @@ const AddCtoCreditForm = ({ onClose, onPendingChange }) => {
     onPendingChange?.(busy);
   }, [busy, onPendingChange]);
 
-  const employeeOptions = useMemo(
-    () =>
-      employeesData?.data?.map((emp) => ({
-        value: emp._id,
-        label: `${emp.firstName} ${emp.lastName}`.trim(),
-      })) || [],
-    [employeesData],
-  );
+  const employeeOptions = useMemo(() => {
+    const list = employeesData?.data?.data || employeesData?.data || [];
+    return list.map((emp) => ({
+      value: emp._id,
+      label: `${emp.firstName} ${emp.lastName}`.trim(),
+    }));
+  }, [employeesData]);
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;

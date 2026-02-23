@@ -696,7 +696,7 @@ const EmployeeDirectory = () => {
         className="flex-1 min-h-0 overflow-y-auto"
       >
         {/* ✅ STICKY HEADER */}
-        <div className="sticky top-0 z-1 bg-gray-50/90 backdrop-blur border-b border-gray-200">
+        <div className="sticky top-0 z-1 bg-gray-50/90 backdrop-blur ">
           <div className="pt-2 pb-3 sm:pb-6 px-1">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
               <div className="flex-1 min-w-0">
@@ -722,7 +722,7 @@ const EmployeeDirectory = () => {
         </div>
 
         {/* MAIN */}
-        <div className="px-1 mb-1 pt-2">
+        <div className="mb-1">
           <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
             {/* TOOLBAR */}
             <div className="p-4 border-b border-gray-100 bg-white space-y-4">

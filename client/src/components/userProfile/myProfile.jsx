@@ -14,7 +14,6 @@ import {
   Edit3,
   KeyRound,
   AlertCircle,
-  ChevronRight,
 } from "lucide-react";
 import { getMyProfile } from "../../api/employee";
 
@@ -44,7 +43,7 @@ const ActionButton = ({
   ...props
 }) => {
   const baseStyles =
-    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg  text-sm font-medium transition-all duration-200 active:scale-95";
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 active:scale-95";
 
   const variants = {
     primary:
@@ -66,11 +65,12 @@ const ActionButton = ({
 const InfoRow = ({ icon: Icon, label, value, isLink = false }) => (
   <div className="group flex items-center justify-between py-3 first:pt-0 last:pb-0">
     <div className="flex items-center gap-3 text-zinc-500">
-      <div className="flex items-center justify-center w-8 h-8 rounded-lg  bg-zinc-50 border border-zinc-100 text-zinc-400 group-hover:text-zinc-600 group-hover:border-zinc-200 transition-colors">
+      <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-zinc-50 border border-zinc-100 text-zinc-400 group-hover:text-zinc-600 group-hover:border-zinc-200 transition-colors">
         <Icon className="w-4 h-4" strokeWidth={1.5} />
       </div>
       <span className="text-sm font-medium">{label}</span>
     </div>
+
     <div className="text-right">
       {isLink && value ? (
         <a
@@ -87,21 +87,6 @@ const InfoRow = ({ icon: Icon, label, value, isLink = false }) => (
     </div>
   </div>
 );
-
-const Badge = ({ children, color = "green" }) => {
-  const styles = {
-    green: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    gray: "bg-zinc-50 text-zinc-600 border-zinc-100",
-  };
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${styles[color]}`}
-    >
-      {children}
-    </span>
-  );
-};
 
 /* =========================
    Skeleton & Error States
@@ -131,7 +116,6 @@ const Shimmer = () => (
 const ProfileSkeleton = () => (
   <div className="min-h-screen bg-zinc-50/50 px-1 py-2">
     <div className="max-w-6xl mx-auto">
-      {/* Header skeleton */}
       <div className="mb-6">
         <div className="h-4 w-40 bg-zinc-200/80 rounded-md mx-auto md:mx-0" />
         <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -146,9 +130,7 @@ const ProfileSkeleton = () => (
         </div>
       </div>
 
-      {/* Content grid skeleton */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left: Identity card skeleton */}
         <div className="lg:col-span-4 lg:sticky lg:top-8">
           <div className="relative bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden h-full flex flex-col">
             <Shimmer />
@@ -156,7 +138,6 @@ const ProfileSkeleton = () => (
               <div className="w-24 h-24 rounded-full bg-zinc-200/80" />
               <div className="mt-6 h-5 w-40 bg-zinc-200/80 rounded-md" />
               <div className="mt-2 h-4 w-28 bg-zinc-200/80 rounded-md" />
-
               <div className="mt-6 w-full grid grid-cols-2 gap-2">
                 <div className="h-9 bg-zinc-200/70 rounded-xl" />
                 <div className="h-9 bg-zinc-200/70 rounded-xl" />
@@ -182,9 +163,7 @@ const ProfileSkeleton = () => (
           </div>
         </div>
 
-        {/* Right: Sections skeleton */}
         <div className="lg:col-span-8 space-y-6">
-          {/* Employment Details */}
           <div className="relative bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
             <Shimmer />
             <div className="px-6 pt-6 pb-2">
@@ -208,7 +187,6 @@ const ProfileSkeleton = () => (
             </div>
           </div>
 
-          {/* Emergency Contact */}
           <div className="relative bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
             <Shimmer />
             <div className="px-6 pt-6 pb-2">
@@ -248,7 +226,6 @@ const ProfileSkeleton = () => (
             </div>
           </div>
 
-          {/* Optional third skeleton card to match spacing on larger screens */}
           <div className="relative bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden hidden lg:block">
             <Shimmer />
             <div className="p-6">
@@ -314,9 +291,7 @@ const IdentityCard = ({ profile }) => {
           {profile.position || "No Position"}
         </p>
 
-        <div className="mt-6 w-full grid grid-cols-2 gap-2">
-          {/* Quick stats or minimal tags could go here if needed */}
-        </div>
+        <div className="mt-6 w-full grid grid-cols-2 gap-2" />
       </div>
 
       <div className="p-6 bg-zinc-50/30 flex-1 flex flex-col justify-center space-y-5">
@@ -353,10 +328,13 @@ const MyProfile = () => {
 
   const profile = data?.data ?? data ?? {};
 
+  // ✅ FIX: project/designation are populated objects -> render .name
+  const projectName = profile.project?.name || "";
+  const designationName = profile.designation?.name || "";
+
   return (
     <div className="min-h-screen px-1 py-2">
       <div className="">
-        {/* Navigation Header */}
         <div className="mb-6">
           <Breadcrumbs rootLabel="Home" rootTo="/app" />
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-6xl mx-auto">
@@ -387,14 +365,11 @@ const MyProfile = () => {
           </div>
         </div>
 
-        {/* Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-6xl mx-auto">
-          {/* Left: Identity Column */}
           <div className="lg:col-span-4 lg:sticky lg:top-8">
             <IdentityCard profile={profile} />
           </div>
 
-          {/* Right: Details Column */}
           <div className="lg:col-span-8 space-y-6">
             <Section title="Employment Details">
               <div className="space-y-1">
@@ -410,11 +385,17 @@ const MyProfile = () => {
                   value={profile.division}
                 />
                 <div className="h-px bg-zinc-50 my-2" />
+
+                {/* ✅ FIXED HERE */}
                 <InfoRow
                   icon={FolderGit2}
                   label="Current Project"
-                  value={profile.project}
+                  value={projectName}
                 />
+
+                {/* Optional: show designation if you want */}
+                {/* <div className="h-px bg-zinc-50 my-2" />
+                <InfoRow icon={User} label="Designation" value={designationName} /> */}
               </div>
             </Section>
 

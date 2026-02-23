@@ -101,7 +101,7 @@ const Login = () => {
             <img
               src="/loginSrc/DICT-Logo.png"
               alt="DICT Logo"
-              className="h-12 w-12 object-contain rounded-full"
+              className="h-12 min-w-12 object-contain rounded-full"
               draggable="false"
             />
           </div>
