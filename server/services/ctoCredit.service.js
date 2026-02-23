@@ -3,6 +3,13 @@ const mongoose = require("mongoose");
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
 
+// ✅ NEW: email sender + templates
+const sendEmail = require("../utils/sendEmail");
+const {
+  ctoCreditAddedEmail,
+  ctoCreditRolledBackEmail,
+} = require("../utils/emailTemplates");
+
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -57,6 +64,7 @@ async function addCredit({
   const session = await mongoose.startSession();
   try {
     let created;
+
     await session.withTransaction(async () => {
       const existingCount = await Employee.countDocuments(
         { _id: { $in: employeeIds } },
@@ -99,6 +107,43 @@ async function addCredit({
       );
     });
 
+    // ✅ Send emails AFTER successful transaction (do not block if email fails)
+    try {
+      const recipients = await Employee.find({ _id: { $in: employeeIds } })
+        .select("firstName lastName email")
+        .lean();
+
+      const brandName = "CTO Management System";
+
+      await Promise.all(
+        recipients.map(async (emp) => {
+          if (!emp?.email) return;
+
+          const tpl = ctoCreditAddedEmail({
+            employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
+            memoNo: memoNo.trim(),
+            creditedHours: totalHours,
+            dateApproved: approvedDate,
+            brandName,
+          });
+
+          try {
+            await sendEmail(emp.email, tpl.subject, tpl.html);
+          } catch (e) {
+            console.error(
+              `Failed to send CTO credit added email to ${emp.email}:`,
+              e?.message || e,
+            );
+          }
+        }),
+      );
+    } catch (e) {
+      console.error(
+        "Failed preparing CTO credit added emails:",
+        e?.message || e,
+      );
+    }
+
     return created;
   } finally {
     session.endSession();
@@ -112,6 +157,7 @@ async function rollbackCredit({ creditId, userId }) {
   const session = await mongoose.startSession();
   try {
     let updated;
+
     await session.withTransaction(async () => {
       const credit = await CtoCredit.findById(creditId).session(session);
       if (!credit) throw httpError("Credit request not found", 404);
@@ -155,6 +201,48 @@ async function rollbackCredit({ creditId, userId }) {
 
       updated = await credit.save({ session });
     });
+
+    // ✅ Send emails AFTER successful transaction
+    try {
+      const creditPopulated = await CtoCredit.findById(updated._id)
+        .populate("employees.employee", "firstName lastName email")
+        .lean();
+
+      const brandName = "CTO Management System";
+
+      const memoNo = creditPopulated?.memoNo || "";
+      const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
+
+      await Promise.all(
+        (creditPopulated?.employees || []).map(async (row) => {
+          const emp = row?.employee;
+          if (!emp?.email) return;
+
+          const tpl = ctoCreditRolledBackEmail({
+            employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
+            memoNo,
+            rolledBackHours: row?.creditedHours || 0,
+            dateRolledBack,
+            reason: "Credit memo rolled back by admin.",
+            brandName,
+          });
+
+          try {
+            await sendEmail(emp.email, tpl.subject, tpl.html);
+          } catch (e) {
+            console.error(
+              `Failed to send CTO credit rollback email to ${emp.email}:`,
+              e?.message || e,
+            );
+          }
+        }),
+      );
+    } catch (e) {
+      console.error(
+        "Failed preparing CTO credit rollback emails:",
+        e?.message || e,
+      );
+    }
 
     return updated;
   } finally {

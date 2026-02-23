@@ -6,9 +6,13 @@ const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 
 const sendEmail = require("../utils/sendEmail");
-const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
-const ctoRejectionEmail = require("../emails/ctoRejectionRequest");
-const ctoFinalApprovalEmail = require("../emails/ctoFinalApprovalEmail");
+
+// ✅ UPDATED: centralized templates (single file)
+const {
+  ctoApprovalEmail,
+  ctoRejectionEmail,
+  ctoFinalApprovalEmail,
+} = require("../utils/emailTemplates");
 
 const buildAuditDetails = require("../utils/auditActionBuilder");
 const auditLogService = require("./auditLog.service");
@@ -396,6 +400,7 @@ const approveCtoApplicationService = async ({
       timestamp: new Date(),
     });
 
+    // ✅ EMAILS USING CENTRAL TEMPLATE
     if (!allApproved) {
       const nextStep = updatedSteps.find(
         (s) => s.level === currentStep.level + 1,
@@ -406,29 +411,27 @@ const approveCtoApplicationService = async ({
           .lean();
 
         if (nextApprover?.email) {
-          await sendEmail(
-            nextApprover.email,
-            "CTO Approval Request",
-            ctoApprovalEmail({
-              approverName: `${nextApprover.firstName} ${nextApprover.lastName}`,
-              employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
-              requestedHours: application.requestedHours,
-              reason: application.reason,
-              level: nextStep.level,
-              link: `${process.env.FRONTEND_URL}/app/cto/approvals/${application._id}`,
-            }),
-          );
+          const tpl = ctoApprovalEmail({
+            approverName: `${nextApprover.firstName} ${nextApprover.lastName}`,
+            employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
+            requestedHours: application.requestedHours,
+            reason: application.reason,
+            level: nextStep.level,
+            link: `${process.env.FRONTEND_URL}/app/cto/approvals/${application._id}`,
+            brandName: "CTO Management System",
+          });
+
+          await sendEmail(nextApprover.email, tpl.subject, tpl.html);
         }
       }
     } else if (application.employee.email) {
-      await sendEmail(
-        application.employee.email,
-        "CTO Application Approved",
-        ctoFinalApprovalEmail({
-          employeeName: application.employee.firstName,
-          requestedHours: application.requestedHours,
-        }),
-      );
+      const tpl = ctoFinalApprovalEmail({
+        employeeName: application.employee.firstName,
+        requestedHours: application.requestedHours,
+        brandName: "CTO Management System",
+      });
+
+      await sendEmail(application.employee.email, tpl.subject, tpl.html);
     }
 
     return CtoApplication.findById(applicationId)
@@ -596,15 +599,15 @@ const rejectCtoApplicationService = async ({
       timestamp: new Date(),
     });
 
+    // ✅ EMAIL USING CENTRAL TEMPLATE
     if (application.employee.email) {
-      await sendEmail(
-        application.employee.email,
-        "CTO Application Rejected",
-        ctoRejectionEmail({
-          employeeName: application.employee.firstName,
-          remarks,
-        }),
-      );
+      const tpl = ctoRejectionEmail({
+        employeeName: application.employee.firstName,
+        remarks,
+        brandName: "CTO Management System",
+      });
+
+      await sendEmail(application.employee.email, tpl.subject, tpl.html);
     }
 
     return CtoApplication.findById(applicationId)

@@ -4,14 +4,14 @@ const Project = require("../models/projectModel");
 const Designation = require("../models/designationModel");
 const mongoose = require("mongoose");
 
-// ✅ UPDATED: use the new separated session settings getter
-// (based on your refactor to separate Session + Working Days services)
 const { getSessionSettings } = require("./generalSettings.service");
 
 const crypto = require("crypto");
 const sendEmail = require("../utils/sendEmail");
 const jwt = require("jsonwebtoken");
 const CtoCredit = require("../models/ctoCreditModel");
+
+const { employeeWelcomeEmail } = require("../utils/emailTemplates");
 
 const validRoles = ["employee", "supervisor", "hr", "admin"];
 const ALLOWED_LIMITS = [10, 20, 50, 100];
@@ -119,8 +119,11 @@ async function resolveDesignationIdForFilter(designationInput) {
   return d ? d._id : null;
 }
 
-// Create employee with temporary password
+// Create employee with temporary passwordconst
+
 const createEmployeeService = async (employeeData) => {
+  console.log("[SERVICE] createEmployeeService called:", employeeData);
+
   const {
     employeeId,
     username,
@@ -142,11 +145,8 @@ const createEmployeeService = async (employeeData) => {
     !designation ||
     !project
   ) {
+    console.warn("[SERVICE] missing required fields");
     throw httpError("Missing required fields for employee creation", 400);
-  }
-
-  if (role && !validRoles.includes(role)) {
-    throw httpError(`Invalid role. Valid roles: ${validRoles.join(", ")}`, 400);
   }
 
   const existing = await Employee.findOne({
@@ -154,6 +154,11 @@ const createEmployeeService = async (employeeData) => {
   });
 
   if (existing) {
+    console.warn("[SERVICE] duplicate employee:", {
+      employeeId,
+      username,
+      email,
+    });
     throw httpError(
       "Employee with this ID, username, or email already exists",
       409,
@@ -163,7 +168,6 @@ const createEmployeeService = async (employeeData) => {
   const projectId = await resolveProjectIdOrThrow(project);
   const designationId = await resolveDesignationIdOrThrow(designation);
 
-  // Stronger temporary password
   const tempPassword = crypto.randomBytes(12).toString("hex");
 
   const employee = new Employee({
@@ -182,54 +186,49 @@ const createEmployeeService = async (employeeData) => {
 
   await employee.save();
 
+  console.log("[CREATE EMPLOYEE] saved:", {
+    id: employee._id?.toString(),
+    employeeId: employee.employeeId,
+    username: employee.username,
+    email: employee.email || null,
+  });
+
   const frontendUrl = process.env.FRONTEND_URL || "http://cto.dictr2.online";
 
   if (employee.email) {
     try {
-      const htmlBody = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
-        <div style="background-color: #2563eb; padding: 20px; text-align: center; color: #fff;">
-          <strong>HRMS</strong>
-        </div>
+      console.log("[CREATE EMPLOYEE] preparing email for:", employee.email);
 
-        <div style="padding: 20px; color: #1f2937;">
-          <h2 style="color: #2563eb; margin-top: 0;">Welcome, ${escapeHtml(firstName)}!</h2>
-          <p>Your account has been created.</p>
+      const tpl = employeeWelcomeEmail({
+        firstName,
+        username,
+        tempPassword,
+        loginUrl: `${frontendUrl}/login`,
+        brandName: "HRMS",
+      });
 
-          <table style="width: 100%; margin: 20px 0; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 8px; font-weight: bold; width: 40%;">Username:</td>
-              <td style="padding: 8px;">${escapeHtml(username)}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px; font-weight: bold;">Temporary Password:</td>
-              <td style="padding: 8px;">${escapeHtml(tempPassword)}</td>
-            </tr>
-          </table>
+      console.log("[CREATE EMPLOYEE] calling sendEmail()...", {
+        to: employee.email,
+        subject: tpl.subject,
+      });
 
-          <p>Please log in and change your password immediately.</p>
+      const info = await sendEmail(employee.email, tpl.subject, tpl.html);
 
-          <a href="${frontendUrl}/login"
-            style="display: inline-block; padding: 10px 20px; background-color: #2563eb; color: white; text-decoration: none; border-radius: 4px;">
-            Login
-          </a>
-        </div>
-
-        <div style="background-color: #f3f4f6; padding: 15px; text-align: center; font-size: 12px; color: #6b7280;">
-          HRMS &copy; ${new Date().getFullYear()}
-        </div>
-      </div>
-      `;
-
-      await sendEmail(employee.email, "Your HRMS Account", htmlBody);
+      console.log("[CREATE EMPLOYEE] sendEmail() finished:", {
+        accepted: info?.accepted,
+        rejected: info?.rejected,
+        response: info?.response,
+        messageId: info?.messageId,
+      });
     } catch (err) {
-      console.error("Failed to send email:", err.message);
+      console.error("[CREATE EMPLOYEE] email failed:", err);
     }
+  } else {
+    console.warn("[CREATE EMPLOYEE] no email -> skip");
   }
 
-  // SECURITY: Don’t return temp password unless explicitly allowed
-  const returnTemp = process.env.RETURN_TEMP_PASSWORD === "true";
-  return returnTemp ? { employee, tempPassword } : { employee };
+  // ✅ Always return employee only (never return temp password)
+  return { employee };
 };
 
 const getEmployeesService = async ({

@@ -1,10 +1,14 @@
+// services/ctoApplication.service.js
 const CtoApplication = require("../models/ctoApplicationModel");
 const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const mongoose = require("mongoose");
+
 const sendEmail = require("../utils/sendEmail");
-const ctoApprovalEmail = require("../emails/ctoApprovalRequest");
+
+// ✅ UPDATED: use centralized templates (single file)
+const { ctoApprovalEmail } = require("../utils/emailTemplates");
 
 /* =========================
    Helpers
@@ -172,7 +176,7 @@ const addCtoApplicationService = async ({
 
     memoUsage.push({
       memoId: credit._id,
-      uploadedMemo: credit.uploadedMemo.replace(/\\/g, "/"),
+      uploadedMemo: (credit.uploadedMemo || "").replace(/\\/g, "/"),
       appliedHours: input.appliedHours,
     });
 
@@ -217,28 +221,30 @@ const addCtoApplicationService = async ({
   // 7️⃣ Populate for frontend
   const populatedApp = await populateApplicationById(newApplication._id);
 
-  // 8️⃣ Notify FIRST approver only
+  // 8️⃣ Notify FIRST approver only (✅ using centralized template)
   try {
     const firstApproval = approvalSteps.find((a) => a.level === 1);
-    const approverUser = await Employee.findById(firstApproval.approver);
+    const approverUser = await Employee.findById(firstApproval.approver)
+      .select("firstName lastName email")
+      .lean();
+
     const applicant = employee;
 
     if (approverUser?.email) {
-      await sendEmail(
-        approverUser.email,
-        "CTO Approval Request",
-        ctoApprovalEmail({
-          approverName: `${approverUser.firstName} ${approverUser.lastName}`,
-          employeeName: `${applicant.firstName} ${applicant.lastName}`,
-          requestedHours,
-          reason,
-          level: 1,
-          link: `${process.env.FRONTEND_URL}/app/cto/approvals/${newApplication._id}`,
-        }),
-      );
+      const tpl = ctoApprovalEmail({
+        approverName: `${approverUser.firstName} ${approverUser.lastName}`,
+        employeeName: `${applicant.firstName} ${applicant.lastName}`,
+        requestedHours,
+        reason,
+        level: 1,
+        link: `${process.env.FRONTEND_URL}/app/cto/approvals/${newApplication._id}`,
+        brandName: "CTO Management System",
+      });
+
+      await sendEmail(approverUser.email, tpl.subject, tpl.html);
     }
   } catch (err) {
-    console.error("Failed to send CTO approval email:", err);
+    console.error("Failed to send CTO approval email:", err?.message || err);
   }
 
   return populatedApp;
@@ -347,7 +353,6 @@ const getAllCtoApplicationsService = async (
       .skip(skip)
       .limit(limit)
       .lean(),
-
     CtoApplication.countDocuments(query),
   ]);
 
@@ -423,7 +428,7 @@ const getCtoApplicationsByEmployeeService = async (
 
   if (filters.status) {
     pipeline.push({
-      $match: { overallStatus: filters.status.toUpperCase() },
+      $match: { overallStatus: String(filters.status).toUpperCase() },
     });
   }
 
@@ -518,7 +523,7 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
-  // ✅ Include employee name + position (similar to getAllCtoApplicationsService)
+  // ✅ Include employee name + position
   pipeline.push({
     $lookup: {
       from: "employees",
