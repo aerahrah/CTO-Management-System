@@ -149,7 +149,6 @@ async function addCredit({
     session.endSession();
   }
 }
-
 async function rollbackCredit({ creditId, userId }) {
   assertObjectId(creditId, "creditId");
   assertObjectId(userId, "userId");
@@ -179,6 +178,7 @@ async function rollbackCredit({ creditId, userId }) {
         );
       }
 
+      // 1) Deduct balances from employees (remove the credited amount)
       const ops = credit.employees.map((e) => ({
         updateOne: {
           filter: { _id: e.employee },
@@ -190,11 +190,18 @@ async function rollbackCredit({ creditId, userId }) {
         await Employee.bulkWrite(ops, { session });
       }
 
+      // 2) Mark each employee record rolled back
+      // ✅ Keep creditedHours for history
+      // ✅ Set remainingHours to 0 so it won't be counted as usable
       credit.employees = credit.employees.map((e) => ({
         ...e.toObject(),
         status: "ROLLEDBACK",
+        remainingHours: 0,
+        reservedHours: 0, // safe (should already be 0 due to validation)
+        // usedHours stays 0 (already validated)
       }));
 
+      // 3) Mark credit document rolled back
       credit.status = "ROLLEDBACK";
       credit.dateRolledBack = new Date();
       credit.rolledBackBy = userId;
@@ -209,7 +216,6 @@ async function rollbackCredit({ creditId, userId }) {
         .lean();
 
       const brandName = "CTO Management System";
-
       const memoNo = creditPopulated?.memoNo || "";
       const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
 
@@ -221,7 +227,7 @@ async function rollbackCredit({ creditId, userId }) {
           const tpl = ctoCreditRolledBackEmail({
             employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
             memoNo,
-            rolledBackHours: row?.creditedHours || 0,
+            rolledBackHours: row?.creditedHours || 0, // ✅ still available for email
             dateRolledBack,
             reason: "Credit memo rolled back by admin.",
             brandName,
@@ -332,11 +338,23 @@ async function getEmployeeCredits(
   limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
   const skip = (page - 1) * limit;
 
-  // totals (ignore filters/search)
+  // ✅ totals should NOT include rolled back credits
   const [totalsAgg] = await CtoCredit.aggregate([
-    { $match: { "employees.employee": employeeObjId } },
+    // exclude rolled back credit docs
+    {
+      $match: {
+        "employees.employee": employeeObjId,
+        status: { $ne: "ROLLEDBACK" },
+      },
+    },
     { $unwind: "$employees" },
-    { $match: { "employees.employee": employeeObjId } },
+    // exclude rolled back employee subdocs too (extra safety)
+    {
+      $match: {
+        "employees.employee": employeeObjId,
+        "employees.status": { $ne: "ROLLEDBACK" },
+      },
+    },
     {
       $addFields: {
         _usedHours: { $ifNull: ["$employees.usedHours", 0] },
@@ -387,10 +405,16 @@ async function getEmployeeCredits(
     .limit(limit)
     .lean();
 
+  // ✅ for rolled back credits, remainingHours must be 0 (since hours were removed)
   const formattedCredits = credits.map((credit) => {
     const empData = credit.employees.find(
       (e) => e.employee?._id?.toString() === employeeId,
     );
+
+    const creditStatus = String(credit?.status || "").toUpperCase();
+    const empStatus = String(empData?.status || "").toUpperCase();
+    const isRolledBack =
+      creditStatus === "ROLLEDBACK" || empStatus === "ROLLEDBACK";
 
     return {
       _id: credit._id,
@@ -402,8 +426,8 @@ async function getEmployeeCredits(
       duration: credit.duration,
 
       usedHours: empData?.usedHours || 0,
-      reservedHours: empData?.reservedHours || 0,
-      remainingHours: empData?.remainingHours ?? 0,
+      reservedHours: isRolledBack ? 0 : empData?.reservedHours || 0,
+      remainingHours: isRolledBack ? 0 : (empData?.remainingHours ?? 0),
 
       status: credit.status,
       employeeStatus: empData?.status || "ACTIVE",

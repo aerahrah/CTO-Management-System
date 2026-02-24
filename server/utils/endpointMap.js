@@ -3,15 +3,11 @@
 const endpointMap = [
   /* =========================
      Employee Routes
+     Mounted: /employee
   ========================= */
   { pattern: /^\/employee$/, method: "POST", name: "Create Employee" },
   { pattern: /^\/employee\/login$/, method: "POST", name: "Employee Login" },
-  { pattern: /^\/employee\/\w+$/, method: "PUT", name: "Update Employee" },
-  {
-    pattern: /^\/employee\/\w+\/role$/,
-    method: "POST",
-    name: "Update Employee Role",
-  },
+
   {
     pattern: /^\/employee\/my-profile$/,
     method: "GET",
@@ -27,30 +23,37 @@ const endpointMap = [
     method: "PUT",
     name: "Reset My Password",
   },
+
   { pattern: /^\/employee\/memos\/me$/, method: "GET", name: "View My Memos" },
   {
     pattern: /^\/employee\/memos\/\w+$/,
     method: "GET",
     name: "View Employee Memos",
   },
+
+  { pattern: /^\/employee$/, method: "GET", name: "View Employees" },
   {
     pattern: /^\/employee\/\w+$/,
     method: "GET",
     name: "View Employee Details",
   },
+  { pattern: /^\/employee\/\w+$/, method: "PUT", name: "Update Employee" },
+  {
+    pattern: /^\/employee\/\w+\/role$/,
+    method: "POST",
+    name: "Update Employee Role",
+  },
 
   /* =========================
-     CTO Credit Routes
+     CTO Routes
+     Mounted: /cto
   ========================= */
+
+  // Credits
   {
     pattern: /^\/cto\/credits$/,
     method: "POST",
     name: "Add CTO Credit Request",
-  },
-  {
-    pattern: /^\/cto\/credits\/\w+\/rollback$/,
-    method: "PATCH",
-    name: "Rollback CTO Credit",
   },
   {
     pattern: /^\/cto\/credits\/all$/,
@@ -67,10 +70,18 @@ const endpointMap = [
     method: "GET",
     name: "View Employee Credit History",
   },
+  {
+    pattern: /^\/cto\/credits\/\w+\/rollback$/,
+    method: "PATCH",
+    name: "Rollback CTO Credit",
+  },
+  {
+    pattern: /^\/cto\/employee\/\w+\/details$/,
+    method: "GET",
+    name: "View Employee Details (CTO)",
+  },
 
-  /* =========================
-     CTO Application Routes
-  ========================= */
+  // Applications
   {
     pattern: /^\/cto\/applications\/apply$/,
     method: "POST",
@@ -90,6 +101,23 @@ const endpointMap = [
     pattern: /^\/cto\/applications\/employee\/\w+$/,
     method: "GET",
     name: "View Employee CTO Applications",
+  },
+  {
+    pattern: /^\/cto\/applications\/\w+\/cancel$/,
+    method: "PATCH",
+    name: "Cancel CTO Application",
+  },
+
+  // Approver flow
+  {
+    pattern: /^\/cto\/applications\/pending-count$/,
+    method: "GET",
+    name: "View Pending CTO Count",
+  },
+  {
+    pattern: /^\/cto\/applications\/approvers$/,
+    method: "GET",
+    name: "View Approver Options",
   },
   {
     pattern: /^\/cto\/applications\/approvers\/my-approvals$/,
@@ -114,11 +142,13 @@ const endpointMap = [
 
   /* =========================
      CTO Dashboard
+     Mounted: /cto (ctoDashboardRoutes)
   ========================= */
   { pattern: /^\/cto\/dashboard$/, method: "GET", name: "View Dashboard" },
 
   /* =========================
-     CTO Settings (Approver Setting)
+     CTO Approver Settings
+     Mounted: /cto/settings
   ========================= */
   { pattern: /^\/cto\/settings$/, method: "GET", name: "View CTO Settings" },
   {
@@ -138,22 +168,33 @@ const endpointMap = [
   },
 
   /* =========================
-     ✅ Designations (NEW)
-     Routes:
-       GET    /settings/designation
-       GET    /settings/designation/options
-       GET    /settings/designation/:id
-       POST   /settings/designation
-       PUT    /settings/designation/:id
-       PATCH  /settings/designation/:id/status
-       DELETE /settings/designation/:id
+     Designations
+     Mounted: /settings/designation
   ========================= */
-
-  // IMPORTANT: options + status must be before "/:id"
+  {
+    pattern: /^\/settings\/designation$/,
+    method: "GET",
+    name: "View All Designations",
+  },
   {
     pattern: /^\/settings\/designation\/options$/,
     method: "GET",
     name: "View Designation Options",
+  },
+  {
+    pattern: /^\/settings\/designation\/\w+$/,
+    method: "GET",
+    name: "View Designation Details",
+  },
+  {
+    pattern: /^\/settings\/designation$/,
+    method: "POST",
+    name: "Create Designation",
+  },
+  {
+    pattern: /^\/settings\/designation\/\w+$/,
+    method: "PUT",
+    name: "Update Designation",
   },
   {
     pattern: /^\/settings\/designation\/\w+\/status$/,
@@ -161,75 +202,17 @@ const endpointMap = [
     name: "Update Designation Status",
   },
   {
-    pattern: /^\/settings\/designation$/,
-    method: "GET",
-    name: "View All Designations",
-  },
-  {
-    pattern: /^\/settings\/designation\/\w+$/,
-    method: "GET",
-    name: "View Designation Details",
-  },
-  {
-    pattern: /^\/settings\/designation$/,
-    method: "POST",
-    name: "Create Designation",
-  },
-  {
-    pattern: /^\/settings\/designation\/\w+$/,
-    method: "PUT",
-    name: "Update Designation",
-  },
-  {
     pattern: /^\/settings\/designation\/\w+$/,
     method: "DELETE",
     name: "Delete Designation",
   },
 
   /* =========================
-     (Optional) Legacy support:
-     If some parts still call /settings/provincial-office,
-     keep these mappings so audit still works.
+     Projects
+     Mounted: /settings/projects
   ========================= */
-  {
-    pattern: /^\/settings\/provincial-office$/,
-    method: "GET",
-    name: "View All Designations",
-  },
-  {
-    pattern: /^\/settings\/provincial-office\/\w+$/,
-    method: "GET",
-    name: "View Designation Details",
-  },
-  {
-    pattern: /^\/settings\/provincial-office$/,
-    method: "POST",
-    name: "Create Designation",
-  },
-  {
-    pattern: /^\/settings\/provincial-office\/\w+$/,
-    method: "PUT",
-    name: "Update Designation",
-  },
-  {
-    pattern: /^\/settings\/provincial-office\/\w+$/,
-    method: "DELETE",
-    name: "Delete Designation",
-  },
-
-  /* =========================
-     Projects (Settings)
-  ========================= */
-  {
-    pattern: /^\/settings\/projects$/,
-    method: "POST",
-    name: "Create Project",
-  },
-  {
-    pattern: /^\/settings\/projects$/,
-    method: "GET",
-    name: "View Projects",
-  },
+  { pattern: /^\/settings\/projects$/, method: "POST", name: "Create Project" },
+  { pattern: /^\/settings\/projects$/, method: "GET", name: "View Projects" },
   {
     pattern: /^\/settings\/projects\/options$/,
     method: "GET",
@@ -246,18 +229,68 @@ const endpointMap = [
     name: "Update Project",
   },
   {
-    pattern: /^\/settings\/projects\/\w+$/,
-    method: "DELETE",
-    name: "Delete Project",
-  },
-  {
     pattern: /^\/settings\/projects\/\w+\/status$/,
     method: "PATCH",
     name: "Update Project Status",
   },
+  {
+    pattern: /^\/settings\/projects\/\w+$/,
+    method: "DELETE",
+    name: "Delete Project",
+  },
+
+  /* =========================
+     General Settings
+     Mounted: /settings/general
+  ========================= */
+  {
+    pattern: /^\/settings\/general\/session$/,
+    method: "GET",
+    name: "View Session Settings",
+  },
+  {
+    pattern: /^\/settings\/general\/session$/,
+    method: "PUT",
+    name: "Update Session Settings",
+  },
+  {
+    pattern: /^\/settings\/general\/working-days$/,
+    method: "GET",
+    name: "View Working Days Settings",
+  },
+  {
+    pattern: /^\/settings\/general\/working-days$/,
+    method: "PUT",
+    name: "Update Working Days Settings",
+  },
+
+  /* =========================
+     MongoDB Backup
+     Mounted: /settings/mongodb
+  ========================= */
+  { pattern: /^\/settings\/mongodb$/, method: "GET", name: "List CTO Backups" },
+  {
+    pattern: /^\/settings\/mongodb$/,
+    method: "POST",
+    name: "Create CTO Backup",
+  },
+  {
+    pattern: /^\/settings\/mongodb\/\w+\/download$/,
+    method: "GET",
+    name: "Download CTO Backup",
+  },
+  {
+    pattern: /^\/settings\/mongodb\/restore$/,
+    method: "POST",
+    name: "Restore CTO Backup",
+  },
+  {
+    pattern: /^\/settings\/mongodb\/[^/]+$/,
+    method: "DELETE",
+    name: "Delete CTO Backup",
+  },
 ];
 
-// Function to map URL + method to a friendly endpoint name
 const getEndpointName = (url, method) => {
   const match = endpointMap.find(
     (e) => e.method === method && e.pattern.test(url),

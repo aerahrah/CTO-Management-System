@@ -1,3 +1,4 @@
+// controllers/generalSettingsController.js
 const {
   getSessionSettings,
   updateSessionSettings,
@@ -27,8 +28,15 @@ async function getSessionSettingsController(req, res) {
 async function updateSessionSettingsController(req, res) {
   try {
     const userId = req.user?.id || req.user?._id || null;
-    const data = await updateSessionSettings(req.body, userId);
-    return res.json({ ok: true, data });
+
+    // ✅ service returns { before, after }
+    const { before, after } = await updateSessionSettings(req.body, userId);
+
+    // ✅ expose to audit middleware (recommended pattern)
+    res.locals.auditBefore = before;
+    res.locals.auditAfter = after;
+
+    return res.json({ ok: true, data: after });
   } catch (err) {
     return res.status(400).json({
       ok: false,
@@ -56,8 +64,15 @@ async function getWorkingDaysSettingsController(req, res) {
 async function updateWorkingDaysSettingsController(req, res) {
   try {
     const userId = req.user?.id || req.user?._id || null;
-    const data = await updateWorkingDaysSettings(req.body, userId);
-    return res.json({ ok: true, data });
+
+    // ✅ service returns { before, after }
+    const { before, after } = await updateWorkingDaysSettings(req.body, userId);
+
+    // ✅ expose to audit middleware
+    res.locals.auditBefore = before;
+    res.locals.auditAfter = after;
+
+    return res.json({ ok: true, data: after });
   } catch (err) {
     return res.status(400).json({
       ok: false,

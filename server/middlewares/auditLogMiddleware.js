@@ -24,7 +24,7 @@ const matchUrl = (url, pattern) => {
 
 const normalizeUrlForMap = (url) => {
   const clean = String(url || "").split("?")[0];
-  return clean.replace(/^\/api/, "");
+  return clean.replace(/^\/api/, ""); // endpointMap expects no "/api"
 };
 
 const getActorFromReq = (req) => {
@@ -43,26 +43,19 @@ const safeJsonParse = (val, fallback) => {
   }
 };
 
-const tryFetchProjectBefore = async (projectId) => {
-  if (!mongoose.Types.ObjectId.isValid(projectId)) return null;
-  const p = await Project.findById(projectId).select("name status");
-  if (!p) return null;
-  return { name: p.name, status: p.status, _id: p._id };
+// ✅ Since req.params is EMPTY in global middleware, extract IDs from URL
+const extractMongoId = (path, regex) => {
+  const m = String(path || "").match(regex);
+  if (!m) return null;
+  const id = m[1];
+  return mongoose.Types.ObjectId.isValid(id) ? id : null;
 };
 
-const tryFetchDesignationBefore = async (designationId) => {
-  if (!mongoose.Types.ObjectId.isValid(designationId)) return null;
-  const d = await Designation.findById(designationId).select("name status");
-  if (!d) return null;
-  return { name: d.name, status: d.status, _id: d._id };
-};
-
-const auditLogger = (req, res, next) => {
+const auditLogger = async (req, res, next) => {
   // ✅ Allow preflight to pass cleanly
   if (req.method === "OPTIONS") return next();
 
   const url = req.originalUrl;
-
   if (EXCLUDED_KEYWORDS.some((word) => url.includes(word))) return next();
 
   const isSensitiveGet =
@@ -71,19 +64,116 @@ const auditLogger = (req, res, next) => {
   if (!LOG_METHODS.includes(req.method) && !isSensitiveGet) return next();
   if (req.skipAudit) return next();
 
+  const urlForMap = normalizeUrlForMap(url);
+  const endpoint = getEndpointName(urlForMap, req.method);
+
+  if (EXCLUDED_ENDPOINTS.includes(endpoint)) return next();
+
+  // ✅ PREFETCH "BEFORE" DATA (must happen BEFORE next())
+  // NOTE: do NOT use req.params here (it is empty)
+  try {
+    // 1) Update Employee Role: /employee/:id/role (POST)
+    if (endpoint === "Update Employee Role") {
+      const empId = extractMongoId(
+        urlForMap,
+        /^\/employee\/([a-fA-F0-9]{24})\/role$/,
+      );
+      if (empId) {
+        const emp = await Employee.findById(empId).select("username role");
+        if (emp) {
+          res.locals.auditTargetUsers = [`${emp.username} (id: ${emp._id})`];
+          res.locals.auditBefore = { role: emp.role };
+        }
+      }
+    }
+
+    // 2) Update Employee: /employee/:id (PUT)
+    if (endpoint === "Update Employee") {
+      const empId = extractMongoId(
+        urlForMap,
+        /^\/employee\/([a-fA-F0-9]{24})$/,
+      );
+      if (empId) {
+        const emp = await Employee.findById(empId).select("username role");
+        if (emp) {
+          res.locals.auditTargetUsers = [`${emp.username} (id: ${emp._id})`];
+          res.locals.auditBefore = { role: emp.role };
+        }
+      }
+    }
+
+    // 3) Project update/delete: /settings/projects/:id or /settings/projects/:id/status
+    if (
+      ["Update Project", "Update Project Status", "Delete Project"].includes(
+        endpoint,
+      )
+    ) {
+      const projId =
+        extractMongoId(
+          urlForMap,
+          /^\/settings\/projects\/([a-fA-F0-9]{24})$/,
+        ) ||
+        extractMongoId(
+          urlForMap,
+          /^\/settings\/projects\/([a-fA-F0-9]{24})\/status$/,
+        );
+
+      if (projId) {
+        const p = await Project.findById(projId).select("name status");
+        if (p) {
+          res.locals.auditTargetUsers = [`${p.name || "N/A"} (id: ${p._id})`];
+          res.locals.auditBefore = { name: p.name, status: p.status };
+        }
+      }
+    }
+
+    // 4) Designation update/delete: /settings/designation/:id or /settings/designation/:id/status
+    if (
+      [
+        "Update Designation",
+        "Update Designation Status",
+        "Delete Designation",
+      ].includes(endpoint)
+    ) {
+      const desId =
+        extractMongoId(
+          urlForMap,
+          /^\/settings\/designation\/([a-fA-F0-9]{24})$/,
+        ) ||
+        extractMongoId(
+          urlForMap,
+          /^\/settings\/designation\/([a-fA-F0-9]{24})\/status$/,
+        );
+
+      if (desId) {
+        const d = await Designation.findById(desId).select("name status");
+        if (d) {
+          res.locals.auditTargetUsers = [`${d.name || "N/A"} (id: ${d._id})`];
+          res.locals.auditBefore = { name: d.name, status: d.status };
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Audit prefetch error:", e?.message || e);
+  }
+
   res.on("finish", async () => {
     try {
-      const urlForMap = normalizeUrlForMap(url);
-      const endpoint = getEndpointName(urlForMap, req.method);
-
-      if (EXCLUDED_ENDPOINTS.includes(endpoint)) return;
-
       const { actorId, actorUsername, actor } = getActorFromReq(req);
 
-      let targetUsers = [];
-      let beforeData = null;
+      // ✅ If controller provided before/after (general settings), prefer those
+      const effectiveBefore =
+        res.locals.auditBefore !== undefined ? res.locals.auditBefore : null;
 
-      // 1) Bulk employees for CTO Credit
+      const effectiveBody =
+        res.locals.auditAfter !== undefined ? res.locals.auditAfter : req.body;
+
+      // ✅ Determine target users
+      let targetUsers = Array.isArray(res.locals.auditTargetUsers)
+        ? res.locals.auditTargetUsers
+        : [];
+
+      // Bulk employees for CTO Credit (keep your existing logic)
       if (
         req.body?.employees?.length &&
         endpoint === "Add CTO Credit Request"
@@ -103,73 +193,6 @@ const auditLogger = (req, res, next) => {
           targetUsers = employees.map(
             (emp) => `${emp.username} (id: ${emp._id})`,
           );
-          beforeData = employees.map((emp) => ({ role: emp.role }));
-        }
-      }
-      // 2) Project operations
-      else if (
-        ["Update Project", "Update Project Status", "Delete Project"].includes(
-          endpoint,
-        ) &&
-        req.params.id &&
-        mongoose.Types.ObjectId.isValid(req.params.id)
-      ) {
-        if (req.auditTarget) targetUsers = [req.auditTarget];
-
-        if (req.auditBeforeProject) {
-          beforeData = req.auditBeforeProject;
-        } else {
-          const before = await tryFetchProjectBefore(req.params.id);
-          if (before) {
-            beforeData = { name: before.name, status: before.status };
-            if (!targetUsers.length)
-              targetUsers = [`${before.name || "N/A"} (id: ${before._id})`];
-          }
-        }
-
-        if (!targetUsers.length) targetUsers = [`N/A (id: ${req.params.id})`];
-        if (!beforeData) beforeData = {};
-      }
-      // 3) Designation operations
-      else if (
-        [
-          "Update Designation",
-          "Update Designation Status",
-          "Delete Designation",
-        ].includes(endpoint) &&
-        req.params.id &&
-        mongoose.Types.ObjectId.isValid(req.params.id)
-      ) {
-        if (req.auditTarget) targetUsers = [req.auditTarget];
-
-        if (req.auditBeforeDesignation) {
-          beforeData = req.auditBeforeDesignation;
-        } else {
-          const before = await tryFetchDesignationBefore(req.params.id);
-          if (before) {
-            beforeData = { name: before.name, status: before.status };
-            if (!targetUsers.length)
-              targetUsers = [`${before.name || "N/A"} (id: ${before._id})`];
-          }
-        }
-
-        if (!targetUsers.length) targetUsers = [`N/A (id: ${req.params.id})`];
-        if (!beforeData) beforeData = {};
-      }
-      // 4) Single employee operations
-      else if (
-        req.params.id &&
-        mongoose.Types.ObjectId.isValid(req.params.id)
-      ) {
-        const emp = await Employee.findById(req.params.id).select(
-          "username role",
-        );
-        if (emp) {
-          targetUsers.push(`${emp.username} (id: ${emp._id})`);
-          beforeData = { role: emp.role };
-        } else {
-          targetUsers.push(`N/A (id: ${req.params.id})`);
-          beforeData = {};
         }
       }
 
@@ -178,11 +201,11 @@ const auditLogger = (req, res, next) => {
       const audit = buildAuditDetails({
         endpoint,
         method: req.method,
-        body: req.body,
-        params: req.params,
+        body: effectiveBody, // after
+        params: req.params, // can be empty; builder uses targetSummary mostly
         actor,
         targetUser: targetSummary,
-        before: beforeData,
+        before: effectiveBefore, // before
       });
 
       await auditLogService.createAuditLog({

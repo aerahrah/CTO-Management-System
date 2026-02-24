@@ -1,12 +1,5 @@
 import Modal from "../../../modal";
-import {
-  Eye,
-  AlertTriangle,
-  Calendar,
-  Clock,
-  FileText,
-  ExternalLink,
-} from "lucide-react";
+import { AlertTriangle, Calendar, FileText, ExternalLink } from "lucide-react";
 import { buildApiUrl } from "../../../../config/env";
 
 const SelectCtoMemoModal = ({
@@ -15,10 +8,18 @@ const SelectCtoMemoModal = ({
   memos = [],
   selectedMemos = [], // memos applied in current request
 }) => {
-  if (!memos) memos = [];
+  // ✅ ensure array + exclude rolled back memos (supports multiple shapes)
+  const safeMemos = Array.isArray(memos) ? memos : [];
+  const visibleMemos = safeMemos.filter((m) => {
+    const creditStatus = String(m?.status || "").toUpperCase(); // e.g. CREDITED / ROLLEDBACK
+    const employeeStatus = String(
+      m?.employeeStatus || m?.empStatus || "",
+    ).toUpperCase(); // optional per-employee status
+    return creditStatus !== "ROLLEDBACK" && employeeStatus !== "ROLLEDBACK";
+  });
 
   // Sort memos by dateApproved ascending (oldest first)
-  const sortedMemos = [...memos].sort(
+  const sortedMemos = [...visibleMemos].sort(
     (a, b) => new Date(a.dateApproved) - new Date(b.dateApproved),
   );
 
@@ -47,7 +48,6 @@ const SelectCtoMemoModal = ({
       onClose={onClose}
       title="View CTO Memos"
       closeLabel="Close"
-      // Keeping width standard/similar to original
     >
       <div className="h-[calc(100vh-12rem)] overflow-y-auto p-1">
         {/* Compact Description Banner */}
@@ -66,9 +66,7 @@ const SelectCtoMemoModal = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {sortedMemos.map((memo) => {
               const appliedInRequest =
-                selectedMemos.find((m) => {
-                  return m.id === memo.id;
-                })?.appliedHours || 0;
+                selectedMemos.find((m) => m.id === memo.id)?.appliedHours || 0;
 
               const effectiveRemaining = memo.remainingHours;
 
@@ -83,6 +81,11 @@ const SelectCtoMemoModal = ({
                   status = "Used in this request";
                 else status = "Partially used";
               }
+
+              const pdfPath = memo.uploadedMemo
+                ? String(memo.uploadedMemo)
+                : "";
+              const pdfUrl = pdfPath ? buildApiUrl(pdfPath) : "";
 
               return (
                 <div
@@ -122,7 +125,11 @@ const SelectCtoMemoModal = ({
                           Used
                         </span>
                         <span
-                          className={`text-sm font-bold ${memo.usedHours > 0 ? "text-amber-600" : "text-gray-400"}`}
+                          className={`text-sm font-bold ${
+                            memo.usedHours > 0
+                              ? "text-amber-600"
+                              : "text-gray-400"
+                          }`}
                         >
                           {memo.usedHours}h
                         </span>
@@ -132,7 +139,11 @@ const SelectCtoMemoModal = ({
                           Remaining
                         </span>
                         <span
-                          className={`text-sm font-bold ${effectiveRemaining > 0 ? "text-green-600" : "text-gray-400"}`}
+                          className={`text-sm font-bold ${
+                            effectiveRemaining > 0
+                              ? "text-green-600"
+                              : "text-gray-400"
+                          }`}
                         >
                           {effectiveRemaining}h
                         </span>
@@ -142,17 +153,17 @@ const SelectCtoMemoModal = ({
 
                   {/* PDF Preview Area */}
                   <div className="relative bg-gray-100 border-y border-gray-100 group">
-                    {memo.uploadedMemo?.endsWith(".pdf") ? (
+                    {pdfPath.toLowerCase().endsWith(".pdf") && pdfUrl ? (
                       <div className="h-36 w-full relative">
                         <iframe
-                          src={`${buildApiUrl(memo.uploadedMemo)}#toolbar=0&view=FitH`}
+                          src={`${pdfUrl}#toolbar=0&view=FitH`}
                           className="w-full h-full"
                           title={memo.memoNo}
                           loading="lazy"
                         />
                         {/* Hover overlay to open PDF */}
                         <a
-                          href={buildApiUrl(memo.uploadedMemo)}
+                          href={pdfUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="absolute inset-0 bg-white/0 group-hover:bg-white/60 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100"
@@ -190,7 +201,6 @@ const SelectCtoMemoModal = ({
                       )}
                     </div>
                   ) : (
-                    // Empty spacer if no warnings to keep card heights somewhat consistent
                     <div className="h-2 bg-white"></div>
                   )}
                 </div>

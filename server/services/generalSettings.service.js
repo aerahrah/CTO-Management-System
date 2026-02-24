@@ -24,7 +24,6 @@ function toBool(v, fallback = undefined) {
 }
 
 async function getOrCreateSettingsDoc() {
-  // ✅ singleton doc (creates one if none exists)
   return await GeneralSetting.findOneAndUpdate(
     {},
     { $setOnInsert: {} },
@@ -33,12 +32,11 @@ async function getOrCreateSettingsDoc() {
 }
 
 function setUpdatedBy(doc, userId) {
-  // Safe set (in case schema doesn't have updatedBy)
   try {
     if (doc?.schema?.path?.("updatedBy")) {
       doc.updatedBy = userId || null;
     } else if (userId != null) {
-      doc.updatedBy = userId; // works if strict: false or schema has it
+      doc.updatedBy = userId;
     }
   } catch (_) {
     // ignore
@@ -59,6 +57,11 @@ async function getSessionSettings() {
 
 async function updateSessionSettings(payload = {}, userId = null) {
   const doc = await getOrCreateSettingsDoc();
+
+  const before = {
+    sessionTimeoutEnabled: doc.sessionTimeoutEnabled,
+    sessionTimeoutMinutes: doc.sessionTimeoutMinutes,
+  };
 
   if (payload.sessionTimeoutEnabled !== undefined) {
     const enabled = toBool(payload.sessionTimeoutEnabled, undefined);
@@ -84,7 +87,7 @@ async function updateSessionSettings(payload = {}, userId = null) {
     doc.sessionTimeoutMinutes = minutes;
   }
 
-  // ✅ consistency check
+  // consistency check
   if (doc.sessionTimeoutEnabled && !doc.sessionTimeoutMinutes) {
     throw new Error(
       "sessionTimeoutMinutes is required when sessionTimeoutEnabled is true",
@@ -94,10 +97,12 @@ async function updateSessionSettings(payload = {}, userId = null) {
   setUpdatedBy(doc, userId);
   await doc.save();
 
-  return {
+  const after = {
     sessionTimeoutEnabled: doc.sessionTimeoutEnabled,
     sessionTimeoutMinutes: doc.sessionTimeoutMinutes,
   };
+
+  return { before, after };
 }
 
 /* =========================
@@ -114,6 +119,11 @@ async function getWorkingDaysSettings() {
 
 async function updateWorkingDaysSettings(payload = {}, userId = null) {
   const doc = await getOrCreateSettingsDoc();
+
+  const before = {
+    workingDaysEnable: doc.workingDaysEnable,
+    workingDaysValue: doc.workingDaysValue,
+  };
 
   if (payload.workingDaysEnable !== undefined) {
     const enabled = toBool(payload.workingDaysEnable, undefined);
@@ -136,7 +146,7 @@ async function updateWorkingDaysSettings(payload = {}, userId = null) {
     doc.workingDaysValue = days;
   }
 
-  // ✅ consistency check
+  // consistency check
   if (doc.workingDaysEnable && !doc.workingDaysValue) {
     throw new Error(
       "workingDaysValue is required when workingDaysEnable is true",
@@ -146,10 +156,12 @@ async function updateWorkingDaysSettings(payload = {}, userId = null) {
   setUpdatedBy(doc, userId);
   await doc.save();
 
-  return {
+  const after = {
     workingDaysEnable: doc.workingDaysEnable,
     workingDaysValue: doc.workingDaysValue,
   };
+
+  return { before, after };
 }
 
 module.exports = {
