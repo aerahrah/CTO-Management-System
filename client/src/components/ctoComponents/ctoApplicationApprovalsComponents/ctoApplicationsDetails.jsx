@@ -37,42 +37,247 @@ import CtoApplicationPdfModal from "../ctoApplicationComponents/ctoApplicationPD
    LOADING SKELETON (FULL SCREEN INSIDE CARD)
 ========================= */
 const CtoApplicationDetailsSkeleton = () => (
-  <div className="flex-1 h-full bg-white rounded-xl shadow-md w-full flex flex-col gap-4 max-w-6xl mx-auto min-w-0">
-    {/* header */}
-    <div className="px-3 sm:px-4 py-2 border-b border-gray-200">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+  <div
+    className="flex-1 h-full bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border border-gray-200"
+    aria-busy="true"
+    aria-label="Loading application details"
+  >
+    {/* HEADER */}
+    <header className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-300 backdrop-blur supports-[backdrop-filter]:bg-white px-3 sm:px-4 py-2 z-10">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
+        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          {/* avatar */}
           <Skeleton height={48} width={48} borderRadius={12} />
           <div className="min-w-0 flex-1">
-            <Skeleton height={18} width={"60%"} />
+            {/* name */}
+            <Skeleton height={18} width={"55%"} />
+            {/* meta row */}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Skeleton height={18} width={120} borderRadius={6} />
-              <Skeleton height={18} width={140} borderRadius={6} />
+              <Skeleton height={18} width={110} borderRadius={999} />
+              <Skeleton height={18} width={120} borderRadius={999} />
+              <Skeleton height={18} width={90} borderRadius={999} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* action buttons */}
+      <div className="flex flex-row items-center gap-2 sm:gap-3 pt-1 bg-transparent rounded-xl w-full md:w-auto">
+        <Skeleton
+          height={40}
+          width={110}
+          borderRadius={12}
+          className="w-full sm:w-auto"
+        />
+        <Skeleton
+          height={40}
+          width={160}
+          borderRadius={12}
+          className="w-full sm:w-auto"
+        />
+      </div>
+    </header>
+
+    {/* CONTENT */}
+    <div className="flex h-full flex-1 min-h-0 overflow-y-auto flex-col gap-4 px-3 sm:px-4 py-2">
+      {/* QUICK STATS */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
+        {/* Requested Dates (big card) */}
+        <div className="md:col-span-2 rounded-xl p-4 sm:p-6 relative overflow-hidden shadow-sm shadow-blue-100 min-w-0 bg-gradient-to-br from-blue-600 to-blue-700">
+          <div className="absolute right-[-20px] top-[-20px] h-40 w-40 rounded-full bg-white/10" />
+          <div className="relative z-10 flex gap-3 justify-between items-center min-w-0">
+            <div className="min-w-0 flex-1">
+              <Skeleton
+                height={12}
+                width={140}
+                borderRadius={8}
+                baseColor="#1d4ed8"
+                highlightColor="#3b82f6"
+              />
+              <div className="mt-2">
+                <Skeleton
+                  height={26}
+                  width={"85%"}
+                  borderRadius={10}
+                  baseColor="#1d4ed8"
+                  highlightColor="#3b82f6"
+                />
+              </div>
+              <div className="mt-2">
+                <Skeleton
+                  height={18}
+                  width={"55%"}
+                  borderRadius={10}
+                  baseColor="#1d4ed8"
+                  highlightColor="#3b82f6"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-4 flex-none">
+              <div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl">
+                <Skeleton
+                  height={10}
+                  width={90}
+                  borderRadius={8}
+                  baseColor="#1d4ed8"
+                  highlightColor="#3b82f6"
+                />
+                <div className="mt-2">
+                  <Skeleton
+                    height={22}
+                    width={70}
+                    borderRadius={10}
+                    baseColor="#1d4ed8"
+                    highlightColor="#3b82f6"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Skeleton height={40} width={110} borderRadius={10} />
-          <Skeleton height={40} width={160} borderRadius={10} />
+        {/* Global Status (small card) */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0">
+          <Skeleton height={56} width={56} borderRadius={18} />
+          <div className="text-start min-w-0 flex-1">
+            <Skeleton height={12} width={120} borderRadius={8} />
+            <div className="mt-2">
+              <Skeleton height={22} width={140} borderRadius={10} />
+            </div>
+          </div>
         </div>
       </div>
-    </div>
 
-    {/* body */}
-    <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-3 space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Skeleton height={140} borderRadius={16} className="md:col-span-2" />
-        <Skeleton height={140} borderRadius={16} />
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+        {/* MAIN */}
+        <div className="lg:col-span-2 space-y-4 min-w-0">
+          {/* Purpose of Leave */}
+          <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+            <div className="flex items-center gap-3 mb-6">
+              <Skeleton height={40} width={40} borderRadius={12} />
+              <Skeleton height={12} width={170} borderRadius={8} />
+            </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-          <Skeleton height={190} borderRadius={16} />
-          <Skeleton height={360} borderRadius={16} />
+            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
+              <Skeleton height={12} width={"92%"} />
+              <div className="mt-2">
+                <Skeleton height={12} width={"88%"} />
+              </div>
+              <div className="mt-2">
+                <Skeleton height={12} width={"80%"} />
+              </div>
+              <div className="mt-2">
+                <Skeleton height={12} width={"60%"} />
+              </div>
+            </div>
+          </section>
+
+          {/* Timeline */}
+          <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+            <div className="flex items-center gap-3 mb-6">
+              <Skeleton height={40} width={40} borderRadius={12} />
+              <div className="min-w-0 flex-1">
+                <Skeleton height={12} width={170} borderRadius={8} />
+                <div className="mt-2">
+                  <Skeleton height={12} width={210} borderRadius={8} />
+                </div>
+              </div>
+            </div>
+
+            <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
+              <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
+
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="relative flex gap-2 sm:gap-4 items-start min-w-0"
+                >
+                  <div className="relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md flex-none bg-gray-100">
+                    <Skeleton height={16} width={16} borderRadius={6} />
+                  </div>
+
+                  <div className="flex-1 bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-xs min-w-0">
+                    <div className="flex items-start justify-between gap-3 min-w-0">
+                      <div className="min-w-0 flex-1">
+                        <Skeleton height={10} width={90} borderRadius={8} />
+                        <div className="mt-2">
+                          <Skeleton
+                            height={14}
+                            width={"55%"}
+                            borderRadius={8}
+                          />
+                        </div>
+                        <div className="mt-2">
+                          <Skeleton
+                            height={12}
+                            width={"45%"}
+                            borderRadius={8}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex-none">
+                        <Skeleton height={22} width={90} borderRadius={999} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <Skeleton height={12} width={"92%"} />
+                      <div className="mt-2">
+                        <Skeleton height={12} width={"78%"} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         </div>
-        <aside className="space-y-6">
-          <Skeleton height={280} borderRadius={16} />
+
+        {/* SIDEBAR */}
+        <aside className="space-y-4 min-w-0">
+          <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton height={12} width={120} borderRadius={8} />
+            </div>
+
+            {/* Application Form button */}
+            <div className="mt-3">
+              <Skeleton height={46} borderRadius={12} />
+            </div>
+
+            {/* Supporting Memos header */}
+            <div className="mt-5 md:mt-7 flex items-center justify-between gap-3">
+              <Skeleton height={12} width={150} borderRadius={8} />
+              <Skeleton height={18} width={28} borderRadius={999} />
+            </div>
+
+            {/* memo items */}
+            <div className="mt-2 space-y-1.5">
+              {Array.from({ length: 3 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 border border-transparent"
+                >
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <Skeleton height={32} width={32} borderRadius={10} />
+                    <div className="min-w-0 flex-1">
+                      <Skeleton height={14} width={"60%"} borderRadius={8} />
+                      <div className="mt-2">
+                        <Skeleton height={11} width={"45%"} borderRadius={8} />
+                      </div>
+                    </div>
+                  </div>
+                  <Skeleton height={14} width={14} borderRadius={4} />
+                </div>
+              ))}
+            </div>
+
+            {/* View all memos button */}
+            <div className="mt-3">
+              <Skeleton height={42} borderRadius={12} />
+            </div>
+          </div>
         </aside>
       </div>
     </div>
@@ -383,6 +588,9 @@ const CtoApplicationDetails = () => {
     STATUS_META[application.overallStatus] || STATUS_META.PENDING;
   const overallTone = getToneClasses(overallMeta.tone);
 
+  const memos = Array.isArray(application.memo) ? application.memo : [];
+  const memoCount = memos.length;
+
   return (
     <div className="flex-1 h-full border border-gray-200 bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border-b-26 border-neutral-50/50">
       {/* HEADER */}
@@ -519,15 +727,15 @@ const CtoApplicationDetails = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-w-0">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
           {/* MAIN */}
           <div className="lg:col-span-2 space-y-4 min-w-0">
-            <section className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm min-w-0">
+            <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
               <div className="flex items-center gap-3 mb-6">
-                <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 flex-none">
+                <span className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 flex-none">
                   <MessageCircle size={20} />
-                </div>
-                <h3 className="text-sm font-bold text-gray-900">
+                </span>
+                <h3 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
                   Purpose of Leave
                 </h3>
               </div>
@@ -543,11 +751,11 @@ const CtoApplicationDetails = () => {
             {/* Timeline */}
             <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
               <div className="flex items-center gap-3 mb-6">
-                <div className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 flex-none">
+                <span className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 flex-none">
                   <History size={18} />
-                </div>
+                </span>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-gray-900">
+                  <h3 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
                     Processing Timeline
                   </h3>
                   <p className="text-xs text-gray-500 font-medium">
@@ -600,79 +808,102 @@ const CtoApplicationDetails = () => {
             </section>
           </div>
 
-          {/* SIDEBAR */}
-          <aside className="space-y-6 min-w-0">
-            <button
-              type="button"
-              onClick={() => setIsPdfOpen(true)}
-              className="flex-none inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer font-bold border border-gray-200 bg-white hover:bg-gray-50 text-gray-800 w-full"
-              title="View Application PDF"
-            >
-              <div className="h-8 w-8 bg-white rounded-lg flex items-center justify-center text-red-500 shadow-sm flex-none">
-                <FileText size={16} />
-              </div>
-              <span className="inline">View Application Form</span>
-            </button>
-            <div className="bg-white border border-gray-200 rounded-xl p-5 sm:p-6 shadow-sm min-w-0">
-              <div className="flex items-center justify-between gap-3 mb-4 min-w-0">
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2 min-w-0">
-                  <span className="truncate">Supporting Memos</span>
-                  <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex-none">
-                    {application.memo?.length || 0}
-                  </span>
+          {/* SIDEBAR (MINIMALIST UX UPDATE) */}
+          <aside className="space-y-4 min-w-0">
+            <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                  Documents
                 </h4>
               </div>
 
-              {/* subtle helper text (keeps it clean, optional) */}
-              <p className="text-[11px] text-gray-400 mb-3">
-                Attached documents
-              </p>
+              {/* Application Form */}
+              <button
+                type="button"
+                onClick={() => setIsPdfOpen(true)}
+                className="mt-3 w-full inline-flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
+                title="View Application PDF"
+              >
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <span className="h-8 w-8 bg-red-50 rounded-lg flex items-center justify-center text-red-600 flex-none border border-red-100">
+                    <FileText size={16} />
+                  </span>
+                  <span className="truncate">Application Form</span>
+                </span>
 
-              <div className="space-y-3">
-                {application.memo?.length > 0 ? (
-                  application.memo.slice(0, 3).map((m, i) => (
-                    <div
+                <span className="text-[9px] font-bold text-gray-500 border border-gray-200 bg-gray-50 px-2 py-1 rounded-lg flex-none">
+                  PDF
+                </span>
+              </button>
+
+              {/* Supporting Memos */}
+              <div className="mt-5 md:mt-7 flex items-center justify-between gap-3">
+                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                  Supporting Memos
+                </h4>
+                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold flex-none">
+                  {memoCount}
+                </span>
+              </div>
+
+              <div className="mt-2 space-y-1.5">
+                {memoCount > 0 ? (
+                  memos.slice(0, 3).map((m, i) => (
+                    <a
                       key={i}
-                      className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 border border-gray-100 hover:bg-white transition-all min-w-0"
+                      href={buildApiUrl(m.uploadedMemo)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group flex items-center justify-between gap-3 rounded-xl px-3 py-2 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition min-w-0"
+                      title={`Open Memo ${m.memoId?.memoNo}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-8 w-8 bg-white rounded-lg flex items-center justify-center text-red-500 shadow-sm flex-none">
+                        <div className="h-8 w-8 bg-red-50 rounded-lg flex items-center justify-center text-red-600 flex-none border border-red-100">
                           <FileText size={16} />
                         </div>
-                        <p className="text-xs font-bold truncate min-w-0">
-                          Memo {m.memoId?.memoNo}
-                        </p>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 truncate">
+                            Memo {m.memoId?.memoNo || "—"}
+                          </p>
+                          <p className="text-[11px] text-gray-500 truncate">
+                            Click to open
+                          </p>
+                        </div>
                       </div>
 
-                      <a
-                        href={buildApiUrl(m.uploadedMemo)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors flex-none"
-                        title="Open memo"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
-                    </div>
+                      <ExternalLink
+                        size={14}
+                        className="text-gray-400 group-hover:text-blue-600 transition flex-none"
+                      />
+                    </a>
                   ))
                 ) : (
-                  <p className="text-xs text-gray-400 text-center py-4 italic">
-                    No documents attached
-                  </p>
+                  <div className="mt-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center">
+                    <p className="text-xs text-gray-500 font-medium">
+                      No memos attached
+                    </p>
+                  </div>
                 )}
-
-                <button
-                  onClick={() =>
-                    setMemoModal({
-                      isOpen: true,
-                      memos: application.memo || [],
-                    })
-                  }
-                  className="w-full mt-2 py-3 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-all"
-                >
-                  View All Documents
-                </button>
               </div>
+
+              <button
+                onClick={() =>
+                  setMemoModal({
+                    isOpen: true,
+                    memos: memos,
+                  })
+                }
+                disabled={memoCount === 0}
+                className={`mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-bold border transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
+                  memoCount === 0
+                    ? "bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed"
+                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                {memoCount === 0
+                  ? "View all memos"
+                  : `View all memos (${memoCount})`}
+              </button>
             </div>
           </aside>
         </div>

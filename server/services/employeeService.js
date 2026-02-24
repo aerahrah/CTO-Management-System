@@ -203,7 +203,7 @@ const createEmployeeService = async (employeeData) => {
         firstName,
         username,
         tempPassword,
-        loginUrl: `${frontendUrl}/login`,
+        loginUrl: `${frontendUrl}`,
         brandName: "HRMS",
       });
 

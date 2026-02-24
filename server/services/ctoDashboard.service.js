@@ -37,7 +37,16 @@ async function getEmployeeCreditTotals(employeeId) {
           _id: null,
           totalUsedHours: { $sum: "$_usedHours" },
           totalReservedHours: { $sum: "$_reservedHours" },
-          totalRemainingHours: { $sum: "$_remainingHours" },
+          // ✅ EXCLUDE rolled back credits from remaining hours
+          totalRemainingHours: {
+            $sum: {
+              $cond: [
+                { $ne: ["$status", "ROLLEDBACK"] },
+                "$_remainingHours",
+                0,
+              ],
+            },
+          },
           totalCreditedHours: { $sum: "$_creditedHours" },
         },
       },

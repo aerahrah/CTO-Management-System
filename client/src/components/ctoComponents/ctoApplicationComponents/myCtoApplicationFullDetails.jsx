@@ -175,7 +175,7 @@ const CtoApplicationDetails = ({ app }) => {
         {/* 1. Top Header: High-Level Stats */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">
+            <p className="text-xs text-gray-600 font-bold uppercase tracking-wider mb-1">
               Current Status
             </p>
             <StatusBadge
@@ -211,7 +211,7 @@ const CtoApplicationDetails = ({ app }) => {
           <div className="lg:col-span-1 space-y-4">
             {/* Reason Card (Moved to side for context) */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3 flex items-center gap-2">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-3 flex items-center gap-2">
                 <FileText size={14} /> Purpose
               </h4>
               <p className="text-sm text-slate-600 leading-relaxed font-medium">
@@ -225,7 +225,7 @@ const CtoApplicationDetails = ({ app }) => {
 
             {/* Selected Dates */}
             <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-gray-600 mb-4 flex items-center gap-2">
                 <CalendarDays size={14} /> Dates Included
               </h4>
               <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 custom-scrollbar">
@@ -295,7 +295,7 @@ const CtoApplicationDetails = ({ app }) => {
                   <History size={18} />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-gray-900">
+                  <h3 className="text-sm font-bold text-gray-600 tracking-wide uppercase">
                     Processing Timeline
                   </h3>
                   <p className="text-xs text-gray-500 font-medium">

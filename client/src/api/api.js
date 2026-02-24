@@ -2,7 +2,7 @@ import axios from "axios";
 import { emitSessionExpired } from "./sessionEvents";
 import { useAuth } from "../store/authStore";
 const API = axios.create({
-  baseURL: "http://localhost:3000/api",
+  baseURL: "https://cto.dictr2.online/api",
 });
 
 API.interceptors.request.use((config) => {
