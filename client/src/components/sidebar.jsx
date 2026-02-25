@@ -28,6 +28,7 @@ import {
   FolderKanban, // Projects icon
   HardDrive, // ✅ NEW: Backup & Restore icon
   CalendarDays, // ✅ NEW: Working Day Settings icon
+  Mail, // ✅ NEW: Email Notification Settings icon
 } from "lucide-react";
 
 const Sidebar = ({
@@ -158,7 +159,13 @@ const Sidebar = ({
           icon: <CalendarDays size={14} />,
         },
         {
-          // ✅ NEW: Backup & Restore
+          // ✅ NEW: Email Notification Settings
+          name: "Email Notifications",
+          path: "/app/email-notification-settings",
+          icon: <Mail size={14} />,
+        },
+        {
+          // ✅ Backup & Restore
           name: "Backup & Restore",
           path: "/app/backups",
           icon: <HardDrive size={14} />,

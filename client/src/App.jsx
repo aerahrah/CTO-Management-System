@@ -40,6 +40,9 @@ import BackupSettings from "./components/generalSettingsComponents/backupSetting
 import GeneralSettings from "./components/generalSettingsComponents/generalSettings";
 import WorkingDaysSettings from "./components/generalSettingsComponents/workingDaysSettings";
 
+// ✅ ADD THIS IMPORT
+import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
+
 /* Profile */
 import MyProfile from "./components/userProfile/myProfile";
 import UpdateProfile from "./components/userProfile/myProfileUpdate";
@@ -105,17 +108,24 @@ function App() {
               <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
+
             {/* ✅ CTO SETTINGS (NESTED LIKE CtoRecords) */}
             <Route path="cto-settings" element={<CtoSettings />}>
               <Route index element={<CtoSettingsPlaceholder />} />
               <Route path=":designationId" element={<ApproverSettings />} />
             </Route>
+
             <Route path="designations" element={<DesignationSettings />} />
             <Route path="projects" element={<ProjectSettings />} />
             <Route path="backups" element={<BackupSettings />} />
             <Route path="general-settings" element={<WorkingDaysSettings />} />
-
             <Route path="session-settings" element={<GeneralSettings />} />
+
+            {/* ✅ ADD THIS ROUTE */}
+            <Route
+              path="email-notification-settings"
+              element={<EmailNotificationSettings />}
+            />
           </Route>
 
           {/* ===================== */}
