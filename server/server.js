@@ -1,3 +1,5 @@
+// server.js (or app.js)  ✅ add email notif routes
+
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
@@ -14,6 +16,9 @@ const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const projectRoutes = require("./routers/projectRoute");
 const ctoBackupRoutes = require("./routers/ctoBackupRoute.js");
 const generalSettingRoutes = require("./routers/generalSettingsRoute");
+
+// ✅ ADD THIS: email notification settings routes
+const emailNotificationSettingRoutes = require("./routers/emailNotificationSettingsRoutes");
 
 const auditLogger = require("./middlewares/auditLogMiddleware");
 
@@ -48,7 +53,7 @@ const corsOptions =
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
-        exposedHeaders: ["Content-Disposition", "Content-Length"], // ✅ add
+        exposedHeaders: ["Content-Disposition", "Content-Length"],
       }
     : {
         origin: (origin, cb) => {
@@ -59,7 +64,7 @@ const corsOptions =
         credentials: true,
         methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allowedHeaders: ["Content-Type", "Authorization"],
-        exposedHeaders: ["Content-Disposition", "Content-Length"], // ✅ add
+        exposedHeaders: ["Content-Disposition", "Content-Length"],
       };
 
 app.use(cors(corsOptions));
@@ -82,6 +87,11 @@ app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/settings/projects", projectRoutes);
 app.use("/api/settings/mongodb", ctoBackupRoutes);
 app.use("/api/settings/general", generalSettingRoutes);
+
+// ✅ ADD THIS ROUTE MOUNT
+// GET  /api/email-notification-settings
+// PUT  /api/email-notification-settings/:key
+app.use("/api/email-notification-settings", emailNotificationSettingRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ message: "Not found" }));

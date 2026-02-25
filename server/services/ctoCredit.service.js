@@ -10,6 +10,13 @@ const {
   ctoCreditRolledBackEmail,
 } = require("../utils/emailTemplates");
 
+// ✅ NEW: email notification toggles (flags Map doc)
+const EMAIL_KEYS = require("../utils/emailNotificationKeys");
+const { isEmailEnabled } = require("../utils/emailNotificationSettings");
+
+/* =========================
+   Helpers
+========================= */
 function httpError(message, statusCode = 400) {
   const err = new Error(message);
   err.statusCode = statusCode;
@@ -35,6 +42,28 @@ function toHours(duration) {
   return h + m / 60;
 }
 
+// ✅ Optional: fail-safe wrapper so credit ops won't fail if email fails
+async function safeSendEmail(to, subject, html) {
+  try {
+    await sendEmail(to, subject, html);
+  } catch (e) {
+    console.error("[EMAIL] failed but continuing:", {
+      to,
+      subject,
+      message: e?.message,
+      code: e?.code,
+      response: e?.response,
+    });
+  }
+}
+
+async function canSend(key) {
+  return await isEmailEnabled(key);
+}
+
+/* =========================
+   Services
+========================= */
 async function addCredit({
   employees,
   duration,
@@ -107,36 +136,36 @@ async function addCredit({
       );
     });
 
-    // ✅ Send emails AFTER successful transaction (do not block if email fails)
+    // ✅ Send emails AFTER successful transaction (gated by toggle)
     try {
-      const recipients = await Employee.find({ _id: { $in: employeeIds } })
-        .select("firstName lastName email")
-        .lean();
+      const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ADDED);
 
-      const brandName = "CTO Management System";
+      if (!enabled) {
+        console.log("[EMAIL] skipped (disabled):", EMAIL_KEYS.CTO_CREDIT_ADDED);
+      } else {
+        const recipients = await Employee.find({ _id: { $in: employeeIds } })
+          .select("firstName lastName email")
+          .lean();
 
-      await Promise.all(
-        recipients.map(async (emp) => {
-          if (!emp?.email) return;
+        const brandName = "CTO Management System";
 
-          const tpl = ctoCreditAddedEmail({
-            employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
-            memoNo: memoNo.trim(),
-            creditedHours: totalHours,
-            dateApproved: approvedDate,
-            brandName,
-          });
+        await Promise.all(
+          recipients.map(async (emp) => {
+            if (!emp?.email) return;
 
-          try {
-            await sendEmail(emp.email, tpl.subject, tpl.html);
-          } catch (e) {
-            console.error(
-              `Failed to send CTO credit added email to ${emp.email}:`,
-              e?.message || e,
-            );
-          }
-        }),
-      );
+            const tpl = ctoCreditAddedEmail({
+              employeeName:
+                `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
+              memoNo: memoNo.trim(),
+              creditedHours: totalHours,
+              dateApproved: approvedDate,
+              brandName,
+            });
+
+            await safeSendEmail(emp.email, tpl.subject, tpl.html);
+          }),
+        );
+      }
     } catch (e) {
       console.error(
         "Failed preparing CTO credit added emails:",
@@ -149,6 +178,7 @@ async function addCredit({
     session.endSession();
   }
 }
+
 async function rollbackCredit({ creditId, userId }) {
   assertObjectId(creditId, "creditId");
   assertObjectId(userId, "userId");
@@ -191,14 +221,11 @@ async function rollbackCredit({ creditId, userId }) {
       }
 
       // 2) Mark each employee record rolled back
-      // ✅ Keep creditedHours for history
-      // ✅ Set remainingHours to 0 so it won't be counted as usable
       credit.employees = credit.employees.map((e) => ({
         ...e.toObject(),
         status: "ROLLEDBACK",
         remainingHours: 0,
-        reservedHours: 0, // safe (should already be 0 due to validation)
-        // usedHours stays 0 (already validated)
+        reservedHours: 0,
       }));
 
       // 3) Mark credit document rolled back
@@ -209,40 +236,43 @@ async function rollbackCredit({ creditId, userId }) {
       updated = await credit.save({ session });
     });
 
-    // ✅ Send emails AFTER successful transaction
+    // ✅ Send emails AFTER successful transaction (gated by toggle)
     try {
-      const creditPopulated = await CtoCredit.findById(updated._id)
-        .populate("employees.employee", "firstName lastName email")
-        .lean();
+      const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK);
 
-      const brandName = "CTO Management System";
-      const memoNo = creditPopulated?.memoNo || "";
-      const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
+      if (!enabled) {
+        console.log(
+          "[EMAIL] skipped (disabled):",
+          EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK,
+        );
+      } else {
+        const creditPopulated = await CtoCredit.findById(updated._id)
+          .populate("employees.employee", "firstName lastName email")
+          .lean();
 
-      await Promise.all(
-        (creditPopulated?.employees || []).map(async (row) => {
-          const emp = row?.employee;
-          if (!emp?.email) return;
+        const brandName = "CTO Management System";
+        const memoNo = creditPopulated?.memoNo || "";
+        const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
 
-          const tpl = ctoCreditRolledBackEmail({
-            employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
-            memoNo,
-            rolledBackHours: row?.creditedHours || 0, // ✅ still available for email
-            dateRolledBack,
-            reason: "Credit memo rolled back by admin.",
-            brandName,
-          });
+        await Promise.all(
+          (creditPopulated?.employees || []).map(async (row) => {
+            const emp = row?.employee;
+            if (!emp?.email) return;
 
-          try {
-            await sendEmail(emp.email, tpl.subject, tpl.html);
-          } catch (e) {
-            console.error(
-              `Failed to send CTO credit rollback email to ${emp.email}:`,
-              e?.message || e,
-            );
-          }
-        }),
-      );
+            const tpl = ctoCreditRolledBackEmail({
+              employeeName:
+                `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
+              memoNo,
+              rolledBackHours: row?.creditedHours || 0,
+              dateRolledBack,
+              reason: "Credit memo rolled back by admin.",
+              brandName,
+            });
+
+            await safeSendEmail(emp.email, tpl.subject, tpl.html);
+          }),
+        );
+      }
     } catch (e) {
       console.error(
         "Failed preparing CTO credit rollback emails:",
@@ -340,7 +370,6 @@ async function getEmployeeCredits(
 
   // ✅ totals should NOT include rolled back credits
   const [totalsAgg] = await CtoCredit.aggregate([
-    // exclude rolled back credit docs
     {
       $match: {
         "employees.employee": employeeObjId,
@@ -348,7 +377,6 @@ async function getEmployeeCredits(
       },
     },
     { $unwind: "$employees" },
-    // exclude rolled back employee subdocs too (extra safety)
     {
       $match: {
         "employees.employee": employeeObjId,
@@ -405,7 +433,6 @@ async function getEmployeeCredits(
     .limit(limit)
     .lean();
 
-  // ✅ for rolled back credits, remainingHours must be 0 (since hours were removed)
   const formattedCredits = credits.map((credit) => {
     const empData = credit.employees.find(
       (e) => e.employee?._id?.toString() === employeeId,

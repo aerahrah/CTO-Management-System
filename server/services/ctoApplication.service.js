@@ -7,6 +7,10 @@ const mongoose = require("mongoose");
 
 const sendEmail = require("../utils/sendEmail");
 
+// ✅ NEW: email notification toggles (flags Map doc)
+const EMAIL_KEYS = require("../utils/emailNotificationKeys");
+const { isEmailEnabled } = require("../utils/emailNotificationSettings");
+
 // ✅ UPDATED: use centralized templates (single file)
 const { ctoApprovalEmail } = require("../utils/emailTemplates");
 
@@ -18,6 +22,25 @@ const AUTO_CANCEL_REMARK_REJECT =
 
 const AUTO_CANCEL_REMARK_EMPLOYEE =
   "Auto-cancelled: The employee cancelled this request.";
+
+// ✅ Optional: fail-safe wrapper so creating application won't fail if email fails
+async function safeSendEmail(to, subject, html) {
+  try {
+    await sendEmail(to, subject, html);
+  } catch (e) {
+    console.error("[EMAIL] failed but continuing:", {
+      to,
+      subject,
+      message: e?.message,
+      code: e?.code,
+      response: e?.response,
+    });
+  }
+}
+
+async function canSend(key) {
+  return await isEmailEnabled(key);
+}
 
 const populateApplicationById = async (applicationId) => {
   const app = await CtoApplication.findById(applicationId)
@@ -221,7 +244,7 @@ const addCtoApplicationService = async ({
   // 7️⃣ Populate for frontend
   const populatedApp = await populateApplicationById(newApplication._id);
 
-  // 8️⃣ Notify FIRST approver only (✅ using centralized template)
+  // 8️⃣ Notify FIRST approver only (✅ template + ✅ toggle)
   try {
     const firstApproval = approvalSteps.find((a) => a.level === 1);
     const approverUser = await Employee.findById(firstApproval.approver)
@@ -230,18 +253,27 @@ const addCtoApplicationService = async ({
 
     const applicant = employee;
 
-    if (approverUser?.email) {
+    const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
+
+    if (approverUser?.email && enabled) {
       const tpl = ctoApprovalEmail({
         approverName: `${approverUser.firstName} ${approverUser.lastName}`,
         employeeName: `${applicant.firstName} ${applicant.lastName}`,
         requestedHours,
         reason,
         level: 1,
-        link: `${process.env.FRONTEND_URL}/app/cto/approvals/${newApplication._id}`,
+        link: `${process.env.FRONTEND_URL}/app/cto-approvals/${newApplication._id}`,
         brandName: "CTO Management System",
       });
 
-      await sendEmail(approverUser.email, tpl.subject, tpl.html);
+      await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+    } else if (approverUser?.email && !enabled) {
+      console.log(
+        "[EMAIL] skipped (disabled):",
+        EMAIL_KEYS.CTO_APPROVAL,
+        "to:",
+        approverUser.email,
+      );
     }
   } catch (err) {
     console.error("Failed to send CTO approval email:", err?.message || err);

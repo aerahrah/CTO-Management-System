@@ -7,6 +7,10 @@ const CtoCredit = require("../models/ctoCreditModel");
 
 const sendEmail = require("../utils/sendEmail");
 
+// ✅ NEW: email notification toggles (flags Map doc)
+const EMAIL_KEYS = require("../utils/emailNotificationKeys");
+const { isEmailEnabled } = require("../utils/emailNotificationSettings");
+
 // ✅ UPDATED: centralized templates (single file)
 const {
   ctoApprovalEmail,
@@ -50,6 +54,26 @@ const getEffectiveStatusForApprover = (app, myStep) => {
 
 const clampPage = (v) => Math.max(parseInt(v, 10) || 1, 1);
 const clampLimit = (v) => Math.min(Math.max(parseInt(v, 10) || 10, 1), 100);
+
+// ✅ Optional: fail-safe wrapper so approval/reject won't fail if email fails
+async function safeSendEmail(to, subject, html) {
+  try {
+    await sendEmail(to, subject, html);
+  } catch (e) {
+    console.error("[EMAIL] failed but continuing:", {
+      to,
+      subject,
+      message: e?.message,
+      code: e?.code,
+      response: e?.response,
+    });
+  }
+}
+
+// ✅ Helper: check toggle (defaults to ON if missing/error, depending on your util)
+async function canSend(key) {
+  return await isEmailEnabled(key);
+}
 
 const fetchPendingCtoCountService = async (approverId) => {
   if (!approverId) throw httpError("Approver ID is required", 400);
@@ -400,7 +424,7 @@ const approveCtoApplicationService = async ({
       timestamp: new Date(),
     });
 
-    // ✅ EMAILS USING CENTRAL TEMPLATE
+    // ✅ EMAILS USING CENTRAL TEMPLATE + TOGGLES
     if (!allApproved) {
       const nextStep = updatedSteps.find(
         (s) => s.level === currentStep.level + 1,
@@ -410,28 +434,48 @@ const approveCtoApplicationService = async ({
           .select("email firstName lastName")
           .lean();
 
-        if (nextApprover?.email) {
+        const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
+
+        if (nextApprover?.email && enabled) {
           const tpl = ctoApprovalEmail({
             approverName: `${nextApprover.firstName} ${nextApprover.lastName}`,
             employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
             requestedHours: application.requestedHours,
             reason: application.reason,
             level: nextStep.level,
-            link: `${process.env.FRONTEND_URL}/app/cto/approvals/${application._id}`,
+            link: `${process.env.FRONTEND_URL}/app/cto-approvals/${application._id}`,
             brandName: "CTO Management System",
           });
 
-          await sendEmail(nextApprover.email, tpl.subject, tpl.html);
+          await safeSendEmail(nextApprover.email, tpl.subject, tpl.html);
+        } else if (nextApprover?.email && !enabled) {
+          console.log(
+            "[EMAIL] skipped (disabled):",
+            EMAIL_KEYS.CTO_APPROVAL,
+            "to:",
+            nextApprover.email,
+          );
         }
       }
     } else if (application.employee.email) {
-      const tpl = ctoFinalApprovalEmail({
-        employeeName: application.employee.firstName,
-        requestedHours: application.requestedHours,
-        brandName: "CTO Management System",
-      });
+      const enabled = await canSend(EMAIL_KEYS.CTO_FINAL_APPROVAL);
 
-      await sendEmail(application.employee.email, tpl.subject, tpl.html);
+      if (enabled) {
+        const tpl = ctoFinalApprovalEmail({
+          employeeName: application.employee.firstName,
+          requestedHours: application.requestedHours,
+          brandName: "CTO Management System",
+        });
+
+        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+      } else {
+        console.log(
+          "[EMAIL] skipped (disabled):",
+          EMAIL_KEYS.CTO_FINAL_APPROVAL,
+          "to:",
+          application.employee.email,
+        );
+      }
     }
 
     return CtoApplication.findById(applicationId)
@@ -599,15 +643,26 @@ const rejectCtoApplicationService = async ({
       timestamp: new Date(),
     });
 
-    // ✅ EMAIL USING CENTRAL TEMPLATE
+    // ✅ EMAIL USING CENTRAL TEMPLATE + TOGGLE
     if (application.employee.email) {
-      const tpl = ctoRejectionEmail({
-        employeeName: application.employee.firstName,
-        remarks,
-        brandName: "CTO Management System",
-      });
+      const enabled = await canSend(EMAIL_KEYS.CTO_REJECTION);
 
-      await sendEmail(application.employee.email, tpl.subject, tpl.html);
+      if (enabled) {
+        const tpl = ctoRejectionEmail({
+          employeeName: application.employee.firstName,
+          remarks,
+          brandName: "CTO Management System",
+        });
+
+        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+      } else {
+        console.log(
+          "[EMAIL] skipped (disabled):",
+          EMAIL_KEYS.CTO_REJECTION,
+          "to:",
+          application.employee.email,
+        );
+      }
     }
 
     return CtoApplication.findById(applicationId)

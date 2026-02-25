@@ -13,6 +13,10 @@ const CtoCredit = require("../models/ctoCreditModel");
 
 const { employeeWelcomeEmail } = require("../utils/emailTemplates");
 
+// ✅ NEW: email notification toggles (flags Map doc)
+const EMAIL_KEYS = require("../utils/emailNotificationKeys");
+const { isEmailEnabled } = require("../utils/emailNotificationSettings");
+
 const validRoles = ["employee", "supervisor", "hr", "admin"];
 const ALLOWED_LIMITS = [10, 20, 50, 100];
 
@@ -119,8 +123,27 @@ async function resolveDesignationIdForFilter(designationInput) {
   return d ? d._id : null;
 }
 
-// Create employee with temporary passwordconst
+// ✅ Optional: fail-safe wrapper so employee creation won’t fail if email fails
+async function safeSendEmail(to, subject, html) {
+  try {
+    return await sendEmail(to, subject, html);
+  } catch (e) {
+    console.error("[EMAIL] failed but continuing:", {
+      to,
+      subject,
+      message: e?.message,
+      code: e?.code,
+      response: e?.response,
+    });
+    return null;
+  }
+}
 
+async function canSend(key) {
+  return await isEmailEnabled(key);
+}
+
+// Create employee with temporary password
 const createEmployeeService = async (employeeData) => {
   console.log("[SERVICE] createEmployeeService called:", employeeData);
 
@@ -197,31 +220,43 @@ const createEmployeeService = async (employeeData) => {
 
   if (employee.email) {
     try {
-      console.log("[CREATE EMPLOYEE] preparing email for:", employee.email);
+      // ✅ TOGGLE CHECK (defaults to ON if not configured / missing)
+      const enabled = await canSend(EMAIL_KEYS.EMPLOYEE_WELCOME);
 
-      const tpl = employeeWelcomeEmail({
-        firstName,
-        username,
-        tempPassword,
-        loginUrl: `${frontendUrl}`,
-        brandName: "HRMS",
-      });
+      if (!enabled) {
+        console.log(
+          "[CREATE EMPLOYEE] welcome email skipped (disabled):",
+          EMAIL_KEYS.EMPLOYEE_WELCOME,
+          "to:",
+          employee.email,
+        );
+      } else {
+        console.log("[CREATE EMPLOYEE] preparing email for:", employee.email);
 
-      console.log("[CREATE EMPLOYEE] calling sendEmail()...", {
-        to: employee.email,
-        subject: tpl.subject,
-      });
+        const tpl = employeeWelcomeEmail({
+          firstName,
+          username,
+          tempPassword,
+          loginUrl: `${frontendUrl}`,
+          brandName: "HRMS",
+        });
 
-      const info = await sendEmail(employee.email, tpl.subject, tpl.html);
+        console.log("[CREATE EMPLOYEE] calling sendEmail()...", {
+          to: employee.email,
+          subject: tpl.subject,
+        });
 
-      console.log("[CREATE EMPLOYEE] sendEmail() finished:", {
-        accepted: info?.accepted,
-        rejected: info?.rejected,
-        response: info?.response,
-        messageId: info?.messageId,
-      });
+        const info = await safeSendEmail(employee.email, tpl.subject, tpl.html);
+
+        console.log("[CREATE EMPLOYEE] sendEmail() finished:", {
+          accepted: info?.accepted,
+          rejected: info?.rejected,
+          response: info?.response,
+          messageId: info?.messageId,
+        });
+      }
     } catch (err) {
-      console.error("[CREATE EMPLOYEE] email failed:", err);
+      console.error("[CREATE EMPLOYEE] email flow failed:", err);
     }
   } else {
     console.warn("[CREATE EMPLOYEE] no email -> skip");
