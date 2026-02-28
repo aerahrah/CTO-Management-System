@@ -30,24 +30,54 @@ async function getEmployeeCreditTotals(employeeId) {
           _reservedHours: { $ifNull: ["$employees.reservedHours", 0] },
           _creditedHours: { $ifNull: ["$employees.creditedHours", 0] },
           _remainingHours: { $ifNull: ["$employees.remainingHours", 0] },
+          _creditStatus: { $ifNull: ["$status", ""] }, // root doc status
         },
       },
       {
         $group: {
           _id: null,
-          totalUsedHours: { $sum: "$_usedHours" },
-          totalReservedHours: { $sum: "$_reservedHours" },
-          // ✅ EXCLUDE rolled back credits from remaining hours
+
+          // ✅ exclude rolled back from these totals (safe + consistent)
+          totalUsedHours: {
+            $sum: {
+              $cond: [
+                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                "$_usedHours",
+                0,
+              ],
+            },
+          },
+          totalReservedHours: {
+            $sum: {
+              $cond: [
+                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                "$_reservedHours",
+                0,
+              ],
+            },
+          },
+
+          // ✅ already excluded rolled back (kept same behavior)
           totalRemainingHours: {
             $sum: {
               $cond: [
-                { $ne: ["$status", "ROLLEDBACK"] },
+                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
                 "$_remainingHours",
                 0,
               ],
             },
           },
-          totalCreditedHours: { $sum: "$_creditedHours" },
+
+          // ✅ FIX: exclude rolled back from credited total
+          totalCreditedHours: {
+            $sum: {
+              $cond: [
+                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                "$_creditedHours",
+                0,
+              ],
+            },
+          },
         },
       },
     ]);
@@ -124,10 +154,13 @@ const ctoDashboardService = {
     };
 
     return {
+      // ✅ now excludes rolled back credits
       totalCredit: totals.totalCreditedHours,
+
       balance: creditTotals
         ? totals.totalRemainingHours
         : employee.balances?.ctoHours || 0,
+
       used: creditTotals ? totals.totalUsedHours : usedHours,
       reserved: totals.totalReservedHours,
 
@@ -144,7 +177,7 @@ const ctoDashboardService = {
       await ctoDashboardService.getPersonalCtoSummary(employeeId);
     return {
       myCtoSummary,
-      quickActions: [{ name: "Apply for CTO", link: "/app/cto/apply" }],
+      quickActions: [{ name: "Apply for CTO", link: "/app/cto-apply" }],
     };
   },
 
@@ -208,7 +241,7 @@ const ctoDashboardService = {
       pendingRequests: recentPendingRequests,
       quickLinks:
         allPendingRequests.length > 0
-          ? [{ name: "Approvals", link: "/app/cto/approvals" }]
+          ? [{ name: "Approvals", link: "/app/cto-approvals" }]
           : [],
     };
   },
@@ -239,9 +272,9 @@ const ctoDashboardService = {
       totalRolledBackCount,
       totalPendingRequests,
       quickLinks: [
-        { name: "CTO Records", link: "/app/cto/records" },
-        { name: "Manage Credits", link: "/app/cto/credit" },
-        { name: "Reports", link: "/app/cto/records" },
+        { name: "CTO Records", link: "/app/cto-records" },
+        { name: "Manage Credits", link: "/app/cto-credit" },
+        { name: "Reports", link: "/app/cto-records" },
       ],
     };
   },
@@ -256,7 +289,6 @@ const ctoDashboardService = {
         CtoApplication.countDocuments({ overallStatus: "REJECTED" }),
       ]);
 
-    // Compute total credited/rolledback hours as “sum of employees.creditedHours”
     const [creditAgg] = await CtoCredit.aggregate([
       { $unwind: "$employees" },
       {

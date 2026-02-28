@@ -24,7 +24,11 @@ const endpointMap = [
     name: "Reset My Password",
   },
 
-  { pattern: /^\/employee\/memos\/me$/, method: "GET", name: "View My Memos" },
+  {
+    pattern: /^\/employee\/memos\/me$/,
+    method: "GET",
+    name: "View My Memos",
+  },
   {
     pattern: /^\/employee\/memos\/\w+$/,
     method: "GET",
@@ -211,7 +215,11 @@ const endpointMap = [
      Projects
      Mounted: /settings/projects
   ========================= */
-  { pattern: /^\/settings\/projects$/, method: "POST", name: "Create Project" },
+  {
+    pattern: /^\/settings\/projects$/,
+    method: "POST",
+    name: "Create Project",
+  },
   { pattern: /^\/settings\/projects$/, method: "GET", name: "View Projects" },
   {
     pattern: /^\/settings\/projects\/options$/,
@@ -268,7 +276,11 @@ const endpointMap = [
      MongoDB Backup
      Mounted: /settings/mongodb
   ========================= */
-  { pattern: /^\/settings\/mongodb$/, method: "GET", name: "List CTO Backups" },
+  {
+    pattern: /^\/settings\/mongodb$/,
+    method: "GET",
+    name: "List CTO Backups",
+  },
   {
     pattern: /^\/settings\/mongodb$/,
     method: "POST",
@@ -288,6 +300,21 @@ const endpointMap = [
     pattern: /^\/settings\/mongodb\/[^/]+$/,
     method: "DELETE",
     name: "Delete CTO Backup",
+  },
+
+  /* =========================
+     Email Notification Settings (✅ NEW)
+     Mounted: /email-notification-settings
+  ========================= */
+  {
+    pattern: /^\/email-notification-settings$/,
+    method: "GET",
+    name: "View Email Notification Settings",
+  },
+  {
+    pattern: /^\/email-notification-settings\/[^/]+\/?$/,
+    method: "PUT",
+    name: "Update Email Notification Setting",
   },
 ];
 

@@ -48,9 +48,7 @@ function setUpdatedBy(doc, userId) {
 
 function flagsToObject(flags) {
   if (!flags) return {};
-  // Mongoose Map or JS Map
   if (flags instanceof Map) return Object.fromEntries(flags.entries());
-  // plain object
   if (typeof flags === "object") return { ...flags };
   return {};
 }
@@ -70,8 +68,6 @@ async function getEmailNotificationSettings() {
   return normalize(doc);
 }
 
-// Update one key
-// updateEmailNotificationSetting("cto_approval", { enabled: false }, userId)
 async function updateEmailNotificationSetting(
   key,
   payload = {},
@@ -93,10 +89,8 @@ async function updateEmailNotificationSetting(
     throw new Error("enabled must be a boolean");
   }
 
-  // ensure flags exists
   if (!doc.flags) doc.flags = defaultFlags();
 
-  // Mongoose Map
   if (doc.flags instanceof Map) {
     doc.flags.set(key, enabled);
   } else {

@@ -28,7 +28,6 @@ async function updateEmailNotificationSettingController(req, res) {
     const userId = req.user?.id || req.user?._id || null;
     const { key } = req.params;
 
-    // ✅ service returns { before, after }
     const { before, after } = await updateEmailNotificationSetting(
       key,
       req.body,

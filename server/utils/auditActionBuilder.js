@@ -2,7 +2,7 @@
 
 const buildAuditDetails = ({
   endpoint,
-  body = {}, // usually "after" (but may be req.body OR {before,after})
+  body = {}, // usually "after" OR req.body OR {before,after}
   params = {},
   actor = "Someone",
   targetUser,
@@ -10,7 +10,89 @@ const buildAuditDetails = ({
 }) => {
   let summary = "";
 
-  // normalize before (could be object or array)
+  /* =========================
+     Small helpers
+  ========================= */
+
+  function parseJsonMaybe(value, fallback = value) {
+    if (value === undefined || value === null || value === "") return fallback;
+    if (typeof value !== "string") return value;
+
+    const s = value.trim();
+    if (!s) return fallback;
+
+    // only attempt JSON parse when it looks like JSON
+    const looksJson =
+      (s.startsWith("{") && s.endsWith("}")) ||
+      (s.startsWith("[") && s.endsWith("]"));
+
+    if (!looksJson) return fallback;
+
+    try {
+      return JSON.parse(s);
+    } catch {
+      return fallback;
+    }
+  }
+
+  const safe = (v, fallback = "N/A") => {
+    if (v === undefined || v === null || v === "") return fallback;
+    return String(v);
+  };
+
+  const fmtUser = (u) => safe(u, "unknown user");
+  const fmtId = (id) => safe(id, "N/A");
+
+  const toNum = (v, fallback = 0) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const fmtBool = (v) =>
+    typeof v === "boolean" ? (v ? "enabled" : "disabled") : "N/A";
+
+  const normalizeDuration = (input) => {
+    const v = parseJsonMaybe(input, input);
+
+    if (Array.isArray(v)) return normalizeDuration(v[0]);
+
+    // object-like duration
+    if (v && typeof v === "object") {
+      return {
+        hours: v.hours ?? v.h ?? 0,
+        minutes: v.minutes ?? v.m ?? 0,
+      };
+    }
+
+    // number or numeric string -> treat as hours
+    if (typeof v === "number") return { hours: v, minutes: 0 };
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return { hours: n, minutes: 0 };
+    }
+
+    return { hours: 0, minutes: 0 };
+  };
+
+  const toHours = (durationInput) => {
+    const { hours, minutes } = normalizeDuration(durationInput);
+    const h = toNum(hours, 0);
+    const m = toNum(minutes, 0);
+    return Math.round((h + m / 60) * 100) / 100;
+  };
+
+  // "field: before → after" changes
+  const pushChange = (changes, label, beforeVal, afterVal) => {
+    const bV = safe(beforeVal);
+    const aV = safe(afterVal);
+    if (bV === "N/A" && aV === "N/A") return;
+    if (bV !== aV) changes.push(`${label}: "${bV}" → "${aV}"`);
+  };
+
+  /* =========================
+     normalize before/after
+  ========================= */
+
   const rawBefore = Array.isArray(before) ? before[0] : before;
 
   // ✅ if someone accidentally passes { before, after } here, unwrap it
@@ -27,35 +109,50 @@ const buildAuditDetails = ({
       ? body.after
       : body;
 
-  const safe = (v, fallback = "N/A") => {
-    if (v === undefined || v === null || v === "") return fallback;
-    return String(v);
+  /* =========================
+     CTO credit-specific helpers
+  ========================= */
+
+  const getEmployeeCount = (obj) => {
+    const emps = parseJsonMaybe(obj?.employees, obj?.employees);
+    return Array.isArray(emps) ? emps.length : null;
   };
 
-  const fmtUser = (u) => safe(u, "unknown user");
-  const fmtId = (id) => safe(id, "N/A");
+  // prefer creditedHours from DB doc if present (employees are objects)
+  const getCreditedHoursPerEmployee = (obj) => {
+    const emps = parseJsonMaybe(obj?.employees, obj?.employees);
+    if (!Array.isArray(emps) || emps.length === 0) return null;
 
-  const toNum = (v, fallback = 0) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : fallback;
+    // if employees are stored as objects { creditedHours, ... }
+    const firstObj = emps.find((e) => e && typeof e === "object");
+    if (firstObj && firstObj.creditedHours !== undefined) {
+      const n = toNum(firstObj.creditedHours, NaN);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    return null;
   };
 
-  const toHours = ({ hours, minutes } = {}) => {
-    const h = toNum(hours, 0);
-    const m = toNum(minutes, 0);
-    return Math.round((h + m / 60) * 100) / 100;
+  const getTotalCreditedHoursSum = (obj) => {
+    const emps = parseJsonMaybe(obj?.employees, obj?.employees);
+    if (!Array.isArray(emps) || emps.length === 0) return null;
+
+    // sum creditedHours if employees are objects with creditedHours
+    if (
+      emps.some(
+        (e) => e && typeof e === "object" && e.creditedHours !== undefined,
+      )
+    ) {
+      const sum = emps.reduce((acc, e) => acc + toNum(e?.creditedHours, 0), 0);
+      return Math.round(sum * 100) / 100;
+    }
+
+    return null;
   };
 
-  const fmtBool = (v) =>
-    typeof v === "boolean" ? (v ? "enabled" : "disabled") : "N/A";
-
-  // "field: before → after" changes
-  const pushChange = (changes, label, beforeVal, afterVal) => {
-    const bV = safe(beforeVal);
-    const aV = safe(afterVal);
-    if (bV === "N/A" && aV === "N/A") return;
-    if (bV !== aV) changes.push(`${label}: "${bV}" → "${aV}"`);
-  };
+  /* =========================
+     Main switch
+  ========================= */
 
   switch (endpoint) {
     /* =========================
@@ -80,7 +177,6 @@ const buildAuditDetails = ({
       break;
 
     case "Update Employee Role": {
-      // ✅ this now works once middleware passes TRUE before role
       const beforeRole = safe(b?.role);
       const afterRole = safe(after?.role);
       summary = `${actor} updated role for employee ${fmtUser(
@@ -114,24 +210,35 @@ const buildAuditDetails = ({
       break;
 
     /* =========================
-       CTO Credit Routes
+       CTO Credit Routes (FIXED)
     ========================= */
     case "Add CTO Credit Request": {
-      const totalDuration = toHours(after?.duration);
       const memoNo = safe(after?.memoNo, "");
-      const employeeCount = Array.isArray(after?.employees)
-        ? after.employees.length
-        : null;
+      const employeeCount = getEmployeeCount(after);
+
+      // prefer DB doc employees[].creditedHours, fallback to duration
+      const hoursPerEmployee =
+        getCreditedHoursPerEmployee(after) ??
+        toHours(after?.duration ?? b?.duration);
 
       summary = `${actor} added CTO credit${
         employeeCount !== null ? ` to ${employeeCount} employee(s)` : ""
-      }${memoNo ? ` (Memo: ${memoNo})` : ""} (${totalDuration} hrs)`;
+      }${memoNo ? ` (Memo: ${memoNo})` : ""} (${hoursPerEmployee} hrs)`;
       break;
     }
 
     case "Rollback CTO Credit": {
       const memoNo = safe(after?.memoNo, "");
-      summary = `${actor} rolled back CTO credit${memoNo ? ` (Memo: ${memoNo})` : ""}`;
+      const employeeCount = getEmployeeCount(after);
+
+      // total rolled back can be sum of creditedHours (DB doc)
+      const totalHours = getTotalCreditedHoursSum(after);
+
+      summary = `${actor} rolled back CTO credit${
+        memoNo ? ` (Memo: ${memoNo})` : ""
+      }${employeeCount !== null ? ` for ${employeeCount} employee(s)` : ""}${
+        totalHours !== null ? ` — ${totalHours} hrs total` : ""
+      }`;
       break;
     }
 
@@ -225,7 +332,7 @@ const buildAuditDetails = ({
       break;
 
     /* =========================
-       CTO Settings (Approver Setting)
+       CTO Settings
     ========================= */
     case "View CTO Settings":
       summary = `${actor} viewed CTO settings`;
@@ -246,6 +353,26 @@ const buildAuditDetails = ({
     case "Delete CTO Approver Setting":
       summary = `${actor} deleted CTO approver setting (ID: ${fmtId(params.id)})`;
       break;
+
+    /* =========================
+       Email Notification Settings
+    ========================= */
+    case "View Email Notification Settings":
+      summary = `${actor} viewed email notification settings`;
+      break;
+
+    case "Update Email Notification Setting": {
+      const key = params.key || "unknown_key";
+      const beforeEnabled =
+        typeof b?.enabled === "boolean" ? b.enabled : b?.[key];
+      const afterEnabled =
+        typeof after?.enabled === "boolean" ? after.enabled : after?.[key];
+
+      summary = `${actor} updated email notification "${key}" from "${fmtBool(
+        beforeEnabled,
+      )}" to "${fmtBool(afterEnabled)}"`;
+      break;
+    }
 
     /* =========================
        General Settings

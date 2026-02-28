@@ -52,6 +52,10 @@ const addCtoCreditRequest = async (req, res) => {
     const employeesArray = parseJsonMaybe(employees, employees);
     const durationObj = parseJsonMaybe(duration, duration);
 
+    // ✅ normalize req.body too (helps audit middleware if it reads req.body)
+    req.body.employees = employeesArray;
+    req.body.duration = durationObj;
+
     if (!memoNo) {
       return res.status(400).json({ message: "memoNo is required" });
     }
@@ -76,7 +80,6 @@ const addCtoCreditRequest = async (req, res) => {
       const cleanDate = safeDateStamp(dateApproved);
       const newFileName = `${cleanMemoNo}_${cleanDate}${extension}`;
 
-      // Rename inside whatever folder multer saved to (usually uploads/cto_memos)
       const uploadDir = path.dirname(req.file.path);
       const newAbsPath = path.join(uploadDir, newFileName);
 
@@ -84,11 +87,9 @@ const addCtoCreditRequest = async (req, res) => {
         await fs.rename(req.file.path, newAbsPath);
         fileName = newFileName;
       } catch {
-        // fallback: keep the multer-generated name, but still store filename only
         fileName = path.basename(req.file.path);
       }
 
-      // ✅ store the public URL path (matches your express.static mount)
       filePath = `/uploads/cto_memos/${fileName}`;
     }
 
@@ -98,8 +99,11 @@ const addCtoCreditRequest = async (req, res) => {
       memoNo,
       dateApproved,
       userId,
-      filePath, // ✅ "/uploads/cto_memos/<filename>" OR null
+      filePath,
     });
+
+    // ✅ BEST: provide DB doc for audit summary (duration + employees objects)
+    res.locals.auditAfter = creditRequest;
 
     return res.status(201).json({
       message: "CTO credit request created",
@@ -116,6 +120,9 @@ const rollbackCreditedRequest = async (req, res) => {
     const { creditId } = req.params;
 
     const credit = await ctoCreditService.rollbackCredit({ creditId, userId });
+
+    // ✅ provide updated doc to audit builder (has memoNo + employees + creditedHours)
+    res.locals.auditAfter = credit;
 
     return res.json({
       message: "CTO credit rolled back and employee balances updated",
@@ -166,7 +173,6 @@ const getAllCreditRequests = async (req, res) => {
 
 const getEmployeeCredits = async (req, res) => {
   try {
-    // allow /:employeeId OR fallback to current user
     const employeeId = req.params.employeeId || req?.user?.id;
     if (!employeeId) return res.status(401).json({ message: "Unauthorized" });
 
