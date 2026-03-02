@@ -46,7 +46,6 @@ const Sidebar = ({
   const { data: pendingCount = 0, isPending } = useQuery({
     queryKey: ["ctoPendingCount"],
     queryFn: fetchCtoApplicationsPendingRequest,
-    staleTime: 5 * 60 * 1000,
   });
 
   const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);

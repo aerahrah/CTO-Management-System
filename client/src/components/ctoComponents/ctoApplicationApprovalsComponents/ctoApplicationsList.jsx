@@ -191,7 +191,6 @@ const CtoApplicationsList = () => {
         status: statusFilter || undefined,
       }),
     placeholderData: keepPreviousData,
-    staleTime: 1000 * 60 * 2,
   });
 
   const statusCounts = data?.statusCounts || {};

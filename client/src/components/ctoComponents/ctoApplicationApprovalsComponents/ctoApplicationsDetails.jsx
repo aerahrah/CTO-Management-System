@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   Users,
   History,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
 } from "lucide-react";
 import { StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
@@ -278,6 +281,22 @@ const CtoApplicationDetailsSkeleton = () => (
               <Skeleton height={42} borderRadius={12} />
             </div>
           </div>
+
+          {/* Calendar skeleton card */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+            <div className="flex items-center justify-between">
+              <Skeleton height={12} width={120} borderRadius={8} />
+              <Skeleton height={28} width={90} borderRadius={10} />
+            </div>
+            <div className="mt-3 grid grid-cols-7 gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <Skeleton key={i} height={10} borderRadius={6} />
+              ))}
+              {Array.from({ length: 35 }).map((_, i) => (
+                <Skeleton key={i} height={30} borderRadius={10} />
+              ))}
+            </div>
+          </div>
         </aside>
       </div>
     </div>
@@ -445,6 +464,277 @@ const TimelineCard = ({ approval, index, isLast }) => {
             </p>
           </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+/* =========================
+   Calendar helpers + component
+========================= */
+const pad2 = (n) => String(n).padStart(2, "0");
+
+const toDateKeyLocal = (dateLike) => {
+  const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = pad2(d.getMonth() + 1);
+  const day = pad2(d.getDate());
+  return `${y}-${m}-${day}`;
+};
+
+const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
+
+const isSameDay = (a, b) =>
+  a.getFullYear() === b.getFullYear() &&
+  a.getMonth() === b.getMonth() &&
+  a.getDate() === b.getDate();
+
+const RequestedDatesCalendar = ({ dates = [] }) => {
+  const requestedKeys = useMemo(() => {
+    const set = new Set();
+    (Array.isArray(dates) ? dates : []).forEach((x) => {
+      const key = toDateKeyLocal(x);
+      if (key) set.add(key);
+    });
+    return set;
+  }, [dates]);
+
+  const earliestRequested = useMemo(() => {
+    const arr = (Array.isArray(dates) ? dates : [])
+      .map((x) => new Date(x))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => a.getTime() - b.getTime());
+    return arr[0] || null;
+  }, [dates]);
+
+  const [viewMonth, setViewMonth] = useState(() =>
+    startOfMonth(earliestRequested || new Date()),
+  );
+
+  useEffect(() => {
+    // jump calendar to earliest requested month whenever dates change
+    if (earliestRequested) setViewMonth(startOfMonth(earliestRequested));
+  }, [earliestRequested]);
+
+  const monthLabel = useMemo(() => {
+    return viewMonth.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+  }, [viewMonth]);
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const grid = useMemo(() => {
+    const first = startOfMonth(viewMonth);
+    const last = endOfMonth(viewMonth);
+
+    // Sunday=0 ... Saturday=6
+    const leadingBlanks = first.getDay();
+    const daysInMonth = last.getDate();
+
+    const cells = [];
+
+    // leading empty cells
+    for (let i = 0; i < leadingBlanks; i++) {
+      cells.push({ type: "blank", key: `b-${i}` });
+    }
+
+    // day cells
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
+      const key = toDateKeyLocal(d);
+      const isRequested = key ? requestedKeys.has(key) : false;
+      const today = new Date();
+      const isToday = isSameDay(d, today);
+
+      cells.push({
+        type: "day",
+        key,
+        day,
+        date: d,
+        isRequested,
+        isToday,
+      });
+    }
+
+    // trailing blanks to complete rows (optional but makes layout even)
+    const remainder = cells.length % 7;
+    if (remainder !== 0) {
+      const trailing = 7 - remainder;
+      for (let i = 0; i < trailing; i++) {
+        cells.push({ type: "blank", key: `t-${i}` });
+      }
+    }
+
+    return cells;
+  }, [viewMonth, requestedKeys]);
+
+  const requestedCountThisMonth = useMemo(() => {
+    const y = viewMonth.getFullYear();
+    const m = viewMonth.getMonth();
+    let count = 0;
+    requestedKeys.forEach((k) => {
+      const d = new Date(k);
+      // if parsing "YYYY-MM-DD" becomes UTC in some environments, we still handle via split:
+      const [yy, mm] = k.split("-").map((x) => Number(x));
+      if (!yy || !mm) return;
+      const monthIdx = mm - 1;
+      if (yy === y && monthIdx === m) count += 1;
+    });
+    return count;
+  }, [requestedKeys, viewMonth]);
+
+  const hasAnyDates = requestedKeys.size > 0;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+            Calendar
+          </h4>
+          <p className="text-[11px] text-gray-500 font-medium">
+            Requested dates highlighted
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-none">
+          <button
+            type="button"
+            onClick={() => setViewMonth((d) => addMonths(d, -1))}
+            className="h-9 w-9 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            title="Previous month"
+          >
+            <ChevronLeft size={16} className="text-gray-700" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMonth((d) => addMonths(d, 1))}
+            className="h-9 w-9 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            title="Next month"
+          >
+            <ChevronRight size={16} className="text-gray-700" />
+          </button>
+
+          <button
+            type="button"
+            disabled={!earliestRequested}
+            onClick={() =>
+              earliestRequested && setViewMonth(startOfMonth(earliestRequested))
+            }
+            className={`h-9 px-2.5 rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 inline-flex items-center gap-1.5 ${
+              earliestRequested
+                ? "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
+                : "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed"
+            }`}
+            title="Jump to requested month"
+          >
+            <RotateCcw size={14} />
+            <span className="text-[11px] font-bold">Reset</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-3 flex md:flex-col items-center md:items-start justify-between gap-2">
+        <div className="inline-flex items-center gap-2 min-w-0">
+          <span className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 flex-none">
+            <CalendarDays size={16} />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 truncate">
+              {monthLabel}
+            </p>
+            <p className="text-[11px] text-gray-500 font-medium">
+              {hasAnyDates
+                ? `${requestedCountThisMonth} requested day${
+                    requestedCountThisMonth === 1 ? "" : "s"
+                  } this month`
+                : "No requested dates"}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-none">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 px-2 py-1 rounded-lg">
+            <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+            Requested
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {/* Day names */}
+        <div className="grid grid-cols-7 gap-1.5">
+          {dayNames.map((dn) => (
+            <div
+              key={dn}
+              className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center py-1"
+            >
+              {dn}
+            </div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div className="mt-1.5 grid grid-cols-7 gap-1.5">
+          {grid.map((cell, idx) => {
+            if (cell.type === "blank") {
+              return (
+                <div
+                  key={cell.key || `blank-${idx}`}
+                  className="h-9 rounded-xl bg-transparent"
+                />
+              );
+            }
+
+            const base =
+              "h-9 rounded-xl border text-sm font-semibold flex items-center justify-center transition select-none";
+            const requested =
+              "bg-blue-600 text-white border-blue-600 shadow-sm";
+            const normal =
+              "bg-white text-gray-800 border-gray-200 hover:bg-gray-50";
+            const todayRing = "ring-2 ring-blue-200 ring-offset-2";
+
+            return (
+              <div
+                key={cell.key || `d-${idx}`}
+                className={[
+                  base,
+                  cell.isRequested ? requested : normal,
+                  cell.isToday ? todayRing : "",
+                ].join(" ")}
+                title={
+                  cell.isRequested
+                    ? "Requested date"
+                    : cell.isToday
+                      ? "Today"
+                      : ""
+                }
+              >
+                <span className="relative">
+                  {cell.day}
+                  {cell.isRequested ? (
+                    <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-white/90" />
+                  ) : null}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {!hasAnyDates ? (
+          <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-center">
+            <p className="text-xs text-gray-500 font-medium">
+              No dates to highlight
+            </p>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -808,8 +1098,9 @@ const CtoApplicationDetails = () => {
             </section>
           </div>
 
-          {/* SIDEBAR (MINIMALIST UX UPDATE) */}
+          {/* SIDEBAR (Documents + Calendar) */}
           <aside className="space-y-4 min-w-0">
+            <RequestedDatesCalendar dates={application?.inclusiveDates || []} />
             <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
               <div className="flex items-center justify-between gap-3">
                 <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
@@ -905,6 +1196,8 @@ const CtoApplicationDetails = () => {
                   : `View all memos (${memoCount})`}
               </button>
             </div>
+
+            {/* ✅ NEW: Calendar card */}
           </aside>
         </div>
 
