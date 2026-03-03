@@ -16,6 +16,7 @@ const ctoDashboardRoutes = require("./routers/ctoDashboardRoute");
 const projectRoutes = require("./routers/projectRoute");
 const ctoBackupRoutes = require("./routers/ctoBackupRoute.js");
 const generalSettingRoutes = require("./routers/generalSettingsRoute");
+const userPreferenceRoutes = require("./routers/userPreferencesRoutes");
 
 // ✅ ADD THIS: email notification settings routes
 const emailNotificationSettingRoutes = require("./routers/emailNotificationSettingsRoutes");
@@ -87,6 +88,7 @@ app.use("/api/audit-logs", auditLogRoutes);
 app.use("/api/settings/projects", projectRoutes);
 app.use("/api/settings/mongodb", ctoBackupRoutes);
 app.use("/api/settings/general", generalSettingRoutes);
+app.use("/api/settings/preferences", userPreferenceRoutes);
 
 // ✅ ADD THIS ROUTE MOUNT
 // GET  /api/email-notification-settings

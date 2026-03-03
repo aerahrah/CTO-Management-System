@@ -33,7 +33,6 @@ const employeeSchema = new mongoose.Schema(
     position: { type: String, required: true },
     division: { type: String, required: true },
 
-    // ✅ dynamic project reference
     project: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Project",
@@ -58,10 +57,39 @@ const employeeSchema = new mongoose.Schema(
       city: { type: String, trim: true },
       province: { type: String, trim: true },
     },
+
     emergencyContact: {
       name: { type: String, trim: true },
       phone: { type: String },
       relation: { type: String, trim: true },
+    },
+
+    // ✅ NEW: user preferences (theme + accent)
+    preferences: {
+      theme: {
+        type: String,
+        enum: ["system", "light", "dark"],
+        default: "system",
+      },
+
+      // Accent color tokens (your UI maps these to real Tailwind classes)
+      accent: {
+        type: String,
+        enum: [
+          "blue",
+          "pink",
+          "green",
+          "violet",
+          "amber",
+          "teal",
+          "indigo",
+          "rose",
+          "cyan",
+          "lime",
+          "orange",
+        ],
+        default: "blue",
+      },
     },
   },
   { timestamps: true },

@@ -1,5 +1,5 @@
 // Sidebar.jsx
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,9 +26,10 @@ import {
   MapPin, // For Office Locations
   SlidersHorizontal, // For CTO Settings
   FolderKanban, // Projects icon
-  HardDrive, // ✅ NEW: Backup & Restore icon
-  CalendarDays, // ✅ NEW: Working Day Settings icon
-  Mail, // ✅ NEW: Email Notification Settings icon
+  HardDrive, // ✅ Backup & Restore icon
+  CalendarDays, // ✅ Working Day Settings icon
+  Mail, // ✅ Email Notification Settings icon
+  Palette, // ✅ NEW: User Preferences icon
 } from "lucide-react";
 
 const Sidebar = ({
@@ -43,9 +44,14 @@ const Sidebar = ({
   const location = useLocation();
   const role = admin?.role;
 
+  // ✅ Only fetch pending count for roles that can actually see Pending Approvals
+  const canSeePendingApprovals = ["admin", "supervisor"].includes(role);
+
   const { data: pendingCount = 0, isPending } = useQuery({
-    queryKey: ["ctoPendingCount"],
+    queryKey: ["ctoPendingCount", admin?.id],
     queryFn: fetchCtoApplicationsPendingRequest,
+    enabled: !!admin?.id && canSeePendingApprovals,
+    staleTime: 1000 * 30, // optional: 30s
   });
 
   const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);
@@ -61,117 +67,133 @@ const Sidebar = ({
     navigate(path);
   };
 
-  const menuItems = [
-    {
-      name: "CTO Service",
-      icon: <Timer size={18} />,
-      roles: ["admin", "hr", "supervisor", "employee"],
-      subItems: [
-        {
-          name: "Dashboard",
-          path: "/app",
-          icon: <LayoutDashboard size={14} />,
-          exact: true,
-        },
-        {
-          name: "Credit CTO",
-          path: "/app/cto-credit",
-          icon: <CirclePlus size={14} />,
-          roles: ["admin", "hr"],
-        },
-        {
-          name: "My CTO Records",
-          path: "/app/cto-my-credits",
-          icon: <FileClock size={14} />,
-        },
-        {
-          name: "Apply CTO Leave",
-          path: "/app/cto-apply",
-          icon: <PenLine size={14} />,
-        },
-        {
-          name: "All CTO Applications",
-          path: "/app/cto-all-applications",
-          icon: <Files size={14} />,
-          roles: ["admin", "hr"],
-        },
-        {
-          name: "Pending Approvals",
-          path: "/app/cto-approvals",
-          icon: <UserCheck size={14} />,
-          roles: ["admin", "supervisor"],
-          badge: isPending ? "..." : pendingCount > 0 ? pendingCount : null,
-        },
-        {
-          name: "All CTO Records",
-          path: "/app/cto-records",
-          icon: <Archive size={14} />,
-          roles: ["admin", "hr"],
-        },
-      ],
-    },
-    {
-      name: "Employee Management",
-      icon: <UserRound size={18} />,
-      path: "/app/employees",
-      roles: ["admin", "hr"],
-    },
-    {
-      name: "My Profile",
-      icon: <UserCircle size={18} />,
-      path: "/app/my-profile",
-    },
-    {
-      name: "Audit Logs",
-      icon: <ShieldCheck size={18} />,
-      path: "/app/audit-logs",
-      roles: ["admin", "hr"],
-    },
-    {
-      name: "General Settings",
-      icon: <Settings size={18} />,
-      roles: ["admin", "hr"],
-      subItems: [
-        {
-          name: "CTO Routing Settings",
-          path: "/app/cto-settings",
-          icon: <SlidersHorizontal size={14} />,
-        },
-        {
-          name: "Designations Settings",
-          path: "/app/designations",
-          icon: <MapPin size={14} />,
-        },
-        {
-          name: "Projects Settings",
-          path: "/app/projects",
-          icon: <FolderKanban size={14} />,
-        },
-        {
-          name: "Session Settings",
-          path: "/app/session-settings",
-          icon: <Sliders size={14} />,
-        },
-        {
-          name: "Working Day Settings",
-          path: "/app/general-settings",
-          icon: <CalendarDays size={14} />,
-        },
-        {
-          // ✅ NEW: Email Notification Settings
-          name: "Email Notifications",
-          path: "/app/email-notification-settings",
-          icon: <Mail size={14} />,
-        },
-        {
-          // ✅ Backup & Restore
-          name: "Backup & Restore",
-          path: "/app/backups",
-          icon: <HardDrive size={14} />,
-        },
-      ],
-    },
-  ];
+  const menuItems = useMemo(
+    () => [
+      {
+        name: "CTO Service",
+        icon: <Timer size={18} />,
+        roles: ["admin", "hr", "supervisor", "employee"],
+        subItems: [
+          {
+            name: "Dashboard",
+            path: "/app",
+            icon: <LayoutDashboard size={14} />,
+            exact: true,
+          },
+          {
+            name: "Credit CTO",
+            path: "/app/cto-credit",
+            icon: <CirclePlus size={14} />,
+            roles: ["admin", "hr"],
+          },
+          {
+            name: "My CTO Records",
+            path: "/app/cto-my-credits",
+            icon: <FileClock size={14} />,
+          },
+          {
+            name: "Apply CTO Leave",
+            path: "/app/cto-apply",
+            icon: <PenLine size={14} />,
+          },
+          {
+            name: "All CTO Applications",
+            path: "/app/cto-all-applications",
+            icon: <Files size={14} />,
+            roles: ["admin", "hr"],
+          },
+          {
+            name: "Pending Approvals",
+            path: "/app/cto-approvals",
+            icon: <UserCheck size={14} />,
+            roles: ["admin", "supervisor"],
+            badge: !canSeePendingApprovals
+              ? null
+              : isPending
+                ? "..."
+                : pendingCount > 0
+                  ? pendingCount
+                  : null,
+          },
+          {
+            name: "All CTO Records",
+            path: "/app/cto-records",
+            icon: <Archive size={14} />,
+            roles: ["admin", "hr"],
+          },
+        ],
+      },
+      {
+        name: "Employee Management",
+        icon: <UserRound size={18} />,
+        path: "/app/employees",
+        roles: ["admin", "hr"],
+      },
+      {
+        name: "My Profile",
+        icon: <UserCircle size={18} />,
+        path: "/app/my-profile",
+      },
+
+      // ✅ NEW: User Preferences (Theme + Accent) - visible to ALL authenticated users
+      {
+        name: "Appearance",
+        icon: <Palette size={18} />,
+        path: "/app/user-preferences",
+        roles: ["admin", "hr", "supervisor", "employee"],
+      },
+
+      {
+        name: "Audit Logs",
+        icon: <ShieldCheck size={18} />,
+        path: "/app/audit-logs",
+        roles: ["admin", "hr"],
+      },
+      {
+        name: "General Settings",
+        icon: <Settings size={18} />,
+        roles: ["admin", "hr"],
+        subItems: [
+          {
+            name: "CTO Routing Settings",
+            path: "/app/cto-settings",
+            icon: <SlidersHorizontal size={14} />,
+          },
+          {
+            name: "Designations Settings",
+            path: "/app/designations",
+            icon: <MapPin size={14} />,
+          },
+          {
+            name: "Projects Settings",
+            path: "/app/projects",
+            icon: <FolderKanban size={14} />,
+          },
+          {
+            name: "Session Settings",
+            path: "/app/session-settings",
+            icon: <Sliders size={14} />,
+          },
+          {
+            name: "Working Day Settings",
+            path: "/app/general-settings",
+            icon: <CalendarDays size={14} />,
+          },
+          {
+            name: "Email Notifications",
+            path: "/app/email-notification-settings",
+            icon: <Mail size={14} />,
+          },
+          {
+            name: "Backup & Restore",
+            path: "/app/backups",
+            icon: <HardDrive size={14} />,
+          },
+        ],
+      },
+    ],
+    [canSeePendingApprovals, isPending, pendingCount],
+  );
 
   const { mutateAsync } = useMutation({
     mutationFn: getEmployees,
@@ -200,6 +222,14 @@ const Sidebar = ({
       toggleMenu(item.name);
     } else {
       if (item.name === "Employee Management") await mutateAsync();
+
+      // Optional: If going to approvals, refresh badge
+      if (item.path === "/app/cto-approvals" && canSeePendingApprovals) {
+        queryClient.invalidateQueries({
+          queryKey: ["ctoPendingCount", admin?.id],
+        });
+      }
+
       safeNavigate(item.path);
       if (window.innerWidth < 1024) setMobileOpen(false);
     }
@@ -326,6 +356,16 @@ const Sidebar = ({
                       <div
                         key={sub.name}
                         onClick={() => {
+                          // Optional: refresh pending count when opening approvals
+                          if (
+                            sub.path === "/app/cto-approvals" &&
+                            canSeePendingApprovals
+                          ) {
+                            queryClient.invalidateQueries({
+                              queryKey: ["ctoPendingCount", admin?.id],
+                            });
+                          }
+
                           safeNavigate(sub.path);
                           if (window.innerWidth < 1024) setMobileOpen(false);
                         }}
@@ -388,6 +428,16 @@ const Sidebar = ({
                           <div
                             key={sub.name}
                             onClick={() => {
+                              // Optional: refresh pending count when opening approvals
+                              if (
+                                sub.path === "/app/cto-approvals" &&
+                                canSeePendingApprovals
+                              ) {
+                                queryClient.invalidateQueries({
+                                  queryKey: ["ctoPendingCount", admin?.id],
+                                });
+                              }
+
                               safeNavigate(sub.path);
                               setHoveredItem(null);
                             }}

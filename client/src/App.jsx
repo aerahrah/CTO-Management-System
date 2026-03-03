@@ -40,8 +40,12 @@ import BackupSettings from "./components/generalSettingsComponents/backupSetting
 import GeneralSettings from "./components/generalSettingsComponents/generalSettings";
 import WorkingDaysSettings from "./components/generalSettingsComponents/workingDaysSettings";
 
-// ✅ ADD THIS IMPORT
+// ✅ Email Notification Settings
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
+
+// ✅ User Preferences Settings (theme + accent)
+// NOTE: adjust the import path if you saved the file elsewhere.
+import UserPreferencesSettings from "./components/generalSettingsComponents/userPreferencesSetting";
 
 /* Profile */
 import MyProfile from "./components/userProfile/myProfile";
@@ -85,6 +89,12 @@ function App() {
 
             <Route path="admin" element={<AdminPage />} />
             <Route path="settings" element={<SettingsPage />} />
+
+            {/* ✅ ADD THIS ROUTE (available to all logged-in users) */}
+            <Route
+              path="user-preferences"
+              element={<UserPreferencesSettings />}
+            />
           </Route>
 
           {/* ===================== */}
@@ -98,12 +108,15 @@ function App() {
             />
             <Route path="employees/:id" element={<EmployeeInformation />} />
             <Route path="employees/:id/update" element={<AddEmployeeForm />} />
+
             <Route path="audit-logs" element={<AuditLogTable />} />
+
             <Route path="cto-credit" element={<CtoCredits />} />
             <Route
               path="cto-all-applications"
               element={<AllCtoApplications />}
             />
+
             <Route path="cto-records" element={<CtoRecords />}>
               <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
@@ -121,7 +134,7 @@ function App() {
             <Route path="general-settings" element={<WorkingDaysSettings />} />
             <Route path="session-settings" element={<GeneralSettings />} />
 
-            {/* ✅ ADD THIS ROUTE */}
+            {/* ✅ Email notification settings */}
             <Route
               path="email-notification-settings"
               element={<EmailNotificationSettings />}
@@ -129,7 +142,7 @@ function App() {
           </Route>
 
           {/* ===================== */}
-          {/* ADMIN + SUPERVISOR */}
+          {/* ADMIN + SUPERVISOR (and others in your config) */}
           {/* ===================== */}
           <Route
             element={

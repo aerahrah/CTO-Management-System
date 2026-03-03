@@ -239,6 +239,21 @@ const CtoApplicationDetailsSkeleton = () => (
 
         {/* SIDEBAR */}
         <aside className="space-y-4 min-w-0">
+          {/* Calendar skeleton card */}
+          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+            <div className="flex items-center justify-between">
+              <Skeleton height={12} width={120} borderRadius={8} />
+              <Skeleton height={28} width={90} borderRadius={10} />
+            </div>
+            <div className="mt-3 grid grid-cols-7 gap-2">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <Skeleton key={i} height={10} borderRadius={6} />
+              ))}
+              {Array.from({ length: 35 }).map((_, i) => (
+                <Skeleton key={i} height={30} borderRadius={10} />
+              ))}
+            </div>
+          </div>
           <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
             <div className="flex items-center justify-between gap-3">
               <Skeleton height={12} width={120} borderRadius={8} />
@@ -279,22 +294,6 @@ const CtoApplicationDetailsSkeleton = () => (
             {/* View all memos button */}
             <div className="mt-3">
               <Skeleton height={42} borderRadius={12} />
-            </div>
-          </div>
-
-          {/* Calendar skeleton card */}
-          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
-            <div className="flex items-center justify-between">
-              <Skeleton height={12} width={120} borderRadius={8} />
-              <Skeleton height={28} width={90} borderRadius={10} />
-            </div>
-            <div className="mt-3 grid grid-cols-7 gap-2">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <Skeleton key={i} height={10} borderRadius={6} />
-              ))}
-              {Array.from({ length: 35 }).map((_, i) => (
-                <Skeleton key={i} height={30} borderRadius={10} />
-              ))}
             </div>
           </div>
         </aside>
