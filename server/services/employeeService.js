@@ -362,14 +362,14 @@ const signInEmployeeService = async (username, password) => {
     throw httpError("Server misconfigured: JWT_SECRET is missing", 500);
   }
 
-  const payload = {
+  // ✅ token payload (minimal)
+  const tokenPayload = {
     id: employee._id,
     username: employee.username,
     designation: employee.designation,
     role: employee.role,
   };
 
-  // ✅ UPDATED: pull ONLY session settings (separated service)
   const sessionSettings = await getSessionSettings();
 
   const enabled =
@@ -379,7 +379,6 @@ const signInEmployeeService = async (username, password) => {
 
   const minutesRaw = Number(sessionSettings?.sessionTimeoutMinutes ?? 0);
 
-  // fallbacks (keep behavior stable even if settings doc is missing/invalid)
   const minutes =
     Number.isFinite(minutesRaw) && minutesRaw > 0
       ? Math.min(Math.max(Math.trunc(minutesRaw), 1), MAX_SESSION_MINUTES)
@@ -390,15 +389,23 @@ const signInEmployeeService = async (username, password) => {
     audience: process.env.JWT_AUDIENCE || "hrms-client",
   };
 
-  // ✅ if enabled -> set expiresIn
-  // ✅ if disabled -> DO NOT set expiresIn (token won't expire)
-  if (enabled) {
-    options.expiresIn = minutes * 60; // seconds
-  }
+  if (enabled) options.expiresIn = minutes * 60;
 
-  const token = jwt.sign(payload, process.env.JWT_SECRET, options);
+  const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, options);
 
-  return { token, payload };
+  // ✅ response payload (can be richer)
+  const responsePayload = {
+    ...tokenPayload,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    preferences: {
+      theme: employee.preferences?.theme ?? "system",
+      accent: employee.preferences?.accent ?? "blue",
+    },
+  };
+
+  // ✅ keep return shape that your app already expects
+  return { token, payload: responsePayload };
 };
 
 const updateEmployeeService = async (id, updateData) => {

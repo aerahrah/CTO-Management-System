@@ -5,32 +5,61 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../api/employee";
 import { fetchCtoApplicationsPendingRequest } from "../api/cto";
+import { useAuth } from "../store/authStore";
+import ScrollbarsSync from "./scrollbarSync";
+
 import {
   X,
-  UserRound, // For Employee Management
+  UserRound,
   Settings,
   Sliders,
-  Timer, // For CTO Service Parent
+  Timer,
   ChevronsLeft,
   ChevronsRight,
   LayoutDashboard,
   ChevronDown,
-  CirclePlus, // For Credit CTO
-  FileClock, // For My Records
-  PenLine, // For Apply Leave
-  Files, // For All Applications
-  UserCheck, // For Pending Approvals
-  Archive, // For All Records
-  ShieldCheck, // For Audit Logs
-  UserCircle, // For My Profile
-  MapPin, // For Office Locations
-  SlidersHorizontal, // For CTO Settings
-  FolderKanban, // Projects icon
-  HardDrive, // ✅ Backup & Restore icon
-  CalendarDays, // ✅ Working Day Settings icon
-  Mail, // ✅ Email Notification Settings icon
-  Palette, // ✅ NEW: User Preferences icon
+  CirclePlus,
+  FileClock,
+  PenLine,
+  Files,
+  UserCheck,
+  Archive,
+  ShieldCheck,
+  UserCircle,
+  MapPin,
+  SlidersHorizontal,
+  FolderKanban,
+  HardDrive,
+  CalendarDays,
+  Mail,
+  Palette,
 } from "lucide-react";
+
+/* =========================
+   Accent helpers (same as before)
+========================= */
+const ACCENT_HEX = {
+  blue: "#2563EB",
+  pink: "#DB2777",
+  green: "#16A34A",
+  violet: "#7C3AED",
+  amber: "#D97706",
+  teal: "#0D9488",
+  indigo: "#4F46E5",
+  rose: "#E11D48",
+  cyan: "#0891B2",
+  lime: "#65A30D",
+  orange: "#EA580C",
+};
+
+const hexToRgba = (hex, alpha = 1) => {
+  const h = String(hex || "").replace("#", "");
+  if (h.length !== 6) return `rgba(37,99,235,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
 
 const Sidebar = ({
   admin,
@@ -44,14 +73,43 @@ const Sidebar = ({
   const location = useLocation();
   const role = admin?.role;
 
-  // ✅ Only fetch pending count for roles that can actually see Pending Approvals
+  // ✅ Reusable scrollbar sync (themes html/body + any .app-scrollbar containers)
+  // (same pattern as UserPreferencesSettings)
+  // NOTE: This component injects the CSS once and updates --scroll-* vars from ThemeSync vars.
+  // It will theme this sidebar nav by adding `app-scrollbar` on the scroll container below.
+  // It also themes the main page scrollbar via html/body classes.
+  // eslint-disable-next-line react/jsx-no-useless-fragment
+  // (keep it rendered once here—sidebar is always mounted)
+  // (returns null)
+  // ✅
+  // ⬇
+  // (see JSX)
+  const preferences = useAuth((s) => s.preferences);
+
+  // Read prefs (accent is still used for active states)
+  const accentKey = preferences?.accent || "blue";
+  const accentHex = ACCENT_HEX[accentKey] || ACCENT_HEX.blue;
+
+  const accentVars = useMemo(() => {
+    const soft = hexToRgba(accentHex, 0.1);
+    const soft2 = hexToRgba(accentHex, 0.16);
+    const ring = hexToRgba(accentHex, 0.28);
+    return {
+      "--accent": accentHex,
+      "--accent-soft": soft,
+      "--accent-soft2": soft2,
+      "--accent-ring": ring,
+    };
+  }, [accentHex]);
+
+  const adminId = String(admin?.id || admin?._id || "");
   const canSeePendingApprovals = ["admin", "supervisor"].includes(role);
 
   const { data: pendingCount = 0, isPending } = useQuery({
-    queryKey: ["ctoPendingCount", admin?.id],
+    queryKey: ["ctoPendingCount", adminId],
     queryFn: fetchCtoApplicationsPendingRequest,
-    enabled: !!admin?.id && canSeePendingApprovals,
-    staleTime: 1000 * 30, // optional: 30s
+    enabled: !!adminId && canSeePendingApprovals,
+    staleTime: 1000 * 30,
   });
 
   const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);
@@ -60,7 +118,6 @@ const Sidebar = ({
   const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
   const [openMenus, setOpenMenus] = useState({});
 
-  // ✅ small security hardening: prevent accidental navigation outside your app base
   const safeNavigate = (path) => {
     if (typeof path !== "string") return;
     if (!path.startsWith("/app")) return;
@@ -134,15 +191,12 @@ const Sidebar = ({
         icon: <UserCircle size={18} />,
         path: "/app/my-profile",
       },
-
-      // ✅ NEW: User Preferences (Theme + Accent) - visible to ALL authenticated users
       {
         name: "Appearance",
         icon: <Palette size={18} />,
         path: "/app/user-preferences",
         roles: ["admin", "hr", "supervisor", "employee"],
       },
-
       {
         name: "Audit Logs",
         icon: <ShieldCheck size={18} />,
@@ -200,7 +254,6 @@ const Sidebar = ({
     onSuccess: (data) => queryClient.setQueryData(["employees"], data),
   });
 
-  // ✅ FIX: "/app" should only be active on EXACT "/app" (not "/app/anything")
   const normalize = (p) => (p || "").replace(/\/+$/, "") || "/";
   const isActive = (path, exact = false) => {
     const current = normalize(location.pathname);
@@ -223,10 +276,9 @@ const Sidebar = ({
     } else {
       if (item.name === "Employee Management") await mutateAsync();
 
-      // Optional: If going to approvals, refresh badge
       if (item.path === "/app/cto-approvals" && canSeePendingApprovals) {
         queryClient.invalidateQueries({
-          queryKey: ["ctoPendingCount", admin?.id],
+          queryKey: ["ctoPendingCount", adminId],
         });
       }
 
@@ -246,15 +298,24 @@ const Sidebar = ({
 
   return (
     <>
+      {/* ✅ Inject themed scrollbars + keep vars synced with ThemeSync */}
+      <ScrollbarsSync />
+
       {mobileOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 z-40 lg:hidden"
+          style={{
+            backgroundColor: "rgba(2,6,23,0.40)",
+            backdropFilter: "blur(4px)",
+          }}
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 bg-white border-r border-slate-200 flex flex-col transition-all duration-300 lg:sticky lg:top-0 lg:h-screen flex-shrink-0
+        style={accentVars}
+        className={`fixed inset-y-0 left-0 z-50 border-r flex flex-col transition-all duration-150 lg:sticky lg:top-0 lg:h-screen flex-shrink-0
+        bg-[color:var(--app-surface)] border-[color:var(--app-border)]
         ${collapsed ? "lg:w-20" : "lg:w-72"}
         ${
           mobileOpen
@@ -262,7 +323,7 @@ const Sidebar = ({
             : "-translate-x-full lg:translate-x-0"
         }`}
       >
-        <div className="flex flex-shrink-0 items-center h-14 justify-between px-4 border-b border-slate-100">
+        <div className="flex flex-shrink-0 items-center h-14 justify-between px-4 border-b border-[color:var(--app-border)]">
           {(!collapsed || mobileOpen) && (
             <img
               src="/logo_dict.png"
@@ -270,13 +331,23 @@ const Sidebar = ({
               className="w-24 select-none ml-2"
             />
           )}
+
           <button
             onClick={() =>
               mobileOpen ? setMobileOpen(false) : setCollapsed(!collapsed)
             }
-            className={`p-2 rounded-lg hover:bg-slate-100 transition text-slate-500 ${
+            className={`p-2 rounded-lg transition ${
               collapsed && !mobileOpen ? "mx-auto" : ""
             }`}
+            style={{
+              color: "var(--app-muted)",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.backgroundColor = "var(--accent-soft)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.backgroundColor = "transparent")
+            }
             type="button"
           >
             {mobileOpen ? (
@@ -289,7 +360,8 @@ const Sidebar = ({
           </button>
         </div>
 
-        <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto no-scrollbar">
+        {/* ✅ Use ScrollbarsSync styling by using .app-scrollbar on the scroll container */}
+        <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto no-scrollbar app-scrollbar">
           {filteredItems.map((item) => {
             const hasSubItems = item.subItems?.length > 0;
 
@@ -301,6 +373,9 @@ const Sidebar = ({
 
             const isOpen =
               isLockedOpenRole || openMenus[item.name] || isSubItemActive;
+
+            const activeMain =
+              isMainItemActive || (isSubItemActive && collapsed);
 
             return (
               <div key={item.name} className="relative group/main">
@@ -314,20 +389,31 @@ const Sidebar = ({
                     }
                   }}
                   onMouseLeave={() => setHoveredItem(null)}
+                  style={
+                    activeMain
+                      ? {
+                          backgroundColor: "var(--accent)",
+                          boxShadow:
+                            "0 18px 45px -28px var(--accent-ring), 0 10px 30px -20px rgba(2,6,23,0.28)",
+                          color: "#fff",
+                        }
+                      : {
+                          color: "var(--app-muted)",
+                        }
+                  }
                   className={`flex items-center py-2.5 px-3 rounded-xl cursor-pointer transition-all duration-200
                     ${collapsed && !mobileOpen ? "justify-center" : "gap-3"}
-                    ${
-                      isMainItemActive || (isSubItemActive && collapsed)
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-100"
-                        : "text-slate-600 hover:bg-slate-50 hover:text-blue-600"
-                    }
+                    ${activeMain ? "" : "hover:bg-[color:var(--accent-soft)]"}
                     ${isLockedOpenRole && hasSubItems ? "cursor-default" : ""}`}
                 >
                   <div
+                    style={{
+                      color: activeMain ? "#fff" : "var(--app-muted)",
+                    }}
                     className={
-                      isMainItemActive || (isSubItemActive && collapsed)
-                        ? "text-white"
-                        : "text-slate-400 group-hover/main:text-blue-600"
+                      activeMain
+                        ? ""
+                        : "group-hover/main:text-[color:var(--accent)]"
                     }
                   >
                     {item.icon}
@@ -335,13 +421,22 @@ const Sidebar = ({
 
                   {(!collapsed || mobileOpen) && (
                     <>
-                      <span className="font-semibold whitespace-nowrap text-sm flex-1">
+                      <span
+                        className="font-semibold whitespace-nowrap text-sm flex-1"
+                        style={{
+                          color: activeMain ? "#fff" : "var(--app-text)",
+                        }}
+                      >
                         {item.name}
                       </span>
+
                       {hasSubItems && !isLockedOpenRole && (
                         <ChevronDown
                           size={16}
-                          className={`transition-transform duration-300 ${
+                          style={{
+                            color: activeMain ? "#fff" : "var(--app-muted)",
+                          }}
+                          className={`transition-transform duration-150 ${
                             isOpen ? "rotate-180" : ""
                           }`}
                         />
@@ -351,55 +446,74 @@ const Sidebar = ({
                 </div>
 
                 {(!collapsed || mobileOpen) && hasSubItems && isOpen && (
-                  <div className="ml-3 mt-1 border-l-2 border-slate-100 pl-2 space-y-1">
-                    {item.subItems.map((sub) => (
-                      <div
-                        key={sub.name}
-                        onClick={() => {
-                          // Optional: refresh pending count when opening approvals
-                          if (
-                            sub.path === "/app/cto-approvals" &&
-                            canSeePendingApprovals
-                          ) {
-                            queryClient.invalidateQueries({
-                              queryKey: ["ctoPendingCount", admin?.id],
-                            });
-                          }
+                  <div className="ml-3 mt-1 border-l-2 pl-2 space-y-1 border-[color:var(--app-border)]">
+                    {item.subItems.map((sub) => {
+                      const subActive = isActive(sub.path, sub.exact);
 
-                          safeNavigate(sub.path);
-                          if (window.innerWidth < 1024) setMobileOpen(false);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
-                          ${
-                            isActive(sub.path, sub.exact)
-                              ? "text-blue-600 bg-blue-50"
-                              : "text-slate-500 hover:text-blue-600 hover:bg-slate-50"
-                          }`}
-                      >
-                        <span
-                          className={
-                            isActive(sub.path, sub.exact)
-                              ? "text-blue-600 bg-slate-50 border-slate-100 p-1.5 rounded-md"
-                              : "text-slate-400 bg-slate-50 p-1.5 rounded-md"
-                          }
-                        >
-                          {sub.icon}
-                        </span>
-                        <span className="flex-1">{sub.name}</span>
+                      return (
+                        <div
+                          key={sub.name}
+                          onClick={() => {
+                            if (
+                              sub.path === "/app/cto-approvals" &&
+                              canSeePendingApprovals
+                            ) {
+                              queryClient.invalidateQueries({
+                                queryKey: ["ctoPendingCount", adminId],
+                              });
+                            }
 
-                        {sub.badge !== undefined && sub.badge !== null && (
-                          <span
-                            className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                              sub.badge === "..."
-                                ? "bg-gray-300 text-gray-800 animate-pulse"
-                                : "bg-red-500 text-white"
+                            safeNavigate(sub.path);
+                            if (window.innerWidth < 1024) setMobileOpen(false);
+                          }}
+                          style={
+                            subActive
+                              ? { backgroundColor: "var(--accent-soft)" }
+                              : { color: "var(--app-muted)" }
+                          }
+                          className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
+                            ${
+                              subActive
+                                ? "text-[color:var(--accent)]"
+                                : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
                             }`}
+                        >
+                          <span
+                            className="bg-[color:var(--app-surface)]/60 border border-[color:var(--app-border)] p-1.5 rounded-md"
+                            style={{
+                              color: subActive
+                                ? "var(--accent)"
+                                : "var(--app-muted)",
+                            }}
                           >
-                            {sub.badge}
+                            {sub.icon}
                           </span>
-                        )}
-                      </div>
-                    ))}
+
+                          <span
+                            className="flex-1"
+                            style={{
+                              color: subActive
+                                ? "var(--accent)"
+                                : "var(--app-text)",
+                            }}
+                          >
+                            {sub.name}
+                          </span>
+
+                          {sub.badge !== undefined && sub.badge !== null && (
+                            <span
+                              className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                sub.badge === "..."
+                                  ? "bg-gray-300 text-gray-800 animate-pulse"
+                                  : "bg-red-500 text-white"
+                              }`}
+                            >
+                              {sub.badge}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -414,51 +528,71 @@ const Sidebar = ({
                         top: popupCoords.top,
                         left: popupCoords.left,
                         paddingLeft: "10px",
+                        ...accentVars,
                       }}
                       onMouseEnter={() => setHoveredItem(item.name)}
                       onMouseLeave={() => setHoveredItem(null)}
                       className="z-[100]"
                     >
-                      <div className="bg-white border border-slate-200 shadow-2xl rounded-2xl w-56 py-2 overflow-hidden">
-                        <div className="px-4 py-2 border-b border-slate-50 mb-1 text-[11px] font-bold text-slate-400 uppercase tracking-tight">
+                      <div className="border shadow-2xl rounded-2xl w-56 py-2 overflow-hidden bg-[color:var(--app-surface)] border-[color:var(--app-border)]">
+                        <div
+                          className="px-4 py-2 border-b mb-1 text-[11px] font-bold uppercase tracking-tight"
+                          style={{
+                            borderColor: "var(--app-border)",
+                            color: "var(--app-muted)",
+                          }}
+                        >
                           {item.name}
                         </div>
 
-                        {item.subItems.map((sub) => (
-                          <div
-                            key={sub.name}
-                            onClick={() => {
-                              // Optional: refresh pending count when opening approvals
-                              if (
-                                sub.path === "/app/cto-approvals" &&
-                                canSeePendingApprovals
-                              ) {
-                                queryClient.invalidateQueries({
-                                  queryKey: ["ctoPendingCount", admin?.id],
-                                });
-                              }
+                        {item.subItems.map((sub) => {
+                          const subActive = isActive(sub.path, sub.exact);
 
-                              safeNavigate(sub.path);
-                              setHoveredItem(null);
-                            }}
-                            className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${
-                              isActive(sub.path, sub.exact)
-                                ? "bg-blue-600 text-white"
-                                : "text-slate-600 hover:bg-slate-50 hover:text-blue-600"
-                            }`}
-                          >
-                            <span
-                              className={
-                                isActive(sub.path, sub.exact)
-                                  ? "text-white"
-                                  : "text-slate-400"
+                          return (
+                            <div
+                              key={sub.name}
+                              onClick={() => {
+                                if (
+                                  sub.path === "/app/cto-approvals" &&
+                                  canSeePendingApprovals
+                                ) {
+                                  queryClient.invalidateQueries({
+                                    queryKey: ["ctoPendingCount", adminId],
+                                  });
+                                }
+
+                                safeNavigate(sub.path);
+                                setHoveredItem(null);
+                              }}
+                              style={
+                                subActive
+                                  ? {
+                                      backgroundColor: "var(--accent)",
+                                      color: "#fff",
+                                      boxShadow:
+                                        "0 12px 28px -22px var(--accent-ring)",
+                                    }
+                                  : { color: "var(--app-muted)" }
                               }
+                              className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${
+                                subActive
+                                  ? ""
+                                  : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
+                              }`}
                             >
-                              {sub.icon}
-                            </span>
-                            {sub.name}
-                          </div>
-                        ))}
+                              <span
+                                style={{
+                                  color: subActive
+                                    ? "#fff"
+                                    : "var(--app-muted)",
+                                }}
+                              >
+                                {sub.icon}
+                              </span>
+                              {sub.name}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>,
                     document.body,
