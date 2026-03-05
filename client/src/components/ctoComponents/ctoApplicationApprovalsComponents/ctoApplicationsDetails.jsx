@@ -27,7 +27,7 @@ import {
   rejectApplicationRequest,
   getCtoApplicationById,
 } from "../../../api/cto";
-import Skeleton from "react-loading-skeleton";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { useNavigate, useParams } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -36,271 +36,429 @@ import { buildApiUrl } from "../../../config/env";
 
 import CtoApplicationPdfModal from "../ctoApplicationComponents/ctoApplicationPDFModal";
 
+// ✅ Theme + scrollbar sync
+import ThemeSync from "../../themeSync";
+import ScrollbarsSync from "../../../components/scrollbarSync";
+
+/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* ✅ Reactive resolved theme for system mode */
+function useResolvedTheme(prefTheme) {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined")
+      return prefTheme === "dark" ? "dark" : "light";
+    return resolveTheme(prefTheme);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (prefTheme !== "system") {
+      setTheme(prefTheme === "dark" ? "dark" : "light");
+      return;
+    }
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setTheme(mq.matches ? "dark" : "light");
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, [prefTheme]);
+
+  return theme;
+}
+
+/* =========================
+   Theme-aware icon chip styles (fixes "light-looking" icon pills in dark mode)
+========================= */
+function getIconChipStyle(kind, borderColor) {
+  const map = {
+    accent: {
+      bg: "var(--accent-soft)",
+      fg: "var(--accent)",
+      br: "var(--accent-soft2, rgba(37,99,235,0.18))",
+    },
+    green: {
+      bg: "rgba(34,197,94,0.14)",
+      fg: "#16a34a",
+      br: "rgba(34,197,94,0.22)",
+    },
+    red: {
+      bg: "rgba(239,68,68,0.14)",
+      fg: "#ef4444",
+      br: "rgba(239,68,68,0.22)",
+    },
+    amber: {
+      bg: "rgba(245,158,11,0.16)",
+      fg: "#d97706",
+      br: "rgba(245,158,11,0.26)",
+    },
+    slate: {
+      bg: "rgba(148,163,184,0.18)",
+      fg: "var(--app-text)",
+      br: "rgba(148,163,184,0.24)",
+    },
+    neutral: {
+      bg: "var(--app-surface-2)",
+      fg: "var(--app-muted)",
+      br: borderColor || "var(--app-border)",
+    },
+  };
+
+  return map[kind] || map.neutral;
+}
+
+function getOverallIconChipKind(overallStatus) {
+  const s = String(overallStatus || "").toUpperCase();
+  if (s === "APPROVED") return "green";
+  if (s === "REJECTED") return "red";
+  if (s === "CANCELLED") return "slate";
+  return "amber"; // pending/unknown
+}
+
 /* =========================
    LOADING SKELETON (FULL SCREEN INSIDE CARD)
 ========================= */
-const CtoApplicationDetailsSkeleton = () => (
-  <div
-    className="flex-1 h-full bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border border-gray-200"
-    aria-busy="true"
-    aria-label="Loading application details"
-  >
-    {/* HEADER */}
-    <header className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-300 backdrop-blur supports-[backdrop-filter]:bg-white px-3 sm:px-4 py-2 z-10">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
-        <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-          {/* avatar */}
-          <Skeleton height={48} width={48} borderRadius={12} />
-          <div className="min-w-0 flex-1">
-            {/* name */}
-            <Skeleton height={18} width={"55%"} />
-            {/* meta row */}
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Skeleton height={18} width={110} borderRadius={999} />
-              <Skeleton height={18} width={120} borderRadius={999} />
-              <Skeleton height={18} width={90} borderRadius={999} />
-            </div>
-          </div>
-        </div>
-      </div>
+const CtoApplicationDetailsSkeleton = ({ borderColor, resolvedTheme }) => {
+  const skeletonBase =
+    resolvedTheme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)";
+  const skeletonHighlight =
+    resolvedTheme === "dark" ? "rgba(255,255,255,0.10)" : "rgba(15,23,42,0.10)";
 
-      {/* action buttons */}
-      <div className="flex flex-row items-center gap-2 sm:gap-3 pt-1 bg-transparent rounded-xl w-full md:w-auto">
-        <Skeleton
-          height={40}
-          width={110}
-          borderRadius={12}
-          className="w-full sm:w-auto"
-        />
-        <Skeleton
-          height={40}
-          width={160}
-          borderRadius={12}
-          className="w-full sm:w-auto"
-        />
-      </div>
-    </header>
+  const baseColor = `var(--skeleton-base, ${skeletonBase})`;
+  const highlightColor = `var(--skeleton-highlight, ${skeletonHighlight})`;
 
-    {/* CONTENT */}
-    <div className="flex h-full flex-1 min-h-0 overflow-y-auto flex-col gap-4 px-3 sm:px-4 py-2">
-      {/* QUICK STATS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
-        {/* Requested Dates (big card) */}
-        <div className="md:col-span-2 rounded-xl p-4 sm:p-6 relative overflow-hidden shadow-sm shadow-blue-100 min-w-0 bg-gradient-to-br from-blue-600 to-blue-700">
-          <div className="absolute right-[-20px] top-[-20px] h-40 w-40 rounded-full bg-white/10" />
-          <div className="relative z-10 flex gap-3 justify-between items-center min-w-0">
-            <div className="min-w-0 flex-1">
-              <Skeleton
-                height={12}
-                width={140}
-                borderRadius={8}
-                baseColor="#1d4ed8"
-                highlightColor="#3b82f6"
-              />
-              <div className="mt-2">
-                <Skeleton
-                  height={26}
-                  width={"85%"}
-                  borderRadius={10}
-                  baseColor="#1d4ed8"
-                  highlightColor="#3b82f6"
-                />
-              </div>
-              <div className="mt-2">
-                <Skeleton
-                  height={18}
-                  width={"55%"}
-                  borderRadius={10}
-                  baseColor="#1d4ed8"
-                  highlightColor="#3b82f6"
-                />
-              </div>
-            </div>
+  const bgFallback =
+    resolvedTheme === "dark" ? "rgba(2,6,23,0.96)" : "rgba(245,245,245,0.80)";
 
-            <div className="flex items-center gap-4 flex-none">
-              <div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl">
-                <Skeleton
-                  height={10}
-                  width={90}
-                  borderRadius={8}
-                  baseColor="#1d4ed8"
-                  highlightColor="#3b82f6"
-                />
-                <div className="mt-2">
-                  <Skeleton
-                    height={22}
-                    width={70}
-                    borderRadius={10}
-                    baseColor="#1d4ed8"
-                    highlightColor="#3b82f6"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Global Status (small card) */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0">
-          <Skeleton height={56} width={56} borderRadius={18} />
-          <div className="text-start min-w-0 flex-1">
-            <Skeleton height={12} width={120} borderRadius={8} />
-            <div className="mt-2">
-              <Skeleton height={22} width={140} borderRadius={10} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
-        {/* MAIN */}
-        <div className="lg:col-span-2 space-y-4 min-w-0">
-          {/* Purpose of Leave */}
-          <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
-            <div className="flex items-center gap-3 mb-6">
-              <Skeleton height={40} width={40} borderRadius={12} />
-              <Skeleton height={12} width={170} borderRadius={8} />
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
-              <Skeleton height={12} width={"92%"} />
-              <div className="mt-2">
-                <Skeleton height={12} width={"88%"} />
-              </div>
-              <div className="mt-2">
-                <Skeleton height={12} width={"80%"} />
-              </div>
-              <div className="mt-2">
-                <Skeleton height={12} width={"60%"} />
-              </div>
-            </div>
-          </section>
-
-          {/* Timeline */}
-          <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
-            <div className="flex items-center gap-3 mb-6">
-              <Skeleton height={40} width={40} borderRadius={12} />
+  return (
+    <div
+      className="flex-1 h-full rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border"
+      aria-busy="true"
+      aria-label="Loading application details"
+      style={{
+        backgroundColor: `var(--app-bg, ${bgFallback})`,
+        color: "var(--app-text, #0f172a)",
+        borderColor: borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+      }}
+    >
+      <SkeletonTheme baseColor={baseColor} highlightColor={highlightColor}>
+        <header
+          className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b backdrop-blur px-3 sm:px-4 py-2 z-10"
+          style={{
+            backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+            borderColor:
+              borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+          }}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <Skeleton height={48} width={48} borderRadius={12} />
               <div className="min-w-0 flex-1">
-                <Skeleton height={12} width={170} borderRadius={8} />
-                <div className="mt-2">
-                  <Skeleton height={12} width={210} borderRadius={8} />
+                <Skeleton height={18} width={"55%"} />
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Skeleton height={18} width={110} borderRadius={999} />
+                  <Skeleton height={18} width={120} borderRadius={999} />
+                  <Skeleton height={18} width={90} borderRadius={999} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-row items-center gap-2 sm:gap-3 pt-1 bg-transparent rounded-xl w-full md:w-auto">
+            <Skeleton height={40} width={110} borderRadius={12} />
+            <Skeleton height={40} width={160} borderRadius={12} />
+          </div>
+        </header>
+
+        <div
+          className="flex h-full flex-1 min-h-0 overflow-y-auto app-scrollbar flex-col gap-4 px-3 sm:px-4 py-2"
+          style={{ backgroundColor: "transparent" }}
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
+            <div
+              className="md:col-span-2 rounded-xl p-4 sm:p-6 relative overflow-hidden shadow-sm min-w-0"
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--accent, #2563eb) 0%, rgba(255,255,255,0.16) 140%)",
+              }}
+            >
+              <div
+                className="absolute right-[-20px] top-[-20px] h-40 w-40 rounded-full"
+                style={{ backgroundColor: "rgba(255,255,255,0.10)" }}
+              />
+              <div className="relative z-10 flex gap-3 justify-between items-center min-w-0">
+                <div className="min-w-0 flex-1">
+                  <Skeleton height={12} width={140} borderRadius={8} />
+                  <div className="mt-2">
+                    <Skeleton height={26} width={"85%"} borderRadius={10} />
+                  </div>
+                  <div className="mt-2">
+                    <Skeleton height={18} width={"55%"} borderRadius={10} />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 flex-none">
+                  <div
+                    className="backdrop-blur-md px-4 py-2 rounded-xl"
+                    style={{ backgroundColor: "rgba(255,255,255,0.20)" }}
+                  >
+                    <Skeleton height={10} width={90} borderRadius={8} />
+                    <div className="mt-2">
+                      <Skeleton height={22} width={70} borderRadius={10} />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
-              <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
+            <div
+              className="border rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0"
+              style={{
+                backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+                borderColor:
+                  borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+              }}
+            >
+              <Skeleton height={56} width={56} borderRadius={18} />
+              <div className="text-start min-w-0 flex-1">
+                <Skeleton height={12} width={120} borderRadius={8} />
+                <div className="mt-2">
+                  <Skeleton height={22} width={140} borderRadius={10} />
+                </div>
+              </div>
+            </div>
+          </div>
 
-              {Array.from({ length: 3 }).map((_, idx) => (
+          {/* rest of skeleton unchanged */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+            <div className="lg:col-span-2 space-y-4 min-w-0">
+              <section
+                className="border rounded-xl p-3 shadow-sm min-w-0"
+                style={{
+                  backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+                  borderColor:
+                    borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+                }}
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <Skeleton height={40} width={40} borderRadius={12} />
+                  <Skeleton height={12} width={170} borderRadius={8} />
+                </div>
+
                 <div
-                  key={idx}
-                  className="relative flex gap-2 sm:gap-4 items-start min-w-0"
+                  className="p-4 rounded-2xl border"
+                  style={{
+                    backgroundColor:
+                      "var(--app-surface-2, rgba(15,23,42,0.03))",
+                    borderColor:
+                      borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+                  }}
                 >
-                  <div className="relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md flex-none bg-gray-100">
-                    <Skeleton height={16} width={16} borderRadius={6} />
+                  <Skeleton height={12} width={"92%"} />
+                  <div className="mt-2">
+                    <Skeleton height={12} width={"88%"} />
                   </div>
+                  <div className="mt-2">
+                    <Skeleton height={12} width={"80%"} />
+                  </div>
+                  <div className="mt-2">
+                    <Skeleton height={12} width={"60%"} />
+                  </div>
+                </div>
+              </section>
 
-                  <div className="flex-1 bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 shadow-xs min-w-0">
-                    <div className="flex items-start justify-between gap-3 min-w-0">
-                      <div className="min-w-0 flex-1">
-                        <Skeleton height={10} width={90} borderRadius={8} />
-                        <div className="mt-2">
+              <section
+                className="border rounded-xl p-3 shadow-sm min-w-0"
+                style={{
+                  backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+                  borderColor:
+                    borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+                }}
+              >
+                <div className="flex items-center gap-3 mb-6">
+                  <Skeleton height={40} width={40} borderRadius={12} />
+                  <div className="min-w-0 flex-1">
+                    <Skeleton height={12} width={170} borderRadius={8} />
+                    <div className="mt-2">
+                      <Skeleton height={12} width={210} borderRadius={8} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
+                  <div
+                    className="absolute left-5 top-2 bottom-2 w-0.5"
+                    style={{
+                      backgroundColor: "var(--app-border, rgba(15,23,42,0.10))",
+                    }}
+                  />
+
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="relative flex gap-2 sm:gap-4 items-start min-w-0"
+                    >
+                      <div
+                        className="relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 shadow-md flex-none"
+                        style={{
+                          borderColor:
+                            "var(--app-surface, rgba(255,255,255,0.9))",
+                          backgroundColor:
+                            "var(--app-surface-2, rgba(15,23,42,0.03))",
+                        }}
+                      >
+                        <Skeleton height={16} width={16} borderRadius={6} />
+                      </div>
+
+                      <div
+                        className="flex-1 border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0"
+                        style={{
+                          backgroundColor:
+                            "var(--app-surface, rgba(255,255,255,0.9))",
+                          borderColor:
+                            borderColor ||
+                            "var(--app-border, rgba(15,23,42,0.10))",
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3 min-w-0">
+                          <div className="min-w-0 flex-1">
+                            <Skeleton height={10} width={90} borderRadius={8} />
+                            <div className="mt-2">
+                              <Skeleton
+                                height={14}
+                                width={"55%"}
+                                borderRadius={8}
+                              />
+                            </div>
+                            <div className="mt-2">
+                              <Skeleton
+                                height={12}
+                                width={"45%"}
+                                borderRadius={8}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex-none">
+                            <Skeleton
+                              height={22}
+                              width={90}
+                              borderRadius={999}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="mt-4">
+                          <Skeleton height={12} width={"92%"} />
+                          <div className="mt-2">
+                            <Skeleton height={12} width={"78%"} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <aside className="space-y-4 min-w-0">
+              <div
+                className="border rounded-xl p-3 shadow-sm min-w-0"
+                style={{
+                  backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+                  borderColor:
+                    borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <Skeleton height={12} width={120} borderRadius={8} />
+                  <Skeleton height={28} width={90} borderRadius={10} />
+                </div>
+                <div className="mt-3 grid grid-cols-7 gap-2">
+                  {Array.from({ length: 7 }).map((_, i) => (
+                    <Skeleton key={i} height={10} borderRadius={6} />
+                  ))}
+                  {Array.from({ length: 35 }).map((_, i) => (
+                    <Skeleton key={i} height={30} borderRadius={10} />
+                  ))}
+                </div>
+              </div>
+
+              <div
+                className="border rounded-xl p-2 sm:p-3 shadow-sm min-w-0"
+                style={{
+                  backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+                  borderColor:
+                    borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+                }}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <Skeleton height={12} width={120} borderRadius={8} />
+                </div>
+
+                <div className="mt-3">
+                  <Skeleton height={46} borderRadius={12} />
+                </div>
+
+                <div className="mt-5 md:mt-7 flex items-center justify-between gap-3">
+                  <Skeleton height={12} width={150} borderRadius={8} />
+                  <Skeleton height={18} width={28} borderRadius={999} />
+                </div>
+
+                <div className="mt-2 space-y-1.5">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 border border-transparent"
+                      style={{ backgroundColor: "transparent" }}
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <Skeleton height={32} width={32} borderRadius={10} />
+                        <div className="min-w-0 flex-1">
                           <Skeleton
                             height={14}
-                            width={"55%"}
+                            width={"60%"}
                             borderRadius={8}
                           />
+                          <div className="mt-2">
+                            <Skeleton
+                              height={11}
+                              width={"45%"}
+                              borderRadius={8}
+                            />
+                          </div>
                         </div>
-                        <div className="mt-2">
-                          <Skeleton
-                            height={12}
-                            width={"45%"}
-                            borderRadius={8}
-                          />
-                        </div>
                       </div>
-                      <div className="flex-none">
-                        <Skeleton height={22} width={90} borderRadius={999} />
-                      </div>
+                      <Skeleton height={14} width={14} borderRadius={4} />
                     </div>
-
-                    <div className="mt-4">
-                      <Skeleton height={12} width={"92%"} />
-                      <div className="mt-2">
-                        <Skeleton height={12} width={"78%"} />
-                      </div>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
+
+                <div className="mt-3">
+                  <Skeleton height={42} borderRadius={12} />
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
-
-        {/* SIDEBAR */}
-        <aside className="space-y-4 min-w-0">
-          {/* Calendar skeleton card */}
-          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
-            <div className="flex items-center justify-between">
-              <Skeleton height={12} width={120} borderRadius={8} />
-              <Skeleton height={28} width={90} borderRadius={10} />
-            </div>
-            <div className="mt-3 grid grid-cols-7 gap-2">
-              {Array.from({ length: 7 }).map((_, i) => (
-                <Skeleton key={i} height={10} borderRadius={6} />
-              ))}
-              {Array.from({ length: 35 }).map((_, i) => (
-                <Skeleton key={i} height={30} borderRadius={10} />
-              ))}
-            </div>
-          </div>
-          <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
-            <div className="flex items-center justify-between gap-3">
-              <Skeleton height={12} width={120} borderRadius={8} />
-            </div>
-
-            {/* Application Form button */}
-            <div className="mt-3">
-              <Skeleton height={46} borderRadius={12} />
-            </div>
-
-            {/* Supporting Memos header */}
-            <div className="mt-5 md:mt-7 flex items-center justify-between gap-3">
-              <Skeleton height={12} width={150} borderRadius={8} />
-              <Skeleton height={18} width={28} borderRadius={999} />
-            </div>
-
-            {/* memo items */}
-            <div className="mt-2 space-y-1.5">
-              {Array.from({ length: 3 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 border border-transparent"
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <Skeleton height={32} width={32} borderRadius={10} />
-                    <div className="min-w-0 flex-1">
-                      <Skeleton height={14} width={"60%"} borderRadius={8} />
-                      <div className="mt-2">
-                        <Skeleton height={11} width={"45%"} borderRadius={8} />
-                      </div>
-                    </div>
-                  </div>
-                  <Skeleton height={14} width={14} borderRadius={4} />
-                </div>
-              ))}
-            </div>
-
-            {/* View all memos button */}
-            <div className="mt-3">
-              <Skeleton height={42} borderRadius={12} />
-            </div>
-          </div>
-        </aside>
-      </div>
+      </SkeletonTheme>
     </div>
-  </div>
-);
+  );
+};
 
 /* =========================
    MEDIA HOOK
@@ -329,47 +487,26 @@ function useIsXlUp() {
 }
 
 /* =========================
-   Status helpers (CANCELLED-aware)
+   Status helpers (CANCELLED-aware) - theme-aware (icon pills + label pills)
 ========================= */
 const STATUS_META = {
-  APPROVED: { label: "APPROVED", tone: "emerald" },
-  REJECTED: { label: "REJECTED", tone: "rose" },
+  APPROVED: { label: "APPROVED", tone: "green" },
+  REJECTED: { label: "REJECTED", tone: "red" },
   PENDING: { label: "PENDING", tone: "amber" },
   CANCELLED: { label: "CANCELLED", tone: "slate" },
 };
 
-const getToneClasses = (tone) => {
-  switch (tone) {
-    case "emerald":
-      return {
-        pill: "bg-emerald-50 text-emerald-700 border-emerald-100",
-        chip: "bg-emerald-50 text-emerald-700",
-        iconWrap: "bg-emerald-50 text-emerald-600",
-      };
-    case "rose":
-      return {
-        pill: "bg-rose-50 text-rose-700 border-rose-100",
-        chip: "bg-rose-50 text-rose-700",
-        iconWrap: "bg-rose-50 text-rose-600",
-      };
-    case "slate":
-      return {
-        pill: "bg-slate-50 text-slate-700 border-slate-200",
-        chip: "bg-slate-50 text-slate-700",
-        iconWrap: "bg-slate-50 text-slate-600",
-      };
-    case "amber":
-    default:
-      return {
-        pill: "bg-amber-50 text-amber-700 border-amber-100",
-        chip: "bg-amber-50 text-amber-700",
-        iconWrap: "bg-amber-50 text-amber-600",
-      };
-  }
+const getTonePillStyle = (tone, borderColor) => {
+  const t = getIconChipStyle(tone, borderColor);
+  return {
+    backgroundColor: t.bg,
+    color: t.fg,
+    borderColor: t.br,
+  };
 };
 
 /* =========================
-   Timeline helpers (DESIGN ONLY)
+   Timeline helpers (icons are fine; dot backgrounds are colored)
 ========================= */
 const StepDotIcon = ({ status }) => {
   const s = String(status || "").toUpperCase();
@@ -385,49 +522,82 @@ const StepDotClass = (status) => {
   if (s === "APPROVED") return "bg-emerald-500";
   if (s === "REJECTED") return "bg-red-500";
   if (s === "CANCELLED") return "bg-slate-400";
-  return "bg-gray-200";
+  // ✅ neutral dot uses border/surface so it doesn't look “light blob” on dark
+  return "bg-[color:var(--app-border)]";
 };
 
-// --- Helper: Timeline Card (Updated design only) ---
+// --- Helper: Timeline Card ---
 const TimelineCard = ({ approval, index, isLast }) => {
   const status = String(approval?.status || "").toUpperCase();
   const isDenied = status === "REJECTED";
   const isPending = status === "PENDING";
   const isCancelled = status === "CANCELLED";
 
+  const noteStyle = isDenied
+    ? { bg: "rgba(239,68,68,0.10)", br: "rgba(239,68,68,0.20)", fg: "#ef4444" }
+    : isCancelled
+      ? {
+          bg: "rgba(148,163,184,0.14)",
+          br: "rgba(148,163,184,0.22)",
+          fg: "var(--app-text)",
+        }
+      : {
+          bg: "var(--app-surface-2)",
+          br: "var(--app-border)",
+          fg: "var(--app-text)",
+        };
+
   return (
     <div className="relative flex gap-2 sm:gap-4 items-start min-w-0">
       {!isLast && (
-        <div className="absolute left-5 top-10 bottom-0 w-0.5 bg-gray-100" />
+        <div
+          className="absolute left-5 top-10 bottom-0 w-0.5"
+          style={{ backgroundColor: "var(--app-border)" }}
+        />
       )}
 
       <div
-        className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 border-white shadow-md transition-transform hover:scale-110 flex-none ${StepDotClass(
+        className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 shadow-md transition-transform hover:scale-110 flex-none ${StepDotClass(
           status,
         )}`}
+        style={{ borderColor: "var(--app-surface)" }}
         title={status}
       >
         <StepDotIcon status={status} />
       </div>
 
       <div
-        className={`flex-1 bg-white border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0 transition-all ${
-          isPending ? "border-gray-100 opacity-90" : "border-gray-200"
+        className={`flex-1 border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0 transition-all ${
+          isPending ? "opacity-90" : ""
         }`}
+        style={{
+          backgroundColor: "var(--app-surface)",
+          borderColor: "var(--app-border)",
+        }}
       >
         <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+              <span
+                className="text-xs font-bold uppercase tracking-wider"
+                style={{ color: "var(--app-muted)" }}
+              >
                 Approver {index + 1}
               </span>
             </div>
 
-            <p className="text-sm font-semibold text-gray-900 break-words mt-1">
+            <p
+              className="text-sm font-semibold break-words mt-1"
+              style={{ color: "var(--app-text)" }}
+            >
               {approval.approver?.firstName} {approval.approver?.lastName}
             </p>
 
-            <p className="text-xs text-blue-700 font-medium break-words">
+            {/* ✅ icon/text accent is theme-aware */}
+            <p
+              className="text-xs font-medium break-words"
+              style={{ color: "var(--accent)" }}
+            >
               {approval.approver?.position || "Approver"}
             </p>
           </div>
@@ -438,7 +608,14 @@ const TimelineCard = ({ approval, index, isLast }) => {
         </div>
 
         {isCancelled && !approval?.remarks ? (
-          <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-start gap-2 min-w-0">
+          <div
+            className="mt-4 rounded-xl text-xs flex items-start gap-2 min-w-0 border p-3"
+            style={{
+              backgroundColor: "rgba(148,163,184,0.14)",
+              borderColor: "rgba(148,163,184,0.22)",
+              color: "var(--app-text)",
+            }}
+          >
             <Ban size={14} className="shrink-0 mt-0.5" />
             <p className="break-words">
               <strong>Auto-cancelled:</strong> A previous approver rejected this
@@ -449,13 +626,12 @@ const TimelineCard = ({ approval, index, isLast }) => {
 
         {approval?.remarks && String(approval.remarks).trim() !== "" && (
           <div
-            className={`mt-4 rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2 min-w-0 ${
-              isDenied
-                ? "bg-red-50 border-red-100 text-red-700"
-                : isCancelled
-                  ? "bg-slate-50 border-slate-200 text-slate-700"
-                  : "bg-gray-50 border-gray-200 text-gray-700"
-            }`}
+            className="mt-4 rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2 min-w-0"
+            style={{
+              backgroundColor: noteStyle.bg,
+              borderColor: noteStyle.br,
+              color: noteStyle.fg,
+            }}
           >
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
             <p className="break-words">
@@ -469,7 +645,7 @@ const TimelineCard = ({ approval, index, isLast }) => {
 };
 
 /* =========================
-   Calendar helpers + component
+   Calendar helpers + component (unchanged)
 ========================= */
 const pad2 = (n) => String(n).padStart(2, "0");
 
@@ -484,7 +660,6 @@ const toDateKeyLocal = (dateLike) => {
 
 const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
-
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
 const isSameDay = (a, b) =>
@@ -515,7 +690,6 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
   );
 
   useEffect(() => {
-    // jump calendar to earliest requested month whenever dates change
     if (earliestRequested) setViewMonth(startOfMonth(earliestRequested));
   }, [earliestRequested]);
 
@@ -532,18 +706,15 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
     const first = startOfMonth(viewMonth);
     const last = endOfMonth(viewMonth);
 
-    // Sunday=0 ... Saturday=6
     const leadingBlanks = first.getDay();
     const daysInMonth = last.getDate();
 
     const cells = [];
 
-    // leading empty cells
     for (let i = 0; i < leadingBlanks; i++) {
       cells.push({ type: "blank", key: `b-${i}` });
     }
 
-    // day cells
     for (let day = 1; day <= daysInMonth; day++) {
       const d = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
       const key = toDateKeyLocal(d);
@@ -561,7 +732,6 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
       });
     }
 
-    // trailing blanks to complete rows (optional but makes layout even)
     const remainder = cells.length % 7;
     if (remainder !== 0) {
       const trailing = 7 - remainder;
@@ -578,8 +748,6 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
     const m = viewMonth.getMonth();
     let count = 0;
     requestedKeys.forEach((k) => {
-      const d = new Date(k);
-      // if parsing "YYYY-MM-DD" becomes UTC in some environments, we still handle via split:
       const [yy, mm] = k.split("-").map((x) => Number(x));
       if (!yy || !mm) return;
       const monthIdx = mm - 1;
@@ -591,13 +759,26 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
   const hasAnyDates = requestedKeys.size > 0;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
+    <div
+      className="border rounded-xl p-2 sm:p-3 shadow-sm min-w-0"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor: "var(--app-border)",
+        color: "var(--app-text)",
+      }}
+    >
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+          <h4
+            className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: "var(--app-muted)" }}
+          >
             Calendar
           </h4>
-          <p className="text-[11px] text-gray-500 font-medium">
+          <p
+            className="text-[11px] font-medium"
+            style={{ color: "var(--app-muted)" }}
+          >
             Requested dates highlighted
           </p>
         </div>
@@ -606,19 +787,21 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
           <button
             type="button"
             onClick={() => setViewMonth((d) => addMonths(d, -1))}
-            className="h-9 w-9 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="h-9 w-9 rounded-xl border bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2"
+            style={{ borderColor: "var(--app-border)" }}
             title="Previous month"
           >
-            <ChevronLeft size={16} className="text-gray-700" />
+            <ChevronLeft size={16} style={{ color: "var(--app-text)" }} />
           </button>
 
           <button
             type="button"
             onClick={() => setViewMonth((d) => addMonths(d, 1))}
-            className="h-9 w-9 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="h-9 w-9 rounded-xl border bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2"
+            style={{ borderColor: "var(--app-border)" }}
             title="Next month"
           >
-            <ChevronRight size={16} className="text-gray-700" />
+            <ChevronRight size={16} style={{ color: "var(--app-text)" }} />
           </button>
 
           <button
@@ -627,11 +810,15 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
             onClick={() =>
               earliestRequested && setViewMonth(startOfMonth(earliestRequested))
             }
-            className={`h-9 px-2.5 rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 inline-flex items-center gap-1.5 ${
+            className={`h-9 px-2.5 rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 inline-flex items-center gap-1.5 ${
               earliestRequested
-                ? "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
-                : "border-gray-200 bg-gray-50 text-gray-300 cursor-not-allowed"
+                ? "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]"
+                : "bg-[color:var(--app-surface-2)] cursor-not-allowed opacity-60"
             }`}
+            style={{
+              borderColor: "var(--app-border)",
+              color: earliestRequested ? "var(--app-text)" : "var(--app-muted)",
+            }}
             title="Jump to requested month"
           >
             <RotateCcw size={14} />
@@ -642,14 +829,27 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
 
       <div className="mt-3 flex md:flex-col items-center md:items-start justify-between gap-2">
         <div className="inline-flex items-center gap-2 min-w-0">
-          <span className="h-9 w-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 flex-none">
+          <span
+            className="h-9 w-9 rounded-xl flex items-center justify-center border flex-none"
+            style={{
+              backgroundColor: "var(--accent-soft)",
+              color: "var(--accent)",
+              borderColor: "var(--accent-soft2)",
+            }}
+          >
             <CalendarDays size={16} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-bold text-gray-900 truncate">
+            <p
+              className="text-sm font-bold truncate"
+              style={{ color: "var(--app-text)" }}
+            >
               {monthLabel}
             </p>
-            <p className="text-[11px] text-gray-500 font-medium">
+            <p
+              className="text-[11px] font-medium"
+              style={{ color: "var(--app-muted)" }}
+            >
               {hasAnyDates
                 ? `${requestedCountThisMonth} requested day${
                     requestedCountThisMonth === 1 ? "" : "s"
@@ -660,27 +860,36 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
         </div>
 
         <div className="flex items-center gap-2 flex-none">
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-gray-600 bg-gray-50 border border-gray-200 px-2 py-1 rounded-lg">
-            <span className="h-2.5 w-2.5 rounded-full bg-blue-600" />
+          <span
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg border"
+            style={{
+              color: "var(--app-muted)",
+              backgroundColor: "var(--app-surface-2)",
+              borderColor: "var(--app-border)",
+            }}
+          >
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: "var(--accent)" }}
+            />
             Requested
           </span>
         </div>
       </div>
 
       <div className="mt-3">
-        {/* Day names */}
         <div className="grid grid-cols-7 gap-1.5">
           {dayNames.map((dn) => (
             <div
               key={dn}
-              className="text-[10px] font-bold text-gray-400 uppercase tracking-wider text-center py-1"
+              className="text-[10px] font-bold uppercase tracking-wider text-center py-1"
+              style={{ color: "var(--app-muted)" }}
             >
               {dn}
             </div>
           ))}
         </div>
 
-        {/* Calendar grid */}
         <div className="mt-1.5 grid grid-cols-7 gap-1.5">
           {grid.map((cell, idx) => {
             if (cell.type === "blank") {
@@ -694,10 +903,7 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
 
             const base =
               "h-9 rounded-xl border text-sm font-semibold flex items-center justify-center transition select-none";
-            const requested =
-              "bg-blue-600 text-white border-blue-600 shadow-sm";
-            const normal =
-              "bg-white text-gray-800 border-gray-200 hover:bg-gray-50";
+            const requested = "shadow-sm";
             const todayRing = "ring-2 ring-blue-200 ring-offset-2";
 
             return (
@@ -705,9 +911,18 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
                 key={cell.key || `d-${idx}`}
                 className={[
                   base,
-                  cell.isRequested ? requested : normal,
+                  cell.isRequested ? requested : "",
                   cell.isToday ? todayRing : "",
                 ].join(" ")}
+                style={{
+                  backgroundColor: cell.isRequested
+                    ? "var(--accent)"
+                    : "var(--app-surface)",
+                  color: cell.isRequested ? "#fff" : "var(--app-text)",
+                  borderColor: cell.isRequested
+                    ? "var(--accent)"
+                    : "var(--app-border)",
+                }}
                 title={
                   cell.isRequested
                     ? "Requested date"
@@ -728,8 +943,17 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
         </div>
 
         {!hasAnyDates ? (
-          <div className="mt-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-center">
-            <p className="text-xs text-gray-500 font-medium">
+          <div
+            className="mt-3 rounded-xl border border-dashed px-3 py-3 text-center"
+            style={{
+              borderColor: "var(--app-border)",
+              backgroundColor: "var(--app-surface-2)",
+            }}
+          >
+            <p
+              className="text-xs font-medium"
+              style={{ color: "var(--app-muted)" }}
+            >
               No dates to highlight
             </p>
           </div>
@@ -742,18 +966,25 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
 const CtoApplicationDetails = () => {
   const { admin } = useAuth();
   const { id } = useParams();
-  const navigate = useNavigate();
+  const navigate = useNavigate(); // (kept if you use it elsewhere)
   const queryClient = useQueryClient();
 
   const isXlUp = useIsXlUp();
+
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useResolvedTheme(prefTheme);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
 
   const [isProcessed, setIsProcessed] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
-
-  // ✅ PDF modal state
   const [isPdfOpen, setIsPdfOpen] = useState(false);
 
   const {
@@ -768,7 +999,6 @@ const CtoApplicationDetails = () => {
     enabled: !!admin?.id && !!id,
   });
 
-  // ✅ IMPORTANT: keep hooks above any early return
   const requestedDatesLabel = useMemo(() => {
     const dates = application?.inclusiveDates || [];
     if (!dates.length) return "No dates set";
@@ -790,7 +1020,6 @@ const CtoApplicationDetails = () => {
     );
   }, [application?.approvals]);
 
-  // Approve mutation
   const approveMutation = useMutation({
     mutationFn: (applicationId) => approveApplicationRequest(applicationId),
     onSuccess: () => {
@@ -804,7 +1033,6 @@ const CtoApplicationDetails = () => {
     onError: (err) => toast.error(err.message || "Failed to approve."),
   });
 
-  // Reject mutation
   const rejectMutation = useMutation({
     mutationFn: ({ applicationId, remarks }) =>
       rejectApplicationRequest(applicationId, remarks),
@@ -843,15 +1071,43 @@ const CtoApplicationDetails = () => {
     setIsPdfOpen(false);
   }, [application]);
 
-  // --------- EARLY RETURNS ----------
-  if (isLoading) return <CtoApplicationDetailsSkeleton />;
-  if (isError) return <p>Error: {error?.message}</p>;
+  if (isLoading)
+    return (
+      <>
+        <ThemeSync />
+        <ScrollbarsSync />
+        <CtoApplicationDetailsSkeleton
+          borderColor={borderColor}
+          resolvedTheme={resolvedTheme}
+        />
+      </>
+    );
+
+  if (isError)
+    return (
+      <>
+        <ThemeSync />
+        <ScrollbarsSync />
+        <p style={{ color: "var(--app-muted)" }}>Error: {error?.message}</p>
+      </>
+    );
 
   if (!application)
     return (
-      <div className="flex flex-col items-center justify-center py-40 bg-gray-50/50 rounded-xl border-2 border-dashed border-gray-200 m-4 sm:m-6">
-        <FileText className="h-10 w-10 text-gray-300" />
-        <h3 className="text-gray-900 font-semibold">No Application Found</h3>
+      <div
+        className="flex flex-col items-center justify-center py-40 rounded-xl border-2 border-dashed m-4 sm:m-6"
+        style={{
+          backgroundColor: "var(--app-surface-2)",
+          borderColor: "var(--app-border)",
+          color: "var(--app-text)",
+        }}
+      >
+        <ThemeSync />
+        <ScrollbarsSync />
+        <FileText className="h-10 w-10" style={{ color: "var(--app-muted)" }} />
+        <h3 className="font-semibold" style={{ color: "var(--app-text)" }}>
+          No Application Found
+        </h3>
       </div>
     );
 
@@ -859,45 +1115,77 @@ const CtoApplicationDetails = () => {
     application.employee?.lastName?.[0] || ""
   }`;
 
-  // ✅ currentStep find should be robust: id can be string or objectId-like
   const currentStep = application.approvals?.find(
     (step) => String(step.approver?._id) === String(admin?.id),
   );
 
-  // ✅ Only allow action if:
-  // - my step is PENDING
-  // - app overallStatus is PENDING
-  // - not locally processed
   const canApproveOrReject =
     currentStep?.status === "PENDING" &&
     application.overallStatus === "PENDING" &&
     !isProcessed;
 
   const overallMeta =
-    STATUS_META[application.overallStatus] || STATUS_META.PENDING;
-  const overallTone = getToneClasses(overallMeta.tone);
+    STATUS_META[String(application.overallStatus || "").toUpperCase()] ||
+    STATUS_META.PENDING;
+
+  const overallPillStyle = getTonePillStyle(overallMeta.tone, borderColor);
+  const overallIconKind = getOverallIconChipKind(application.overallStatus);
+  const overallIconChip = getIconChipStyle(overallIconKind, borderColor);
 
   const memos = Array.isArray(application.memo) ? application.memo : [];
   const memoCount = memos.length;
 
   return (
-    <div className="flex-1 h-full border border-gray-200 bg-white rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border-b-26 border-neutral-50/50">
+    <div
+      className="flex-1 h-full rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border"
+      style={{
+        backgroundColor: "var(--app-bg)",
+        color: "var(--app-text)",
+        borderColor: borderColor,
+      }}
+    >
+      <ThemeSync />
+      <ScrollbarsSync />
+
       {/* HEADER */}
-      <header className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b border-gray-300 backdrop-blur supports-[backdrop-filter]:bg-white px-3 sm:px-4 py-2 z-10">
+      <header
+        className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b backdrop-blur px-3 sm:px-4 py-2 z-10"
+        style={{
+          backgroundColor: "var(--app-surface)",
+          borderColor: borderColor,
+        }}
+      >
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 min-w-0">
           <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-            <div className="h-12 w-12 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg flex-none">
+            <div
+              className="h-12 w-12 rounded-xl text-white flex items-center justify-center font-bold text-lg flex-none"
+              style={{ backgroundColor: "var(--accent)" }}
+            >
               {initials}
             </div>
 
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-gray-900 leading-tight truncate">
+              <h2
+                className="text-lg font-bold leading-tight truncate"
+                style={{ color: "var(--app-text)" }}
+              >
                 {application.employee?.firstName}{" "}
                 {application.employee?.lastName}
               </h2>
 
-              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 font-medium mt-0.5">
-                <span className="text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+              <div
+                className="flex flex-wrap items-center gap-2 text-xs font-medium mt-0.5"
+                style={{ color: "var(--app-muted)" }}
+              >
+                {/* ✅ ID pill now theme-aware */}
+                <span
+                  className="px-1.5 py-0.5 rounded border"
+                  style={{
+                    backgroundColor: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+                  }}
+                >
                   ID: {application.employee?.employeeId || "N/A"}
                 </span>
 
@@ -906,11 +1194,14 @@ const CtoApplicationDetails = () => {
                   {new Date(application.createdAt).toLocaleDateString()}
                 </span>
 
+                {/* ✅ Overall status pill now theme-aware */}
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold ${overallTone.pill}`}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[11px] font-bold"
+                  style={overallPillStyle}
                   title="Overall Status"
                 >
-                  {application.overallStatus === "CANCELLED" ? (
+                  {String(application.overallStatus || "").toUpperCase() ===
+                  "CANCELLED" ? (
                     <Ban size={12} />
                   ) : null}
                   {application.overallStatus}
@@ -929,7 +1220,16 @@ const CtoApplicationDetails = () => {
                   setModalType("reject");
                   setIsModalOpen(true);
                 }}
-                className="w-full sm:w-auto flex-1 md:flex-none px-4 bg-gray-200 py-2 rounded-lg text-gray-600 hover:bg-gray-300 font-semibold"
+                className="w-full sm:w-auto flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold"
+                style={{
+                  backgroundColor: "var(--app-surface-2)",
+                  color: "var(--app-text)",
+                  border: `1px solid ${borderColor}`,
+                }}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.filter = "brightness(0.98)")
+                }
+                onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
               >
                 Reject
               </button>
@@ -940,7 +1240,18 @@ const CtoApplicationDetails = () => {
                   setIsModalOpen(true);
                 }}
                 disabled={approveMutation.isPending}
-                className="w-full sm:w-auto bg-blue-600 text-white rounded-lg px-4 py-2 hover:bg-blue-700 transition shadow-sm font-medium flex items-center justify-center gap-2"
+                className="w-full sm:w-auto rounded-lg px-4 py-2 transition shadow-sm font-medium flex items-center justify-center gap-2"
+                style={{
+                  backgroundColor: "var(--accent)",
+                  border: "1px solid var(--accent)",
+                  color: "#fff",
+                  opacity: approveMutation.isPending ? 0.8 : 1,
+                }}
+                onMouseEnter={(e) => {
+                  if (approveMutation.isPending) return;
+                  e.currentTarget.style.filter = "brightness(0.95)";
+                }}
+                onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
               >
                 {approveMutation.isPending
                   ? "Processing..."
@@ -948,7 +1259,14 @@ const CtoApplicationDetails = () => {
               </button>
             </>
           ) : (
-            <div className="px-4 py-2 bg-emerald-50 text-emerald-700 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border border-emerald-100 w-full sm:w-auto">
+            <div
+              className="px-4 py-2 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border w-full sm:w-auto"
+              style={{
+                backgroundColor: "rgba(34,197,94,0.14)",
+                color: "#16a34a",
+                borderColor: "rgba(34,197,94,0.22)",
+              }}
+            >
               <BadgeCheck size={18} /> Action Completed
             </div>
           )}
@@ -956,13 +1274,19 @@ const CtoApplicationDetails = () => {
       </header>
 
       {/* CONTENT */}
-      <div className="flex h-full flex-1 min-h-0 overflow-y-auto flex-col gap-4 px-3 sm:px-4 py-2">
+      <div className="flex h-full flex-1 min-h-0 overflow-y-auto app-scrollbar flex-col gap-4 px-3 sm:px-4 py-2">
         {/* QUICK STATS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
-          <div className="md:col-span-2 bg-gradient-to-br from-blue-600 to-blue-700 rounded-xl p-4 sm:p-6 text-white flex gap-3 justify-between items-center relative overflow-hidden shadow-sm shadow-blue-100 min-w-0">
+          <div
+            className="md:col-span-2 rounded-xl p-4 sm:p-6 text-white flex gap-3 justify-between items-center relative overflow-hidden min-w-0"
+            style={{
+              background:
+                "linear-gradient(135deg, var(--accent) 80%, rgba(255,255,255,0.16) 140%)",
+            }}
+          >
             <CalendarDays className="absolute right-[-20px] top-[-20px] h-40 w-40 text-white/10 rotate-12" />
             <div className="min-w-0">
-              <p className="text-blue-50 text-xs font-bold uppercase tracking-widest mb-1">
+              <p className="text-white/90 text-xs font-bold uppercase tracking-widest mb-1">
                 Requested Dates
               </p>
               <h3 className="text-xl md:text-2xl font-bold break-words">
@@ -972,7 +1296,7 @@ const CtoApplicationDetails = () => {
 
             <div className="flex items-center gap-4 flex-none">
               <div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl">
-                <p className="text-[10px] text-blue-100 uppercase font-bold">
+                <p className="text-[10px] text-white/90 uppercase font-bold">
                   Total Duration
                 </p>
                 <p className="text-xl font-bold">
@@ -982,19 +1306,24 @@ const CtoApplicationDetails = () => {
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0">
+          {/* ✅ Global Status icon chip now theme-aware */}
+          <div
+            className="border rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor: borderColor,
+            }}
+          >
             <div
-              className={`p-4 rounded-2xl ${
-                application.overallStatus === "APPROVED"
-                  ? "bg-emerald-50 text-emerald-600"
-                  : application.overallStatus === "REJECTED"
-                    ? "bg-rose-50 text-rose-600"
-                    : application.overallStatus === "CANCELLED"
-                      ? "bg-slate-50 text-slate-600"
-                      : "bg-amber-50 text-amber-600"
-              }`}
+              className="p-4 rounded-2xl border"
+              style={{
+                backgroundColor: overallIconChip.bg,
+                borderColor: overallIconChip.br,
+                color: overallIconChip.fg,
+              }}
             >
-              {application.overallStatus === "CANCELLED" ? (
+              {String(application.overallStatus || "").toUpperCase() ===
+              "CANCELLED" ? (
                 <Ban size={28} className="h-6 w-6" />
               ) : (
                 <StatusIcon
@@ -1006,10 +1335,16 @@ const CtoApplicationDetails = () => {
             </div>
 
             <div className="text-start min-w-0">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
+              <p
+                className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: "var(--app-muted)" }}
+              >
                 Global Status
               </p>
-              <p className="text-xl font-black text-gray-900 break-words">
+              <p
+                className="text-xl font-black break-words"
+                style={{ color: "var(--app-text)" }}
+              >
                 {application.overallStatus}
               </p>
             </div>
@@ -1019,17 +1354,47 @@ const CtoApplicationDetails = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
           {/* MAIN */}
           <div className="lg:col-span-2 space-y-4 min-w-0">
-            <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+            <section
+              className="border rounded-xl p-3 shadow-sm min-w-0"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                borderColor: borderColor,
+              }}
+            >
               <div className="flex items-center gap-3 mb-6">
-                <span className="h-10 w-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 flex-none">
-                  <MessageCircle size={20} />
-                </span>
-                <h3 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                {/* ✅ Purpose icon chip theme-aware */}
+                {(() => {
+                  const chip = getIconChipStyle("accent", borderColor);
+                  return (
+                    <span
+                      className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
+                      style={{
+                        backgroundColor: chip.bg,
+                        color: chip.fg,
+                        borderColor: chip.br,
+                      }}
+                    >
+                      <MessageCircle size={20} />
+                    </span>
+                  );
+                })()}
+
+                <h3
+                  className="text-xs font-bold uppercase tracking-widest"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Purpose of Leave
                 </h3>
               </div>
 
-              <p className="text-gray-700 leading-relaxed italic bg-gray-50 p-4 rounded-2xl border border-gray-100 break-words">
+              <p
+                className="leading-relaxed italic p-4 rounded-2xl border break-words"
+                style={{
+                  color: "var(--app-text)",
+                  backgroundColor: "var(--app-surface-2)",
+                  borderColor: borderColor,
+                }}
+              >
                 "
                 {application.reason ||
                   "No specific reason provided by the applicant."}
@@ -1037,17 +1402,42 @@ const CtoApplicationDetails = () => {
               </p>
             </section>
 
-            {/* Timeline */}
-            <section className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm min-w-0">
+            <section
+              className="border rounded-xl p-3 shadow-sm min-w-0"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                borderColor: borderColor,
+              }}
+            >
               <div className="flex items-center gap-3 mb-6">
-                <span className="h-10 w-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 flex-none">
-                  <History size={18} />
-                </span>
+                {/* ✅ Timeline icon chip theme-aware */}
+                {(() => {
+                  const chip = getIconChipStyle("green", borderColor);
+                  return (
+                    <span
+                      className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
+                      style={{
+                        backgroundColor: chip.bg,
+                        color: chip.fg,
+                        borderColor: chip.br,
+                      }}
+                    >
+                      <History size={18} />
+                    </span>
+                  );
+                })()}
+
                 <div className="min-w-0">
-                  <h3 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                  <h3
+                    className="text-xs font-bold uppercase tracking-widest"
+                    style={{ color: "var(--app-muted)" }}
+                  >
                     Processing Timeline
                   </h3>
-                  <p className="text-xs text-gray-500 font-medium">
+                  <p
+                    className="text-xs font-medium"
+                    style={{ color: "var(--app-muted)" }}
+                  >
                     Step-by-step approval progress
                   </p>
                 </div>
@@ -1055,7 +1445,10 @@ const CtoApplicationDetails = () => {
 
               {sortedApprovals.length > 0 ? (
                 <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
-                  <div className="absolute left-5 top-2 bottom-2 w-0.5 bg-gray-100" />
+                  <div
+                    className="absolute left-5 top-2 bottom-2 w-0.5"
+                    style={{ backgroundColor: "var(--app-border)" }}
+                  />
 
                   {sortedApprovals.map((approval, idx) => (
                     <TimelineCard
@@ -1072,11 +1465,23 @@ const CtoApplicationDetails = () => {
                       <div className="relative z-10 h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center border-4 border-white shadow-md flex-none">
                         <CheckCircle2 size={18} className="text-white" />
                       </div>
-                      <div className="flex-1 bg-emerald-50 border border-emerald-100 rounded-2xl p-4 shadow-sm">
-                        <p className="text-emerald-800 font-bold text-sm">
+                      <div
+                        className="flex-1 rounded-2xl p-4 shadow-sm border"
+                        style={{
+                          backgroundColor: "rgba(34,197,94,0.14)",
+                          borderColor: "rgba(34,197,94,0.22)",
+                        }}
+                      >
+                        <p
+                          className="font-bold text-sm"
+                          style={{ color: "#16a34a" }}
+                        >
                           Application Fully Approved
                         </p>
-                        <p className="text-emerald-600 text-xs mt-0.5">
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: "var(--app-muted)" }}
+                        >
                           The CTO request has been finalized.
                         </p>
                       </div>
@@ -1084,12 +1489,25 @@ const CtoApplicationDetails = () => {
                   )}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center p-12 bg-white border border-dashed border-slate-300 rounded-xl text-center">
-                  <Users size={32} className="text-slate-300 mb-3" />
-                  <p className="text-slate-500 font-medium">
+                <div
+                  className="flex flex-col items-center justify-center p-12 border border-dashed rounded-xl text-center"
+                  style={{
+                    backgroundColor: "var(--app-surface)",
+                    borderColor: "var(--app-border)",
+                  }}
+                >
+                  <Users
+                    size={32}
+                    style={{ color: "var(--app-muted)" }}
+                    className="mb-3"
+                  />
+                  <p
+                    style={{ color: "var(--app-text)" }}
+                    className="font-medium"
+                  >
                     Waiting for workflow initiation
                   </p>
-                  <p className="text-slate-400 text-sm">
+                  <p style={{ color: "var(--app-muted)" }} className="text-sm">
                     No approvers have acted on this request yet.
                   </p>
                 </div>
@@ -1097,41 +1515,79 @@ const CtoApplicationDetails = () => {
             </section>
           </div>
 
-          {/* SIDEBAR (Documents + Calendar) */}
+          {/* SIDEBAR */}
           <aside className="space-y-4 min-w-0">
             <RequestedDatesCalendar dates={application?.inclusiveDates || []} />
-            <div className="bg-white border border-gray-200 rounded-xl p-2 sm:p-3 shadow-sm min-w-0">
+
+            <div
+              className="border rounded-xl p-2 sm:p-3 shadow-sm min-w-0"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                borderColor: borderColor,
+              }}
+            >
               <div className="flex items-center justify-between gap-3">
-                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                <h4
+                  className="text-xs font-bold uppercase tracking-widest"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Documents
                 </h4>
               </div>
 
-              {/* Application Form */}
               <button
                 type="button"
                 onClick={() => setIsPdfOpen(true)}
-                className="mt-3 w-full inline-flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-semibold text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition"
+                className="mt-3 w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-[color:var(--app-surface-2)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 transition"
+                style={{
+                  borderColor: borderColor,
+                  backgroundColor: "var(--app-surface)",
+                  color: "var(--app-text)",
+                }}
                 title="View Application PDF"
               >
                 <span className="inline-flex items-center gap-2 min-w-0">
-                  <span className="h-8 w-8 bg-red-50 rounded-lg flex items-center justify-center text-red-600 flex-none border border-red-100">
+                  {/* ✅ PDF icon chip theme-aware red-ish */}
+                  <span
+                    className="h-8 w-8 rounded-lg flex items-center justify-center flex-none border"
+                    style={{
+                      backgroundColor: "rgba(239,68,68,0.12)",
+                      color: "#ef4444",
+                      borderColor: "rgba(239,68,68,0.20)",
+                    }}
+                  >
                     <FileText size={16} />
                   </span>
                   <span className="truncate">Application Form</span>
                 </span>
 
-                <span className="text-[9px] font-bold text-gray-500 border border-gray-200 bg-gray-50 px-2 py-1 rounded-lg flex-none">
+                <span
+                  className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
+                  style={{
+                    color: "var(--app-muted)",
+                    borderColor: "var(--app-border)",
+                    backgroundColor: "var(--app-surface-2)",
+                  }}
+                >
                   PDF
                 </span>
               </button>
 
-              {/* Supporting Memos */}
               <div className="mt-5 md:mt-7 flex items-center justify-between gap-3">
-                <h4 className="text-xs font-bold text-gray-600 uppercase tracking-widest">
+                <h4
+                  className="text-xs font-bold uppercase tracking-widest"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Supporting Memos
                 </h4>
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold flex-none">
+                <span
+                  className="px-2 py-0.5 rounded-full text-xs font-bold flex-none border"
+                  style={{
+                    backgroundColor: "var(--app-surface-2)",
+                    color: "var(--app-muted)",
+                    borderColor: "var(--app-border)",
+                  }}
+                >
                   {memoCount}
                 </span>
               </div>
@@ -1144,18 +1600,31 @@ const CtoApplicationDetails = () => {
                       href={buildApiUrl(m.uploadedMemo)}
                       target="_blank"
                       rel="noreferrer"
-                      className="group flex items-center justify-between gap-3 rounded-xl px-3 py-2 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition min-w-0"
+                      className="group flex items-center justify-between gap-3 rounded-xl px-3 py-2 hover:bg-[color:var(--app-surface-2)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 transition min-w-0"
                       title={`Open Memo ${m.memoId?.memoNo}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-8 w-8 bg-red-50 rounded-lg flex items-center justify-center text-red-600 flex-none border border-red-100">
+                        <div
+                          className="h-8 w-8 rounded-lg flex items-center justify-center flex-none border"
+                          style={{
+                            backgroundColor: "rgba(239,68,68,0.12)",
+                            color: "#ef4444",
+                            borderColor: "rgba(239,68,68,0.20)",
+                          }}
+                        >
                           <FileText size={16} />
                         </div>
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-gray-900 truncate">
+                          <p
+                            className="text-sm font-semibold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
                             Memo {m.memoId?.memoNo || "—"}
                           </p>
-                          <p className="text-[11px] text-gray-500 truncate">
+                          <p
+                            className="text-[11px] truncate"
+                            style={{ color: "var(--app-muted)" }}
+                          >
                             Click to open
                           </p>
                         </div>
@@ -1163,13 +1632,23 @@ const CtoApplicationDetails = () => {
 
                       <ExternalLink
                         size={14}
-                        className="text-gray-400 group-hover:text-blue-600 transition flex-none"
+                        className="transition flex-none"
+                        style={{ color: "var(--app-muted)" }}
                       />
                     </a>
                   ))
                 ) : (
-                  <div className="mt-2 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-center">
-                    <p className="text-xs text-gray-500 font-medium">
+                  <div
+                    className="mt-2 rounded-xl border border-dashed px-3 py-4 text-center"
+                    style={{
+                      borderColor: "var(--app-border)",
+                      backgroundColor: "var(--app-surface-2)",
+                    }}
+                  >
+                    <p
+                      className="text-xs font-medium"
+                      style={{ color: "var(--app-muted)" }}
+                    >
                       No memos attached
                     </p>
                   </div>
@@ -1184,23 +1663,28 @@ const CtoApplicationDetails = () => {
                   })
                 }
                 disabled={memoCount === 0}
-                className={`mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-bold border transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                  memoCount === 0
-                    ? "bg-gray-50 text-gray-300 border-gray-200 cursor-not-allowed"
-                    : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                className={`mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-bold border transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 ${
+                  memoCount === 0 ? "cursor-not-allowed opacity-60" : ""
                 }`}
+                style={{
+                  backgroundColor:
+                    memoCount === 0
+                      ? "var(--app-surface-2)"
+                      : "var(--app-surface)",
+                  color:
+                    memoCount === 0 ? "var(--app-muted)" : "var(--app-text)",
+                  borderColor: borderColor,
+                }}
               >
                 {memoCount === 0
                   ? "View all memos"
                   : `View all memos (${memoCount})`}
               </button>
             </div>
-
-            {/* ✅ NEW: Calendar card */}
           </aside>
         </div>
 
-        {/* MODALS */}
+        {/* MODALS (left as-is; if you want, I can theme these too) */}
         <Modal
           isOpen={isModalOpen}
           onClose={() => setIsModalOpen(false)}
@@ -1224,6 +1708,7 @@ const CtoApplicationDetails = () => {
           }}
         >
           <div className="p-2">
+            {/* You can theme modal chips too if needed */}
             <div className="mb-6 flex items-start gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
               <div className="mt-0.5 p-1.5 bg-white rounded-lg border border-slate-200 shadow-sm text-slate-400">
                 <Info size={16} />
