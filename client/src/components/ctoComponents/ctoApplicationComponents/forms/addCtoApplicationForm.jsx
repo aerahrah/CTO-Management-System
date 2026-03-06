@@ -17,7 +17,7 @@ import {
   AlertCircle,
   X,
 } from "lucide-react";
-import Skeleton from "react-loading-skeleton";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import SelectCtoMemoModal from "./selectCtoMemoModal";
 import { toast } from "react-toastify";
@@ -93,6 +93,48 @@ const makeClientRequestId = () => {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
+/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* ✅ Reactive resolved theme for system mode */
+function useResolvedTheme(prefTheme) {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined")
+      return prefTheme === "dark" ? "dark" : "light";
+    return resolveTheme(prefTheme);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (prefTheme !== "system") {
+      setTheme(prefTheme === "dark" ? "dark" : "light");
+      return;
+    }
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setTheme(mq.matches ? "dark" : "light");
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, [prefTheme]);
+
+  return theme;
+}
+
 // ✅ validation that supports "typing" (inline errors) + "commit" (no toast spam)
 const validateDate = ({
   value,
@@ -126,25 +168,45 @@ const validateDate = ({
   return "";
 };
 
-const Banner = ({ tone = "error", message }) => {
+const Banner = ({ tone = "error", message, borderColor }) => {
   if (!message) return null;
 
-  const styles =
+  const palette =
     tone === "info"
-      ? "border-blue-100 bg-blue-50 text-blue-800"
+      ? {
+          bg: "rgba(37,99,235,0.10)",
+          br: "rgba(37,99,235,0.18)",
+          fg: "var(--app-text)",
+          icon: "var(--accent)",
+        }
       : tone === "success"
-        ? "border-emerald-100 bg-emerald-50 text-emerald-800"
-        : "border-rose-100 bg-rose-50 text-rose-800";
+        ? {
+            bg: "rgba(34,197,94,0.12)",
+            br: "rgba(34,197,94,0.20)",
+            fg: "var(--app-text)",
+            icon: "#16a34a",
+          }
+        : {
+            bg: "rgba(239,68,68,0.10)",
+            br: "rgba(239,68,68,0.18)",
+            fg: "var(--app-text)",
+            icon: "#ef4444",
+          };
 
   return (
     <div
-      className={[
-        "rounded-xl border px-3 py-2 text-xs font-medium flex items-start gap-2",
-        styles,
-      ].join(" ")}
+      className="rounded-xl border px-3 py-2 text-xs font-medium flex items-start gap-2 transition-colors duration-300 ease-out"
       role={tone === "error" ? "alert" : "status"}
+      style={{
+        backgroundColor: palette.bg,
+        borderColor: palette.br || borderColor || "var(--app-border)",
+        color: palette.fg,
+      }}
     >
-      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 opacity-80" />
+      <AlertCircle
+        className="w-4 h-4 mt-0.5 shrink-0 opacity-90"
+        style={{ color: palette.icon }}
+      />
       <div className="leading-relaxed">{message}</div>
     </div>
   );
@@ -153,6 +215,31 @@ const Banner = ({ tone = "error", message }) => {
 const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
   const queryClient = useQueryClient();
   const { admin } = useAuth();
+
+  // ✅ theme + borders + skeleton colors
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useResolvedTheme(prefTheme);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColors = useMemo(() => {
+    const base =
+      resolvedTheme === "dark"
+        ? "rgba(255,255,255,0.06)"
+        : "rgba(15,23,42,0.06)";
+    const highlight =
+      resolvedTheme === "dark"
+        ? "rgba(255,255,255,0.10)"
+        : "rgba(15,23,42,0.10)";
+    return {
+      baseColor: `var(--skeleton-base, ${base})`,
+      highlightColor: `var(--skeleton-highlight, ${highlight})`,
+    };
+  }, [resolvedTheme]);
 
   const [showRouting, setShowRouting] = useState(false);
   const [isMemoModalOpen, setIsMemoModalOpen] = useState(false);
@@ -438,7 +525,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // ✅ while typing (or selecting) update value + show inline error immediately
+  // ✅ while typing update value + show inline error immediately
   const handleDateInput = (e) => {
     clearBanner();
     const v = e.target.value;
@@ -484,7 +571,6 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     const rh = Number(formData.requestedHours || 0);
     const reqDays = requiredDaysFromHours(rh);
 
-    // ✅ hard guard (even if validateDate already caught it)
     if (reqDays > 0 && formData.inclusiveDates.length >= reqDays) {
       setDateError(
         `You must select exactly ${reqDays} day(s) for ${rh} hours.`,
@@ -492,13 +578,11 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       return;
     }
 
-    // ✅ add
     setFormData((prev) => ({
       ...prev,
       inclusiveDates: [...prev.inclusiveDates, v],
     }));
 
-    // ✅ clear for next pick
     setDateValue("");
     setDateError("");
 
@@ -559,8 +643,6 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       new Set((formData.inclusiveDates || []).filter(Boolean)),
     ).sort();
 
-    // ✅ REQUIRED DAYS RULE (FIX):
-    // must select EXACTLY ceil(requestedHours/8) days
     const reqDays = requiredDaysFromHours(requestedHours);
 
     if (reqDays <= 0) {
@@ -618,7 +700,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
 
-    if (isBusy) return;
+    if (mutation.isPending || successLatchUI) return;
 
     const result = sanitizeAndValidatePayload();
     if (!result.ok) {
@@ -651,7 +733,6 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
   };
 
   const maxDatesPossible = requiredDays;
-
   const progressPercentage =
     maxDatesPossible > 0
       ? (formData.inclusiveDates.length / maxDatesPossible) * 100
@@ -666,365 +747,619 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
   const dateDisabled = !formData.requestedHours || isBusy || workingDaysLoading;
 
   return (
-    <div className="w-full max-w-xl mx-auto bg-white rounded-xl border border-gray-200 overflow-hidden">
-      {/* Header */}
-      <div className="px-4 py-4 border-b flex items-start sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-            <Clock className="w-6 h-6 text-blue-600" />
+    <div
+      className="w-full max-w-xl mx-auto rounded-xl overflow-hidden border transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor: borderColor,
+        color: "var(--app-text)",
+      }}
+    >
+      <SkeletonTheme
+        baseColor={skeletonColors.baseColor}
+        highlightColor={skeletonColors.highlightColor}
+      >
+        {/* Header */}
+        <div
+          className="px-4 py-4 border-b flex items-start sm:items-center justify-between gap-3 transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor: borderColor,
+          }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors duration-300 ease-out"
+              style={{
+                backgroundColor: "var(--accent-soft)",
+                borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+                color: "var(--accent)",
+              }}
+            >
+              <Clock className="w-6 h-6" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold truncate">
+                CTO Application
+              </h2>
+              <p
+                className="text-xs truncate"
+                style={{ color: "var(--app-muted)" }}
+              >
+                Compensatory Time-Off Request
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold text-gray-900 truncate">
-              CTO Application
-            </h2>
-            <p className="text-xs text-gray-500 truncate">
-              Compensatory Time-Off Request
+
+          <div className="text-right shrink-0">
+            <p
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: "var(--app-muted)" }}
+            >
+              Available
+            </p>
+            <p
+              className="text-sm font-extrabold"
+              style={{ color: "var(--accent)" }}
+            >
+              {maxRequestedHours || 0} hrs
             </p>
           </div>
         </div>
 
-        <div className="text-right shrink-0">
-          <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider">
-            Available
-          </p>
-          <p className="text-sm font-bold text-blue-600">
-            {maxRequestedHours || 0} hrs
-          </p>
-        </div>
-      </div>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            startSubmit();
+          }}
+          className="flex flex-col h-[calc(100dvh-16rem)] sm:h-[calc(100vh-16rem)]"
+        >
+          {/* Scroll Area */}
+          <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 cto-scrollbar">
+            {/* Banner */}
+            <Banner
+              tone={banner.tone}
+              message={banner.message}
+              borderColor={borderColor}
+            />
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          startSubmit();
-        }}
-        className="flex flex-col h-[calc(100dvh-16rem)] sm:h-[calc(100vh-16rem)]"
-      >
-        {/* Scroll Area */}
-        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
-          {/* Banner */}
-          <Banner tone={banner.tone} message={banner.message} />
-
-          {/* Hours + Dates */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
-                  <Clock className="w-4 h-4 text-gray-600" />
-                </div>
-                Requested Hours
-              </div>
-              <input
-                type="number"
-                name="requestedHours"
-                value={formData.requestedHours}
-                onChange={handleChange}
-                placeholder="0"
-                min={0}
-                disabled={isBusy}
-                className="w-full h-11 sm:h-10 px-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none disabled:bg-gray-50"
-              />
-              {!!Number(formData.requestedHours || 0) && requiredDays > 0 ? (
-                <div className="text-[10px] text-gray-400 leading-relaxed">
-                  Required dates for{" "}
-                  <span className="font-semibold text-gray-600">
-                    {Number(formData.requestedHours || 0)}
-                  </span>{" "}
-                  hour(s):{" "}
-                  <span className="font-semibold text-gray-600">
-                    {requiredDays}
-                  </span>{" "}
-                  day(s)
-                </div>
-              ) : null}
-            </div>
-
-            {/* Date picker - inline error while typing */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
-                  <Calendar className="w-4 h-4 text-gray-600" />
-                </div>
-                Inclusive Dates
-              </div>
-
-              <div className="relative">
-                <input
-                  ref={dateInputRef}
-                  type="date"
-                  min={minDate}
-                  value={dateValue}
-                  onInput={handleDateInput}
-                  onChange={handleDateCommit}
-                  disabled={dateDisabled}
-                  aria-invalid={!!dateError}
-                  className={[
-                    "w-full h-11 sm:h-10 px-3 border rounded-lg outline-none transition",
-                    "text-[16px] sm:text-sm",
-                    dateDisabled
-                      ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-400"
-                      : dateError
-                        ? "border-rose-300 bg-rose-50/40 focus:ring-1 focus:ring-rose-300 focus:border-rose-400"
-                        : "border-neutral-400 text-gray-700 hover:bg-gray-50 focus:ring-1 focus:ring-blue-500 focus:border-blue-500",
-                  ].join(" ")}
-                />
-              </div>
-
-              {dateError ? (
-                <div className="text-[11px] text-rose-700 font-medium">
-                  {dateError}
-                </div>
-              ) : (
-                <div className="text-[10px] text-gray-400 leading-relaxed">
-                  Earliest selectable date:{" "}
-                  <span className="font-semibold text-gray-500">{minDate}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Dates Progress */}
-          {Number(formData.requestedHours) > 0 && (
-            <div className="space-y-3 animate-in fade-in duration-300">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-1">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                  Dates Selected ({formData.inclusiveDates.length} /{" "}
-                  {requiredDays})
-                </span>
-                <span className="text-[10px] text-gray-400 italic">
-                  {leadTimeLabel}
-                </span>
-              </div>
-
-              <div className="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+            {/* Hours + Dates */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+              <div className="space-y-2">
                 <div
-                  className="h-full bg-blue-500 transition-all duration-500 ease-out"
-                  style={{ width: `${progressPercentage}%` }}
+                  className="flex items-center gap-2 text-sm font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center border"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor: borderColor,
+                      color: "var(--app-muted)",
+                    }}
+                  >
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  Requested Hours
+                </div>
+
+                <input
+                  type="number"
+                  name="requestedHours"
+                  value={formData.requestedHours}
+                  onChange={handleChange}
+                  placeholder="0"
+                  min={0}
+                  disabled={isBusy}
+                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out"
+                  style={{
+                    backgroundColor: isBusy
+                      ? "var(--app-surface-2)"
+                      : "var(--app-surface)",
+                    borderColor: borderColor,
+                    color: isBusy ? "var(--app-muted)" : "var(--app-text)",
+                  }}
                 />
+
+                {!!Number(formData.requestedHours || 0) && requiredDays > 0 ? (
+                  <div
+                    className="text-[10px] leading-relaxed"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Required dates for{" "}
+                    <span style={{ color: "var(--app-text)", fontWeight: 700 }}>
+                      {Number(formData.requestedHours || 0)}
+                    </span>{" "}
+                    hour(s):{" "}
+                    <span style={{ color: "var(--app-text)", fontWeight: 700 }}>
+                      {requiredDays}
+                    </span>{" "}
+                    day(s)
+                  </div>
+                ) : null}
               </div>
 
-              <div className="flex flex-wrap gap-2 p-3 bg-blue-50/30 rounded-xl border border-blue-50/50 min-h-[50px]">
-                {formData.inclusiveDates.length === 0 ? (
-                  <p className="text-xs text-blue-400/70 italic flex items-center gap-2">
-                    <AlertCircle size={14} /> No dates selected yet
-                  </p>
+              {/* Date picker - inline error while typing */}
+              <div className="space-y-2">
+                <div
+                  className="flex items-center gap-2 text-sm font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center border"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor: borderColor,
+                      color: "var(--app-muted)",
+                    }}
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  Inclusive Dates
+                </div>
+
+                <div className="relative">
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    min={minDate}
+                    value={dateValue}
+                    onInput={handleDateInput}
+                    onChange={handleDateCommit}
+                    disabled={dateDisabled}
+                    aria-invalid={!!dateError}
+                    className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
+                    style={{
+                      backgroundColor: dateDisabled
+                        ? "var(--app-surface-2)"
+                        : dateError
+                          ? "rgba(239,68,68,0.08)"
+                          : "var(--app-surface)",
+                      borderColor: dateError
+                        ? "rgba(239,68,68,0.22)"
+                        : borderColor,
+                      color: dateDisabled
+                        ? "var(--app-muted)"
+                        : "var(--app-text)",
+                    }}
+                  />
+                </div>
+
+                {dateError ? (
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: "#ef4444" }}
+                  >
+                    {dateError}
+                  </div>
                 ) : (
-                  formData.inclusiveDates.map((date) => (
-                    <div
-                      key={date}
-                      className="flex items-center gap-2 px-2.5 py-1 bg-white border border-blue-100 rounded-lg text-xs font-semibold text-blue-700 shadow-sm"
-                    >
-                      <span className="truncate max-w-[150px]">{date}</span>
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => handleDateRemove(date)}
-                        className="text-blue-300 hover:text-red-500 transition-colors disabled:opacity-50"
-                        aria-label={`Remove ${date}`}
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-                  ))
+                  <div
+                    className="text-[10px] leading-relaxed"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Earliest selectable date:{" "}
+                    <span style={{ color: "var(--app-text)", fontWeight: 700 }}>
+                      {minDate}
+                    </span>
+                  </div>
                 )}
               </div>
+            </div>
 
-              {requiredDays > 0 &&
-              formData.inclusiveDates.length > 0 &&
-              formData.inclusiveDates.length !== requiredDays ? (
-                <div className="text-[11px] text-rose-700 font-medium">
-                  Please select exactly {requiredDays} date(s) for{" "}
-                  {Number(formData.requestedHours || 0)} hour(s).
+            {/* Dates Progress */}
+            {Number(formData.requestedHours) > 0 && (
+              <div className="space-y-3 animate-in fade-in duration-300">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-1">
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-widest"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Dates Selected ({formData.inclusiveDates.length} /{" "}
+                    {requiredDays})
+                  </span>
+                  <span
+                    className="text-[10px] italic"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    {leadTimeLabel}
+                  </span>
                 </div>
-              ) : null}
-            </div>
-          )}
 
-          {/* Reason */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-              <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
-                <FileText className="w-4 h-4 text-gray-600" />
-              </div>
-              Reason / Justification
-            </div>
-            <textarea
-              name="reason"
-              value={formData.reason}
-              onChange={handleChange}
-              rows="4"
-              maxLength={MAX_REASON_LEN}
-              placeholder="Type your justification here..."
-              disabled={isBusy}
-              className="w-full p-3 border-neutral-400 border rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none text-sm disabled:bg-gray-50"
-            />
-            <div className="text-[10px] text-gray-400 text-right">
-              {String(formData.reason || "").length}/{MAX_REASON_LEN}
-            </div>
-          </div>
-
-          {/* Deductions */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <div className="w-7 h-7 rounded-md bg-gray-100 flex items-center justify-center">
-                  <AlertCircle className="w-4 h-4 text-gray-600" />
+                <div
+                  className="h-1.5 w-full rounded-full overflow-hidden"
+                  style={{ backgroundColor: "var(--app-border)" }}
+                >
+                  <div
+                    className="h-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${progressPercentage}%`,
+                      backgroundColor: "var(--accent)",
+                    }}
+                  />
                 </div>
-                Credit Deductions
+
+                <div
+                  className="flex flex-wrap gap-2 p-3 rounded-xl border min-h-[50px] transition-colors duration-300 ease-out"
+                  style={{
+                    backgroundColor: "rgba(37,99,235,0.06)",
+                    borderColor: "rgba(37,99,235,0.14)",
+                  }}
+                >
+                  {formData.inclusiveDates.length === 0 ? (
+                    <p
+                      className="text-xs italic flex items-center gap-2"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      <AlertCircle
+                        size={14}
+                        style={{ color: "var(--app-muted)" }}
+                      />{" "}
+                      No dates selected yet
+                    </p>
+                  ) : (
+                    formData.inclusiveDates.map((date) => (
+                      <div
+                        key={date}
+                        className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-sm border transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          borderColor:
+                            "var(--accent-soft2, rgba(37,99,235,0.18))",
+                          color: "var(--accent)",
+                        }}
+                      >
+                        <span className="truncate max-w-[150px]">{date}</span>
+                        <button
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => handleDateRemove(date)}
+                          className="transition-colors disabled:opacity-50"
+                          style={{ color: "var(--app-muted)" }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.color = "#ef4444")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.color = "var(--app-muted)")
+                          }
+                          aria-label={`Remove ${date}`}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {requiredDays > 0 &&
+                formData.inclusiveDates.length > 0 &&
+                formData.inclusiveDates.length !== requiredDays ? (
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: "#ef4444" }}
+                  >
+                    Please select exactly {requiredDays} date(s) for{" "}
+                    {Number(formData.requestedHours || 0)} hour(s).
+                  </div>
+                ) : null}
               </div>
+            )}
+
+            {/* Reason */}
+            <div className="space-y-2">
+              <div
+                className="flex items-center gap-2 text-sm font-medium"
+                style={{ color: "var(--app-text)" }}
+              >
+                <div
+                  className="w-7 h-7 rounded-md flex items-center justify-center border"
+                  style={{
+                    backgroundColor: "var(--app-surface-2)",
+                    borderColor: borderColor,
+                    color: "var(--app-muted)",
+                  }}
+                >
+                  <FileText className="w-4 h-4" />
+                </div>
+                Reason / Justification
+              </div>
+
+              <textarea
+                name="reason"
+                value={formData.reason}
+                onChange={handleChange}
+                rows="4"
+                maxLength={MAX_REASON_LEN}
+                placeholder="Type your justification here..."
+                disabled={isBusy}
+                className="w-full p-3 rounded-lg outline-none resize-none text-sm border transition-colors duration-200 ease-out"
+                style={{
+                  backgroundColor: isBusy
+                    ? "var(--app-surface-2)"
+                    : "var(--app-surface)",
+                  borderColor: borderColor,
+                  color: isBusy ? "var(--app-muted)" : "var(--app-text)",
+                }}
+              />
+
+              <div
+                className="text-[10px] text-right"
+                style={{ color: "var(--app-muted)" }}
+              >
+                {String(formData.reason || "").length}/{MAX_REASON_LEN}
+              </div>
+            </div>
+
+            {/* Deductions */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div
+                  className="flex items-center gap-2 text-sm font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center border"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor: borderColor,
+                      color: "var(--app-muted)",
+                    }}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
+                  Credit Deductions
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => setIsMemoModalOpen(true)}
+                  className="text-xs font-bold disabled:opacity-50 shrink-0"
+                  style={{ color: "var(--accent)" }}
+                >
+                  View Memos
+                </button>
+              </div>
+
+              <div
+                className="rounded-lg overflow-hidden border transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor: borderColor,
+                }}
+              >
+                {memoLoading ? (
+                  <div className="p-4">
+                    <Skeleton height={30} count={2} />
+                  </div>
+                ) : selectedMemos.length === 0 ? (
+                  <div
+                    className="p-6 sm:p-8 text-center"
+                    style={{ backgroundColor: "var(--app-surface-2)" }}
+                  >
+                    <p
+                      className="text-xs italic"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      No hours allocated yet
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-[420px] w-full text-left text-sm">
+                      <thead
+                        className="border-b"
+                        style={{
+                          backgroundColor: "var(--app-surface-2)",
+                          borderColor: borderColor,
+                        }}
+                      >
+                        <tr>
+                          <th
+                            className="px-4 py-2 text-[10px] uppercase font-bold"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Memo Reference
+                          </th>
+                          <th
+                            className="px-4 py-2 text-[10px] uppercase font-bold text-right"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Deduction
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedMemos.map((memo) => (
+                          <tr
+                            key={memo.id}
+                            className="transition-colors"
+                            style={{
+                              backgroundColor: "var(--app-surface)",
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                "var(--app-surface-2)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                "var(--app-surface)";
+                            }}
+                          >
+                            <td
+                              className="px-4 py-2.5 font-semibold"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {memo.memoNo}
+                            </td>
+                            <td
+                              className="px-4 py-2.5 text-right font-extrabold"
+                              style={{ color: "var(--accent)" }}
+                            >
+                              -{memo.appliedHours}h
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Approval Routing */}
+            <div className="space-y-3 pt-2">
               <button
                 type="button"
                 disabled={isBusy}
-                onClick={() => setIsMemoModalOpen(true)}
-                className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50 shrink-0"
+                onClick={() => setShowRouting((s) => !s)}
+                className="w-full flex items-center justify-between p-3 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-60"
+                style={{
+                  backgroundColor: "var(--app-surface-2)",
+                  borderColor: borderColor,
+                  color: "var(--app-text)",
+                }}
               >
-                View Memos
+                <div className="flex items-center gap-2 text-sm font-bold">
+                  <UserCheck size={16} style={{ color: "var(--app-muted)" }} />
+                  Approval Routing
+                </div>
+                {showRouting ? (
+                  <ChevronUp size={16} style={{ color: "var(--app-muted)" }} />
+                ) : (
+                  <ChevronDown
+                    size={16}
+                    style={{ color: "var(--app-muted)" }}
+                  />
+                )}
               </button>
-            </div>
 
-            <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-              {memoLoading ? (
-                <div className="p-4">
-                  <Skeleton height={30} count={2} />
-                </div>
-              ) : selectedMemos.length === 0 ? (
-                <div className="p-6 sm:p-8 text-center bg-gray-50/50">
-                  <p className="text-xs text-gray-400 italic">
-                    No hours allocated yet
-                  </p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-[420px] w-full text-left text-sm">
-                    <thead className="bg-gray-50 border-b border-gray-200">
-                      <tr>
-                        <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase">
-                          Memo Reference
-                        </th>
-                        <th className="px-4 py-2 font-semibold text-gray-500 text-[10px] uppercase text-right">
-                          Deduction
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {selectedMemos.map((memo) => (
-                        <tr
-                          key={memo.id}
-                          className="hover:bg-gray-50/50 transition-colors"
+              <div
+                className={`overflow-hidden transition-all duration-300 ${
+                  showRouting
+                    ? "max-h-[420px] opacity-100"
+                    : "max-h-0 opacity-0"
+                }`}
+              >
+                <div className="space-y-2 pt-1">
+                  {isApproverLoading ? (
+                    <Skeleton height={50} count={3} borderRadius={8} />
+                  ) : (
+                    [
+                      approverResponse?.data?.level1Approver,
+                      approverResponse?.data?.level2Approver,
+                      approverResponse?.data?.level3Approver,
+                    ].map((app, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-3 p-3 rounded-lg shadow-sm border transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          borderColor: borderColor,
+                        }}
+                      >
+                        <div
+                          className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 border"
+                          style={{
+                            backgroundColor: "var(--accent-soft)",
+                            color: "var(--accent)",
+                            borderColor:
+                              "var(--accent-soft2, rgba(37,99,235,0.18))",
+                          }}
                         >
-                          <td className="px-4 py-2.5 font-medium text-gray-700">
-                            {memo.memoNo}
-                          </td>
-                          <td className="px-4 py-2.5 text-right font-bold text-blue-600">
-                            -{memo.appliedHours}h
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          {idx + 1}
+                        </div>
+
+                        <div className="min-w-0">
+                          <p
+                            className="text-xs font-semibold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {app
+                              ? `${app.firstName} ${app.lastName}`
+                              : "Not Assigned"}
+                          </p>
+                          <p
+                            className="text-[10px] uppercase tracking-tight truncate"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            {app?.position || "Position not specified"}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
 
-          {/* Approval Routing */}
-          <div className="space-y-3 pt-2">
+          {/* Sticky Footer */}
+          <div
+            className="border-t px-4 py-3 flex flex-row items-stretch sm:items-center gap-2 sm:gap-3 sticky bottom-0 transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor: borderColor,
+            }}
+          >
             <button
               type="button"
-              disabled={isBusy}
-              onClick={() => setShowRouting((s) => !s)}
-              className="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition disabled:opacity-60"
+              disabled={mutation.isPending}
+              onClick={() => {
+                if (mutation.isPending) return;
+                if (!successLatchRef.current) resetForm();
+                onClose?.();
+              }}
+              className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded-lg border font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+              style={{
+                backgroundColor: "var(--app-surface-2)",
+                borderColor: borderColor,
+                color: "var(--app-text)",
+              }}
+              onMouseEnter={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.filter = "brightness(0.98)";
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
             >
-              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <UserCheck size={16} className="text-gray-500" />
-                Approval Routing
-              </div>
-              {showRouting ? (
-                <ChevronUp size={16} className="text-gray-400" />
-              ) : (
-                <ChevronDown size={16} className="text-gray-400" />
-              )}
+              Close
             </button>
 
-            <div
-              className={`overflow-hidden transition-all duration-300 ${
-                showRouting ? "max-h-[420px] opacity-100" : "max-h-0 opacity-0"
-              }`}
+            <button
+              type="submit"
+              disabled={isBusy || workingDaysLoading}
+              className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded-lg font-bold disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+              style={{
+                backgroundColor: "var(--accent)",
+                border: "1px solid var(--accent)",
+                color: "#fff",
+              }}
+              onMouseEnter={(e) => {
+                if (e.currentTarget.disabled) return;
+                e.currentTarget.style.filter = "brightness(0.95)";
+              }}
+              onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
             >
-              <div className="space-y-2 pt-1">
-                {isApproverLoading ? (
-                  <Skeleton height={50} count={3} borderRadius={8} />
-                ) : (
-                  [
-                    approverResponse?.data?.level1Approver,
-                    approverResponse?.data?.level2Approver,
-                    approverResponse?.data?.level3Approver,
-                  ].map((app, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 p-3 bg-white border border-gray-100 rounded-lg shadow-sm"
-                    >
-                      <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center text-[10px] font-bold text-blue-600 shrink-0">
-                        {idx + 1}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">
-                          {app
-                            ? `${app.firstName} ${app.lastName}`
-                            : "Not Assigned"}
-                        </p>
-                        <p className="text-[10px] text-gray-400 uppercase tracking-tight truncate">
-                          {app?.position || "Position not specified"}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+              {workingDaysLoading
+                ? "Loading..."
+                : mutation.isPending
+                  ? "Submitting..."
+                  : successLatchUI
+                    ? "Submitted"
+                    : "Submit"}
+            </button>
           </div>
-        </div>
+        </form>
 
-        {/* Sticky Footer */}
-        <div className="border-t border-gray-100 bg-white px-4 py-3 flex flex-row items-stretch sm:items-center gap-2 sm:gap-3 sticky bottom-0">
-          <button
-            type="button"
-            disabled={mutation.isPending}
-            onClick={() => {
-              if (mutation.isPending) return;
-              if (!successLatchRef.current) resetForm();
-              onClose?.();
-            }}
-            className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded border border-gray-200 bg-neutral-100 hover:bg-neutral-200/70 cursor-pointer font-semibold text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Close
-          </button>
-
-          <button
-            type="submit"
-            disabled={isBusy || workingDaysLoading}
-            className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded bg-blue-600 hover:bg-blue-700 text-white font-semibold cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {workingDaysLoading
-              ? "Loading..."
-              : mutation.isPending
-                ? "Submitting..."
-                : successLatchUI
-                  ? "Submitted"
-                  : "Submit"}
-          </button>
-        </div>
-      </form>
-
-      <SelectCtoMemoModal
-        isOpen={isMemoModalOpen}
-        onClose={() => setIsMemoModalOpen(false)}
-        requestedHours={formData.requestedHours}
-        memos={memoResponse?.memos || []}
-        selectedMemos={selectedMemos}
-        readOnly={true}
-        showProgress={true}
-      />
+        <SelectCtoMemoModal
+          isOpen={isMemoModalOpen}
+          onClose={() => setIsMemoModalOpen(false)}
+          requestedHours={formData.requestedHours}
+          memos={memoResponse?.memos || []}
+          selectedMemos={selectedMemos}
+          readOnly={true}
+          showProgress={true}
+        />
+      </SkeletonTheme>
     </div>
   );
 };

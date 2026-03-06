@@ -36,10 +36,6 @@ import { buildApiUrl } from "../../../config/env";
 
 import CtoApplicationPdfModal from "../ctoApplicationComponents/ctoApplicationPDFModal";
 
-// ✅ Theme + scrollbar sync
-import ThemeSync from "../../themeSync";
-import ScrollbarsSync from "../../../components/scrollbarSync";
-
 /* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
@@ -1074,8 +1070,6 @@ const CtoApplicationDetails = () => {
   if (isLoading)
     return (
       <>
-        <ThemeSync />
-        <ScrollbarsSync />
         <CtoApplicationDetailsSkeleton
           borderColor={borderColor}
           resolvedTheme={resolvedTheme}
@@ -1086,8 +1080,6 @@ const CtoApplicationDetails = () => {
   if (isError)
     return (
       <>
-        <ThemeSync />
-        <ScrollbarsSync />
         <p style={{ color: "var(--app-muted)" }}>Error: {error?.message}</p>
       </>
     );
@@ -1102,8 +1094,6 @@ const CtoApplicationDetails = () => {
           color: "var(--app-text)",
         }}
       >
-        <ThemeSync />
-        <ScrollbarsSync />
         <FileText className="h-10 w-10" style={{ color: "var(--app-muted)" }} />
         <h3 className="font-semibold" style={{ color: "var(--app-text)" }}>
           No Application Found
@@ -1144,9 +1134,6 @@ const CtoApplicationDetails = () => {
         borderColor: borderColor,
       }}
     >
-      <ThemeSync />
-      <ScrollbarsSync />
-
       {/* HEADER */}
       <header
         className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b backdrop-blur px-3 sm:px-4 py-2 z-10"

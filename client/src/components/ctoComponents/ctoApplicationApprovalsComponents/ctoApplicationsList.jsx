@@ -20,10 +20,6 @@ import { fetchMyCtoApplicationsApprovals } from "../../../api/cto";
 import { useAuth } from "../../../store/authStore";
 import { StatusBadge } from "../../statusUtils";
 
-// ✅ Theme + scrollbar sync (same concept as MyCtoCreditHistory)
-import ThemeSync from "../../themeSync";
-import ScrollbarsSync from "../../../components/scrollbarSync";
-
 /* ================================
    HOOK: DEBOUNCE
 ================================ */
@@ -457,9 +453,6 @@ const CtoApplicationsList = () => {
         color: "var(--app-text)",
       }}
     >
-      <ThemeSync />
-      <ScrollbarsSync />
-
       <SkeletonTheme
         baseColor={skeletonColors.baseColor}
         highlightColor={skeletonColors.highlightColor}

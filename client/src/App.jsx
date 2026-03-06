@@ -1,9 +1,14 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 import SessionGuard from "./components/sessionExpiredModal";
+
+/* ✅ Global theme + scrollbar sync (mount once) */
+import ThemeSync from "./components/themeSync";
+import ScrollbarsSync from "./components/scrollbarSync";
+import { useAuth } from "./store/authStore";
 
 /* Pages */
 import Login from "./pages/loginPage";
@@ -44,7 +49,6 @@ import WorkingDaysSettings from "./components/generalSettingsComponents/workingD
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
 
 // ✅ User Preferences Settings (theme + accent)
-// NOTE: adjust the import path if you saved the file elsewhere.
 import UserPreferencesSettings from "./components/generalSettingsComponents/userPreferencesSetting";
 
 /* Profile */
@@ -55,15 +59,68 @@ import ResetPassword from "./components/userProfile/myProfileResetPassword";
 /* Auth */
 import ProtectedRoute from "./components/protectedRoute";
 
+/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* ✅ Reactive resolved theme for system mode (for ToastContainer + any other global uses) */
+function useResolvedTheme(prefTheme) {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined")
+      return prefTheme === "dark" ? "dark" : "light";
+    return resolveTheme(prefTheme);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (prefTheme !== "system") {
+      setTheme(prefTheme === "dark" ? "dark" : "light");
+      return;
+    }
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setTheme(mq.matches ? "dark" : "light");
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, [prefTheme]);
+
+  return theme;
+}
+
 function App() {
   const location = useLocation();
 
   // ✅ Don't mount SessionGuard on login ("/")
   const isLoginRoute = location.pathname === "/";
 
+  // ✅ Global theme (single source of truth)
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useResolvedTheme(prefTheme);
+
   return (
     <>
-      {!isLoginRoute && <SessionGuard />}
+      {/* ✅ Mount these ONCE so you don't need them in every component */}
+      {!isLoginRoute && (
+        <>
+          <ThemeSync />
+          <ScrollbarsSync className="cto-scrollbar" applyToDocument={true} />
+          <SessionGuard />
+        </>
+      )}
 
       <Routes>
         {/* PUBLIC */}
@@ -90,7 +147,7 @@ function App() {
             <Route path="admin" element={<AdminPage />} />
             <Route path="settings" element={<SettingsPage />} />
 
-            {/* ✅ ADD THIS ROUTE (available to all logged-in users) */}
+            {/* User Preferences */}
             <Route
               path="user-preferences"
               element={<UserPreferencesSettings />}
@@ -122,7 +179,7 @@ function App() {
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
 
-            {/* ✅ CTO SETTINGS (NESTED LIKE CtoRecords) */}
+            {/* CTO SETTINGS (nested like CtoRecords) */}
             <Route path="cto-settings" element={<CtoSettings />}>
               <Route index element={<CtoSettingsPlaceholder />} />
               <Route path=":designationId" element={<ApproverSettings />} />
@@ -134,7 +191,7 @@ function App() {
             <Route path="general-settings" element={<WorkingDaysSettings />} />
             <Route path="session-settings" element={<GeneralSettings />} />
 
-            {/* ✅ Email notification settings */}
+            {/* Email notification settings */}
             <Route
               path="email-notification-settings"
               element={<EmailNotificationSettings />}
@@ -142,7 +199,7 @@ function App() {
           </Route>
 
           {/* ===================== */}
-          {/* ADMIN + SUPERVISOR (and others in your config) */}
+          {/* ADMIN + SUPERVISOR + HR + EMPLOYEE */}
           {/* ===================== */}
           <Route
             element={
@@ -162,7 +219,7 @@ function App() {
         <Route path="*" element={<div>404 - Page Not Found</div>} />
       </Routes>
 
-      {/* TOASTS */}
+      {/* TOASTS (theme matches user/system) */}
       <ToastContainer
         position="top-right"
         autoClose={3000}
@@ -170,7 +227,7 @@ function App() {
         closeOnClick
         pauseOnHover
         draggable
-        theme="light"
+        theme={resolvedTheme === "dark" ? "dark" : "light"}
       />
     </>
   );
