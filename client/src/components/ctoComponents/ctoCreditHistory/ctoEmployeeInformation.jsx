@@ -8,9 +8,52 @@ import {
 } from "../../../api/cto";
 import CreditCtoTable from "./ctoEmployeeCreditTable";
 import ApplicationCtoTable from "./ctoEmployeeApplicationTable";
-import Skeleton from "react-loading-skeleton";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { useAuth } from "../../../store/authStore";
+
+/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* ✅ Reactive resolved theme for system mode (prevents skeleton flashes) */
+function useResolvedTheme(prefTheme) {
+  const [theme, setTheme] = useState(() => {
+    if (typeof window === "undefined")
+      return prefTheme === "dark" ? "dark" : "light";
+    return resolveTheme(prefTheme);
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    if (prefTheme !== "system") {
+      setTheme(prefTheme === "dark" ? "dark" : "light");
+      return;
+    }
+
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const update = () => setTheme(mq.matches ? "dark" : "light");
+
+    update();
+    if (mq.addEventListener) mq.addEventListener("change", update);
+    else mq.addListener(update);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", update);
+      else mq.removeListener(update);
+    };
+  }, [prefTheme]);
+
+  return theme;
+}
 
 /* =========================
    HOOK: DEBOUNCE
@@ -52,72 +95,151 @@ function useIsXlUp() {
 }
 
 /* =========================
-   SKELETON
+   SKELETON (theme-aware)
 ========================= */
-const EmployeeInfoSkeleton = () => (
+const EmployeeInfoSkeleton = ({ borderColor }) => (
   <div className="space-y-4">
-    <Skeleton height={120} />
-    <Skeleton height={420} />
+    <div
+      className="rounded-xl border shadow-sm"
+      style={{ borderColor, backgroundColor: "var(--app-surface)" }}
+    >
+      <div className="p-4">
+        <Skeleton height={22} width={"42%"} />
+        <div className="mt-2">
+          <Skeleton height={14} width={"55%"} />
+        </div>
+        <div className="mt-2">
+          <Skeleton height={14} width={"45%"} />
+        </div>
+      </div>
+    </div>
+
+    <div
+      className="rounded-xl border shadow-sm overflow-hidden"
+      style={{ borderColor, backgroundColor: "var(--app-surface)" }}
+    >
+      <div className="p-4 border-b" style={{ borderColor }}>
+        <Skeleton height={14} width={220} />
+      </div>
+      <div className="p-4">
+        <Skeleton height={420} />
+      </div>
+    </div>
   </div>
 );
 
 /* =========================
-   UI: StatCard + Tabs
+   UI: StatCard + Tabs (theme-aware)
 ========================= */
-const StatCard = ({ title, value, hint, tone = "neutral" }) => {
-  const tones = {
-    blue: { wrap: "bg-white border-neutral-100", value: "text-blue-700" },
-    green: { wrap: "bg-white border-neutral-100", value: "text-green-700" },
-    red: { wrap: "bg-white border-neutral-100", value: "text-red-700" },
-    amber: { wrap: "bg-white border-neutral-100", value: "text-amber-700" },
-    neutral: { wrap: "bg-white border-neutral-100", value: "text-gray-900" },
-  };
-
-  const t = tones[tone] || tones.neutral;
+const StatCard = ({ title, value, hint, tone = "neutral", borderColor }) => {
+  const valueColor = useMemo(() => {
+    switch (tone) {
+      case "blue":
+        return "var(--accent)";
+      case "green":
+        return "#16a34a";
+      case "red":
+        return "#ef4444";
+      case "amber":
+        return "#d97706";
+      default:
+        return "var(--app-text)";
+    }
+  }, [tone]);
 
   return (
     <div
-      className={`w-full flex-shrink-0 border rounded-lg shadow-sm p-3 flex items-start gap-3 h-full ${t.wrap}`}
+      className="w-full flex-shrink-0 border rounded-xl shadow-sm p-3 flex items-start gap-3 h-full"
       role="status"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+      }}
     >
       <div className="flex-1 min-w-0">
-        <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wide truncate">
+        <div
+          className="text-[10px] uppercase font-bold tracking-wide truncate"
+          style={{ color: "var(--app-muted)" }}
+        >
           {title}
         </div>
-        <div className={`mt-0.5 text-lg font-bold truncate ${t.value}`}>
+        <div
+          className="mt-0.5 text-lg font-bold truncate"
+          style={{ color: valueColor }}
+        >
           {value}
         </div>
         {hint && (
-          <div className="text-[11px] text-gray-500 truncate">{hint}</div>
+          <div
+            className="text-[11px] truncate"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {hint}
+          </div>
         )}
       </div>
     </div>
   );
 };
 
-const TabButton = ({ active, onClick, label }) => (
-  <button
-    onClick={onClick}
-    className={`px-4 sm:px-6 py-3 text-sm font-semibold transition border-b-2 whitespace-nowrap
-      ${
-        active
-          ? "border-blue-600 text-blue-700"
-          : "border-transparent text-neutral-500 hover:text-neutral-800"
-      }`}
-    type="button"
-  >
-    {label}
-  </button>
-);
+const TabButton = ({ active, onClick, label, borderColor }) => {
+  return (
+    <button
+      onClick={onClick}
+      className="px-4 sm:px-6 py-3 text-sm font-semibold transition border-b-2 whitespace-nowrap"
+      style={{
+        borderBottomColor: active ? "var(--accent)" : "transparent",
+        color: active ? "var(--accent)" : "var(--app-muted)",
+      }}
+      onMouseEnter={(e) => {
+        if (active) return;
+        e.currentTarget.style.color = "var(--app-text)";
+      }}
+      onMouseLeave={(e) => {
+        if (active) return;
+        e.currentTarget.style.color = "var(--app-muted)";
+      }}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+};
 
 /* =========================
    MAIN COMPONENT
 ========================= */
 const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
-  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("credit");
   const { id: selectedId } = useParams();
   const isXlUp = useIsXlUp();
+
+  // ✅ Theme vars come from global ThemeSync in App.jsx, but we still compute:
+  // - borderColor (theme-aware)
+  // - skeleton colors (theme-aware + safe fallbacks)
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useResolvedTheme(prefTheme);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColors = useMemo(() => {
+    const base =
+      resolvedTheme === "dark"
+        ? "rgba(255,255,255,0.06)"
+        : "rgba(15,23,42,0.06)";
+    const highlight =
+      resolvedTheme === "dark"
+        ? "rgba(255,255,255,0.10)"
+        : "rgba(15,23,42,0.10)";
+    return {
+      baseColor: `var(--skeleton-base, ${base})`,
+      highlightColor: `var(--skeleton-highlight, ${highlight})`,
+    };
+  }, [resolvedTheme]);
 
   /* ===== CREDIT TAB STATE ===== */
   const [creditPage, setCreditPage] = useState(1);
@@ -209,7 +331,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     creditPagination?.totalDocs ??
     creditData?.total;
 
-  // ✅ pull statusCounts + totals from API (same pattern as MyCtoCreditHistory)
+  // ✅ statusCounts + totals from API
   const creditStatusCounts = creditData?.statusCounts || {
     ACTIVE: 0,
     EXHAUSTED: 0,
@@ -248,7 +370,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     return Number.isInteger(n) ? String(n) : n.toFixed(2);
   }, []);
 
-  // ✅ Summary now comes from API totals (no manual reduce)
   const summary = useMemo(() => {
     return {
       totalCredited: Number(creditTotals.totalCreditedHours || 0),
@@ -264,12 +385,26 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
 
   /* ===== LOADING / ERROR ===== */
   if (!selectedId || isEmployeeLoadingFromEmployeeList || isEmployeeLoading) {
-    return <EmployeeInfoSkeleton />;
+    return (
+      <SkeletonTheme
+        baseColor={skeletonColors.baseColor}
+        highlightColor={skeletonColors.highlightColor}
+      >
+        <EmployeeInfoSkeleton borderColor={borderColor} />
+      </SkeletonTheme>
+    );
   }
 
   if (isEmployeeError || isCreditError || isApplicationError) {
     return (
-      <div className="p-6 text-center text-red-600">
+      <div
+        className="p-6 text-center rounded-xl border"
+        style={{
+          backgroundColor: "var(--app-surface)",
+          borderColor,
+          color: "#ef4444",
+        }}
+      >
         Failed to load employee data.
       </div>
     );
@@ -279,172 +414,219 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     `${employee.firstName || ""} ${employee.lastName || ""}`.trim();
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3 min-w-0">
-      {/* HEADER */}
-      <div className="bg-white border border-neutral-200 rounded-xl shadow-sm p-4">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 min-w-0">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-xl sm:text-2xl font-bold text-neutral-900 truncate">
-              {fullName || "Employee"}
-            </h2>
-            <p className="text-sm text-neutral-500 mt-1 truncate">
-              {(employee.position || "—") +
-                " • " +
-                (employee.department || "—")}
-            </p>
-            <p className="text-sm text-neutral-500 truncate">
-              {employee.email || "—"}
-            </p>
+    <SkeletonTheme
+      baseColor={skeletonColors.baseColor}
+      highlightColor={skeletonColors.highlightColor}
+    >
+      <div className="h-full min-h-0 flex flex-col gap-3 min-w-0">
+        {/* HEADER */}
+        <div
+          className="border rounded-xl shadow-sm p-4"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor,
+          }}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 min-w-0">
+            <div className="min-w-0 flex-1">
+              <h2
+                className="text-xl sm:text-2xl font-bold truncate"
+                style={{ color: "var(--app-text)" }}
+              >
+                {fullName || "Employee"}
+              </h2>
+              <p
+                className="text-sm mt-1 truncate"
+                style={{ color: "var(--app-muted)" }}
+              >
+                {(employee.position || "—") +
+                  " • " +
+                  (employee.department || "—")}
+              </p>
+              <p
+                className="text-sm truncate"
+                style={{ color: "var(--app-muted)" }}
+              >
+                {employee.email || "—"}
+              </p>
+            </div>
+
+            {/* Stats */}
+            <div className="flex-1 lg:flex-none w-full md:w-auto min-w-0">
+              {/* Desktop */}
+              <div className="hidden lg:grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+                <StatCard
+                  title="Total Credited"
+                  value={`${fmtHours(summary.totalCredited)}h`}
+                  hint={`${totalMemosOverall} memos`}
+                  tone="green"
+                  borderColor={borderColor}
+                />
+                <StatCard
+                  title="Used Hours"
+                  value={`${fmtHours(summary.usedHours)}h`}
+                  hint="Total used"
+                  tone="red"
+                  borderColor={borderColor}
+                />
+                <StatCard
+                  title="Reserved"
+                  value={`${fmtHours(summary.reservedHours)}h`}
+                  hint="Reserved in apps"
+                  tone="amber"
+                  borderColor={borderColor}
+                />
+                <StatCard
+                  title="Balance"
+                  value={`${fmtHours(summary.remainingHours)}h`}
+                  hint="Remaining hours"
+                  tone="blue"
+                  borderColor={borderColor}
+                />
+              </div>
+
+              {/* Mobile compact */}
+              <div className="lg:hidden grid grid-cols-2 gap-2">
+                {[
+                  {
+                    k: "Balance",
+                    v: `${fmtHours(summary.remainingHours)}h`,
+                    c: "var(--accent)",
+                  },
+                  {
+                    k: "Used",
+                    v: `${fmtHours(summary.usedHours)}h`,
+                    c: "#d97706",
+                  },
+                  {
+                    k: "Reserved",
+                    v: `${fmtHours(summary.reservedHours)}h`,
+                    c: "var(--app-text)",
+                  },
+                  {
+                    k: "Credited",
+                    v: `${fmtHours(summary.totalCredited)}h`,
+                    c: "var(--app-text)",
+                  },
+                ].map((x) => (
+                  <div
+                    key={x.k}
+                    className="border rounded-xl p-2 flex justify-between items-center min-w-0"
+                    style={{
+                      backgroundColor: "var(--app-surface)",
+                      borderColor,
+                    }}
+                  >
+                    <div
+                      className="text-[10px] uppercase font-bold truncate"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      {x.k}
+                    </div>
+                    <div
+                      className="text-sm font-bold truncate"
+                      style={{ color: x.c }}
+                    >
+                      {x.v}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* TABS + CONTENT */}
+        <div
+          className="border rounded-xl shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden min-w-0"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor,
+          }}
+        >
+          <div
+            className="flex border-b overflow-x-auto no-scrollbar"
+            style={{ borderColor }}
+          >
+            <TabButton
+              active={activeTab === "credit"}
+              onClick={() => setActiveTab("credit")}
+              label="Credit CTO"
+              borderColor={borderColor}
+            />
+            <TabButton
+              active={activeTab === "application"}
+              onClick={() => setActiveTab("application")}
+              label="Application CTO"
+              borderColor={borderColor}
+            />
           </div>
 
-          {/* Stats */}
-          <div className="flex-1 lg:flex-none w-full md:w-auto min-w-0">
-            {/* Tablet/Desktop */}
-            <div className="hidden lg:grid md:grid-cols-2 xl:grid-cols-4 gap-3">
-              <StatCard
-                title="Total Credited"
-                value={`${fmtHours(summary.totalCredited)}h`}
-                hint={`${totalMemosOverall} memos`}
-                tone="green"
+          <div className="px-3 pb-3 flex-1 min-h-0 overflow-hidden">
+            {activeTab === "credit" ? (
+              <CreditCtoTable
+                credits={credits}
+                page={creditPage}
+                limit={creditLimit}
+                status={creditStatus}
+                statusCounts={creditStatusCounts}
+                search={creditSearchInput}
+                totalPages={creditPagination.totalPages || 1}
+                total={creditTotal}
+                isLoading={isCreditLoading}
+                onSearchChange={(val) => {
+                  setCreditPage(1);
+                  setCreditSearchInput(val);
+                }}
+                onStatusChange={(val) => {
+                  setCreditPage(1);
+                  setCreditStatus(val);
+                }}
+                onLimitChange={(val) => {
+                  setCreditPage(1);
+                  setCreditLimit(val);
+                }}
+                onNextPage={() =>
+                  setCreditPage((p) =>
+                    p < (creditPagination.totalPages || 1) ? p + 1 : p,
+                  )
+                }
+                onPrevPage={() => setCreditPage((p) => (p > 1 ? p - 1 : p))}
               />
-              <StatCard
-                title="Used Hours"
-                value={`${fmtHours(summary.usedHours)}h`}
-                hint="Total used"
-                tone="red"
+            ) : (
+              <ApplicationCtoTable
+                applications={applications}
+                page={appPage}
+                limit={appLimit}
+                status={appStatus}
+                search={appSearchInput}
+                totalPages={appPagination.totalPages || 1}
+                total={appTotal}
+                isLoading={isApplicationLoading}
+                onSearchChange={(val) => {
+                  setAppPage(1);
+                  setAppSearchInput(val);
+                }}
+                onStatusChange={(val) => {
+                  setAppPage(1);
+                  setAppStatus(val);
+                }}
+                onLimitChange={(val) => {
+                  setAppPage(1);
+                  setAppLimit(val);
+                }}
+                onNextPage={() =>
+                  setAppPage((p) =>
+                    p < (appPagination.totalPages || 1) ? p + 1 : p,
+                  )
+                }
+                onPrevPage={() => setAppPage((p) => (p > 1 ? p - 1 : p))}
               />
-              <StatCard
-                title="Reserved"
-                value={`${fmtHours(summary.reservedHours)}h`}
-                hint="Reserved in apps"
-                tone="amber"
-              />
-              <StatCard
-                title="Balance"
-                value={`${fmtHours(summary.remainingHours)}h`}
-                hint="Remaining hours"
-                tone="blue"
-              />
-            </div>
-
-            {/* Mobile compact */}
-            <div className="lg:hidden grid grid-cols-2 gap-2">
-              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
-                  Balance
-                </div>
-                <div className="text-sm font-bold text-neutral-900 truncate">
-                  {fmtHours(summary.remainingHours)}h
-                </div>
-              </div>
-              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
-                  Used
-                </div>
-                <div className="text-sm font-bold text-amber-600 truncate">
-                  {fmtHours(summary.usedHours)}h
-                </div>
-              </div>
-              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
-                  Reserved
-                </div>
-                <div className="text-sm font-bold text-neutral-700 truncate">
-                  {fmtHours(summary.reservedHours)}h
-                </div>
-              </div>
-              <div className="bg-white border flex justify-between items-center border-gray-100 rounded-lg p-2">
-                <div className="text-[10px] text-neutral-400 uppercase font-bold truncate">
-                  Credited
-                </div>
-                <div className="text-sm font-bold text-neutral-900 truncate">
-                  {fmtHours(summary.totalCredited)}h
-                </div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* TABS + CONTENT */}
-      <div className="bg-white border border-neutral-200 rounded-xl shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden min-w-0">
-        <div className="flex border-b border-neutral-100 overflow-x-auto no-scrollbar">
-          <TabButton
-            active={activeTab === "credit"}
-            onClick={() => setActiveTab("credit")}
-            label="Credit CTO"
-          />
-          <TabButton
-            active={activeTab === "application"}
-            onClick={() => setActiveTab("application")}
-            label="Application CTO"
-          />
-        </div>
-
-        <div className="px-3 pb-3 flex-1 min-h-0 overflow-hidden">
-          {activeTab === "credit" ? (
-            <CreditCtoTable
-              credits={credits}
-              page={creditPage}
-              limit={creditLimit}
-              status={creditStatus}
-              statusCounts={creditStatusCounts} // ✅ for colored tabs counts
-              search={creditSearchInput}
-              totalPages={creditPagination.totalPages || 1}
-              total={creditTotal}
-              isLoading={isCreditLoading}
-              onSearchChange={(val) => {
-                setCreditPage(1);
-                setCreditSearchInput(val);
-              }}
-              onStatusChange={(val) => {
-                setCreditPage(1);
-                setCreditStatus(val);
-              }}
-              onLimitChange={(val) => {
-                setCreditPage(1);
-                setCreditLimit(val);
-              }}
-              onNextPage={() =>
-                setCreditPage((p) =>
-                  p < (creditPagination.totalPages || 1) ? p + 1 : p,
-                )
-              }
-              onPrevPage={() => setCreditPage((p) => (p > 1 ? p - 1 : p))}
-            />
-          ) : (
-            <ApplicationCtoTable
-              applications={applications}
-              page={appPage}
-              limit={appLimit}
-              status={appStatus}
-              search={appSearchInput}
-              totalPages={appPagination.totalPages || 1}
-              total={appTotal}
-              isLoading={isApplicationLoading}
-              onSearchChange={(val) => {
-                setAppPage(1);
-                setAppSearchInput(val);
-              }}
-              onStatusChange={(val) => {
-                setAppPage(1);
-                setAppStatus(val);
-              }}
-              onLimitChange={(val) => {
-                setAppPage(1);
-                setAppLimit(val);
-              }}
-              onNextPage={() =>
-                setAppPage((p) =>
-                  p < (appPagination.totalPages || 1) ? p + 1 : p,
-                )
-              }
-              onPrevPage={() => setAppPage((p) => (p > 1 ? p - 1 : p))}
-            />
-          )}
-        </div>
-      </div>
-    </div>
+    </SkeletonTheme>
   );
 };
 
