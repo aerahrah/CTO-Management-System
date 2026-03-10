@@ -2,12 +2,30 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Select from "react-select";
 import { Loader2 } from "lucide-react";
-
-// ✅ use the new Designation options endpoint (same style as project options)
+import { useAuth } from "../../../store/authStore";
 import { fetchDesignationOptions } from "../../../api/designation";
+
+/* ------------------ Resolve theme ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
 
 export default function SelectDesignation({ value, onChange, error }) {
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
 
   const {
     data: raw,
@@ -19,7 +37,6 @@ export default function SelectDesignation({ value, onChange, error }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // ✅ normalize like project options: backend returns { items: [...] }
   const offices = useMemo(() => {
     return Array.isArray(raw?.items)
       ? raw.items
@@ -42,16 +59,18 @@ export default function SelectDesignation({ value, onChange, error }) {
   const handleMenuOpen = () => setMenuOpen(true);
   const handleMenuClose = () => setMenuOpen(false);
 
-  // ✅ dynamic options (same behavior)
   const dynamicOptions = useMemo(() => {
     if (menuOpen && isPending) {
       return [
         {
           value: "__loading__",
           label: (
-            <div className="flex items-center gap-2 text-slate-600">
+            <div
+              className="flex items-center gap-2"
+              style={{ color: "var(--app-muted)" }}
+            >
               <Loader2 className="h-4 w-4 animate-spin" />
-              Loading provincial offices...
+              Loading designations...
             </div>
           ),
           isDisabled: true,
@@ -64,8 +83,12 @@ export default function SelectDesignation({ value, onChange, error }) {
         {
           value: "__error__",
           label: (
-            <div className="text-rose-600">
-              Failed to load provincial offices.
+            <div
+              style={{
+                color: resolvedTheme === "dark" ? "#fda4af" : "#be123c",
+              }}
+            >
+              Failed to load designations.
             </div>
           ),
           isDisabled: true,
@@ -74,14 +97,13 @@ export default function SelectDesignation({ value, onChange, error }) {
     }
 
     return options;
-  }, [menuOpen, isPending, isError, options]);
+  }, [menuOpen, isPending, isError, options, resolvedTheme]);
 
   const selected = useMemo(() => {
     if (!value) return null;
     return options.find((opt) => opt.value === String(value)) || null;
   }, [options, value]);
 
-  // ✅ same styling as your project select
   const customStyles = useMemo(
     () => ({
       control: (base, state) => ({
@@ -89,19 +111,19 @@ export default function SelectDesignation({ value, onChange, error }) {
         minHeight: "44px",
         borderRadius: "0.75rem",
         borderColor: state.isFocused
-          ? "#a5b4fc" // indigo-300
+          ? "var(--accent)"
           : error
-            ? "#fda4af" // rose-300
-            : "rgba(226,232,240,0.9)", // slate-200-ish
-        boxShadow: state.isFocused ? "0 0 0 4px rgba(99,102,241,0.12)" : "none",
+            ? "rgba(244,63,94,0.45)"
+            : borderColor,
+        boxShadow: state.isFocused ? "0 0 0 4px var(--accent-soft)" : "none",
         "&:hover": {
           borderColor: state.isFocused
-            ? "#a5b4fc"
+            ? "var(--accent)"
             : error
-              ? "#fda4af"
-              : "rgba(148,163,184,0.7)", // slate-400-ish
+              ? "rgba(244,63,94,0.45)"
+              : borderColor,
         },
-        backgroundColor: "rgba(255,255,255,0.9)",
+        backgroundColor: "var(--app-surface)",
         overflow: "hidden",
       }),
       valueContainer: (base) => ({
@@ -109,9 +131,13 @@ export default function SelectDesignation({ value, onChange, error }) {
         paddingLeft: 10,
         paddingRight: 10,
       }),
+      input: (base) => ({
+        ...base,
+        color: "var(--app-text)",
+      }),
       placeholder: (base) => ({
         ...base,
-        color: "rgba(100,116,139,0.8)", // slate-500
+        color: "var(--app-muted)",
       }),
       singleValue: (base) => ({
         ...base,
@@ -119,38 +145,56 @@ export default function SelectDesignation({ value, onChange, error }) {
         overflow: "hidden",
         textOverflow: "ellipsis",
         maxWidth: "100%",
-        color: "#0f172a", // slate-900
+        color: "var(--app-text)",
         fontWeight: 500,
       }),
       indicatorSeparator: () => ({ display: "none" }),
       dropdownIndicator: (base) => ({
         ...base,
-        color: "rgba(100,116,139,0.8)",
+        color: "var(--app-muted)",
       }),
       clearIndicator: (base) => ({
         ...base,
-        color: "rgba(100,116,139,0.8)",
+        color: "var(--app-muted)",
       }),
       menu: (base) => ({
         ...base,
         zIndex: 9999,
         borderRadius: "0.75rem",
         overflow: "hidden",
-        border: "1px solid rgba(226,232,240,0.9)",
+        border: `1px solid ${borderColor}`,
         boxShadow: "0 20px 40px rgba(15,23,42,0.08)",
+        backgroundColor: "var(--app-surface)",
+      }),
+      menuList: (base) => ({
+        ...base,
+        backgroundColor: "var(--app-surface)",
       }),
       option: (base, state) => ({
         ...base,
         fontSize: 13,
         backgroundColor: state.isSelected
-          ? "rgba(99,102,241,0.10)"
+          ? "var(--accent-soft)"
           : state.isFocused
-            ? "rgba(2,6,23,0.04)"
-            : "white",
-        color: "#0f172a",
+            ? resolvedTheme === "dark"
+              ? "rgba(255,255,255,0.05)"
+              : "rgba(2,6,23,0.04)"
+            : "var(--app-surface)",
+        color: "var(--app-text)",
+        cursor: "pointer",
+      }),
+      noOptionsMessage: (base) => ({
+        ...base,
+        color: "var(--app-muted)",
+        backgroundColor: "var(--app-surface)",
+      }),
+      loadingMessage: (base) => ({
+        ...base,
+        color: "var(--app-muted)",
+        backgroundColor: "var(--app-surface)",
       }),
     }),
-    [error],
+    [error, borderColor, resolvedTheme],
   );
 
   return (
@@ -162,13 +206,12 @@ export default function SelectDesignation({ value, onChange, error }) {
         onChange={(selectedOpt) => onChange(selectedOpt?.value || "")}
         placeholder={
           isPending && !menuOpen
-            ? "Loading provincial offices..."
-            : "Select Provincial Office"
+            ? "Loading designations..."
+            : "Select Designation"
         }
         isClearable
         onMenuOpen={handleMenuOpen}
         onMenuClose={handleMenuClose}
-        // ✅ same behavior as project select: allow opening shows loading row
         isDisabled={isPending && !menuOpen}
         menuPlacement="auto"
       />

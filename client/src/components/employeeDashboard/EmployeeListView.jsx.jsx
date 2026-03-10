@@ -6,11 +6,12 @@ import { fetchProjectOptions } from "../../api/project";
 import { fetchDesignationOptions } from "../../api/designation";
 import { useNavigate } from "react-router-dom";
 import { RoleBadge } from "../statusUtils";
-import Skeleton from "react-loading-skeleton";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import Breadcrumbs from "../breadCrumbs";
 import EmployeeRoleChanger from "./employeeChangeRole";
 import Modal from "../modal";
+import { useAuth } from "../../store/authStore";
 
 import {
   Search,
@@ -37,45 +38,117 @@ const DIVISION_OPTIONS = ["AFD", "TOD", "ORD"];
 const pageSizeOptions = [20, 50, 100];
 
 /* =========================
+   THEME
+========================= */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* =========================
    HELPERS
 ========================= */
 const initials = (firstName, lastName) =>
   `${(firstName || " ")[0] || ""}${(lastName || " ")[0] || ""}`.toUpperCase();
 
-const getStatusPill = (status) => {
+const getStatusPill = (status, resolvedTheme) => {
   const s = status || "Active";
+  const isDark = resolvedTheme === "dark";
+
   const map = {
-    Active: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    Inactive: "bg-gray-50 text-gray-700 border-gray-100",
-    Resigned: "bg-amber-50 text-amber-700 border-amber-100",
-    Terminated: "bg-rose-50 text-rose-700 border-rose-100",
+    Active: {
+      backgroundColor: isDark
+        ? "rgba(16,185,129,0.14)"
+        : "rgba(16,185,129,0.10)",
+      color: isDark ? "#6ee7b7" : "#047857",
+      borderColor: isDark ? "rgba(16,185,129,0.28)" : "rgba(16,185,129,0.18)",
+      dot: "#10b981",
+    },
+    Inactive: {
+      backgroundColor: isDark
+        ? "rgba(148,163,184,0.14)"
+        : "rgba(148,163,184,0.10)",
+      color: isDark ? "#cbd5e1" : "#475569",
+      borderColor: isDark ? "rgba(148,163,184,0.22)" : "rgba(148,163,184,0.18)",
+      dot: "#94a3b8",
+    },
+    Resigned: {
+      backgroundColor: isDark
+        ? "rgba(245,158,11,0.14)"
+        : "rgba(245,158,11,0.10)",
+      color: isDark ? "#fcd34d" : "#b45309",
+      borderColor: isDark ? "rgba(245,158,11,0.28)" : "rgba(245,158,11,0.18)",
+      dot: "#f59e0b",
+    },
+    Terminated: {
+      backgroundColor: isDark ? "rgba(244,63,94,0.14)" : "rgba(244,63,94,0.10)",
+      color: isDark ? "#fda4af" : "#be123c",
+      borderColor: isDark ? "rgba(244,63,94,0.28)" : "rgba(244,63,94,0.18)",
+      dot: "#f43f5e",
+    },
   };
-  const dot = {
-    Active: "bg-emerald-600",
-    Inactive: "bg-gray-500",
-    Resigned: "bg-amber-600",
-    Terminated: "bg-rose-600",
-  };
+
   return {
-    wrap: map[s] || map.Inactive,
-    dot: dot[s] || dot.Inactive,
+    ...(map[s] || map.Inactive),
     label: s,
   };
 };
 
-const getLeftStripClass = (status) => {
+const getLeftStripStyle = (status) => {
   switch (String(status || "").toUpperCase()) {
     case "ACTIVE":
-      return "border-l-4 border-l-emerald-500";
+      return { borderLeftColor: "#10b981" };
     case "INACTIVE":
-      return "border-l-4 border-l-slate-400";
+      return { borderLeftColor: "#94a3b8" };
     case "RESIGNED":
-      return "border-l-4 border-l-amber-500";
+      return { borderLeftColor: "#f59e0b" };
     case "TERMINATED":
-      return "border-l-4 border-l-rose-500";
+      return { borderLeftColor: "#f43f5e" };
     default:
-      return "border-l-4 border-l-slate-300";
+      return { borderLeftColor: "#cbd5e1" };
   }
+};
+
+const getDivisionBadgeStyle = (division, resolvedTheme) => {
+  const isDark = resolvedTheme === "dark";
+
+  const styles = {
+    AFD: {
+      backgroundColor: isDark
+        ? "rgba(59,130,246,0.14)"
+        : "rgba(59,130,246,0.10)",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+      borderColor: isDark ? "rgba(59,130,246,0.28)" : "rgba(59,130,246,0.18)",
+    },
+    TOD: {
+      backgroundColor: isDark
+        ? "rgba(168,85,247,0.14)"
+        : "rgba(168,85,247,0.10)",
+      color: isDark ? "#d8b4fe" : "#7c3aed",
+      borderColor: isDark ? "rgba(168,85,247,0.28)" : "rgba(168,85,247,0.18)",
+    },
+    ORD: {
+      backgroundColor: isDark
+        ? "rgba(16,185,129,0.14)"
+        : "rgba(16,185,129,0.10)",
+      color: isDark ? "#6ee7b7" : "#047857",
+      borderColor: isDark ? "rgba(16,185,129,0.28)" : "rgba(16,185,129,0.18)",
+    },
+  };
+
+  return (
+    styles[division] || {
+      backgroundColor: isDark
+        ? "rgba(148,163,184,0.14)"
+        : "rgba(148,163,184,0.10)",
+      color: isDark ? "#cbd5e1" : "#475569",
+      borderColor: isDark ? "rgba(148,163,184,0.22)" : "rgba(148,163,184,0.18)",
+    }
+  );
 };
 
 /* =========================
@@ -83,17 +156,24 @@ const getLeftStripClass = (status) => {
 ========================= */
 function useDebounce(value, delay) {
   const [debouncedValue, setDebouncedValue] = useState(value);
+
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedValue(value), delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
+
   return debouncedValue;
 }
 
 /* =========================
    ACTION MENU
 ========================= */
-const ActionMenu = ({ onAction, disabled = false }) => {
+const ActionMenu = ({
+  onAction,
+  disabled = false,
+  borderColor,
+  resolvedTheme,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -129,9 +209,19 @@ const ActionMenu = ({ onAction, disabled = false }) => {
           if (disabled) return;
           setIsOpen((o) => !o);
         }}
-        className={`p-2 rounded-full hover:bg-gray-100 text-gray-500 hover:text-gray-800 ${
+        className={`p-2 rounded-full transition-colors duration-200 ease-out ${
           disabled ? "opacity-50 cursor-not-allowed" : ""
         }`}
+        style={{ color: "var(--app-muted)" }}
+        onMouseEnter={(e) => {
+          if (disabled) return;
+          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+          e.currentTarget.style.color = "var(--app-text)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+          e.currentTarget.style.color = "var(--app-muted)";
+        }}
         aria-haspopup="true"
         aria-expanded={isOpen}
         title="Actions"
@@ -140,26 +230,61 @@ const ActionMenu = ({ onAction, disabled = false }) => {
       </button>
 
       {isOpen && !disabled && (
-        <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-30 py-1">
+        <div
+          className="absolute right-0 top-full mt-2 w-48 rounded-lg shadow-lg z-30 py-1 border transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor,
+          }}
+        >
           <button
             type="button"
             onClick={() => handle(() => onAction("view"))}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-left"
+            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
+            style={{ color: "var(--app-text)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <User size={14} /> View Profile
           </button>
+
           <button
             type="button"
             onClick={() => handle(() => onAction("update"))}
-            className="w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 text-left"
+            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
+            style={{ color: "var(--app-text)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <Settings size={14} /> Update Profile
           </button>
-          <div className="h-px bg-gray-100 my-1" />
+
+          <div className="h-px my-1" style={{ backgroundColor: borderColor }} />
+
           <button
             type="button"
             onClick={() => handle(() => onAction("role"))}
-            className="w-full px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2 text-left"
+            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
+            style={{
+              color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor =
+                resolvedTheme === "dark"
+                  ? "rgba(245,158,11,0.14)"
+                  : "rgba(245,158,11,0.10)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <Shield size={14} /> Change Role
           </button>
@@ -181,28 +306,45 @@ const CompactPagination = ({
   onPrev,
   onNext,
   label = "items",
+  borderColor,
 }) => {
   const tp = Math.max(Number(totalPages) || 1, 1);
 
   return (
-    <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
-      {/* Mobile */}
+    <div
+      className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
+      style={{
+        borderColor,
+        backgroundColor: "var(--app-surface)",
+      }}
+    >
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
           type="button"
           onClick={onPrev}
           disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            border: `1px solid ${borderColor}`,
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+          }}
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
         </button>
 
         <div className="text-center min-w-0">
-          <div className="text-xs font-mono font-semibold text-gray-700">
+          <div
+            className="text-xs font-mono font-semibold transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-text)" }}
+          >
             {page} / {tp}
           </div>
-          <div className="text-[11px] text-gray-500 truncate">
+          <div
+            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
             {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
           </div>
         </div>
@@ -211,40 +353,78 @@ const CompactPagination = ({
           type="button"
           onClick={onNext}
           disabled={page >= tp || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            border: `1px solid ${borderColor}`,
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+          }}
         >
           Next
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
 
-      {/* Desktop */}
       <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="text-xs text-gray-500 font-medium">
+        <div
+          className="text-xs font-medium transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
           Showing{" "}
-          <span className="font-bold text-gray-900">
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
             {total === 0 ? 0 : `${startItem}-${endItem}`}
           </span>{" "}
-          of <span className="font-bold text-gray-900">{total}</span> {label}
+          of{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total}
+          </span>{" "}
+          {label}
         </div>
 
-        <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
+        <div
+          className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            borderColor,
+          }}
+        >
           <button
             type="button"
             onClick={onPrev}
             disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            style={{ color: "var(--app-muted)" }}
+            onMouseEnter={(e) => {
+              if (page === 1 || total === 0) return;
+              e.currentTarget.style.backgroundColor = "var(--app-surface)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-xs font-mono font-medium px-3 text-gray-600">
+
+          <span
+            className="text-xs font-mono font-medium px-3 transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
             {page} / {tp}
           </span>
+
           <button
             type="button"
             onClick={onNext}
             disabled={page >= tp || total === 0}
-            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            style={{ color: "var(--app-muted)" }}
+            onMouseEnter={(e) => {
+              if (page >= tp || total === 0) return;
+              e.currentTarget.style.backgroundColor = "var(--app-surface)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -264,19 +444,36 @@ const SelectField = ({
   options,
   disabled,
   className = "",
+  borderColor,
 }) => {
   return (
     <div className={className}>
-      <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.14em] mb-1">
+      <label
+        className="block text-[10px] font-bold uppercase tracking-[0.14em] mb-1 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
         {label}
       </label>
       <select
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full h-10 px-3 text-sm bg-gray-50 border border-gray-200 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-gray-700 cursor-pointer ${
+        className={`w-full h-10 px-3 text-sm rounded-lg outline-none transition-all cursor-pointer border ${
           disabled ? "opacity-60 cursor-not-allowed" : ""
         }`}
+        style={{
+          backgroundColor: "var(--app-surface-2)",
+          borderColor,
+          color: "var(--app-text)",
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = "var(--accent)";
+          e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = borderColor;
+          e.currentTarget.style.boxShadow = "none";
+        }}
       >
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
@@ -288,18 +485,13 @@ const SelectField = ({
   );
 };
 
-const DivisionBadge = ({ division }) => {
-  const styles = {
-    AFD: "bg-blue-50 text-blue-700 border-blue-100",
-    TOD: "bg-purple-50 text-purple-700 border-purple-100",
-    ORD: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  };
-  const defaultStyle = "bg-gray-50 text-gray-700 border-gray-100";
+const DivisionBadge = ({ division, resolvedTheme }) => {
+  const style = getDivisionBadgeStyle(division, resolvedTheme);
+
   return (
     <span
-      className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold border ${
-        styles[division] || defaultStyle
-      }`}
+      className="inline-flex items-center px-2 py-1 rounded text-xs font-bold border"
+      style={style}
     >
       {division || "N/A"}
     </span>
@@ -314,9 +506,11 @@ const EmployeeCard = ({
   onNavigate,
   onAction,
   isRoleModalOpen,
-  variant = "mobile", // "mobile" | "tablet"
+  variant = "mobile",
+  borderColor,
+  resolvedTheme,
 }) => {
-  const statusPill = getStatusPill(emp?.status);
+  const statusPill = getStatusPill(emp?.status, resolvedTheme);
 
   const projectLabel =
     typeof emp?.project === "string"
@@ -329,51 +523,93 @@ const EmployeeCard = ({
       : emp?.designation?.name || "—";
 
   const positionOrDesignation = emp?.position || designationLabel;
-
-  const leftStrip = getLeftStripClass(emp?.status);
+  const leftStrip = getLeftStripStyle(emp?.status);
 
   const wrapClass =
     variant === "tablet"
-      ? "bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
-      : "bg-white rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 overflow-hidden";
+      ? "rounded-xl shadow-sm border overflow-hidden transition-colors duration-300 ease-out"
+      : "rounded-xl border overflow-hidden transition-colors duration-300 ease-out";
 
   return (
     <div
-      className={`${wrapClass} ${leftStrip}`}
+      className={wrapClass}
       onClick={() => onNavigate(emp)}
       role="button"
       tabIndex={0}
+      style={{
+        ...leftStrip,
+        borderLeftWidth: "4px",
+        borderTopColor: borderColor,
+        borderRightColor: borderColor,
+        borderBottomColor: borderColor,
+        backgroundColor: "var(--app-surface)",
+        boxShadow:
+          variant === "tablet"
+            ? "0 1px 3px rgba(0,0,0,0.08)"
+            : "0 2px 8px rgba(0,0,0,0.04)",
+      }}
     >
-      <div className="px-3 py-2 flex justify-between items-center border-b border-gray-50">
-        <span className="text-[11px] font-mono text-gray-400">
+      <div
+        className="px-3 py-2 flex justify-between items-center border-b transition-colors duration-300 ease-out"
+        style={{ borderColor }}
+      >
+        <span
+          className="text-[11px] font-mono transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
           #{emp?._id ? emp._id.slice(-6).toUpperCase() : "—"}
         </span>
+
         <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${statusPill.wrap}`}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border"
+          style={{
+            backgroundColor: statusPill.backgroundColor,
+            color: statusPill.color,
+            borderColor: statusPill.borderColor,
+          }}
         >
-          <span className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`} />
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ backgroundColor: statusPill.dot }}
+          />
           {statusPill.label}
         </span>
       </div>
 
       <div className="p-3 space-y-2">
         <div className="flex items-start gap-2">
-          <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200 flex-none">
+          <div
+            className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold border flex-none"
+            style={{
+              backgroundColor: "var(--accent-soft)",
+              color: "var(--accent)",
+              borderColor: "var(--accent-soft2)",
+            }}
+          >
             {initials(emp?.firstName, emp?.lastName)}
           </div>
 
           <div className="min-w-0 flex-1">
-            <h4 className="text-sm font-bold text-gray-900 truncate leading-5">
+            <h4
+              className="text-sm font-bold truncate leading-5 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               {emp?.firstName} {emp?.lastName}
             </h4>
 
-            <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
-              <Mail size={12} className="text-gray-400" />
+            <div
+              className="flex items-center gap-1 text-xs mt-0.5 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
+              <Mail size={12} style={{ color: "var(--app-muted)" }} />
               <span className="truncate">{emp?.email || "No email"}</span>
             </div>
 
             {emp?.username && (
-              <div className="mt-1 text-[11px] text-gray-400 font-mono truncate">
+              <div
+                className="mt-1 text-[11px] font-mono truncate transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
                 @{emp.username}
               </div>
             )}
@@ -383,44 +619,88 @@ const EmployeeCard = ({
             <ActionMenu
               disabled={isRoleModalOpen}
               onAction={(action) => onAction(action, emp)}
+              borderColor={borderColor}
+              resolvedTheme={resolvedTheme}
             />
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
-            <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+          <div
+            className="rounded-lg p-2 border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+            }}
+          >
+            <div
+              className="text-[10px] uppercase font-bold flex items-center gap-1 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               <IdCard size={12} /> Position
             </div>
-            <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
+            <div
+              className="text-xs font-semibold mt-0.5 truncate transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               {positionOrDesignation || "—"}
             </div>
           </div>
 
-          <div className="bg-gray-50 border border-gray-100 rounded-lg p-2">
-            <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+          <div
+            className="rounded-lg p-2 border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+            }}
+          >
+            <div
+              className="text-[10px] uppercase font-bold flex items-center gap-1 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               <Building2 size={12} /> Division
             </div>
             <div className="mt-1">
-              <DivisionBadge division={emp?.division} />
+              <DivisionBadge
+                division={emp?.division}
+                resolvedTheme={resolvedTheme}
+              />
             </div>
           </div>
 
-          <div className="bg-gray-50 border border-gray-100 rounded-lg p-2 col-span-2">
+          <div
+            className="rounded-lg p-2 col-span-2 border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+            }}
+          >
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
-                <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1">
+                <div
+                  className="text-[10px] uppercase font-bold flex items-center gap-1 transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   <Briefcase size={12} /> Project
                 </div>
-                <div className="text-xs font-semibold text-gray-800 mt-0.5 truncate">
+                <div
+                  className="text-xs font-semibold mt-0.5 truncate transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-text)" }}
+                >
                   {projectLabel || "—"}
                 </div>
               </div>
               <div className="flex-none text-right">
-                <div className="text-[10px] text-gray-400 uppercase font-bold flex items-center gap-1 justify-end">
+                <div
+                  className="text-[10px] uppercase font-bold flex items-center gap-1 justify-end transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   <Shield size={12} /> Role
                 </div>
-                <div className="text-xs font-semibold text-gray-800 mt-0.5">
+                <div
+                  className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-text)" }}
+                >
                   {emp?.role ? <RoleBadge role={emp.role} /> : "—"}
                 </div>
               </div>
@@ -429,24 +709,50 @@ const EmployeeCard = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 divide-x divide-gray-100 border-t border-gray-100">
+      <div
+        className="grid grid-cols-2 border-t transition-colors duration-300 ease-out"
+        style={{ borderColor }}
+      >
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onNavigate(emp);
           }}
-          className="py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50 flex items-center justify-center gap-2"
+          className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
+          style={{
+            color: "var(--accent)",
+            borderRight: `1px solid ${borderColor}`,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--accent-soft)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+          }}
         >
           <User size={14} /> View
         </button>
+
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onAction("role", emp);
           }}
-          className="py-2.5 text-xs font-bold text-amber-700 hover:bg-amber-50 flex items-center justify-center gap-2"
+          className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
+          style={{
+            color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor =
+              resolvedTheme === "dark"
+                ? "rgba(245,158,11,0.14)"
+                : "rgba(245,158,11,0.10)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = "transparent";
+          }}
         >
           <Shield size={14} /> Role
         </button>
@@ -461,6 +767,46 @@ const EmployeeCard = ({
 const EmployeeDirectory = () => {
   const navigate = useNavigate();
 
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const stickyBg = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(2,6,23,0.88)"
+      : "rgba(248,250,252,0.88)";
+  }, [resolvedTheme]);
+
+  const skeletonColors = useMemo(() => {
+    if (resolvedTheme === "dark") {
+      return {
+        baseColor: "rgba(255,255,255,0.06)",
+        highlightColor: "rgba(255,255,255,0.10)",
+      };
+    }
+    return {
+      baseColor: "rgba(15,23,42,0.06)",
+      highlightColor: "rgba(15,23,42,0.10)",
+    };
+  }, [resolvedTheme]);
+
+  const zebraAltColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.02)"
+      : "rgba(15,23,42,0.025)";
+  }, [resolvedTheme]);
+
+  const hoverColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "var(--accent-soft)"
+      : "rgba(37,99,235,0.06)";
+  }, [resolvedTheme]);
+
   // Role modal
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
@@ -473,14 +819,12 @@ const EmployeeDirectory = () => {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebounce(searchInput, 400);
 
-  // Store filter values as IDs
   const [filters, setFilters] = useState({
     division: "All",
     designation: "All",
     project: "All",
   });
 
-  // ✅ One scroll container for the whole screen
   const pageScrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -688,425 +1032,558 @@ const EmployeeDirectory = () => {
   );
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col md:p-0 bg-gray-50/50 min-h-0">
-      {/* ✅ Scroll container (sticky header works relative to this) */}
-      <div
-        ref={pageScrollRef}
-        onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-y-auto"
+    <div
+      className="w-full flex-1 flex h-full flex-col md:p-0 min-h-0 transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
+      <SkeletonTheme
+        baseColor={skeletonColors.baseColor}
+        highlightColor={skeletonColors.highlightColor}
       >
-        {/* ✅ STICKY HEADER */}
-        <div className="sticky top-0 z-1 bg-gray-50/90 backdrop-blur ">
-          <div className="pt-2 pb-3 sm:pb-6 px-1">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <Breadcrumbs rootLabel="home" rootTo="/app" />
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight font-sans">
-                  Employee Directory
-                </h1>
-                <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-                  Manage your organization’s staffing and roles.
-                </p>
-              </div>
+        <div
+          ref={pageScrollRef}
+          onScroll={handleScroll}
+          className="flex-1 min-h-0 overflow-y-auto cto-scrollbar"
+        >
+          <div
+            className="sticky top-0 z-[1] backdrop-blur transition-colors duration-300 ease-out"
+            style={{ backgroundColor: stickyBg }}
+          >
+            <div className="pt-2 pb-3 sm:pb-6 px-1">
+              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div className="flex-1 min-w-0">
+                  <Breadcrumbs rootLabel="home" rootTo="/app" />
+                  <h1
+                    className="text-2xl md:text-3xl font-bold tracking-tight font-sans transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    Employee Directory
+                  </h1>
+                  <p
+                    className="text-sm mt-1 max-w-2xl transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Manage your organization’s staffing and roles.
+                  </p>
+                </div>
 
-              <button
-                type="button"
-                onClick={handleAddEmployee}
-                className="group relative inline-flex items-center gap-2 justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-900 w-full md:w-auto"
-              >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                Add Employee
-              </button>
+                <button
+                  type="button"
+                  onClick={handleAddEmployee}
+                  className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
+                  style={{ backgroundColor: "var(--accent)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.filter = "brightness(0.95)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.filter = "none";
+                  }}
+                >
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                  Add Employee
+                </button>
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* MAIN */}
-        <div className="mb-1">
-          <div className="flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-            {/* TOOLBAR */}
-            <div className="p-4 border-b border-gray-100 bg-white space-y-4">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                {/* Filters */}
-                <div className="w-full md:w-auto">
-                  <div className="grid grid-cols-3 gap-2">
-                    <SelectField
-                      label="Division"
-                      value={safeFilters.division}
-                      onChange={(v) =>
-                        setFilters((p) => ({ ...p, division: v }))
-                      }
-                      options={[
-                        { value: "All", label: "All" },
-                        ...DIVISION_OPTIONS.map((d) => ({
-                          value: d,
-                          label: d,
-                        })),
-                      ]}
-                    />
-
-                    <SelectField
-                      label="Designation"
-                      value={safeFilters.designation}
-                      onChange={(v) =>
-                        setFilters((p) => ({ ...p, designation: v }))
-                      }
-                      options={
-                        designationsQuery.isLoading
-                          ? [{ value: "All", label: "Loading designations..." }]
-                          : designationOptions
-                      }
-                      disabled={
-                        designationsQuery.isLoading ||
-                        designationOptions.length <= 1
-                      }
-                    />
-
-                    <SelectField
-                      label="Project"
-                      value={safeFilters.project}
-                      onChange={(v) =>
-                        setFilters((p) => ({ ...p, project: v }))
-                      }
-                      options={
-                        projectsQuery.isLoading
-                          ? [{ value: "All", label: "Loading projects..." }]
-                          : projectOptions
-                      }
-                      disabled={
-                        projectsQuery.isLoading || projectOptions.length <= 1
-                      }
-                    />
-                  </div>
-                </div>
-
-                {/* Search + rows */}
-                <div className="flex items-center gap-3 w-full md:w-auto">
-                  <div className="relative flex-1 md:w-72">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search employee..."
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      className="w-full pl-9 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                    />
-                    {searchInput && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchInput("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
-                        aria-label="Clear search"
-                        title="Clear"
-                      >
-                        <RotateCcw size={14} />
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="hidden md:flex items-center gap-2 pl-3 border-l border-gray-200">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                      Show
-                    </span>
-                    <select
-                      value={limit}
-                      onChange={(e) => {
-                        setLimit(Number(e.target.value));
-                        setPage(1);
-                      }}
-                      className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
-                    >
-                      {pageSizeOptions.map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Active filters row */}
-              {hasActiveFilters && (
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">
-                      Active:
-                    </span>
-                    {debouncedSearch && (
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                        "{debouncedSearch}"
-                      </span>
-                    )}
-                    {safeFilters.division !== "All" && (
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                        {safeFilters.division}
-                      </span>
-                    )}
-                    {safeFilters.designation !== "All" && (
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                        {selectedDesignationLabel || "Designation"}
-                      </span>
-                    )}
-                    {safeFilters.project !== "All" && (
-                      <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-medium">
-                        {selectedProjectLabel || "Project"}
-                      </span>
-                    )}
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={clearFilters}
-                    className="flex items-center gap-1 text-[10px] font-bold text-blue-600 uppercase hover:text-blue-700"
-                  >
-                    <FilterX size={10} /> Reset
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* CONTENT */}
-            <div className="bg-white min-h-[300px]">
-              {/* Desktop table (lg+) */}
-              <div className="hidden lg:block overflow-x-auto">
-                <table className="w-full text-left">
-                  <thead className="bg-white sticky top-0 z-1 border-b border-gray-100">
-                    <tr className="text-[10px] uppercase tracking-[0.12em] text-gray-400 font-bold">
-                      <th className="px-6 py-4 font-bold">Employee</th>
-                      <th className="px-6 py-4 font-bold">
-                        Position / Designation
-                      </th>
-                      <th className="px-6 py-4 font-bold">Division</th>
-                      <th className="px-6 py-4 font-bold">Project</th>
-                      <th className="px-6 py-4 font-bold">Role</th>
-                      <th className="px-6 py-4 font-bold">Status</th>
-                      <th className="px-6 py-4 text-right font-bold">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody className="divide-y divide-gray-50">
-                    {isLoading ? (
-                      [...Array(Math.min(limit, 10))].map((_, i) => (
-                        <tr key={i}>
-                          {[...Array(7)].map((__, j) => (
-                            <td key={j} className="px-6 py-4">
-                              <Skeleton />
-                            </td>
-                          ))}
-                        </tr>
-                      ))
-                    ) : employees.length > 0 ? (
-                      employees.map((emp, i) => {
-                        const statusPill = getStatusPill(emp?.status);
-
-                        const projectLabel =
-                          typeof emp?.project === "string"
-                            ? emp.project
-                            : emp?.project?.name || emp?.project?._id || "—";
-
-                        const designationLabel =
-                          typeof emp?.designation === "string"
-                            ? emp.designation
-                            : emp?.designation?.name || "—";
-
-                        const positionOrDesignation =
-                          emp?.position || designationLabel;
-
-                        return (
-                          <tr
-                            key={emp._id}
-                            className={`group hover:bg-gray-50/80 transition-colors ${
-                              i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                            }`}
-                          >
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold border border-blue-200">
-                                  {initials(emp.firstName, emp.lastName)}
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-sm font-semibold text-gray-900 truncate">
-                                    {emp.firstName} {emp.lastName}
-                                  </p>
-                                  <p className="text-xs text-gray-500 truncate">
-                                    {emp.email || "No email"}
-                                    {emp.username ? (
-                                      <span className="ml-2 font-mono text-[11px] text-gray-400">
-                                        @{emp.username}
-                                      </span>
-                                    ) : null}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {positionOrDesignation || "—"}
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <DivisionBadge division={emp.division} />
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {projectLabel && projectLabel !== "—" ? (
-                                <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200">
-                                  {projectLabel}
-                                </span>
-                              ) : (
-                                "—"
-                              )}
-                            </td>
-
-                            <td className="px-6 py-4 text-sm text-gray-600">
-                              {emp.role ? <RoleBadge role={emp.role} /> : "—"}
-                            </td>
-
-                            <td className="px-6 py-4">
-                              <span
-                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${statusPill.wrap}`}
-                              >
-                                <span
-                                  className={`w-1.5 h-1.5 rounded-full ${statusPill.dot}`}
-                                />
-                                {statusPill.label}
-                              </span>
-                            </td>
-
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex justify-end">
-                                <ActionMenu
-                                  disabled={isRoleModalOpen}
-                                  onAction={(action) =>
-                                    handleAction(action, emp)
-                                  }
-                                />
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    ) : (
-                      <tr>
-                        <td colSpan={7} className="px-6 py-16">
-                          <div className="flex flex-col items-center justify-center text-center">
-                            <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                              <Search className="w-10 h-10 text-gray-300" />
-                            </div>
-                            <h3 className="text-lg font-bold text-gray-900">
-                              No employees found
-                            </h3>
-                            <p className="text-sm text-gray-500 mt-1 max-w-md">
-                              Try adjusting your search or filters.
-                            </p>
-                            {hasActiveFilters && (
-                              <button
-                                type="button"
-                                onClick={clearFilters}
-                                className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
-                              >
-                                Clear all filters
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile + Tablet cards */}
-              <div className="lg:hidden">
-                {/* Mobile */}
-                <div className="md:hidden flex flex-col p-3 gap-2 bg-gray-50">
-                  {isLoading ? (
-                    [...Array(6)].map((_, i) => (
-                      <div
-                        key={i}
-                        className="bg-white rounded-xl p-3 shadow-sm border border-gray-100 space-y-2"
-                      >
-                        <Skeleton height={14} count={2} />
-                        <div className="mt-2">
-                          <Skeleton height={10} count={2} />
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <Skeleton height={52} />
-                          <Skeleton height={52} />
-                          <Skeleton height={52} className="col-span-2" />
-                        </div>
-                        <div className="mt-3">
-                          <Skeleton height={38} />
-                        </div>
-                      </div>
-                    ))
-                  ) : employees.length > 0 ? (
-                    employees.map((emp) => (
-                      <EmployeeCard
-                        key={emp._id}
-                        emp={emp}
-                        isRoleModalOpen={isRoleModalOpen}
-                        onNavigate={() => navigate(`/app/employees/${emp._id}`)}
-                        onAction={handleAction}
-                        variant="mobile"
+          <div className="mb-1">
+            <div
+              className="flex flex-col flex-1 min-h-0 rounded-xl shadow-sm overflow-hidden border transition-colors duration-300 ease-out"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                borderColor,
+              }}
+            >
+              <div
+                className="p-4 border-b space-y-4 transition-colors duration-300 ease-out"
+                style={{
+                  borderColor,
+                  backgroundColor: "var(--app-surface)",
+                }}
+              >
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                  <div className="w-full md:w-auto">
+                    <div className="grid grid-cols-3 gap-2">
+                      <SelectField
+                        label="Division"
+                        value={safeFilters.division}
+                        onChange={(v) =>
+                          setFilters((p) => ({ ...p, division: v }))
+                        }
+                        options={[
+                          { value: "All", label: "All" },
+                          ...DIVISION_OPTIONS.map((d) => ({
+                            value: d,
+                            label: d,
+                          })),
+                        ]}
+                        borderColor={borderColor}
                       />
-                    ))
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-14 px-4 text-center bg-white rounded-xl border border-gray-100">
-                      <div className="bg-gray-50 p-5 rounded-full mb-3 ring-1 ring-gray-100">
-                        <Search className="w-8 h-8 text-gray-300" />
-                      </div>
-                      <h3 className="text-base font-bold text-gray-900">
-                        No employees found
-                      </h3>
-                      <p className="text-sm text-gray-500 mt-1 max-w-xs">
-                        Try adjusting your search or filters.
-                      </p>
-                      {hasActiveFilters && (
+
+                      <SelectField
+                        label="Designation"
+                        value={safeFilters.designation}
+                        onChange={(v) =>
+                          setFilters((p) => ({ ...p, designation: v }))
+                        }
+                        options={
+                          designationsQuery.isLoading
+                            ? [
+                                {
+                                  value: "All",
+                                  label: "Loading designations...",
+                                },
+                              ]
+                            : designationOptions
+                        }
+                        disabled={
+                          designationsQuery.isLoading ||
+                          designationOptions.length <= 1
+                        }
+                        borderColor={borderColor}
+                      />
+
+                      <SelectField
+                        label="Project"
+                        value={safeFilters.project}
+                        onChange={(v) =>
+                          setFilters((p) => ({ ...p, project: v }))
+                        }
+                        options={
+                          projectsQuery.isLoading
+                            ? [{ value: "All", label: "Loading projects..." }]
+                            : projectOptions
+                        }
+                        disabled={
+                          projectsQuery.isLoading || projectOptions.length <= 1
+                        }
+                        borderColor={borderColor}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-72">
+                      <Search
+                        className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                        style={{ color: "var(--app-muted)" }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="Search employee..."
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-all border"
+                        style={{
+                          backgroundColor: "var(--app-surface-2)",
+                          borderColor,
+                          color: "var(--app-text)",
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = "var(--accent)";
+                          e.currentTarget.style.boxShadow =
+                            "0 0 0 3px var(--accent-soft)";
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = borderColor;
+                          e.currentTarget.style.boxShadow = "none";
+                        }}
+                      />
+                      {searchInput && (
                         <button
                           type="button"
-                          onClick={clearFilters}
-                          className="mt-4 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                          onClick={() => setSearchInput("")}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                          aria-label="Clear search"
+                          title="Clear"
                         >
-                          Clear all filters
+                          <RotateCcw size={14} />
                         </button>
                       )}
                     </div>
-                  )}
+
+                    <div
+                      className="hidden md:flex items-center gap-2 pl-3 border-l transition-colors duration-300 ease-out"
+                      style={{ borderColor }}
+                    >
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
+                        Show
+                      </span>
+                      <select
+                        value={limit}
+                        onChange={(e) => {
+                          setLimit(Number(e.target.value));
+                          setPage(1);
+                        }}
+                        className="text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer border transition-colors duration-200 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface-2)",
+                          borderColor,
+                          color: "var(--app-text)",
+                        }}
+                        onFocus={(e) => {
+                          e.currentTarget.style.borderColor = "var(--accent)";
+                          e.currentTarget.style.boxShadow =
+                            "0 0 0 3px var(--accent-soft)";
+                        }}
+                        onBlur={(e) => {
+                          e.currentTarget.style.borderColor = borderColor;
+                          e.currentTarget.style.boxShadow = "none";
+                        }}
+                      >
+                        {pageSizeOptions.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Tablet */}
-                <div className="hidden md:block lg:hidden p-4 bg-gray-50">
-                  {isLoading ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {[...Array(Math.min(limit, 6))].map((_, i) => (
+                {hasActiveFilters && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className="text-[10px] font-bold uppercase transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
+                        Active:
+                      </span>
+                      {debouncedSearch && (
+                        <span
+                          className="px-2 py-0.5 rounded border text-[10px] font-medium"
+                          style={{
+                            backgroundColor: "var(--accent-soft)",
+                            color: "var(--accent)",
+                            borderColor: "var(--accent-soft2)",
+                          }}
+                        >
+                          "{debouncedSearch}"
+                        </span>
+                      )}
+                      {safeFilters.division !== "All" && (
+                        <span
+                          className="px-2 py-0.5 rounded border text-[10px] font-medium"
+                          style={{
+                            backgroundColor: "var(--accent-soft)",
+                            color: "var(--accent)",
+                            borderColor: "var(--accent-soft2)",
+                          }}
+                        >
+                          {safeFilters.division}
+                        </span>
+                      )}
+                      {safeFilters.designation !== "All" && (
+                        <span
+                          className="px-2 py-0.5 rounded border text-[10px] font-medium"
+                          style={{
+                            backgroundColor: "var(--accent-soft)",
+                            color: "var(--accent)",
+                            borderColor: "var(--accent-soft2)",
+                          }}
+                        >
+                          {selectedDesignationLabel || "Designation"}
+                        </span>
+                      )}
+                      {safeFilters.project !== "All" && (
+                        <span
+                          className="px-2 py-0.5 rounded border text-[10px] font-medium"
+                          style={{
+                            backgroundColor: "var(--accent-soft)",
+                            color: "var(--accent)",
+                            borderColor: "var(--accent-soft2)",
+                          }}
+                        >
+                          {selectedProjectLabel || "Project"}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="flex items-center gap-1 text-[10px] font-bold uppercase transition-colors duration-200 ease-out"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      <FilterX size={10} /> Reset
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="min-h-[300px] transition-colors duration-300 ease-out"
+                style={{ backgroundColor: "var(--app-surface)" }}
+              >
+                <div className="hidden lg:block overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead
+                      className="sticky top-0 z-[1] border-b transition-colors duration-300 ease-out"
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        borderColor,
+                      }}
+                    >
+                      <tr
+                        className="text-[10px] uppercase tracking-[0.12em] font-bold"
+                        style={{ color: "var(--app-muted)" }}
+                      >
+                        <th className="px-6 py-4 font-bold">Employee</th>
+                        <th className="px-6 py-4 font-bold">
+                          Position / Designation
+                        </th>
+                        <th className="px-6 py-4 font-bold">Division</th>
+                        <th className="px-6 py-4 font-bold">Project</th>
+                        <th className="px-6 py-4 font-bold">Role</th>
+                        <th className="px-6 py-4 font-bold">Status</th>
+                        <th className="px-6 py-4 text-right font-bold">
+                          Actions
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {isLoading ? (
+                        [...Array(Math.min(limit, 10))].map((_, i) => (
+                          <tr key={i}>
+                            {[...Array(7)].map((__, j) => (
+                              <td key={j} className="px-6 py-4">
+                                <Skeleton />
+                              </td>
+                            ))}
+                          </tr>
+                        ))
+                      ) : employees.length > 0 ? (
+                        employees.map((emp, i) => {
+                          const statusPill = getStatusPill(
+                            emp?.status,
+                            resolvedTheme,
+                          );
+
+                          const projectLabel =
+                            typeof emp?.project === "string"
+                              ? emp.project
+                              : emp?.project?.name || emp?.project?._id || "—";
+
+                          const designationLabel =
+                            typeof emp?.designation === "string"
+                              ? emp.designation
+                              : emp?.designation?.name || "—";
+
+                          const positionOrDesignation =
+                            emp?.position || designationLabel;
+
+                          const bg =
+                            i % 2 === 0 ? "var(--app-surface)" : zebraAltColor;
+
+                          return (
+                            <tr
+                              key={emp._id}
+                              className="transition-colors duration-200 ease-out"
+                              style={{ backgroundColor: bg }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  hoverColor;
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor = bg;
+                              }}
+                            >
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div
+                                    className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold border"
+                                    style={{
+                                      backgroundColor: "var(--accent-soft)",
+                                      color: "var(--accent)",
+                                      borderColor: "var(--accent-soft2)",
+                                    }}
+                                  >
+                                    {initials(emp.firstName, emp.lastName)}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p
+                                      className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
+                                      style={{ color: "var(--app-text)" }}
+                                    >
+                                      {emp.firstName} {emp.lastName}
+                                    </p>
+                                    <p
+                                      className="text-xs truncate transition-colors duration-300 ease-out"
+                                      style={{ color: "var(--app-muted)" }}
+                                    >
+                                      {emp.email || "No email"}
+                                      {emp.username ? (
+                                        <span
+                                          className="ml-2 font-mono text-[11px] transition-colors duration-300 ease-out"
+                                          style={{ color: "var(--app-muted)" }}
+                                        >
+                                          @{emp.username}
+                                        </span>
+                                      ) : null}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td
+                                className="px-6 py-4 text-sm transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                {positionOrDesignation || "—"}
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <DivisionBadge
+                                  division={emp.division}
+                                  resolvedTheme={resolvedTheme}
+                                />
+                              </td>
+
+                              <td
+                                className="px-6 py-4 text-sm transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                {projectLabel && projectLabel !== "—" ? (
+                                  <span
+                                    className="inline-flex items-center px-2 py-1 rounded text-xs font-medium border"
+                                    style={{
+                                      backgroundColor: "var(--app-surface-2)",
+                                      color: "var(--app-text)",
+                                      borderColor,
+                                    }}
+                                  >
+                                    {projectLabel}
+                                  </span>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+
+                              <td
+                                className="px-6 py-4 text-sm transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                {emp.role ? <RoleBadge role={emp.role} /> : "—"}
+                              </td>
+
+                              <td className="px-6 py-4">
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
+                                  style={{
+                                    backgroundColor: statusPill.backgroundColor,
+                                    color: statusPill.color,
+                                    borderColor: statusPill.borderColor,
+                                  }}
+                                >
+                                  <span
+                                    className="w-1.5 h-1.5 rounded-full"
+                                    style={{ backgroundColor: statusPill.dot }}
+                                  />
+                                  {statusPill.label}
+                                </span>
+                              </td>
+
+                              <td className="px-6 py-4 text-right">
+                                <div className="flex justify-end">
+                                  <ActionMenu
+                                    disabled={isRoleModalOpen}
+                                    onAction={(action) =>
+                                      handleAction(action, emp)
+                                    }
+                                    borderColor={borderColor}
+                                    resolvedTheme={resolvedTheme}
+                                  />
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-16">
+                            <div className="flex flex-col items-center justify-center text-center">
+                              <div
+                                className="p-6 rounded-full mb-4 ring-1 transition-colors duration-300 ease-out"
+                                style={{
+                                  backgroundColor: "var(--app-surface-2)",
+                                  borderColor,
+                                }}
+                              >
+                                <Search
+                                  className="w-10 h-10"
+                                  style={{ color: "var(--app-muted)" }}
+                                />
+                              </div>
+                              <h3
+                                className="text-lg font-bold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                No employees found
+                              </h3>
+                              <p
+                                className="text-sm mt-1 max-w-md transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                Try adjusting your search or filters.
+                              </p>
+                              {hasActiveFilters && (
+                                <button
+                                  type="button"
+                                  onClick={clearFilters}
+                                  className="mt-6 text-sm font-bold underline transition-colors duration-200 ease-out"
+                                  style={{ color: "var(--accent)" }}
+                                >
+                                  Clear all filters
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="lg:hidden">
+                  <div
+                    className="md:hidden flex flex-col p-3 gap-2 transition-colors duration-300 ease-out"
+                    style={{ backgroundColor: "var(--app-bg)" }}
+                  >
+                    {isLoading ? (
+                      [...Array(6)].map((_, i) => (
                         <div
                           key={i}
-                          className="bg-white border border-gray-200 rounded-xl shadow-sm p-4"
+                          className="rounded-xl p-3 shadow-sm border space-y-2"
+                          style={{
+                            backgroundColor: "var(--app-surface)",
+                            borderColor,
+                          }}
                         >
-                          <Skeleton height={18} />
+                          <Skeleton height={14} count={2} />
+                          <div className="mt-2">
+                            <Skeleton height={10} count={2} />
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <Skeleton height={52} />
+                            <Skeleton height={52} />
+                            <Skeleton height={52} className="col-span-2" />
+                          </div>
                           <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-3">
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
+                            <Skeleton height={38} />
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  ) : employees.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3">
-                      {employees.map((emp) => (
+                      ))
+                    ) : employees.length > 0 ? (
+                      employees.map((emp) => (
                         <EmployeeCard
                           key={emp._id}
                           emp={emp}
@@ -1115,68 +1592,193 @@ const EmployeeDirectory = () => {
                             navigate(`/app/employees/${emp._id}`)
                           }
                           onAction={handleAction}
-                          variant="tablet"
+                          variant="mobile"
+                          borderColor={borderColor}
+                          resolvedTheme={resolvedTheme}
                         />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-white rounded-xl border border-gray-100">
-                      <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                        <Search className="w-10 h-10 text-gray-300" />
-                      </div>
-                      <h3 className="text-lg font-bold text-gray-900">
-                        No employees found
-                      </h3>
-                      <p className="text-sm text-gray-500 mt-1 max-w-md">
-                        Try adjusting your search or filters.
-                      </p>
-                      {hasActiveFilters && (
-                        <button
-                          type="button"
-                          onClick={clearFilters}
-                          className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                      ))
+                    ) : (
+                      <div
+                        className="flex flex-col items-center justify-center py-14 px-4 text-center rounded-xl border transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          borderColor,
+                        }}
+                      >
+                        <div
+                          className="p-5 rounded-full mb-3 ring-1 transition-colors duration-300 ease-out"
+                          style={{
+                            backgroundColor: "var(--app-surface-2)",
+                            borderColor,
+                          }}
                         >
-                          Clear all filters
-                        </button>
-                      )}
-                    </div>
-                  )}
+                          <Search
+                            className="w-8 h-8"
+                            style={{ color: "var(--app-muted)" }}
+                          />
+                        </div>
+                        <h3
+                          className="text-base font-bold transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          No employees found
+                        </h3>
+                        <p
+                          className="text-sm mt-1 max-w-xs transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          Try adjusting your search or filters.
+                        </p>
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="mt-4 text-sm font-bold underline transition-colors duration-200 ease-out"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            Clear all filters
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className="hidden md:block lg:hidden p-4 transition-colors duration-300 ease-out"
+                    style={{ backgroundColor: "var(--app-bg)" }}
+                  >
+                    {isLoading ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {[...Array(Math.min(limit, 6))].map((_, i) => (
+                          <div
+                            key={i}
+                            className="border rounded-xl shadow-sm p-4"
+                            style={{
+                              backgroundColor: "var(--app-surface)",
+                              borderColor,
+                            }}
+                          >
+                            <Skeleton height={18} />
+                            <div className="mt-3">
+                              <Skeleton height={12} count={2} />
+                            </div>
+                            <div className="mt-4 grid grid-cols-2 gap-2">
+                              <Skeleton height={52} />
+                              <Skeleton height={52} />
+                            </div>
+                            <div className="mt-3">
+                              <Skeleton height={52} />
+                            </div>
+                            <div className="mt-4">
+                              <Skeleton height={40} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : employees.length > 0 ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {employees.map((emp) => (
+                          <EmployeeCard
+                            key={emp._id}
+                            emp={emp}
+                            isRoleModalOpen={isRoleModalOpen}
+                            onNavigate={() =>
+                              navigate(`/app/employees/${emp._id}`)
+                            }
+                            onAction={handleAction}
+                            variant="tablet"
+                            borderColor={borderColor}
+                            resolvedTheme={resolvedTheme}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        className="flex flex-col items-center justify-center py-16 px-4 text-center rounded-xl border transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          borderColor,
+                        }}
+                      >
+                        <div
+                          className="p-6 rounded-full mb-4 ring-1 transition-colors duration-300 ease-out"
+                          style={{
+                            backgroundColor: "var(--app-surface-2)",
+                            borderColor,
+                          }}
+                        >
+                          <Search
+                            className="w-10 h-10"
+                            style={{ color: "var(--app-muted)" }}
+                          />
+                        </div>
+                        <h3
+                          className="text-lg font-bold transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          No employees found
+                        </h3>
+                        <p
+                          className="text-sm mt-1 max-w-md transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          Try adjusting your search or filters.
+                        </p>
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="mt-6 text-sm font-bold underline transition-colors duration-200 ease-out"
+                            style={{ color: "var(--accent)" }}
+                          >
+                            Clear all filters
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* PAGINATION */}
-            <CompactPagination
-              page={page}
-              totalPages={totalPages}
-              total={totalItems}
-              startItem={startItem}
-              endItem={endItem}
-              label="employees"
-              onPrev={() => setPage((p) => Math.max(p - 1, 1))}
-              onNext={() => {
-                if (!isPlaceholderData && page < totalPages)
-                  setPage((p) => p + 1);
-              }}
-            />
+              <CompactPagination
+                page={page}
+                totalPages={totalPages}
+                total={totalItems}
+                startItem={startItem}
+                endItem={endItem}
+                label="employees"
+                onPrev={() => setPage((p) => Math.max(p - 1, 1))}
+                onNext={() => {
+                  if (!isPlaceholderData && page < totalPages) {
+                    setPage((p) => p + 1);
+                  }
+                }}
+                borderColor={borderColor}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ✅ Back to top */}
-      {showScrollTop && (
-        <button
-          type="button"
-          onClick={scrollToTop}
-          className="fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full bg-blue-600 text-white shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all w-11 h-11"
-          aria-label="Back to top"
-          title="Back to top"
-        >
-          <ArrowUp className="w-5 h-5" />
-        </button>
-      )}
+        {showScrollTop && (
+          <button
+            type="button"
+            onClick={scrollToTop}
+            className="fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full text-white shadow-lg active:scale-[0.98] transition-all w-11 h-11"
+            style={{ backgroundColor: "var(--accent)" }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.filter = "brightness(0.95)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.filter = "none";
+            }}
+            aria-label="Back to top"
+            title="Back to top"
+          >
+            <ArrowUp className="w-5 h-5" />
+          </button>
+        )}
+      </SkeletonTheme>
 
-      {/* ROLE MODAL */}
       {isRoleModalOpen && selectedEmployee && (
         <Modal
           isOpen={isRoleModalOpen}

@@ -13,6 +13,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import Modal from "../modal";
 import Breadcrumbs from "../breadCrumbs";
 import { toast } from "react-toastify";
+import { useAuth } from "../../store/authStore";
 import {
   User,
   Mail,
@@ -21,7 +22,6 @@ import {
   Briefcase,
   ShieldCheck,
   Clock,
-  Edit3,
   Building2,
   Hash,
   Copy,
@@ -30,6 +30,18 @@ import {
   Layers,
   AlertCircle,
 } from "lucide-react";
+
+/* =========================
+   Theme
+========================= */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
 
 /* =========================
    Utils
@@ -80,89 +92,159 @@ const safeCopy = async (text) => {
   }
 };
 
+const toneStyle = (tone, resolvedTheme) => {
+  const isDark = resolvedTheme === "dark";
+
+  const tones = {
+    slate: {
+      backgroundColor: isDark
+        ? "rgba(148,163,184,0.14)"
+        : "rgba(148,163,184,0.10)",
+      color: isDark ? "#cbd5e1" : "#475569",
+      borderColor: isDark ? "rgba(148,163,184,0.22)" : "rgba(148,163,184,0.18)",
+    },
+    blue: {
+      backgroundColor: isDark
+        ? "rgba(59,130,246,0.14)"
+        : "rgba(59,130,246,0.10)",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+      borderColor: isDark ? "rgba(59,130,246,0.28)" : "rgba(59,130,246,0.18)",
+    },
+    emerald: {
+      backgroundColor: isDark
+        ? "rgba(16,185,129,0.14)"
+        : "rgba(16,185,129,0.10)",
+      color: isDark ? "#6ee7b7" : "#047857",
+      borderColor: isDark ? "rgba(16,185,129,0.28)" : "rgba(16,185,129,0.18)",
+    },
+    amber: {
+      backgroundColor: isDark
+        ? "rgba(245,158,11,0.14)"
+        : "rgba(245,158,11,0.10)",
+      color: isDark ? "#fcd34d" : "#b45309",
+      borderColor: isDark ? "rgba(245,158,11,0.28)" : "rgba(245,158,11,0.18)",
+    },
+    rose: {
+      backgroundColor: isDark ? "rgba(244,63,94,0.14)" : "rgba(244,63,94,0.10)",
+      color: isDark ? "#fda4af" : "#be123c",
+      borderColor: isDark ? "rgba(244,63,94,0.28)" : "rgba(244,63,94,0.18)",
+    },
+  };
+
+  return tones[tone] || tones.slate;
+};
+
 /* =========================
-   UI Primitives (MINIMALIST)
+   UI Primitives
 ========================= */
-const Card = ({ title, subtitle, action, children, className = "" }) => (
+const Card = ({
+  title,
+  subtitle,
+  action,
+  children,
+  className = "",
+  borderColor,
+}) => (
   <div
     className={[
-      "bg-white/80 backdrop-blur",
-      "rounded-2xl",
-      "border border-slate-200/70",
-      "shadow-[0_1px_0_rgba(15,23,42,0.04)]",
-      "transition",
-      "hover:border-slate-300/70 hover:shadow-[0_10px_30px_rgba(15,23,42,0.06)]",
+      "rounded-2xl transition-all duration-300 ease-out",
       className,
     ].join(" ")}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      border: `1px solid ${borderColor}`,
+      backdropFilter: "blur(10px)",
+      boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+    }}
   >
     {(title || action) && (
-      <div className="px-4 md:px-6 py-4 border-b border-slate-200/60 flex items-center justify-between gap-3">
+      <div
+        className="px-4 md:px-6 py-4 flex items-center justify-between gap-3 border-b transition-colors duration-300 ease-out"
+        style={{ borderColor }}
+      >
         <div className="min-w-0">
           {title && (
-            <h3 className="text-sm font-semibold text-slate-900 truncate">
+            <h3
+              className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               {title}
             </h3>
           )}
           {subtitle && (
-            <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+            <p
+              className="text-xs mt-0.5 leading-snug transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               {subtitle}
             </p>
           )}
         </div>
-        {action && <div className="shrink-0 text-slate-400">{action}</div>}
+        {action && (
+          <div
+            className="shrink-0 transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {action}
+          </div>
+        )}
       </div>
     )}
     <div className="px-4 md:px-6 py-5">{children}</div>
   </div>
 );
 
-const SectionHeader = ({ icon: Icon, title, right }) => (
+const SectionHeader = ({ icon: Icon, title, right, borderColor }) => (
   <div className="flex items-center justify-between gap-3 mb-4">
     <div className="flex items-center gap-2">
-      <div className="p-2 rounded-xl bg-slate-100 text-slate-600 border border-slate-200/60">
+      <div
+        className="p-2 rounded-xl border transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: "var(--app-surface-2)",
+          color: "var(--app-muted)",
+          borderColor,
+        }}
+      >
         <Icon size={16} />
       </div>
-      <h2 className="text-sm font-medium text-slate-700">{title}</h2>
+      <h2
+        className="text-sm font-medium transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
+        {title}
+      </h2>
     </div>
     {right}
   </div>
 );
 
-const Pill = ({ children, tone = "slate" }) => {
-  const tones = {
-    slate: "bg-slate-100 text-slate-700 border-slate-200",
-    blue: "bg-indigo-50 text-indigo-700 border-indigo-100",
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    amber: "bg-amber-50 text-amber-700 border-amber-100",
-    rose: "bg-rose-50 text-rose-700 border-rose-100",
-  };
-  return (
-    <span
-      className={[
-        "inline-flex items-center",
-        "px-2.5 py-1",
-        "rounded-full",
-        "text-xs font-medium",
-        "border",
-        tones[tone],
-      ].join(" ")}
-    >
-      {children}
-    </span>
-  );
-};
+const Pill = ({ children, tone = "slate", resolvedTheme }) => (
+  <span
+    className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border"
+    style={toneStyle(tone, resolvedTheme)}
+  >
+    {children}
+  </span>
+);
 
 /* =========================
-   Secure Edit Form (MINIMALIST)
+   Secure Edit Form
 ========================= */
 const EmployeeEditForm = forwardRef(
   (
-    { employeeId, initialEmployee, onPendingChange, onDirtyChange, onSaved },
+    {
+      employeeId,
+      initialEmployee,
+      onPendingChange,
+      onDirtyChange,
+      onSaved,
+      borderColor,
+      resolvedTheme,
+    },
     ref,
   ) => {
     const queryClient = useQueryClient();
 
-    // hard locks
     const submitLockRef = useRef(false);
     const submittedSuccessRef = useRef(false);
     const [lockAfterSuccess, setLockAfterSuccess] = useState(false);
@@ -306,9 +388,17 @@ const EmployeeEditForm = forwardRef(
     return (
       <div className="max-w-3xl">
         <div className="flex items-center justify-between mb-4">
-          <div className="text-xs text-slate-500">Edit fields</div>
-          <div className="text-xs text-slate-500 flex items-center gap-1">
-            <AlertCircle size={14} className="text-slate-400" />
+          <div
+            className="text-xs transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            Edit fields
+          </div>
+          <div
+            className="text-xs flex items-center gap-1 transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            <AlertCircle size={14} style={{ color: "var(--app-muted)" }} />
             {dirty ? "Unsaved changes" : "No changes"}
           </div>
         </div>
@@ -319,12 +409,14 @@ const EmployeeEditForm = forwardRef(
             value={form.firstName}
             onChange={setField("firstName")}
             disabled={busy}
+            borderColor={borderColor}
           />
           <Field
             label="Last Name"
             value={form.lastName}
             onChange={setField("lastName")}
             disabled={busy}
+            borderColor={borderColor}
           />
 
           <Field
@@ -332,12 +424,14 @@ const EmployeeEditForm = forwardRef(
             value={form.email}
             onChange={setField("email")}
             disabled={busy}
+            borderColor={borderColor}
           />
           <Field
             label="Phone"
             value={form.phone}
             onChange={setField("phone")}
             disabled={busy}
+            borderColor={borderColor}
           />
 
           <Field
@@ -345,12 +439,14 @@ const EmployeeEditForm = forwardRef(
             value={form.department}
             onChange={setField("department")}
             disabled={busy}
+            borderColor={borderColor}
           />
           <Field
             label="Position"
             value={form.position}
             onChange={setField("position")}
             disabled={busy}
+            borderColor={borderColor}
           />
 
           <Field
@@ -358,35 +454,47 @@ const EmployeeEditForm = forwardRef(
             value={form.employeeId}
             onChange={setField("employeeId")}
             disabled={busy}
+            borderColor={borderColor}
           />
 
           <div className="md:col-span-2">
-            <div className="text-xs text-slate-500 mb-2">Address</div>
+            <div
+              className="text-xs mb-2 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
+              Address
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field
                 label="Street"
                 value={form.addressStreet}
                 onChange={setField("addressStreet")}
                 disabled={busy}
+                borderColor={borderColor}
               />
               <Field
                 label="City"
                 value={form.addressCity}
                 onChange={setField("addressCity")}
                 disabled={busy}
+                borderColor={borderColor}
               />
               <Field
                 label="Province"
                 value={form.addressProvince}
                 onChange={setField("addressProvince")}
                 disabled={busy}
+                borderColor={borderColor}
               />
             </div>
           </div>
         </div>
 
         {lockAfterSuccess && (
-          <div className="mt-5 p-4 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 text-emerald-900 text-sm">
+          <div
+            className="mt-5 p-4 rounded-2xl border text-sm"
+            style={toneStyle("emerald", resolvedTheme)}
+          >
             Saved. Editing is locked for safety. Close this window to continue.
           </div>
         )}
@@ -395,40 +503,61 @@ const EmployeeEditForm = forwardRef(
   },
 );
 
-const Field = ({ label, value, onChange, disabled }) => (
+const Field = ({ label, value, onChange, disabled, borderColor }) => (
   <label className="block">
-    <div className="text-xs text-slate-500 mb-1">{label}</div>
+    <div
+      className="text-xs mb-1 transition-colors duration-300 ease-out"
+      style={{ color: "var(--app-muted)" }}
+    >
+      {label}
+    </div>
     <input
       value={value}
       onChange={onChange}
       disabled={disabled}
-      className={[
-        "w-full h-11 px-3",
-        "bg-white",
-        "border border-slate-200/80",
-        "rounded-xl",
-        "text-sm text-slate-900",
-        "outline-none",
-        "focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100",
-        "transition",
-        "disabled:opacity-60 disabled:bg-slate-50",
-      ].join(" ")}
+      className="w-full h-11 px-3 rounded-xl text-sm outline-none transition disabled:opacity-60"
+      style={{
+        backgroundColor: disabled
+          ? "var(--app-surface-2)"
+          : "var(--app-surface)",
+        color: "var(--app-text)",
+        border: `1px solid ${borderColor}`,
+      }}
+      onFocus={(e) => {
+        e.currentTarget.style.borderColor = "var(--accent)";
+        e.currentTarget.style.boxShadow = "0 0 0 3px var(--accent-soft)";
+      }}
+      onBlur={(e) => {
+        e.currentTarget.style.borderColor = borderColor;
+        e.currentTarget.style.boxShadow = "none";
+      }}
     />
   </label>
 );
 
 /* =========================
-   Main: EmployeeInformation (MINIMALIST)
+   Main: EmployeeInformation
 ========================= */
 const EmployeeInformation = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { id } = useParams();
 
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const pageBg = useMemo(() => {
+    return "var(--app-bg, rgba(245,245,245,0.80))";
+  }, []);
+
   const [activeTab, setActiveTab] = useState("overview");
   const [isEditOpen, setIsEditOpen] = useState(false);
-
-  // edit modal (secure)
   const editFormRef = useRef(null);
   const [editBusy, setEditBusy] = useState(false);
   const [editDirty, setEditDirty] = useState(false);
@@ -444,12 +573,6 @@ const EmployeeInformation = () => {
 
   const onRetry = () =>
     queryClient.refetchQueries({ queryKey: ["employee", id] });
-
-  const openEdit = () => {
-    setEditBusy(false);
-    setEditDirty(false);
-    setIsEditOpen(true);
-  };
 
   const closeEdit = () => {
     if (editBusy) return;
@@ -469,52 +592,115 @@ const EmployeeInformation = () => {
     }
   };
 
-  if (!id) return <EmptyState />;
-  if (isError) return <ErrorState onRetry={onRetry} />;
-  if (isLoading || !emp) return <EmployeeSkeleton />;
+  if (!id) {
+    return (
+      <EmptyState borderColor={borderColor} resolvedTheme={resolvedTheme} />
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        onRetry={onRetry}
+        borderColor={borderColor}
+        resolvedTheme={resolvedTheme}
+      />
+    );
+  }
+
+  if (isLoading || !emp) {
+    return (
+      <EmployeeSkeleton
+        borderColor={borderColor}
+        resolvedTheme={resolvedTheme}
+      />
+    );
+  }
 
   const initials = `${emp?.firstName?.[0] ?? ""}${emp?.lastName?.[0] ?? ""}`
     .trim()
     .toUpperCase();
 
   return (
-    <div className="min-h-screen font-sans text-slate-900">
+    <div
+      className="min-h-screen font-sans transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: pageBg,
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
       <div className="mx-auto space-y-6">
-        {/* Header */}
         <Breadcrumbs rootLabel="home" rootTo="/app" />
-        <div className="bg-white/80 backdrop-blur rounded-xl border border-slate-200/70 overflow-hidden shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-          <div className="px-1.5 md:px-6 pt-5 pb-4 border-b border-slate-200/60">
+
+        <div
+          className="rounded-xl overflow-hidden transition-all duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            border: `1px solid ${borderColor}`,
+            backdropFilter: "blur(10px)",
+            boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+          }}
+        >
+          <div
+            className="px-1.5 md:px-6 pt-5 pb-4 border-b transition-colors duration-300 ease-out"
+            style={{ borderColor }}
+          >
             <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-5">
               <div className="min-w-0">
                 <div className="mt-3 flex items-start gap-4">
-                  <div className="shrink-0 w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-base font-semibold shadow-sm">
+                  <div
+                    className="shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center text-base font-semibold shadow-sm"
+                    style={{
+                      backgroundColor: "var(--accent)",
+                      color: "#fff",
+                    }}
+                  >
                     {initials || "?"}
                   </div>
 
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h1 className="text-2xl md:text-3xl font-semibold text-slate-900 tracking-tight truncate">
+                      <h1
+                        className="text-2xl md:text-3xl font-semibold tracking-tight truncate transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-text)" }}
+                      >
                         {emp?.firstName} {emp?.lastName}
                       </h1>
                       <StatusBadge status={emp?.status} />
                     </div>
 
-                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-600">
+                    <div
+                      className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm transition-colors duration-300 ease-out"
+                      style={{ color: "var(--app-muted)" }}
+                    >
                       <span className="flex items-center gap-1.5">
-                        <Building2 size={14} className="text-slate-400" />
+                        <Building2
+                          size={14}
+                          style={{ color: "var(--app-muted)" }}
+                        />
                         {emp?.department || "-"}
                       </span>
-                      <span className="hidden sm:inline text-slate-300">•</span>
+                      <span
+                        className="hidden sm:inline transition-colors duration-300 ease-out"
+                        style={{ color: borderColor }}
+                      >
+                        •
+                      </span>
                       <span className="flex items-center gap-1.5">
-                        <Briefcase size={14} className="text-slate-400" />
+                        <Briefcase
+                          size={14}
+                          style={{ color: "var(--app-muted)" }}
+                        />
                         {emp?.position || "-"}
                       </span>
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Pill tone="slate">Employee</Pill>
+                      <Pill tone="slate" resolvedTheme={resolvedTheme}>
+                        Employee
+                      </Pill>
                       {emp?.dateHired && (
-                        <Pill tone="emerald">
+                        <Pill tone="emerald" resolvedTheme={resolvedTheme}>
                           {calculateTenure(emp?.dateHired)} tenure
                         </Pill>
                       )}
@@ -527,8 +713,17 @@ const EmployeeInformation = () => {
                 <button
                   type="button"
                   onClick={() => navigate(`/app/employees/${emp?._id}/update`)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium
-                             hover:bg-blue-700 active:scale-[0.99] transition shadow-sm"
+                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition"
+                  style={{
+                    backgroundColor: "var(--accent)",
+                    color: "#fff",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.filter = "brightness(0.95)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.filter = "none";
+                  }}
                 >
                   <ShieldCheck size={16} />
                   Update Profile
@@ -536,54 +731,71 @@ const EmployeeInformation = () => {
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className="mt-6 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl bg-white/60 border border-slate-200/60">
+            <div
+              className="mt-6 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out"
+              style={{
+                backgroundColor: "var(--app-surface-2)",
+                borderColor,
+              }}
+            >
               <TabButton
                 active={activeTab === "overview"}
                 onClick={() => setActiveTab("overview")}
                 label="Overview"
                 icon={<Layers size={16} />}
+                borderColor={borderColor}
               />
               <TabButton
                 active={activeTab === "personal"}
                 onClick={() => setActiveTab("personal")}
                 label="Personal Info"
                 icon={<User size={16} />}
+                borderColor={borderColor}
               />
               <TabButton
                 active={activeTab === "job"}
                 onClick={() => setActiveTab("job")}
                 label="Job Details"
                 icon={<Briefcase size={16} />}
+                borderColor={borderColor}
               />
             </div>
           </div>
 
-          {/* Body */}
           <div className="px-1.5 md:px-6 py-6 bg-transparent">
             <div className="max-w-5xl mx-auto space-y-6">
               {activeTab === "overview" && (
                 <>
                   <section>
-                    <SectionHeader icon={Clock} title="Leave Balances" />
+                    <SectionHeader
+                      icon={Clock}
+                      title="Leave Balances"
+                      borderColor={borderColor}
+                    />
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                       <MetricTile
                         label="Vacation Leave"
                         value={emp?.balances?.vlHours}
                         tone="blue"
                         icon={<Briefcase size={18} />}
+                        borderColor={borderColor}
+                        resolvedTheme={resolvedTheme}
                       />
                       <MetricTile
                         label="Sick Leave"
                         value={emp?.balances?.slHours}
                         tone="rose"
                         icon={<Clock size={18} />}
+                        borderColor={borderColor}
+                        resolvedTheme={resolvedTheme}
                       />
                       <MetricTile
                         label="Compensatory"
                         value={emp?.balances?.ctoHours}
                         tone="emerald"
                         icon={<Layers size={18} />}
+                        borderColor={borderColor}
+                        resolvedTheme={resolvedTheme}
                       />
                     </div>
                   </section>
@@ -593,6 +805,7 @@ const EmployeeInformation = () => {
                       title="Quick Contact"
                       subtitle="Copy or tap to contact"
                       action={<MoreHorizontal size={16} />}
+                      borderColor={borderColor}
                     >
                       <div className="space-y-2">
                         <ContactRow
@@ -602,18 +815,21 @@ const EmployeeInformation = () => {
                           onCopy={() => copyToClipboard(emp?.email, "Email")}
                           isLink
                           href={emp?.email ? `mailto:${emp.email}` : undefined}
+                          borderColor={borderColor}
                         />
                         <ContactRow
                           icon={<Phone size={16} />}
                           label="Phone"
                           value={emp?.phone}
                           onCopy={() => copyToClipboard(emp?.phone, "Phone")}
+                          borderColor={borderColor}
                         />
                         <ContactRow
                           icon={<Hash size={16} />}
                           label="Employee ID"
                           value={emp?.employeeId}
                           onCopy={() => copyToClipboard(emp?.employeeId, "ID")}
+                          borderColor={borderColor}
                         />
                       </div>
                     </Card>
@@ -622,15 +838,19 @@ const EmployeeInformation = () => {
                       title="Work Status"
                       subtitle="Role, hire date, and status"
                       action={<MoreHorizontal size={16} />}
+                      borderColor={borderColor}
                     >
                       <div className="space-y-2">
-                        <DataRow label="System Role">
+                        <DataRow label="System Role" borderColor={borderColor}>
                           <RoleBadge role={emp?.role} />
                         </DataRow>
 
-                        <DataRow label="Date Hired">
+                        <DataRow label="Date Hired" borderColor={borderColor}>
                           <div className="text-right">
-                            <div className="text-slate-900 font-medium">
+                            <div
+                              className="font-medium transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
                               {emp?.dateHired
                                 ? formatDate(emp.dateHired, {
                                     month: "long",
@@ -641,7 +861,7 @@ const EmployeeInformation = () => {
                             </div>
                             {emp?.dateHired && (
                               <div className="mt-2">
-                                <Pill tone="blue">
+                                <Pill tone="blue" resolvedTheme={resolvedTheme}>
                                   {calculateTenure(emp.dateHired)} tenure
                                 </Pill>
                               </div>
@@ -649,7 +869,10 @@ const EmployeeInformation = () => {
                           </div>
                         </DataRow>
 
-                        <DataRow label="Employment Status">
+                        <DataRow
+                          label="Employment Status"
+                          borderColor={borderColor}
+                        >
                           <StatusBadge status={emp?.status} />
                         </DataRow>
                       </div>
@@ -664,6 +887,7 @@ const EmployeeInformation = () => {
                     title="Identity & Address"
                     subtitle="Profile and permanent address details"
                     action={<MoreHorizontal size={16} />}
+                    borderColor={borderColor}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12">
                       <DataBlock
@@ -675,10 +899,18 @@ const EmployeeInformation = () => {
                         value={emp?.username ? `@${emp.username}` : "-"}
                       />
 
-                      <div className="md:col-span-2 border-t border-slate-200/60 pt-5">
+                      <div
+                        className="md:col-span-2 pt-5 border-t transition-colors duration-300 ease-out"
+                        style={{ borderColor }}
+                      >
                         <DataBlock
                           label="Permanent Address"
-                          icon={<MapPin size={14} className="text-slate-400" />}
+                          icon={
+                            <MapPin
+                              size={14}
+                              style={{ color: "var(--app-muted)" }}
+                            />
+                          }
                           value={
                             `${emp?.address?.street || ""}${
                               emp?.address?.street ? ", " : ""
@@ -695,16 +927,30 @@ const EmployeeInformation = () => {
                     title="Emergency Contact"
                     subtitle="For urgent situations"
                     action={<MoreHorizontal size={16} />}
+                    borderColor={borderColor}
                   >
                     <div className="flex items-center gap-4">
-                      <div className="p-3 bg-slate-100 text-slate-700 rounded-2xl border border-slate-200/60">
+                      <div
+                        className="p-3 rounded-2xl border transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface-2)",
+                          color: "var(--app-muted)",
+                          borderColor,
+                        }}
+                      >
                         <ShieldCheck size={22} />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-slate-900 truncate">
+                        <p
+                          className="text-sm font-medium truncate transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           {emp?.emergencyContact?.name || "Not Set"}
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">
+                        <p
+                          className="text-xs mt-1 transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
                           {emp?.emergencyContact?.relation || "-"}
                         </p>
                       </div>
@@ -719,6 +965,7 @@ const EmployeeInformation = () => {
                     title="Employment Details"
                     subtitle="Department, position, and join date"
                     action={<MoreHorizontal size={16} />}
+                    borderColor={borderColor}
                   >
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-12">
                       <DataBlock label="Department" value={emp?.department} />
@@ -747,7 +994,6 @@ const EmployeeInformation = () => {
           </div>
         </div>
 
-        {/* Edit Modal (SECURE) */}
         <Modal
           isOpen={isEditOpen}
           onClose={closeEdit}
@@ -770,6 +1016,8 @@ const EmployeeInformation = () => {
             onPendingChange={(v) => setEditBusy(!!v)}
             onDirtyChange={(v) => setEditDirty(!!v)}
             onSaved={() => setIsEditOpen(false)}
+            borderColor={borderColor}
+            resolvedTheme={resolvedTheme}
           />
         </Modal>
       </div>
@@ -778,27 +1026,45 @@ const EmployeeInformation = () => {
 };
 
 /* =========================
-   Subcomponents (MINIMALIST)
+   Subcomponents
 ========================= */
-const TabButton = ({ active, onClick, label, icon }) => (
+const TabButton = ({ active, onClick, label, icon, borderColor }) => (
   <button
     type="button"
     onClick={onClick}
-    className={[
-      "shrink-0 inline-flex items-center gap-2",
-      "px-3.5 py-2 rounded-xl text-sm",
-      "border transition",
+    className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm border transition"
+    style={
       active
-        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-        : "bg-white/70 text-slate-700 border-slate-200/70 hover:bg-white hover:border-slate-300/70",
-    ].join(" ")}
+        ? {
+            backgroundColor: "var(--accent)",
+            color: "#fff",
+            borderColor: "var(--accent)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
+          }
+        : {
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+            borderColor,
+          }
+    }
   >
-    <span className={active ? "text-white/90" : "text-slate-400"}>{icon}</span>
+    <span
+      style={{ color: active ? "rgba(255,255,255,0.9)" : "var(--app-muted)" }}
+    >
+      {icon}
+    </span>
     <span className="font-medium">{label}</span>
   </button>
 );
 
-const MetricTile = ({ label, value, tone, icon }) => {
+const MetricTile = ({
+  label,
+  value,
+  tone,
+  icon,
+  borderColor,
+  resolvedTheme,
+}) => {
   const num = parseFloat(value || 0);
   const display = Number.isFinite(num)
     ? num % 1 === 0
@@ -806,38 +1072,54 @@ const MetricTile = ({ label, value, tone, icon }) => {
       : num.toFixed(1)
     : 0;
 
-  const tones = {
-    blue: "bg-white border-slate-200/70",
-    rose: "bg-white border-slate-200/70",
-    emerald: "bg-white border-slate-200/70",
-  };
+  const pill = toneStyle(tone, resolvedTheme);
 
   return (
     <div
-      className={[
-        "p-5 rounded-2xl border",
-        tones[tone],
-        "flex items-center justify-between",
-        "transition",
-        "hover:shadow-[0_10px_30px_rgba(15,23,42,0.06)] hover:border-slate-300/70",
-      ].join(" ")}
+      className="p-5 rounded-2xl border flex items-center justify-between transition"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+        boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+      }}
     >
       <div className="min-w-0">
-        <div className="text-xs text-slate-500">{label}</div>
-        <div className="mt-1 text-2xl font-semibold text-slate-900 tracking-tight">
+        <div
+          className="text-xs transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {label}
+        </div>
+        <div
+          className="mt-1 text-2xl font-semibold tracking-tight transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-text)" }}
+        >
           {display}
         </div>
-        <div className="text-xs text-slate-400 mt-1">Hours</div>
+        <div
+          className="text-xs mt-1 transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          Hours
+        </div>
       </div>
 
-      <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/60 text-slate-600">
+      <div className="p-2.5 rounded-xl border" style={pill}>
         {icon}
       </div>
     </div>
   );
 };
 
-const ContactRow = ({ icon, label, value, onCopy, isLink, href }) => {
+const ContactRow = ({
+  icon,
+  label,
+  value,
+  onCopy,
+  isLink,
+  href,
+  borderColor,
+}) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -850,20 +1132,36 @@ const ContactRow = ({ icon, label, value, onCopy, isLink, href }) => {
   return (
     <div className="flex items-center justify-between gap-3 group">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="p-2 rounded-xl bg-slate-50 text-slate-500 border border-slate-200/60 shrink-0">
+        <div
+          className="p-2 rounded-xl border shrink-0 transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            color: "var(--app-muted)",
+            borderColor,
+          }}
+        >
           {icon}
         </div>
         <div className="min-w-0">
-          <div className="text-xs text-slate-500">{label}</div>
+          <div
+            className="text-xs transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {label}
+          </div>
           {isLink && href ? (
             <a
               href={href}
-              className="block text-sm font-medium text-slate-900 truncate hover:text-indigo-700 hover:underline"
+              className="block text-sm font-medium truncate transition-colors duration-200 ease-out"
+              style={{ color: "var(--app-text)" }}
             >
               {value || "-"}
             </a>
           ) : (
-            <div className="text-sm font-medium text-slate-900 truncate">
+            <div
+              className="text-sm font-medium truncate transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               {value || "-"}
             </div>
           )}
@@ -874,74 +1172,163 @@ const ContactRow = ({ icon, label, value, onCopy, isLink, href }) => {
         <button
           type="button"
           onClick={handleCopy}
-          className="p-2 rounded-xl border border-transparent text-slate-400 hover:text-slate-900 hover:bg-slate-100 hover:border-slate-200/60 transition
-                     opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+          className="p-2 rounded-xl border transition opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
+          style={{
+            borderColor: "transparent",
+            color: "var(--app-muted)",
+            backgroundColor: "transparent",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "var(--app-text)";
+            e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+            e.currentTarget.style.borderColor = borderColor;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "var(--app-muted)";
+            e.currentTarget.style.backgroundColor = "transparent";
+            e.currentTarget.style.borderColor = "transparent";
+          }}
           title="Copy"
           aria-label={`Copy ${label}`}
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
         </button>
       ) : (
-        <span className="text-xs text-slate-300">—</span>
+        <span
+          className="text-xs transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          —
+        </span>
       )}
     </div>
   );
 };
 
-const DataRow = ({ label, children }) => (
-  <div className="flex items-center justify-between gap-4 py-3 border-b border-slate-200/60 last:border-0">
-    <span className="text-sm text-slate-600">{label}</span>
+const DataRow = ({ label, children, borderColor }) => (
+  <div
+    className="flex items-center justify-between gap-4 py-3 border-b last:border-0 transition-colors duration-300 ease-out"
+    style={{ borderColor }}
+  >
+    <span
+      className="text-sm transition-colors duration-300 ease-out"
+      style={{ color: "var(--app-muted)" }}
+    >
+      {label}
+    </span>
     <div className="shrink-0">{children}</div>
   </div>
 );
 
 const DataBlock = ({ label, value, icon }) => (
   <div className="flex flex-col gap-1">
-    <span className="text-xs text-slate-500 flex items-center gap-1">
+    <span
+      className="text-xs flex items-center gap-1 transition-colors duration-300 ease-out"
+      style={{ color: "var(--app-muted)" }}
+    >
       {icon} {label}
     </span>
-    <span className="text-sm md:text-base font-medium text-slate-900 break-words">
-      {value || <span className="text-slate-400">Not specified</span>}
+    <span
+      className="text-sm md:text-base font-medium break-words transition-colors duration-300 ease-out"
+      style={{ color: "var(--app-text)" }}
+    >
+      {value || (
+        <span style={{ color: "var(--app-muted)" }}>Not specified</span>
+      )}
     </span>
   </div>
 );
 
 /* =========================
-   States (MINIMALIST)
+   States
 ========================= */
-const EmptyState = () => (
-  <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
-    <div className="w-full max-w-xl bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 text-center p-10 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-      <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center border border-slate-200/60 mx-auto mb-4 text-slate-500">
+const EmptyState = ({ borderColor }) => (
+  <div
+    className="min-h-screen p-6 flex items-center justify-center transition-colors duration-300 ease-out"
+    style={{ backgroundColor: "var(--app-bg)" }}
+  >
+    <div
+      className="w-full max-w-xl text-center p-10 rounded-2xl transition-all duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        border: `1px solid ${borderColor}`,
+        backdropFilter: "blur(10px)",
+        boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
+      }}
+    >
+      <div
+        className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4 border transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: "var(--app-surface-2)",
+          borderColor,
+          color: "var(--app-muted)",
+        }}
+      >
         <User size={26} />
       </div>
-      <h3 className="text-slate-900 font-semibold text-lg">
+      <h3
+        className="font-semibold text-lg transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-text)" }}
+      >
         No Profile Selected
       </h3>
-      <p className="text-sm text-slate-600 mt-2 max-w-md mx-auto">
+      <p
+        className="text-sm mt-2 max-w-md mx-auto transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
         Select an employee from the list to view their details here.
       </p>
     </div>
   </div>
 );
 
-const ErrorState = ({ onRetry }) => (
-  <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
-    <div className="w-full max-w-xl bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 p-10 text-center shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-      <div className="w-12 h-12 bg-rose-50 text-rose-700 rounded-2xl border border-rose-200/60 flex items-center justify-center mx-auto mb-4">
+const ErrorState = ({ onRetry, borderColor, resolvedTheme }) => (
+  <div
+    className="min-h-screen p-6 flex items-center justify-center transition-colors duration-300 ease-out"
+    style={{ backgroundColor: "var(--app-bg)" }}
+  >
+    <div
+      className="w-full max-w-xl p-10 text-center rounded-2xl transition-all duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        border: `1px solid ${borderColor}`,
+        backdropFilter: "blur(10px)",
+        boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
+      }}
+    >
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 border"
+        style={toneStyle("rose", resolvedTheme)}
+      >
         <AlertCircle size={20} />
       </div>
-      <p className="font-semibold text-slate-900 text-lg">
+      <p
+        className="font-semibold text-lg transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-text)" }}
+      >
         Failed to load profile
       </p>
-      <p className="text-sm text-slate-600 mt-2">
+      <p
+        className="text-sm mt-2 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
         Please check your connection and try again.
       </p>
       <button
         type="button"
         onClick={onRetry}
-        className="mt-6 px-4 py-2.5 rounded-xl bg-white/70 border border-slate-200/70 text-sm font-medium text-slate-800
-                   hover:bg-white hover:border-slate-300/70 hover:shadow-sm transition"
+        className="mt-6 px-4 py-2.5 rounded-xl text-sm font-medium transition"
+        style={{
+          backgroundColor: "var(--app-surface)",
+          border: `1px solid ${borderColor}`,
+          color: "var(--app-text)",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--app-surface)";
+        }}
       >
         Try Again
       </button>
@@ -949,36 +1336,97 @@ const ErrorState = ({ onRetry }) => (
   </div>
 );
 
-const EmployeeSkeleton = () => (
-  <div className="min-h-screen bg-slate-50 p-6 md:p-10 animate-pulse">
+const EmployeeSkeleton = ({ borderColor }) => (
+  <div
+    className="min-h-screen p-6 md:p-10 animate-pulse transition-colors duration-300 ease-out"
+    style={{ backgroundColor: "var(--app-bg)" }}
+  >
     <div className="max-w-6xl mx-auto space-y-6">
-      <div className="bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70 overflow-hidden shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-        <div className="px-4 md:px-6 pt-5 pb-4 border-b border-slate-200/60">
+      <div
+        className="rounded-2xl overflow-hidden"
+        style={{
+          backgroundColor: "var(--app-surface)",
+          border: `1px solid ${borderColor}`,
+          boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+        }}
+      >
+        <div
+          className="px-4 md:px-6 pt-5 pb-4 border-b"
+          style={{ borderColor }}
+        >
           <div className="flex gap-4 items-center">
-            <div className="w-12 h-12 bg-slate-200/60 rounded-2xl" />
+            <div
+              className="w-12 h-12 rounded-2xl"
+              style={{ backgroundColor: "var(--app-surface-2)" }}
+            />
             <div className="flex-1 space-y-2">
-              <div className="h-6 w-64 bg-slate-200/60 rounded-lg" />
-              <div className="h-4 w-40 bg-slate-200/60 rounded-lg" />
+              <div
+                className="h-6 w-64 rounded-lg"
+                style={{ backgroundColor: "var(--app-surface-2)" }}
+              />
+              <div
+                className="h-4 w-40 rounded-lg"
+                style={{ backgroundColor: "var(--app-surface-2)" }}
+              />
             </div>
           </div>
 
           <div className="mt-6 flex gap-2">
-            <div className="h-10 w-28 bg-slate-200/60 rounded-xl" />
-            <div className="h-10 w-32 bg-slate-200/60 rounded-xl" />
-            <div className="h-10 w-28 bg-slate-200/60 rounded-xl" />
+            <div
+              className="h-10 w-28 rounded-xl"
+              style={{ backgroundColor: "var(--app-surface-2)" }}
+            />
+            <div
+              className="h-10 w-32 rounded-xl"
+              style={{ backgroundColor: "var(--app-surface-2)" }}
+            />
+            <div
+              className="h-10 w-28 rounded-xl"
+              style={{ backgroundColor: "var(--app-surface-2)" }}
+            />
           </div>
         </div>
 
         <div className="px-4 md:px-6 py-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="h-28 bg-white border border-slate-200/70 rounded-2xl" />
-            <div className="h-28 bg-white border border-slate-200/70 rounded-2xl" />
-            <div className="h-28 bg-white border border-slate-200/70 rounded-2xl" />
+            <div
+              className="h-28 rounded-2xl"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                border: `1px solid ${borderColor}`,
+              }}
+            />
+            <div
+              className="h-28 rounded-2xl"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                border: `1px solid ${borderColor}`,
+              }}
+            />
+            <div
+              className="h-28 rounded-2xl"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                border: `1px solid ${borderColor}`,
+              }}
+            />
           </div>
 
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="h-64 bg-white border border-slate-200/70 rounded-2xl" />
-            <div className="h-64 bg-white border border-slate-200/70 rounded-2xl" />
+            <div
+              className="h-64 rounded-2xl"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                border: `1px solid ${borderColor}`,
+              }}
+            />
+            <div
+              className="h-64 rounded-2xl"
+              style={{
+                backgroundColor: "var(--app-surface)",
+                border: `1px solid ${borderColor}`,
+              }}
+            />
           </div>
         </div>
       </div>

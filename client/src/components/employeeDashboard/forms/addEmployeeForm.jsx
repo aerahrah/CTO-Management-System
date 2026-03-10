@@ -8,6 +8,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import Select from "react-select";
 import { toast } from "react-toastify";
 import Breadcrumbs from "../../breadCrumbs";
+import { useAuth } from "../../../store/authStore";
 import {
   getEmployeeById,
   updateEmployeeById,
@@ -23,7 +24,6 @@ import {
   MapPin,
   Phone,
   AlertCircle,
-  UserPlus,
   ShieldCheck,
   Building2,
   Save,
@@ -32,6 +32,18 @@ import {
   Mail,
   Shield,
 } from "lucide-react";
+
+/* =========================
+   THEME
+========================= */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
 
 /* =========================
    CONSTANTS (whitelists)
@@ -73,167 +85,417 @@ const pickProjectId = (p) => pickId(p);
 const pickDesignationId = (d) => pickId(d);
 
 /* =========================
-   ✅ Skeleton UI (better loading)
+   Skeleton UI
 ========================= */
-const Sk = ({ className = "" }) => (
+const Sk = ({ className = "", style = {} }) => (
   <div
     className={[
-      "animate-pulse rounded-lg bg-slate-200/80",
-      "ring-1 ring-slate-100",
+      "animate-pulse rounded-lg ring-1 transition-colors duration-300 ease-out",
       className,
     ].join(" ")}
+    style={style}
   />
 );
 
-const SkText = ({ w = "w-40", h = "h-3", className = "" }) => (
-  <Sk className={[w, h, className].join(" ")} />
+const SkText = ({ w = "w-40", h = "h-3", className = "", style = {} }) => (
+  <Sk className={[w, h, className].join(" ")} style={style} />
 );
 
-const SkInput = ({ className = "" }) => (
-  <Sk className={["h-11 w-full rounded-xl", className].join(" ")} />
+const SkInput = ({ className = "", style = {} }) => (
+  <Sk
+    className={["h-11 w-full rounded-xl", className].join(" ")}
+    style={style}
+  />
 );
 
-const SkCard = ({ children, className = "" }) => (
+const SkCard = ({ children, className = "", borderColor }) => (
   <div
     className={[
-      "bg-white/80 backdrop-blur rounded-2xl border border-slate-200/70",
-      "shadow-[0_1px_0_rgba(15,23,42,0.04)]",
+      "rounded-2xl transition-colors duration-300 ease-out",
       className,
     ].join(" ")}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      border: `1px solid ${borderColor}`,
+      boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+      backdropFilter: "blur(10px)",
+    }}
   >
     {children}
   </div>
 );
 
-const FormSkeleton = ({ isEditMode }) => {
+const FormSkeleton = ({
+  isEditMode,
+  borderColor,
+  skeletonColors,
+  resolvedTheme,
+}) => {
+  const softPanel =
+    resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.03)"
+      : "rgba(248,250,252,0.70)";
+
+  const emergencyPanel =
+    resolvedTheme === "dark" ? "rgba(244,63,94,0.06)" : "rgba(244,63,94,0.04)";
+
   return (
-    <div className="min-h-screen">
+    <div
+      className="min-h-screen transition-colors duration-300 ease-out"
+      style={{ backgroundColor: "var(--app-bg)" }}
+    >
       <div className="max-w-6xl mx-auto">
-        {/* Header skeleton */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="min-w-0">
             <div className="opacity-70">
-              <SkText w="w-48" h="h-3" />
+              <SkText
+                w="w-48"
+                h="h-3"
+                style={{
+                  backgroundColor: skeletonColors.baseColor,
+                  borderColor: borderColor,
+                }}
+              />
             </div>
 
             <div className="flex items-start gap-3 mt-3">
-              <Sk className="w-11 h-11 rounded-2xl" />
+              <Sk
+                className="w-11 h-11 rounded-2xl"
+                style={{
+                  backgroundColor: skeletonColors.baseColor,
+                  borderColor: borderColor,
+                }}
+              />
               <div className="min-w-0 w-full">
-                <SkText w="w-64" h="h-6" />
-                <SkText w="w-96" h="h-4" className="mt-2" />
+                <SkText
+                  w="w-64"
+                  h="h-6"
+                  style={{
+                    backgroundColor: skeletonColors.baseColor,
+                    borderColor: borderColor,
+                  }}
+                />
+                <SkText
+                  w="w-96"
+                  h="h-4"
+                  className="mt-2"
+                  style={{
+                    backgroundColor: skeletonColors.baseColor,
+                    borderColor: borderColor,
+                  }}
+                />
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-3 w-full md:w-auto">
-            <Sk className="h-11 w-28 rounded-xl" />
-            <Sk className="h-11 w-44 rounded-xl" />
+            <Sk
+              className="h-11 w-28 rounded-xl"
+              style={{
+                backgroundColor: skeletonColors.baseColor,
+                borderColor: borderColor,
+              }}
+            />
+            <Sk
+              className="h-11 w-44 rounded-xl"
+              style={{
+                backgroundColor: skeletonColors.baseColor,
+                borderColor: borderColor,
+              }}
+            />
           </div>
         </div>
 
-        {/* Form skeleton */}
-        <SkCard className="p-6 md:p-8">
+        <SkCard className="p-6 md:p-8" borderColor={borderColor}>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Left column */}
             <div className="space-y-8">
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Sk className="w-9 h-9 rounded-xl" />
-                  <SkText w="w-40" h="h-4" />
+                  <Sk
+                    className="w-9 h-9 rounded-xl"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkText
+                    w="w-40"
+                    h="h-4"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                   <div className="hidden md:block flex-1">
-                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                    <Sk
+                      className="h-px w-full rounded-none"
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SkInput />
-                  <SkInput />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                 </div>
-                <SkInput />
+                <SkInput
+                  style={{
+                    backgroundColor: skeletonColors.baseColor,
+                    borderColor: borderColor,
+                  }}
+                />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SkInput />
-                  <SkInput />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Sk className="w-9 h-9 rounded-xl" />
-                  <SkText w="w-40" h="h-4" />
+                  <Sk
+                    className="w-9 h-9 rounded-xl"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkText
+                    w="w-40"
+                    h="h-4"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                   <div className="hidden md:block flex-1">
-                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                    <Sk
+                      className="h-px w-full rounded-none"
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
                   </div>
                 </div>
 
-                {/* role / status */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SkInput />
-                  <SkInput />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                 </div>
 
-                <SkInput />
+                <SkInput
+                  style={{
+                    backgroundColor: skeletonColors.baseColor,
+                    borderColor: borderColor,
+                  }}
+                />
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <SkInput />
-                  <SkInput />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                 </div>
 
-                <SkInput />
+                <SkInput
+                  style={{
+                    backgroundColor: skeletonColors.baseColor,
+                    borderColor: borderColor,
+                  }}
+                />
               </div>
             </div>
 
-            {/* Right column */}
             <div className="space-y-8">
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Sk className="w-9 h-9 rounded-xl" />
-                  <SkText w="w-40" h="h-4" />
+                  <Sk
+                    className="w-9 h-9 rounded-xl"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkText
+                    w="w-40"
+                    h="h-4"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                   <div className="hidden md:block flex-1">
-                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                    <Sk
+                      className="h-px w-full rounded-none"
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
                   </div>
                 </div>
 
-                <div className="bg-slate-50/60 p-5 rounded-2xl border border-slate-200/60 space-y-4">
-                  <SkInput className="bg-slate-200/70" />
+                <div
+                  className="p-5 rounded-2xl border space-y-4"
+                  style={{
+                    backgroundColor: softPanel,
+                    borderColor: borderColor,
+                  }}
+                >
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <SkInput className="bg-slate-200/70" />
-                    <SkInput className="bg-slate-200/70" />
+                    <SkInput
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
+                    <SkInput
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
                   </div>
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
-                  <Sk className="w-9 h-9 rounded-xl" />
-                  <SkText w="w-44" h="h-4" />
+                  <Sk
+                    className="w-9 h-9 rounded-xl"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
+                  <SkText
+                    w="w-44"
+                    h="h-4"
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                   <div className="hidden md:block flex-1">
-                    <Sk className="h-px w-full rounded-none bg-slate-200/70" />
+                    <Sk
+                      className="h-px w-full rounded-none"
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
                   </div>
                 </div>
 
-                <div className="bg-rose-50/30 p-5 rounded-2xl border border-rose-200/50 space-y-4">
-                  <SkInput className="bg-slate-200/70" />
+                <div
+                  className="p-5 rounded-2xl border space-y-4"
+                  style={{
+                    backgroundColor: emergencyPanel,
+                    borderColor:
+                      resolvedTheme === "dark"
+                        ? "rgba(244,63,94,0.18)"
+                        : "rgba(244,63,94,0.12)",
+                  }}
+                >
+                  <SkInput
+                    style={{
+                      backgroundColor: skeletonColors.baseColor,
+                      borderColor: borderColor,
+                    }}
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <SkInput className="bg-slate-200/70" />
-                    <SkInput className="bg-slate-200/70" />
+                    <SkInput
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
+                    <SkInput
+                      style={{
+                        backgroundColor: skeletonColors.baseColor,
+                        borderColor: borderColor,
+                      }}
+                    />
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Bottom hint skeleton row */}
           <div className="mt-8 flex items-center justify-between">
-            <SkText w="w-56" h="h-3" />
-            <SkText w="w-24" h="h-3" />
+            <SkText
+              w="w-56"
+              h="h-3"
+              style={{
+                backgroundColor: skeletonColors.baseColor,
+                borderColor: borderColor,
+              }}
+            />
+            <SkText
+              w="w-24"
+              h="h-3"
+              style={{
+                backgroundColor: skeletonColors.baseColor,
+                borderColor: borderColor,
+              }}
+            />
           </div>
         </SkCard>
 
-        {/* Small loading pill (optional) */}
         {isEditMode ? (
-          <div className="mt-4 flex items-center gap-2 text-slate-600">
+          <div
+            className="mt-4 flex items-center gap-2 text-xs font-medium transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
             <Loader2 className="animate-spin" size={16} />
-            <span className="text-xs font-medium">Loading employee…</span>
+            <span>Loading employee…</span>
           </div>
         ) : null}
       </div>
@@ -242,10 +504,18 @@ const FormSkeleton = ({ isEditMode }) => {
 };
 
 /* =========================
-   SELECT INPUT (react-select) - MINIMALIST
-   ✅ accepts string[] OR {value,label}[]
+   SELECT INPUT (react-select)
 ========================= */
-const SelectInput = ({ label, options, value, onChange, error, required }) => {
+const SelectInput = ({
+  label,
+  options,
+  value,
+  onChange,
+  error,
+  required,
+  borderColor,
+  resolvedTheme,
+}) => {
   const selectOptions = useMemo(() => {
     return (options || []).map((opt) => {
       if (typeof opt === "string") return { value: opt, label: opt };
@@ -260,19 +530,19 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
         minHeight: "44px",
         borderRadius: "0.75rem",
         borderColor: state.isFocused
-          ? "#a5b4fc"
+          ? "var(--accent)"
           : error
-            ? "#fda4af"
-            : "rgba(226,232,240,0.9)",
-        boxShadow: state.isFocused ? "0 0 0 4px rgba(99,102,241,0.12)" : "none",
+            ? "rgba(244,63,94,0.45)"
+            : borderColor,
+        boxShadow: state.isFocused ? "0 0 0 4px var(--accent-soft)" : "none",
         "&:hover": {
           borderColor: state.isFocused
-            ? "#a5b4fc"
+            ? "var(--accent)"
             : error
-              ? "#fda4af"
-              : "rgba(148,163,184,0.7)",
+              ? "rgba(244,63,94,0.45)"
+              : borderColor,
         },
-        backgroundColor: "rgba(255,255,255,0.9)",
+        backgroundColor: "var(--app-surface)",
         overflow: "hidden",
       }),
       valueContainer: (base) => ({
@@ -280,9 +550,13 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
         paddingLeft: 10,
         paddingRight: 10,
       }),
+      input: (base) => ({
+        ...base,
+        color: "var(--app-text)",
+      }),
       placeholder: (base) => ({
         ...base,
-        color: "rgba(100,116,139,0.8)",
+        color: "var(--app-muted)",
       }),
       singleValue: (base) => ({
         ...base,
@@ -290,41 +564,55 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
         overflow: "hidden",
         textOverflow: "ellipsis",
         maxWidth: "100%",
-        color: "#0f172a",
+        color: "var(--app-text)",
         fontWeight: 500,
       }),
-      indicatorSeparator: () => ({ display: "none" }),
-      dropdownIndicator: (base) => ({
-        ...base,
-        color: "rgba(100,116,139,0.8)",
-      }),
-      clearIndicator: (base) => ({ ...base, color: "rgba(100,116,139,0.8)" }),
       menu: (base) => ({
         ...base,
         zIndex: 9999,
         borderRadius: "0.75rem",
         overflow: "hidden",
-        border: "1px solid rgba(226,232,240,0.9)",
+        border: `1px solid ${borderColor}`,
         boxShadow: "0 20px 40px rgba(15,23,42,0.08)",
+        backgroundColor: "var(--app-surface)",
+      }),
+      menuList: (base) => ({
+        ...base,
+        backgroundColor: "var(--app-surface)",
       }),
       option: (base, state) => ({
         ...base,
         fontSize: 13,
         backgroundColor: state.isSelected
-          ? "rgba(99,102,241,0.10)"
+          ? "var(--accent-soft)"
           : state.isFocused
-            ? "rgba(2,6,23,0.04)"
-            : "white",
-        color: "#0f172a",
+            ? resolvedTheme === "dark"
+              ? "rgba(255,255,255,0.05)"
+              : "rgba(2,6,23,0.04)"
+            : "var(--app-surface)",
+        color: "var(--app-text)",
+        cursor: "pointer",
+      }),
+      indicatorSeparator: () => ({ display: "none" }),
+      dropdownIndicator: (base) => ({
+        ...base,
+        color: "var(--app-muted)",
+      }),
+      clearIndicator: (base) => ({
+        ...base,
+        color: "var(--app-muted)",
       }),
     }),
-    [error],
+    [error, borderColor, resolvedTheme],
   );
 
   return (
     <div className="pt-2">
-      <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
-        {label} {required && <span className="text-rose-500">*</span>}
+      <label
+        className="block text-xs mb-1.5 flex items-center gap-1 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
+        {label} {required && <span style={{ color: "#f43f5e" }}>*</span>}
       </label>
 
       <Select
@@ -337,7 +625,10 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
       />
 
       {error && (
-        <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+        <p
+          className="text-xs mt-2 flex items-center gap-1"
+          style={{ color: "#f43f5e" }}
+        >
           <AlertCircle size={14} /> {error.message}
         </p>
       )}
@@ -346,7 +637,7 @@ const SelectInput = ({ label, options, value, onChange, error, required }) => {
 };
 
 /* =========================
-   MAIN FORM (MINIMALIST)
+   MAIN FORM
 ========================= */
 const AddEmployeeForm = () => {
   const navigate = useNavigate();
@@ -354,11 +645,57 @@ const AddEmployeeForm = () => {
   const { id } = useParams();
   const isEditMode = Boolean(id);
 
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColors = useMemo(() => {
+    if (resolvedTheme === "dark") {
+      return {
+        baseColor: "rgba(255,255,255,0.06)",
+        highlightColor: "rgba(255,255,255,0.10)",
+      };
+    }
+    return {
+      baseColor: "rgba(15,23,42,0.06)",
+      highlightColor: "rgba(15,23,42,0.10)",
+    };
+  }, [resolvedTheme]);
+
+  const addressPanelStyle = useMemo(
+    () => ({
+      backgroundColor:
+        resolvedTheme === "dark"
+          ? "rgba(255,255,255,0.03)"
+          : "rgba(248,250,252,0.70)",
+      borderColor,
+    }),
+    [resolvedTheme, borderColor],
+  );
+
+  const emergencyPanelStyle = useMemo(
+    () => ({
+      backgroundColor:
+        resolvedTheme === "dark"
+          ? "rgba(244,63,94,0.06)"
+          : "rgba(244,63,94,0.04)",
+      borderColor:
+        resolvedTheme === "dark"
+          ? "rgba(244,63,94,0.18)"
+          : "rgba(244,63,94,0.12)",
+    }),
+    [resolvedTheme],
+  );
+
   const submitLockRef = useRef(false);
 
   /* -------------------------
-     Project IDs set (for validation)
-     ✅ still fetched here for schema + submit guard
+     Project IDs set
   ------------------------- */
   const projectsQuery = useQuery({
     queryKey: ["projectOptions", "Active"],
@@ -374,7 +711,7 @@ const AddEmployeeForm = () => {
   }, [projectsQuery.data]);
 
   /* -------------------------
-     Schema (depends on projectIdSet)
+     Schema
   ------------------------- */
   const schema = useMemo(() => {
     const base = {
@@ -631,8 +968,9 @@ const AddEmployeeForm = () => {
       }
       if (!payload.status) throw new Error("Invalid status selected.");
       if (!payload.designation) throw new Error("Designation is required.");
-      if (!isEditMode && !payload.role)
+      if (!isEditMode && !payload.role) {
         throw new Error("Invalid role selected.");
+      }
 
       return isEditMode
         ? updateEmployeeById(id, payload)
@@ -641,8 +979,9 @@ const AddEmployeeForm = () => {
     retry: 0,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["employees"] });
-      if (isEditMode)
+      if (isEditMode) {
         queryClient.invalidateQueries({ queryKey: ["employee", id] });
+      }
 
       toast.success(
         isEditMode
@@ -671,39 +1010,83 @@ const AddEmployeeForm = () => {
     mutate(formData);
   };
 
-  /* ======= Edit mode: loading / error states ======= */
-  // ✅ No hooks below this point
-
-  // ✅ improved skeleton instead of plain loader
   if (isEditMode && isEmployeeLoading) {
-    return <FormSkeleton isEditMode />;
+    return (
+      <FormSkeleton
+        isEditMode={isEditMode}
+        borderColor={borderColor}
+        skeletonColors={skeletonColors}
+        resolvedTheme={resolvedTheme}
+      />
+    );
   }
 
   if (isEditMode && isEmployeeError) {
     return (
-      <div className="min-h-screen ">
+      <div
+        className="min-h-screen transition-colors duration-300 ease-out"
+        style={{ backgroundColor: "var(--app-bg)" }}
+      >
         <div className="max-w-6xl mx-auto">
-          <div className="bg-white/80 backdrop-blur rounded-2xl border border-rose-200/60 p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)]">
-            <div className="flex items-center gap-2 text-rose-700 font-medium">
+          <div
+            className="p-6 rounded-2xl transition-all duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              border: `1px solid rgba(244,63,94,0.18)`,
+              boxShadow: "0 10px 30px rgba(15,23,42,0.06)",
+              backdropFilter: "blur(10px)",
+            }}
+          >
+            <div
+              className="flex items-center gap-2 font-medium"
+              style={{
+                color: resolvedTheme === "dark" ? "#fda4af" : "#be123c",
+              }}
+            >
               <AlertCircle size={18} />
               Failed to load employee
             </div>
-            <p className="text-sm text-slate-600 mt-2">
+
+            <p
+              className="text-sm mt-2 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               Please try again. If this persists, check the employee ID or your
               API.
             </p>
+
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
                 onClick={() => refetchEmployee()}
-                className="px-4 py-2.5 text-sm font-medium bg-white/70 border border-slate-200/70 rounded-xl hover:bg-white hover:border-slate-300/70 hover:shadow-sm transition"
+                className="px-4 py-2.5 text-sm font-medium rounded-xl transition"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  border: `1px solid ${borderColor}`,
+                  color: "var(--app-text)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    "var(--app-surface-2)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "var(--app-surface)";
+                }}
               >
                 Retry
               </button>
+
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm transition"
+                className="px-4 py-2.5 text-sm font-medium text-white rounded-xl shadow-sm transition"
+                style={{ backgroundColor: "var(--accent)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.filter = "brightness(0.95)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.filter = "none";
+                }}
               >
                 Go Back
               </button>
@@ -715,9 +1098,14 @@ const AddEmployeeForm = () => {
   }
 
   return (
-    <div className="min-h-screen">
+    <div
+      className="min-h-screen transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
       <div className="px-1 py-2">
-        {/* === NAVIGATION & HEADER === */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="min-w-0">
             <Breadcrumbs
@@ -728,10 +1116,16 @@ const AddEmployeeForm = () => {
 
             <div className="flex items-start gap-3 mt-3">
               <div className="min-w-0">
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight truncate">
+                <h1
+                  className="text-2xl sm:text-3xl font-bold tracking-tight truncate transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-text)" }}
+                >
                   {isEditMode ? "Update Employee" : "Add New Employee"}
                 </h1>
-                <p className="text-sm text-slate-600 mt-1">
+                <p
+                  className="text-sm mt-1 transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Manage employee records and assignment details.
                 </p>
               </div>
@@ -742,8 +1136,20 @@ const AddEmployeeForm = () => {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="px-4 py-2.5 text-sm font-medium text-slate-700 bg-white/70 border border-slate-200/70 rounded-xl hover:bg-white hover:border-slate-300/70 hover:shadow-sm transition"
+              className="px-4 py-2.5 text-sm font-medium rounded-xl transition"
               disabled={isPending}
+              style={{
+                backgroundColor: "var(--app-surface)",
+                border: `1px solid ${borderColor}`,
+                color: "var(--app-text)",
+              }}
+              onMouseEnter={(e) => {
+                if (isPending) return;
+                e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--app-surface)";
+              }}
             >
               Cancel
             </button>
@@ -752,7 +1158,15 @@ const AddEmployeeForm = () => {
               type="submit"
               form="employeeForm"
               disabled={isPending}
-              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm disabled:opacity-70 transition"
+              className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white rounded-xl shadow-sm disabled:opacity-70 transition"
+              style={{ backgroundColor: "var(--accent)" }}
+              onMouseEnter={(e) => {
+                if (isPending) return;
+                e.currentTarget.style.filter = "brightness(0.95)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.filter = "none";
+              }}
             >
               {isPending ? (
                 <span className="flex items-center gap-2">
@@ -772,18 +1186,28 @@ const AddEmployeeForm = () => {
         <form
           id="employeeForm"
           onSubmit={handleSubmit(onSubmit)}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white/80 backdrop-blur p-6 md:p-8 rounded-2xl border border-slate-200/70 shadow-[0_1px_0_rgba(15,23,42,0.04)]"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-8 p-6 md:p-8 rounded-2xl transition-all duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            border: `1px solid ${borderColor}`,
+            boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+            backdropFilter: "blur(10px)",
+          }}
         >
-          {/* LEFT COLUMN */}
           <div className="space-y-8">
-            <Section title="Personal Details" icon={User}>
+            <Section
+              title="Personal Details"
+              icon={User}
+              borderColor={borderColor}
+            >
               <InputField
                 label="Employee ID"
                 required
-                icon={<Hash size={14} className="text-slate-400" />}
+                icon={<Hash size={14} style={{ color: "var(--app-muted)" }} />}
                 {...register("employeeId")}
                 error={errors.employeeId}
                 disabled={isEditMode}
+                borderColor={borderColor}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -792,12 +1216,14 @@ const AddEmployeeForm = () => {
                   required
                   {...register("firstName")}
                   error={errors.firstName}
+                  borderColor={borderColor}
                 />
                 <InputField
                   label="Last Name"
                   required
                   {...register("lastName")}
                   error={errors.lastName}
+                  borderColor={borderColor}
                 />
               </div>
 
@@ -806,6 +1232,7 @@ const AddEmployeeForm = () => {
                 required
                 {...register("username")}
                 error={errors.username}
+                borderColor={borderColor}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -813,22 +1240,32 @@ const AddEmployeeForm = () => {
                   label="Email Address"
                   type="email"
                   required
-                  icon={<Mail size={14} className="text-slate-400" />}
+                  icon={
+                    <Mail size={14} style={{ color: "var(--app-muted)" }} />
+                  }
                   {...register("email")}
                   error={errors.email}
+                  borderColor={borderColor}
                 />
                 <InputField
                   label="Phone Number"
                   type="tel"
-                  icon={<Phone size={14} className="text-slate-400" />}
+                  icon={
+                    <Phone size={14} style={{ color: "var(--app-muted)" }} />
+                  }
                   {...register("phone")}
                   error={errors.phone}
                   hint="Digits only (10–15). We’ll strip spaces/dashes automatically."
+                  borderColor={borderColor}
                 />
               </div>
             </Section>
 
-            <Section title="Work Information" icon={Briefcase}>
+            <Section
+              title="Work Information"
+              icon={Briefcase}
+              borderColor={borderColor}
+            >
               {!isEditMode ? (
                 <Controller
                   name="role"
@@ -841,15 +1278,28 @@ const AddEmployeeForm = () => {
                       onChange={field.onChange}
                       error={errors.role}
                       required
+                      borderColor={borderColor}
+                      resolvedTheme={resolvedTheme}
                     />
                   )}
                 />
               ) : (
                 <div className="pt-2">
-                  <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
-                    <Shield size={14} className="text-slate-400" /> System Role
+                  <label
+                    className="block text-xs mb-1.5 flex items-center gap-1 transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    <Shield size={14} style={{ color: "var(--app-muted)" }} />{" "}
+                    System Role
                   </label>
-                  <div className="h-11 px-3 flex items-center rounded-xl border border-slate-200/70 bg-slate-50/60 text-sm font-medium text-slate-800">
+                  <div
+                    className="h-11 px-3 flex items-center rounded-xl text-sm font-medium transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      border: `1px solid ${borderColor}`,
+                      color: "var(--app-text)",
+                    }}
+                  >
                     {employee?.role || "—"}
                   </div>
                 </div>
@@ -866,6 +1316,8 @@ const AddEmployeeForm = () => {
                     onChange={field.onChange}
                     error={errors.status}
                     required
+                    borderColor={borderColor}
+                    resolvedTheme={resolvedTheme}
                   />
                 )}
               />
@@ -875,6 +1327,7 @@ const AddEmployeeForm = () => {
                 required
                 {...register("position")}
                 error={errors.position}
+                borderColor={borderColor}
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -889,14 +1342,18 @@ const AddEmployeeForm = () => {
                       onChange={field.onChange}
                       error={errors.division}
                       required
+                      borderColor={borderColor}
+                      resolvedTheme={resolvedTheme}
                     />
                   )}
                 />
 
-                {/* ✅ Project extracted into its own component */}
                 <div className="pt-2">
-                  <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
-                    Project <span className="text-rose-500">*</span>
+                  <label
+                    className="block text-xs mb-1.5 flex items-center gap-1 transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Project <span style={{ color: "#f43f5e" }}>*</span>
                   </label>
                   <Controller
                     name="project"
@@ -910,18 +1367,23 @@ const AddEmployeeForm = () => {
                     )}
                   />
                   {errors.project && (
-                    <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+                    <p
+                      className="text-xs mt-2 flex items-center gap-1"
+                      style={{ color: "#f43f5e" }}
+                    >
                       <AlertCircle size={14} /> {errors.project.message}
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* ✅ Designation matches Project select UI */}
               <div className="pt-2">
-                <label className="block text-xs text-slate-600 mb-1.5 flex items-center gap-1">
-                  <Building2 size={14} className="text-slate-400" /> Designation{" "}
-                  <span className="text-rose-500">*</span>
+                <label
+                  className="block text-xs mb-1.5 flex items-center gap-1 transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  <Building2 size={14} style={{ color: "var(--app-muted)" }} />{" "}
+                  Designation <span style={{ color: "#f43f5e" }}>*</span>
                 </label>
 
                 <Controller
@@ -937,7 +1399,10 @@ const AddEmployeeForm = () => {
                 />
 
                 {errors.designation && (
-                  <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+                  <p
+                    className="text-xs mt-2 flex items-center gap-1"
+                    style={{ color: "#f43f5e" }}
+                  >
                     <AlertCircle size={14} /> {errors.designation.message}
                   </p>
                 )}
@@ -945,54 +1410,73 @@ const AddEmployeeForm = () => {
             </Section>
           </div>
 
-          {/* RIGHT COLUMN */}
           <div className="space-y-8">
-            <Section title="Primary Address" icon={MapPin}>
-              <div className="bg-slate-50/60 p-5 rounded-2xl border border-slate-200/60 space-y-4">
+            <Section
+              title="Primary Address"
+              icon={MapPin}
+              borderColor={borderColor}
+            >
+              <div
+                className="p-5 rounded-2xl border space-y-4 transition-colors duration-300 ease-out"
+                style={addressPanelStyle}
+              >
                 <InputField
                   label="Street / Building"
                   {...register("address.street")}
                   error={errors.address?.street}
-                  className="bg-white/80"
+                  className=""
+                  borderColor={borderColor}
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <InputField
                     label="City"
                     {...register("address.city")}
                     error={errors.address?.city}
-                    className="bg-white/80"
+                    className=""
+                    borderColor={borderColor}
                   />
                   <InputField
                     label="Province"
                     {...register("address.province")}
                     error={errors.address?.province}
-                    className="bg-white/80"
+                    className=""
+                    borderColor={borderColor}
                   />
                 </div>
               </div>
             </Section>
 
-            <Section title="Emergency Contact" icon={ShieldCheck}>
-              <div className="bg-rose-50/30 p-5 rounded-2xl border border-rose-200/50 space-y-4">
+            <Section
+              title="Emergency Contact"
+              icon={ShieldCheck}
+              borderColor={borderColor}
+            >
+              <div
+                className="p-5 rounded-2xl border space-y-4 transition-colors duration-300 ease-out"
+                style={emergencyPanelStyle}
+              >
                 <InputField
                   label="Contact Person"
                   {...register("emergencyContact.name")}
                   error={errors.emergencyContact?.name}
-                  className="bg-white/80"
+                  className=""
+                  borderColor={borderColor}
                 />
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <InputField
                     label="Relationship"
                     {...register("emergencyContact.relation")}
                     error={errors.emergencyContact?.relation}
-                    className="bg-white/80"
+                    className=""
+                    borderColor={borderColor}
                   />
                   <InputField
                     label="Contact Phone"
                     type="tel"
                     {...register("emergencyContact.phone")}
                     error={errors.emergencyContact?.phone}
-                    className="bg-white/80"
+                    className=""
+                    borderColor={borderColor}
                   />
                 </div>
               </div>
@@ -1005,28 +1489,58 @@ const AddEmployeeForm = () => {
 };
 
 /* =========================
-   ATOMIC COMPONENTS (MINIMALIST)
+   ATOMIC COMPONENTS
 ========================= */
-const Section = ({ title, icon: Icon, children }) => (
+const Section = ({ title, icon: Icon, children, borderColor }) => (
   <div className="flex flex-col gap-4">
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
-        <div className="p-2 rounded-xl bg-slate-100 text-slate-600 border border-slate-200/60">
+        <div
+          className="p-2 rounded-xl border transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            color: "var(--app-muted)",
+            borderColor,
+          }}
+        >
           <Icon size={16} />
         </div>
-        <h4 className="text-sm font-medium text-slate-700">{title}</h4>
+        <h4
+          className="text-sm font-medium transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {title}
+        </h4>
       </div>
-      <div className="h-px flex-1 bg-slate-200/60 hidden md:block" />
+      <div
+        className="h-px flex-1 hidden md:block transition-colors duration-300 ease-out"
+        style={{ backgroundColor: borderColor }}
+      />
     </div>
     {children}
   </div>
 );
 
 const InputField = React.forwardRef(
-  ({ label, error, required, className = "", hint, icon, ...props }, ref) => (
+  (
+    {
+      label,
+      error,
+      required,
+      className = "",
+      hint,
+      icon,
+      borderColor,
+      ...props
+    },
+    ref,
+  ) => (
     <div className="w-full pt-2">
-      <label className="block text-xs text-slate-600 mb-1.5">
-        {label} {required && <span className="text-rose-500">*</span>}
+      <label
+        className="block text-xs mb-1.5 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
+        {label} {required && <span style={{ color: "#f43f5e" }}>*</span>}
       </label>
 
       <div className="relative">
@@ -1041,25 +1555,48 @@ const InputField = React.forwardRef(
             "w-full h-11",
             icon ? "pl-9" : "pl-3",
             "pr-3",
-            "text-sm",
-            "rounded-xl",
-            "border",
-            "outline-none",
-            "transition",
-            "bg-white/90",
-            error
-              ? "border-rose-300 focus:ring-2 focus:ring-rose-200 focus:border-rose-300 text-rose-900"
-              : "border-slate-200/80 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 text-slate-900",
-            "disabled:opacity-60 disabled:bg-slate-50",
+            "text-sm rounded-xl border outline-none transition",
+            "disabled:opacity-60",
             className,
           ].join(" ")}
+          style={{
+            backgroundColor: props.disabled
+              ? "var(--app-surface-2)"
+              : "var(--app-surface)",
+            color: "var(--app-text)",
+            borderColor: error ? "rgba(244,63,94,0.45)" : borderColor,
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = error
+              ? "rgba(244,63,94,0.60)"
+              : "var(--accent)";
+            e.currentTarget.style.boxShadow = error
+              ? "0 0 0 3px rgba(244,63,94,0.14)"
+              : "0 0 0 3px var(--accent-soft)";
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = error
+              ? "rgba(244,63,94,0.45)"
+              : borderColor;
+            e.currentTarget.style.boxShadow = "none";
+          }}
         />
       </div>
 
-      {hint && !error && <p className="text-xs mt-2 text-slate-500">{hint}</p>}
+      {hint && !error && (
+        <p
+          className="text-xs mt-2 transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {hint}
+        </p>
+      )}
 
       {error && (
-        <p className="text-rose-600 text-xs mt-2 flex items-center gap-1">
+        <p
+          className="text-xs mt-2 flex items-center gap-1"
+          style={{ color: "#f43f5e" }}
+        >
           <AlertCircle size={14} /> {error.message}
         </p>
       )}
