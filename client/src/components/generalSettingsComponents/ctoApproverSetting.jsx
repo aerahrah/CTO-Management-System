@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import Select from "react-select";
-import Skeleton from "react-loading-skeleton";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { toast } from "react-toastify";
+import { useAuth } from "../../store/authStore";
 import {
   Building2,
   Edit2,
@@ -23,6 +24,18 @@ import {
 } from "../../api/cto";
 
 /* =========================
+   Theme
+========================= */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* =========================
    Utils
 ========================= */
 const getErrMsg = (err, fallback = "Something went wrong") =>
@@ -39,23 +52,105 @@ const normalizeOptionsResponse = (raw) => {
   return items;
 };
 
+const getSoftIconStyle = (tone, resolvedTheme, borderColor) => {
+  const isDark = resolvedTheme === "dark";
+
+  switch (tone) {
+    case "blue":
+      return {
+        backgroundColor: isDark
+          ? "rgba(59,130,246,0.14)"
+          : "rgba(59,130,246,0.10)",
+        color: isDark ? "#93c5fd" : "#1d4ed8",
+        borderColor: isDark ? "rgba(59,130,246,0.24)" : "rgba(59,130,246,0.18)",
+      };
+    case "rose":
+      return {
+        backgroundColor: isDark
+          ? "rgba(244,63,94,0.14)"
+          : "rgba(244,63,94,0.10)",
+        color: isDark ? "#fda4af" : "#be123c",
+        borderColor: isDark ? "rgba(244,63,94,0.24)" : "rgba(244,63,94,0.18)",
+      };
+    default:
+      return {
+        backgroundColor: "var(--app-surface-2)",
+        color: "var(--app-muted)",
+        borderColor,
+      };
+  }
+};
+
+const getPillStyle = (tone, resolvedTheme) => {
+  const isDark = resolvedTheme === "dark";
+
+  switch (tone) {
+    case "blue":
+      return {
+        backgroundColor: isDark
+          ? "rgba(59,130,246,0.14)"
+          : "rgba(59,130,246,0.10)",
+        color: isDark ? "#93c5fd" : "#1d4ed8",
+        borderColor: isDark ? "rgba(59,130,246,0.24)" : "rgba(59,130,246,0.18)",
+      };
+    case "emerald":
+      return {
+        backgroundColor: isDark
+          ? "rgba(16,185,129,0.14)"
+          : "rgba(16,185,129,0.10)",
+        color: isDark ? "#6ee7b7" : "#047857",
+        borderColor: isDark ? "rgba(16,185,129,0.24)" : "rgba(16,185,129,0.18)",
+      };
+    default:
+      return {
+        backgroundColor: isDark
+          ? "rgba(148,163,184,0.14)"
+          : "rgba(148,163,184,0.10)",
+        color: isDark ? "#cbd5e1" : "#475569",
+        borderColor: isDark
+          ? "rgba(148,163,184,0.22)"
+          : "rgba(148,163,184,0.18)",
+      };
+  }
+};
+
 /* =========================
-   UI Primitives (MINIMALIST)
+   UI Primitives
 ========================= */
-const Card = ({ title, subtitle, action, children, className = "" }) => (
+const Card = ({
+  title,
+  subtitle,
+  action,
+  children,
+  className = "",
+  borderColor,
+}) => (
   <div
-    className={["bg-white/80 backdrop-blur", "transition", className].join(" ")}
+    className={["transition-colors duration-300 ease-out", className].join(" ")}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      border: `1px solid ${borderColor}`,
+      borderRadius: "1rem",
+      boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+      backdropFilter: "blur(10px)",
+    }}
   >
     {(title || action) && (
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 px-6 pt-5">
         <div className="min-w-0">
           {title && (
-            <h3 className="text-sm font-medium text-slate-900 truncate">
+            <h3
+              className="text-sm font-medium truncate transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               {title}
             </h3>
           )}
           {subtitle && (
-            <p className="text-xs text-slate-500 mt-0.5 leading-snug">
+            <p
+              className="text-xs mt-0.5 leading-snug transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               {subtitle}
             </p>
           )}
@@ -67,46 +162,23 @@ const Card = ({ title, subtitle, action, children, className = "" }) => (
   </div>
 );
 
-const SoftIcon = ({ children, tone = "slate" }) => {
-  const tones = {
-    slate: "bg-slate-100 text-slate-600 border-slate-200/60",
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    rose: "bg-rose-50 text-rose-700 border-rose-100",
-  };
-  return (
-    <div
-      className={[
-        "p-2 rounded-xl border",
-        "shadow-[0_1px_0_rgba(15,23,42,0.03)]",
-        tones[tone],
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-};
+const SoftIcon = ({ children, tone = "slate", resolvedTheme, borderColor }) => (
+  <div
+    className="p-2 rounded-xl border shadow-[0_1px_0_rgba(15,23,42,0.03)] transition-colors duration-300 ease-out"
+    style={getSoftIconStyle(tone, resolvedTheme, borderColor)}
+  >
+    {children}
+  </div>
+);
 
-const Pill = ({ children, tone = "slate" }) => {
-  const tones = {
-    slate: "bg-slate-100 text-slate-700 border-slate-200",
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    emerald: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  };
-  return (
-    <span
-      className={[
-        "inline-flex items-center",
-        "px-2.5 py-1",
-        "rounded-full",
-        "text-xs font-medium",
-        "border",
-        tones[tone],
-      ].join(" ")}
-    >
-      {children}
-    </span>
-  );
-};
+const Pill = ({ children, tone = "slate", resolvedTheme }) => (
+  <span
+    className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border transition-colors duration-300 ease-out"
+    style={getPillStyle(tone, resolvedTheme)}
+  >
+    {children}
+  </span>
+);
 
 const Button = ({
   children,
@@ -115,11 +187,23 @@ const Button = ({
   onClick,
   className = "",
   type = "button",
+  borderColor,
 }) => {
-  const styles =
-    variant === "primary"
-      ? "bg-blue-600 text-white hover:bg-blue-700 border-blue-600 shadow-sm"
-      : "bg-white/70 text-slate-800 hover:bg-white border-slate-200/70 hover:border-slate-300/70";
+  const primaryStyle = {
+    backgroundColor: "var(--accent)",
+    color: "#fff",
+    borderColor: "var(--accent)",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+  };
+
+  const secondaryStyle = {
+    backgroundColor: "var(--app-surface)",
+    color: "var(--app-text)",
+    borderColor,
+  };
+
+  const buttonStyle = variant === "primary" ? primaryStyle : secondaryStyle;
+
   return (
     <button
       type={type}
@@ -128,12 +212,27 @@ const Button = ({
       className={[
         "inline-flex items-center justify-center gap-2",
         "px-6 py-2 rounded-xl text-sm font-medium",
-        "border transition",
+        "border transition duration-200 ease-out",
         "active:scale-[0.99]",
         "disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100",
-        styles,
         className,
       ].join(" ")}
+      style={buttonStyle}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        if (variant === "primary") {
+          e.currentTarget.style.filter = "brightness(0.95)";
+        } else {
+          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (variant === "primary") {
+          e.currentTarget.style.filter = "none";
+        } else {
+          e.currentTarget.style.backgroundColor = "var(--app-surface)";
+        }
+      }}
     >
       {children}
     </button>
@@ -141,35 +240,39 @@ const Button = ({
 };
 
 /* =========================
-   Select styles (minimal, blue-600)
+   Select styles
 ========================= */
-const selectStyles = {
+const buildSelectStyles = (resolvedTheme, borderColor) => ({
   control: (base, state) => ({
     ...base,
     minHeight: "44px",
     borderRadius: "0.9rem",
-    borderColor: state.isFocused ? "#93c5fd" : "rgba(226,232,240,0.9)",
-    boxShadow: state.isFocused ? "0 0 0 4px rgba(37,99,235,0.10)" : "none",
+    borderColor: state.isFocused ? "var(--accent)" : borderColor,
+    boxShadow: state.isFocused ? "0 0 0 4px var(--accent-soft)" : "none",
     "&:hover": {
-      borderColor: state.isFocused ? "#93c5fd" : "rgba(148,163,184,0.7)",
+      borderColor: state.isFocused ? "var(--accent)" : borderColor,
     },
-    backgroundColor: "rgba(255,255,255,0.92)",
+    backgroundColor: "var(--app-surface)",
     padding: "2px 4px",
   }),
   valueContainer: (base) => ({ ...base, paddingLeft: 10, paddingRight: 10 }),
+  input: (base) => ({
+    ...base,
+    color: "var(--app-text)",
+  }),
   indicatorSeparator: () => ({ display: "none" }),
-  dropdownIndicator: (base) => ({ ...base, color: "rgba(100,116,139,0.8)" }),
-  clearIndicator: (base) => ({ ...base, color: "rgba(100,116,139,0.8)" }),
+  dropdownIndicator: (base) => ({ ...base, color: "var(--app-muted)" }),
+  clearIndicator: (base) => ({ ...base, color: "var(--app-muted)" }),
   placeholder: (base) => ({
     ...base,
     fontSize: 13,
-    color: "rgba(100,116,139,0.85)",
+    color: "var(--app-muted)",
     fontWeight: 500,
   }),
   singleValue: (base) => ({
     ...base,
     fontSize: 13,
-    color: "#0f172a",
+    color: "var(--app-text)",
     fontWeight: 500,
   }),
   menu: (base) => ({
@@ -177,8 +280,13 @@ const selectStyles = {
     zIndex: 9999,
     borderRadius: "0.9rem",
     overflow: "hidden",
-    border: "1px solid rgba(226,232,240,0.9)",
+    border: `1px solid ${borderColor}`,
     boxShadow: "0 20px 40px rgba(15,23,42,0.10)",
+    backgroundColor: "var(--app-surface)",
+  }),
+  menuList: (base) => ({
+    ...base,
+    backgroundColor: "var(--app-surface)",
   }),
   option: (base, state) => ({
     ...base,
@@ -186,22 +294,33 @@ const selectStyles = {
     paddingTop: 10,
     paddingBottom: 10,
     backgroundColor: state.isSelected
-      ? "rgba(37,99,235,0.10)"
+      ? "var(--accent-soft)"
       : state.isFocused
-        ? "rgba(2,6,23,0.04)"
-        : "white",
-    color: "#0f172a",
+        ? resolvedTheme === "dark"
+          ? "rgba(255,255,255,0.05)"
+          : "rgba(2,6,23,0.04)"
+        : "var(--app-surface)",
+    color: "var(--app-text)",
   }),
-};
+});
 
 /* =========================
-   Skeletons (match minimalist concept)
+   Skeletons
 ========================= */
-const HeaderSkeleton = () => (
-  <div className="px-6 py-5 border-b border-slate-200/60 bg-white/70">
+const HeaderSkeleton = ({ borderColor }) => (
+  <div
+    className="px-6 py-5 border-b transition-colors duration-300 ease-out"
+    style={{
+      borderColor,
+      backgroundColor: "var(--app-surface-2)",
+    }}
+  >
     <div className="flex items-start justify-between gap-4">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="h-10 w-10 rounded-2xl bg-slate-200/70" />
+        <div
+          className="h-10 w-10 rounded-2xl"
+          style={{ backgroundColor: "rgba(148,163,184,0.18)" }}
+        />
         <div className="min-w-0">
           <Skeleton height={16} width={160} />
           <div className="mt-2 flex items-center gap-2">
@@ -218,9 +337,16 @@ const HeaderSkeleton = () => (
   </div>
 );
 
-const ContentSkeleton = () => (
+const ContentSkeleton = ({ borderColor }) => (
   <div className="max-w-3xl mx-auto space-y-6">
-    <div className="rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+    <div
+      className="rounded-2xl p-5"
+      style={{
+        border: `1px solid ${borderColor}`,
+        backgroundColor: "var(--app-surface)",
+        boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+      }}
+    >
       <Skeleton height={12} width={220} />
       <div className="mt-3 space-y-2">
         <Skeleton height={10} width={"90%"} />
@@ -228,8 +354,15 @@ const ContentSkeleton = () => (
       </div>
     </div>
 
-    <div className="rounded-2xl border border-slate-200/70 bg-white/80 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
-      <div className="px-6 py-4 border-b border-slate-200/60">
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        border: `1px solid ${borderColor}`,
+        backgroundColor: "var(--app-surface)",
+        boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+      }}
+    >
+      <div className="px-6 py-4 border-b" style={{ borderColor }}>
         <Skeleton height={14} width={170} />
         <div className="mt-2 flex items-center gap-2">
           <Skeleton height={10} width={260} />
@@ -240,13 +373,28 @@ const ContentSkeleton = () => (
       <div className="px-6 py-5 space-y-6">
         {[1, 2, 3].map((lvl) => (
           <div key={lvl} className="flex gap-4">
-            <div className="h-10 w-10 rounded-full bg-slate-200/70" />
+            <div
+              className="h-10 w-10 rounded-full"
+              style={{ backgroundColor: "rgba(148,163,184,0.18)" }}
+            />
             <div className="flex-1">
               <Skeleton height={12} width={150} />
               <Skeleton height={10} width={120} className="mt-2" />
-              <div className="mt-3 rounded-2xl border border-slate-200/70 bg-white/80 px-4 py-3">
+              <div
+                className="mt-3 rounded-2xl px-4 py-3"
+                style={{
+                  border: `1px solid ${borderColor}`,
+                  backgroundColor: "var(--app-surface)",
+                }}
+              >
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-slate-100 border border-slate-200/60" />
+                  <div
+                    className="h-10 w-10 rounded-xl"
+                    style={{
+                      backgroundColor: "rgba(148,163,184,0.12)",
+                      border: `1px solid ${borderColor}`,
+                    }}
+                  />
                   <div className="flex-1">
                     <Skeleton height={12} width={"55%"} />
                     <Skeleton height={10} width={"35%"} className="mt-2" />
@@ -268,6 +416,33 @@ const ApproverSettings = () => {
   const queryClient = useQueryClient();
   const { designationId } = useParams();
   const id = designationId ? String(designationId) : "";
+
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColors = useMemo(() => {
+    if (resolvedTheme === "dark") {
+      return {
+        baseColor: "rgba(255,255,255,0.06)",
+        highlightColor: "rgba(255,255,255,0.10)",
+      };
+    }
+    return {
+      baseColor: "rgba(15,23,42,0.06)",
+      highlightColor: "rgba(15,23,42,0.10)",
+    };
+  }, [resolvedTheme]);
+
+  const selectStyles = useMemo(
+    () => buildSelectStyles(resolvedTheme, borderColor),
+    [resolvedTheme, borderColor],
+  );
 
   const [isEditing, setIsEditing] = useState(false);
   const [inlineError, setInlineError] = useState("");
@@ -361,8 +536,7 @@ const ApproverSettings = () => {
     } else {
       setForm({ level1Approver: "", level2Approver: "", level3Approver: "" });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, settingQuery.data?.show]);
+  }, [id, settingQuery.data?.show, approverSettingData]);
 
   const mutation = useMutation({
     mutationFn: upsertApproverSetting,
@@ -403,26 +577,46 @@ const ApproverSettings = () => {
 
     setInlineError("");
 
-    // ✅ enforce complete assignment
     if (!validateAllApprovers()) return;
 
     mutation.mutate({ designation: id, ...form });
   }, [id, form, mutation, validateAllApprovers]);
 
   const CustomOption = (props) => {
-    const { data, innerRef, innerProps, isSelected } = props;
+    const { data, innerRef, innerProps, isSelected, isFocused } = props;
+
     return (
       <div
         ref={innerRef}
         {...innerProps}
-        className={[
-          "px-3 py-2 cursor-pointer border-b border-slate-50 last:border-0 transition-colors",
-          isSelected ? "bg-blue-50" : "hover:bg-blue-50/60",
-        ].join(" ")}
+        className="px-3 py-2 cursor-pointer border-b last:border-0 transition-colors duration-200 ease-out"
+        style={{
+          borderColor:
+            resolvedTheme === "dark"
+              ? "rgba(255,255,255,0.04)"
+              : "rgba(15,23,42,0.04)",
+          backgroundColor: isSelected
+            ? "var(--accent-soft)"
+            : isFocused
+              ? resolvedTheme === "dark"
+                ? "rgba(255,255,255,0.04)"
+                : "rgba(37,99,235,0.06)"
+              : "var(--app-surface)",
+        }}
       >
         <div className="min-w-0">
-          <div className="text-sm text-slate-900 truncate">{data.label}</div>
-          <div className="text-xs text-slate-500 truncate">{data.subLabel}</div>
+          <div
+            className="text-sm truncate transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-text)" }}
+          >
+            {data.label}
+          </div>
+          <div
+            className="text-xs truncate transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {data.subLabel}
+          </div>
         </div>
       </div>
     );
@@ -431,27 +625,39 @@ const ApproverSettings = () => {
   const allFilled =
     !!form.level1Approver && !!form.level2Approver && !!form.level3Approver;
 
-  /* =========================
-     Empty (no id)
-  ========================= */
   if (!id) {
     return (
-      <div className="h-full min-h-[460px] flex items-center justify-center p-6">
+      <div
+        className="h-full min-h-[460px] flex items-center justify-center p-6 transition-colors duration-300 ease-out"
+        style={{ backgroundColor: "var(--app-bg)" }}
+      >
         <div className="w-full max-w-2xl">
           <Card
             title="No designation selected"
             subtitle="Select a designation from the left panel to configure routing."
             action={
-              <SoftIcon tone="slate">
+              <SoftIcon
+                tone="slate"
+                resolvedTheme={resolvedTheme}
+                borderColor={borderColor}
+              >
                 <Building2 className="h-4 w-4" />
               </SoftIcon>
             }
+            borderColor={borderColor}
           >
-            <div className="flex items-start gap-3 text-sm text-slate-600">
-              <SoftIcon tone="blue">
+            <div
+              className="flex items-start gap-3 text-sm leading-relaxed transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
+              <SoftIcon
+                tone="blue"
+                resolvedTheme={resolvedTheme}
+                borderColor={borderColor}
+              >
                 <Info className="h-4 w-4" />
               </SoftIcon>
-              <div className="leading-relaxed">
+              <div>
                 Assign Level 1 to Level 3 approvers. All levels are required
                 before you can save.
               </div>
@@ -473,258 +679,383 @@ const ApproverSettings = () => {
     designationQuery.isLoading;
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden rounded-xl border border-slate-200/70 shadow-md">
-      {/* HEADER */}
-      {headerLoading ? (
-        <HeaderSkeleton />
-      ) : (
-        <div className="px-6 py-2.5 border-b border-slate-200/60 bg-neutral-50/50">
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-bold text-slate-900">
-                      Approver routing
-                    </h2>
-                    <Pill tone="slate">
-                      {selectedDesignation?.name || "Designation"}
-                    </Pill>
-                  </div>
-
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Assign all three levels (Level 1, Level 2, Level 3). Saving
-                    is disabled until the approvers are complete.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant={isEditing ? "secondary" : "primary"}
-                onClick={() => {
-                  setInlineError("");
-                  setIsEditing((v) => !v);
-                }}
-              >
-                {isEditing ? (
-                  <>
-                    <X size={16} /> Cancel
-                  </>
-                ) : (
-                  <>
-                    <Edit2 size={16} /> Edit
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CONTENT (keep overflow-y-auto) */}
-      <div className="flex-1 overflow-y-auto px-6 py-6">
-        {contentLoading ? (
-          <ContentSkeleton />
-        ) : settingQuery.isError ? (
-          <div className="max-w-3xl mx-auto">
-            <Card
-              title="Unable to load routing"
-              subtitle="Please check your connection and try again."
-              action={
-                <SoftIcon tone="rose">
-                  <AlertTriangle className="h-4 w-4" />
-                </SoftIcon>
-              }
-            >
-              <div className="text-sm text-rose-700">
-                {getErrMsg(settingQuery.error, "Failed to load configuration")}
-              </div>
-            </Card>
-          </div>
+    <div
+      className="flex flex-col h-full overflow-hidden rounded-xl border shadow-md transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+      }}
+    >
+      <SkeletonTheme
+        baseColor={skeletonColors.baseColor}
+        highlightColor={skeletonColors.highlightColor}
+      >
+        {/* HEADER */}
+        {headerLoading ? (
+          <HeaderSkeleton borderColor={borderColor} />
         ) : (
-          <div className="max-w-3xl mx-auto space-y-4">
-            {/* Inline error */}
-            {inlineError && (
-              <div className="rounded-2xl border border-rose-200/70 bg-rose-50/70 px-4 py-3 text-sm text-rose-800 flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 mt-0.5" />
-                <span>{inlineError}</span>
-              </div>
-            )}
+          <div
+            className="px-6 py-2.5 border-b transition-colors duration-300 ease-out"
+            style={{
+              borderColor,
+              backgroundColor: "var(--app-surface-2)",
+            }}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2
+                        className="text-lg font-bold transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        Approver routing
+                      </h2>
+                      <Pill tone="slate" resolvedTheme={resolvedTheme}>
+                        {selectedDesignation?.name || "Designation"}
+                      </Pill>
+                    </div>
 
-            {/* Single card for all levels */}
-            <Card
-              subtitle="Assign approvers for each level"
-              action={
-                <span className="text-xs text-slate-400">
-                  Level 1 → Level 3
-                </span>
-              }
-            >
-              <div className="flex items-start gap-3 mb-5">
-                <SoftIcon tone="slate">
-                  <Info className="h-4 w-4" />
-                </SoftIcon>
-                <div className="text-sm text-slate-600 leading-relaxed">
-                  All approver levels are required for a complete routing setup.
-                  Please select an approver for Level 1, Level 2, and Level 3
-                  before saving.
+                    <p
+                      className="text-xs leading-relaxed transition-colors duration-300 ease-out"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      Assign all three levels (Level 1, Level 2, Level 3).
+                      Saving is disabled until the approvers are complete.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="relative">
-                {/* Line */}
-                <div className="absolute left-4 top-2 bottom-2 w-px bg-gradient-to-b from-blue-600 via-slate-200 to-transparent" />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={isEditing ? "secondary" : "primary"}
+                  onClick={() => {
+                    setInlineError("");
+                    setIsEditing((v) => !v);
+                  }}
+                  borderColor={borderColor}
+                >
+                  {isEditing ? (
+                    <>
+                      <X size={16} /> Cancel
+                    </>
+                  ) : (
+                    <>
+                      <Edit2 size={16} /> Edit
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
-                <div className="space-y-6">
-                  {[1, 2, 3].map((level) => {
-                    const key = `level${level}Approver`;
-                    const selectedValue = employeeOptions.find(
-                      (o) => o.value === form[key],
-                    );
+        {/* CONTENT */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 cto-scrollbar">
+          {contentLoading ? (
+            <ContentSkeleton borderColor={borderColor} />
+          ) : settingQuery.isError ? (
+            <div className="max-w-3xl mx-auto">
+              <Card
+                title="Unable to load routing"
+                subtitle="Please check your connection and try again."
+                action={
+                  <SoftIcon
+                    tone="rose"
+                    resolvedTheme={resolvedTheme}
+                    borderColor={borderColor}
+                  >
+                    <AlertTriangle className="h-4 w-4" />
+                  </SoftIcon>
+                }
+                borderColor={borderColor}
+              >
+                <div
+                  className="text-sm transition-colors duration-300 ease-out"
+                  style={{
+                    color: resolvedTheme === "dark" ? "#fda4af" : "#be123c",
+                  }}
+                >
+                  {getErrMsg(
+                    settingQuery.error,
+                    "Failed to load configuration",
+                  )}
+                </div>
+              </Card>
+            </div>
+          ) : (
+            <div className="max-w-3xl mx-auto space-y-4">
+              {inlineError && (
+                <div
+                  className="rounded-2xl border px-4 py-3 text-sm flex items-start gap-2 transition-colors duration-300 ease-out"
+                  style={{
+                    borderColor:
+                      resolvedTheme === "dark"
+                        ? "rgba(244,63,94,0.24)"
+                        : "rgba(244,63,94,0.18)",
+                    backgroundColor:
+                      resolvedTheme === "dark"
+                        ? "rgba(244,63,94,0.10)"
+                        : "rgba(244,63,94,0.08)",
+                    color: resolvedTheme === "dark" ? "#fda4af" : "#be123c",
+                  }}
+                >
+                  <AlertTriangle className="h-4 w-4 mt-0.5" />
+                  <span>{inlineError}</span>
+                </div>
+              )}
 
-                    const meta =
-                      level === 1
-                        ? { note: "Primary review" }
-                        : level === 2
-                          ? { note: "Secondary review" }
-                          : { note: "Final approval" };
+              <Card
+                subtitle="Assign approvers for each level"
+                action={
+                  <span
+                    className="text-xs transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Level 1 → Level 3
+                  </span>
+                }
+                borderColor={borderColor}
+              >
+                <div className="flex items-start gap-3 mb-5">
+                  <SoftIcon
+                    tone="slate"
+                    resolvedTheme={resolvedTheme}
+                    borderColor={borderColor}
+                  >
+                    <Info className="h-4 w-4" />
+                  </SoftIcon>
 
-                    return (
-                      <div key={level} className="relative flex gap-4">
-                        {/* Dot */}
-                        <div
-                          className={[
-                            "relative z-10 h-10 w-10 rounded-full border-4 border-white shadow-sm flex items-center justify-center",
-                            selectedValue
-                              ? "bg-blue-600 text-white"
-                              : "bg-slate-200 text-slate-600",
-                          ].join(" ")}
-                        >
-                          <span className="text-xs">{level}</span>
-                        </div>
+                  <div
+                    className="text-sm leading-relaxed transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    All approver levels are required for a complete routing
+                    setup. Please select an approver for Level 1, Level 2, and
+                    Level 3 before saving.
+                  </div>
+                </div>
 
-                        {/* Content */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="min-w-0">
-                              <div className="text-sm text-slate-900">
-                                Level {level} approver
-                              </div>
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                {meta.note}
-                              </div>
-                            </div>
+                <div className="relative">
+                  <div
+                    className="absolute left-4 top-2 bottom-2 w-px"
+                    style={{
+                      background:
+                        resolvedTheme === "dark"
+                          ? "linear-gradient(to bottom, var(--accent), rgba(255,255,255,0.12), transparent)"
+                          : "linear-gradient(to bottom, var(--accent), rgba(148,163,184,0.30), transparent)",
+                    }}
+                  />
 
-                            <Pill tone={selectedValue ? "emerald" : "slate"}>
-                              {selectedValue ? "Assigned" : "Required"}
-                            </Pill>
+                  <div className="space-y-6">
+                    {[1, 2, 3].map((level) => {
+                      const key = `level${level}Approver`;
+                      const selectedValue = employeeOptions.find(
+                        (o) => o.value === form[key],
+                      );
+
+                      const meta =
+                        level === 1
+                          ? { note: "Primary review" }
+                          : level === 2
+                            ? { note: "Secondary review" }
+                            : { note: "Final approval" };
+
+                      return (
+                        <div key={level} className="relative flex gap-4">
+                          <div
+                            className="relative z-10 h-10 w-10 rounded-full border-4 shadow-sm flex items-center justify-center transition-colors duration-300 ease-out"
+                            style={{
+                              borderColor: "var(--app-surface)",
+                              backgroundColor: selectedValue
+                                ? "var(--accent)"
+                                : "var(--app-surface-2)",
+                              color: selectedValue
+                                ? "#fff"
+                                : "var(--app-muted)",
+                            }}
+                          >
+                            <span className="text-xs">{level}</span>
                           </div>
 
-                          <div className="mt-3">
-                            {isEditing ? (
-                              <div className="space-y-2">
-                                <Select
-                                  options={employeeOptions}
-                                  components={{ Option: CustomOption }}
-                                  value={selectedValue || null}
-                                  onChange={(selected) =>
-                                    setForm((prev) => ({
-                                      ...prev,
-                                      [key]: selected?.value || "",
-                                    }))
-                                  }
-                                  placeholder="Select an employee..."
-                                  isLoading={approversQuery.isLoading}
-                                  isDisabled={approversQuery.isLoading}
-                                  isClearable={false} // ✅ prevent clearing (enforce complete)
-                                  styles={selectStyles}
-                                />
-                                {!form[key] && (
-                                  <div className="text-xs text-rose-600">
-                                    This level is required.
-                                  </div>
-                                )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <div
+                                  className="text-sm transition-colors duration-300 ease-out"
+                                  style={{ color: "var(--app-text)" }}
+                                >
+                                  Level {level} approver
+                                </div>
+                                <div
+                                  className="text-xs mt-0.5 transition-colors duration-300 ease-out"
+                                  style={{ color: "var(--app-muted)" }}
+                                >
+                                  {meta.note}
+                                </div>
                               </div>
-                            ) : (
-                              <div
-                                className={[
-                                  "rounded-2xl border px-4 py-3",
-                                  "bg-white/70",
-                                  selectedValue
-                                    ? "border-slate-200/70"
-                                    : "border-rose-200/70 bg-rose-50/40",
-                                ].join(" ")}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className={[
-                                      "h-10 w-10 rounded-xl border flex items-center justify-center",
-                                      selectedValue
-                                        ? "bg-blue-50 text-blue-700 border-blue-100"
-                                        : "bg-rose-50 text-rose-700 border-rose-200/70",
-                                    ].join(" ")}
-                                  >
-                                    <CheckCircle2 size={18} />
-                                  </div>
 
-                                  <div className="min-w-0 flex-1">
-                                    <div className="text-sm text-slate-900 truncate">
-                                      {selectedValue?.label ||
-                                        "No approver assigned"}
+                              <Pill
+                                tone={selectedValue ? "emerald" : "slate"}
+                                resolvedTheme={resolvedTheme}
+                              >
+                                {selectedValue ? "Assigned" : "Required"}
+                              </Pill>
+                            </div>
+
+                            <div className="mt-3">
+                              {isEditing ? (
+                                <div className="space-y-2">
+                                  <Select
+                                    options={employeeOptions}
+                                    components={{ Option: CustomOption }}
+                                    value={selectedValue || null}
+                                    onChange={(selected) =>
+                                      setForm((prev) => ({
+                                        ...prev,
+                                        [key]: selected?.value || "",
+                                      }))
+                                    }
+                                    placeholder="Select an employee..."
+                                    isLoading={approversQuery.isLoading}
+                                    isDisabled={approversQuery.isLoading}
+                                    isClearable={false}
+                                    styles={selectStyles}
+                                  />
+                                  {!form[key] && (
+                                    <div
+                                      className="text-xs transition-colors duration-300 ease-out"
+                                      style={{
+                                        color:
+                                          resolvedTheme === "dark"
+                                            ? "#fda4af"
+                                            : "#be123c",
+                                      }}
+                                    >
+                                      This level is required.
                                     </div>
-                                    <div className="text-xs text-slate-500 truncate">
-                                      {selectedValue?.subLabel ||
-                                        "Click Edit to assign an approver"}
+                                  )}
+                                </div>
+                              ) : (
+                                <div
+                                  className="rounded-2xl border px-4 py-3 transition-colors duration-300 ease-out"
+                                  style={{
+                                    borderColor: selectedValue
+                                      ? borderColor
+                                      : resolvedTheme === "dark"
+                                        ? "rgba(244,63,94,0.22)"
+                                        : "rgba(244,63,94,0.16)",
+                                    backgroundColor: selectedValue
+                                      ? "var(--app-surface)"
+                                      : resolvedTheme === "dark"
+                                        ? "rgba(244,63,94,0.06)"
+                                        : "rgba(244,63,94,0.04)",
+                                  }}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className="h-10 w-10 rounded-xl border flex items-center justify-center transition-colors duration-300 ease-out"
+                                      style={
+                                        selectedValue
+                                          ? {
+                                              backgroundColor:
+                                                "var(--accent-soft)",
+                                              color: "var(--accent)",
+                                              borderColor:
+                                                "var(--accent-soft2)",
+                                            }
+                                          : {
+                                              backgroundColor:
+                                                resolvedTheme === "dark"
+                                                  ? "rgba(244,63,94,0.10)"
+                                                  : "rgba(244,63,94,0.08)",
+                                              color:
+                                                resolvedTheme === "dark"
+                                                  ? "#fda4af"
+                                                  : "#be123c",
+                                              borderColor:
+                                                resolvedTheme === "dark"
+                                                  ? "rgba(244,63,94,0.22)"
+                                                  : "rgba(244,63,94,0.16)",
+                                            }
+                                      }
+                                    >
+                                      <CheckCircle2 size={18} />
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                      <div
+                                        className="text-sm truncate transition-colors duration-300 ease-out"
+                                        style={{ color: "var(--app-text)" }}
+                                      >
+                                        {selectedValue?.label ||
+                                          "No approver assigned"}
+                                      </div>
+                                      <div
+                                        className="text-xs truncate transition-colors duration-300 ease-out"
+                                        style={{ color: "var(--app-muted)" }}
+                                      >
+                                        {selectedValue?.subLabel ||
+                                          "Click Edit to assign an approver"}
+                                      </div>
                                     </div>
                                   </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            </div>
+          )}
+        </div>
+
+        {/* FOOTER */}
+        {isEditing && (
+          <div
+            className="px-6 py-1.5 border-t flex items-center justify-end gap-3 transition-colors duration-300 ease-out"
+            style={{
+              borderColor,
+              backgroundColor: "var(--app-surface-2)",
+            }}
+          >
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setInlineError("");
+                setIsEditing(false);
+              }}
+              disabled={mutation.isPending}
+              borderColor={borderColor}
+            >
+              <X size={16} /> Cancel
+            </Button>
+
+            <Button
+              onClick={handleSave}
+              disabled={mutation.isPending || !allFilled}
+              className={!allFilled ? "opacity-60" : ""}
+              borderColor={borderColor}
+            >
+              {mutation.isPending ? (
+                <>
+                  <Loader2 className="animate-spin" size={18} /> Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={18} /> Save
+                </>
+              )}
+            </Button>
           </div>
         )}
-      </div>
-
-      {/* FOOTER */}
-      {isEditing && (
-        <div className="px-6 py-1.5 border-t border-slate-200/60 bg-neutral-50/70 flex items-center justify-end gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setInlineError("");
-              setIsEditing(false);
-            }}
-            disabled={mutation.isPending}
-          >
-            <X size={16} /> Cancel
-          </Button>
-
-          <Button
-            onClick={handleSave}
-            disabled={mutation.isPending || !allFilled}
-            className={!allFilled ? "opacity-60" : ""}
-          >
-            {mutation.isPending ? (
-              <>
-                <Loader2 className="animate-spin" size={18} /> Saving...
-              </>
-            ) : (
-              <>
-                <Save size={18} /> Save
-              </>
-            )}
-          </Button>
-        </div>
-      )}
+      </SkeletonTheme>
     </div>
   );
 };
