@@ -2,6 +2,9 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Breadcrumbs from "../../breadCrumbs";
+import FilterSelect from "../../filterSelect";
+import { toast } from "react-toastify";
+import { useAuth } from "../../../store/authStore";
 import {
   fetchAllDesignations,
   createDesignation,
@@ -10,13 +13,21 @@ import {
   deleteDesignation,
 } from "../../../api/designation";
 import { RotateCcw, Plus, ChevronLeft, ChevronRight } from "lucide-react";
-import FilterSelect from "../../filterSelect";
-import { toast } from "react-toastify";
 
 const pageSizeOptions = [20, 50, 100];
 const qk = (status, page, limit) => ["designations", status, page, limit];
 
-// ---- helpers ----
+/* ------------------ Resolve theme ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* ------------------ helpers ------------------ */
 const toInt = (v, fallback) => {
   const n = Number(v);
   return Number.isFinite(n) ? Math.trunc(n) : fallback;
@@ -51,50 +62,155 @@ const normalizeListResponse = (raw, fallbackPage, fallbackLimit) => {
 const getErrMsg = (err, fallback = "Failed") =>
   err?.response?.data?.message || err?.message || fallback;
 
-const Card = ({ children, className = "" }) => (
+const getActionToneStyle = (tone, resolvedTheme) => {
+  const isDark = resolvedTheme === "dark";
+
+  const map = {
+    neutral: {
+      bg: "var(--app-surface)",
+      color: "var(--app-text)",
+      border: isDark ? "rgba(255,255,255,0.09)" : "rgba(15,23,42,0.12)",
+      hoverBg: "var(--app-surface-2)",
+    },
+    blue: {
+      bg: isDark ? "rgba(59,130,246,0.14)" : "rgba(59,130,246,0.10)",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+      border: isDark ? "rgba(59,130,246,0.24)" : "rgba(59,130,246,0.16)",
+      hoverBg: isDark ? "rgba(59,130,246,0.20)" : "rgba(59,130,246,0.16)",
+    },
+    red: {
+      bg: isDark ? "rgba(244,63,94,0.14)" : "rgba(244,63,94,0.10)",
+      color: isDark ? "#fda4af" : "#be123c",
+      border: isDark ? "rgba(244,63,94,0.24)" : "rgba(244,63,94,0.16)",
+      hoverBg: isDark ? "rgba(244,63,94,0.20)" : "rgba(244,63,94,0.16)",
+    },
+    green: {
+      bg: isDark ? "rgba(16,185,129,0.14)" : "rgba(16,185,129,0.10)",
+      color: isDark ? "#6ee7b7" : "#047857",
+      border: isDark ? "rgba(16,185,129,0.24)" : "rgba(16,185,129,0.16)",
+      hoverBg: isDark ? "rgba(16,185,129,0.20)" : "rgba(16,185,129,0.16)",
+    },
+    dark: {
+      bg: "var(--accent)",
+      color: "#fff",
+      border: "var(--accent)",
+      hoverBg: "var(--accent)",
+    },
+  };
+
+  return map[tone] || map.neutral;
+};
+
+const Card = ({ children, className = "", borderColor }) => (
   <div
-    className={`bg-white border border-gray-200 rounded-xl shadow-sm ${className}`}
+    className={`rounded-xl shadow-sm transition-colors duration-300 ease-out ${className}`}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      border: `1px solid ${borderColor}`,
+    }}
   >
     {children}
   </div>
 );
 
-const CountPill = ({ value }) => (
-  <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full text-[11px] font-medium bg-gray-100 text-gray-700 border border-gray-200">
+const CountPill = ({ value, resolvedTheme }) => (
+  <span
+    className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full text-[11px] font-medium border transition-colors duration-300 ease-out"
+    style={{
+      backgroundColor:
+        resolvedTheme === "dark"
+          ? "rgba(255,255,255,0.06)"
+          : "rgba(15,23,42,0.06)",
+      color: "var(--app-text)",
+      borderColor:
+        resolvedTheme === "dark"
+          ? "rgba(255,255,255,0.08)"
+          : "rgba(15,23,42,0.08)",
+    }}
+  >
     {value}
   </span>
 );
 
-const InlineError = ({ message }) => {
+const InlineError = ({ message, resolvedTheme }) => {
   if (!message) return null;
   return (
-    <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700 font-medium">
+    <div
+      className="mt-3 rounded-lg border px-3 py-2 text-xs font-medium transition-colors duration-300 ease-out"
+      style={{
+        borderColor:
+          resolvedTheme === "dark"
+            ? "rgba(244,63,94,0.22)"
+            : "rgba(244,63,94,0.16)",
+        backgroundColor:
+          resolvedTheme === "dark"
+            ? "rgba(244,63,94,0.10)"
+            : "rgba(244,63,94,0.06)",
+        color: resolvedTheme === "dark" ? "#fda4af" : "#be123c",
+      }}
+    >
       {message}
     </div>
   );
 };
 
-const EmptyState = () => (
+const EmptyState = ({ borderColor }) => (
   <div className="p-6">
-    <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-8 text-center">
-      <div className="text-sm font-medium text-gray-700">No items found</div>
-      <div className="text-xs text-gray-500 mt-1">
+    <div
+      className="rounded-xl px-4 py-8 text-center transition-colors duration-300 ease-out"
+      style={{
+        border: `1px dashed ${borderColor}`,
+        backgroundColor: "var(--app-surface-2)",
+      }}
+    >
+      <div
+        className="text-sm font-medium transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-text)" }}
+      >
+        No items found
+      </div>
+      <div
+        className="text-xs mt-1 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
         Add a new designation above or refresh the list.
       </div>
     </div>
   </div>
 );
 
-const SkeletonList = () => (
+const SkeletonList = ({ borderColor, skeletonColor }) => (
   <div className="p-4 space-y-3">
     {Array.from({ length: 6 }).map((_, i) => (
-      <div key={i} className="rounded-xl border border-gray-200 bg-white p-4">
-        <div className="h-4 w-1/2 bg-gray-100 rounded" />
-        <div className="mt-2 h-3 w-1/3 bg-gray-100 rounded" />
+      <div
+        key={i}
+        className="rounded-xl p-4 transition-colors duration-300 ease-out"
+        style={{
+          border: `1px solid ${borderColor}`,
+          backgroundColor: "var(--app-surface)",
+        }}
+      >
+        <div
+          className="h-4 w-1/2 rounded"
+          style={{ backgroundColor: skeletonColor }}
+        />
+        <div
+          className="mt-2 h-3 w-1/3 rounded"
+          style={{ backgroundColor: skeletonColor }}
+        />
         <div className="mt-4 flex gap-2 justify-end">
-          <div className="h-7 w-16 bg-gray-100 rounded-full" />
-          <div className="h-7 w-24 bg-gray-100 rounded-full" />
-          <div className="h-7 w-16 bg-gray-100 rounded-full" />
+          <div
+            className="h-7 w-16 rounded-full"
+            style={{ backgroundColor: skeletonColor }}
+          />
+          <div
+            className="h-7 w-24 rounded-full"
+            style={{ backgroundColor: skeletonColor }}
+          />
+          <div
+            className="h-7 w-16 rounded-full"
+            style={{ backgroundColor: skeletonColor }}
+          />
         </div>
       </div>
     ))}
@@ -107,16 +223,9 @@ const ActionPill = ({
   disabled,
   tone = "neutral",
   type = "button",
+  resolvedTheme,
 }) => {
-  const tones = {
-    neutral:
-      "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50",
-    blue: "bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100/60",
-    red: "bg-rose-50 text-rose-700 border-rose-100 hover:bg-rose-100/60",
-    green:
-      "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100/60",
-    dark: "bg-gray-900 text-white border-gray-900 hover:bg-gray-800",
-  };
+  const toneStyle = getActionToneStyle(tone, resolvedTheme);
 
   return (
     <button
@@ -124,17 +233,28 @@ const ActionPill = ({
       onClick={onClick}
       disabled={disabled}
       className={[
-        "inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border transition whitespace-nowrap",
-        tones[tone] || tones.neutral,
+        "inline-flex items-center justify-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium border transition whitespace-nowrap duration-200 ease-out",
         disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",
       ].join(" ")}
+      style={{
+        backgroundColor: toneStyle.bg,
+        color: toneStyle.color,
+        borderColor: toneStyle.border,
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.backgroundColor = toneStyle.hoverBg;
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.backgroundColor = toneStyle.bg;
+      }}
     >
       {children}
     </button>
   );
 };
 
-/* ✅ Pagination component styled like your ProjectSettings */
 const CompactPagination = ({
   page,
   totalPages,
@@ -144,15 +264,27 @@ const CompactPagination = ({
   onPrev,
   onNext,
   noun = "items",
+  borderColor,
 }) => {
   return (
-    <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white rounded-xl">
+    <div
+      className="px-4 md:px-6 py-3 border-t rounded-xl transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+      }}
+    >
       {/* Mobile/tablet */}
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
           onClick={onPrev}
           disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            borderColor,
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+          }}
           type="button"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -160,10 +292,16 @@ const CompactPagination = ({
         </button>
 
         <div className="text-center min-w-0">
-          <div className="text-xs font-mono font-semibold text-gray-700">
+          <div
+            className="text-xs font-mono font-semibold transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-text)" }}
+          >
             {page} / {totalPages}
           </div>
-          <div className="text-[11px] text-gray-500 truncate">
+          <div
+            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
             {total === 0 ? "0 results" : `${startItem}-${endItem} of ${total}`}
           </div>
         </div>
@@ -171,7 +309,12 @@ const CompactPagination = ({
         <button
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-bold text-gray-700 disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            borderColor,
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+          }}
           type="button"
         >
           Next
@@ -181,31 +324,63 @@ const CompactPagination = ({
 
       {/* Desktop */}
       <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="text-xs text-gray-500 font-medium">
+        <div
+          className="text-xs font-medium transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
           Showing{" "}
-          <span className="font-bold text-gray-900">
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
             {total === 0 ? 0 : `${startItem}-${endItem}`}
           </span>{" "}
-          of <span className="font-bold text-gray-900">{total}</span> {noun}
+          of{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total}
+          </span>{" "}
+          {noun}
         </div>
 
-        <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
+        <div
+          className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            borderColor,
+          }}
+        >
           <button
             onClick={onPrev}
             disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
+            className="p-1.5 rounded-md hover:shadow-sm disabled:opacity-30 transition-all"
+            style={{ color: "var(--app-muted)" }}
             type="button"
+            onMouseEnter={(e) => {
+              if (page === 1 || total === 0) return;
+              e.currentTarget.style.backgroundColor = "var(--app-surface)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-xs font-mono font-medium px-3 text-gray-600">
+          <span
+            className="text-xs font-mono font-medium px-3 transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
             {page} / {totalPages}
           </span>
           <button
             onClick={onNext}
             disabled={page >= totalPages || total === 0}
-            className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 transition-all text-gray-600"
+            className="p-1.5 rounded-md hover:shadow-sm disabled:opacity-30 transition-all"
+            style={{ color: "var(--app-muted)" }}
             type="button"
+            onMouseEnter={(e) => {
+              if (page >= totalPages || total === 0) return;
+              e.currentTarget.style.backgroundColor = "var(--app-surface)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -233,8 +408,6 @@ function StatusCard({
   statusBusyIds,
   deleteBusyIds,
   renameBusyIds,
-
-  // ✅ pagination props
   page,
   totalPages,
   total,
@@ -243,20 +416,39 @@ function StatusCard({
   onPrev,
   onNext,
   noun,
+  borderColor,
+  resolvedTheme,
+  skeletonColor,
 }) {
   return (
-    <Card className="h-[calc(100vh-16rem)] flex flex-col overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
-        <div className="text-sm font-semibold text-gray-900">{title}</div>
-        <CountPill value={count} />
+    <Card
+      borderColor={borderColor}
+      className="h-[calc(100vh-16rem)] flex flex-col overflow-hidden"
+    >
+      <div
+        className="px-4 py-3 border-b flex items-center justify-between transition-colors duration-300 ease-out"
+        style={{
+          borderColor,
+          backgroundColor: "var(--app-surface)",
+        }}
+      >
+        <div
+          className="text-sm font-semibold transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-text)" }}
+        >
+          {title}
+        </div>
+        <CountPill value={count} resolvedTheme={resolvedTheme} />
       </div>
 
-      {/* ✅ scrollable body */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto cto-scrollbar">
         {loading ? (
-          <SkeletonList />
+          <SkeletonList
+            borderColor={borderColor}
+            skeletonColor={skeletonColor}
+          />
         ) : items.length === 0 ? (
-          <EmptyState />
+          <EmptyState borderColor={borderColor} />
         ) : (
           <div className="p-4 space-y-3">
             {items.map((d) => {
@@ -269,7 +461,12 @@ function StatusCard({
               return (
                 <div
                   key={d._id}
-                  className="rounded-xl border border-gray-200 bg-white shadow-[0_1px_0_rgba(0,0,0,0.02)] p-4"
+                  className="rounded-xl p-4 transition-colors duration-300 ease-out"
+                  style={{
+                    border: `1px solid ${borderColor}`,
+                    backgroundColor: "var(--app-surface)",
+                    boxShadow: "0 1px 0 rgba(0,0,0,0.02)",
+                  }}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
@@ -282,17 +479,44 @@ function StatusCard({
                             if (e.key === "Escape") onCancelRename();
                           }}
                           autoFocus
-                          className="w-full h-10 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                          className="w-full h-10 rounded-lg border px-3 text-sm outline-none transition"
+                          style={{
+                            borderColor,
+                            backgroundColor: "var(--app-surface-2)",
+                            color: "var(--app-text)",
+                          }}
+                          onFocus={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              "var(--app-surface)";
+                            e.currentTarget.style.borderColor = "var(--accent)";
+                            e.currentTarget.style.boxShadow =
+                              "0 0 0 3px var(--accent-soft)";
+                          }}
+                          onBlur={(e) => {
+                            e.currentTarget.style.backgroundColor =
+                              "var(--app-surface-2)";
+                            e.currentTarget.style.borderColor = borderColor;
+                            e.currentTarget.style.boxShadow = "none";
+                          }}
                         />
                       ) : (
-                        <div className="text-sm font-semibold text-gray-900 truncate">
+                        <div
+                          className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           {d.name}
                         </div>
                       )}
 
-                      <div className="mt-1 text-[11px] text-gray-500">
+                      <div
+                        className="mt-1 text-[11px] transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
                         Status:{" "}
-                        <span className="font-medium text-gray-700">
+                        <span
+                          className="font-medium transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           {d.status}
                         </span>
                       </div>
@@ -305,6 +529,7 @@ function StatusCard({
                             onClick={() => onSubmitRename(d._id)}
                             disabled={isRenameBusy}
                             tone="dark"
+                            resolvedTheme={resolvedTheme}
                           >
                             {isRenameBusy ? "Saving..." : "Save"}
                           </ActionPill>
@@ -312,6 +537,7 @@ function StatusCard({
                             onClick={onCancelRename}
                             disabled={isRenameBusy}
                             tone="neutral"
+                            resolvedTheme={resolvedTheme}
                           >
                             Cancel
                           </ActionPill>
@@ -322,6 +548,7 @@ function StatusCard({
                             onClick={() => onStartRename(d)}
                             disabled={rowBusy}
                             tone="blue"
+                            resolvedTheme={resolvedTheme}
                           >
                             Rename
                           </ActionPill>
@@ -330,6 +557,7 @@ function StatusCard({
                             onClick={() => onToggleStatus(d)}
                             disabled={isStatusBusy || isDeleteBusy}
                             tone={actionTone}
+                            resolvedTheme={resolvedTheme}
                           >
                             {isStatusBusy ? "Updating..." : actionLabel}
                           </ActionPill>
@@ -338,6 +566,7 @@ function StatusCard({
                             onClick={() => onDelete(d)}
                             disabled={isDeleteBusy || isStatusBusy}
                             tone="neutral"
+                            resolvedTheme={resolvedTheme}
                           >
                             {isDeleteBusy ? "Deleting..." : "Delete"}
                           </ActionPill>
@@ -352,7 +581,6 @@ function StatusCard({
         )}
       </div>
 
-      {/* ✅ fixed footer pagination inside card */}
       <div className="shrink-0">
         <CompactPagination
           page={page}
@@ -363,6 +591,7 @@ function StatusCard({
           onPrev={onPrev}
           onNext={onNext}
           noun={noun}
+          borderColor={borderColor}
         />
       </div>
     </Card>
@@ -371,6 +600,23 @@ function StatusCard({
 
 export default function DesignationSettings() {
   const queryClient = useQueryClient();
+
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColor = useMemo(
+    () =>
+      resolvedTheme === "dark"
+        ? "rgba(255,255,255,0.08)"
+        : "rgba(15,23,42,0.08)",
+    [resolvedTheme],
+  );
 
   const [limit, setLimit] = useState(20);
   const [activePage, setActivePage] = useState(1);
@@ -382,7 +628,6 @@ export default function DesignationSettings() {
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState("");
 
-  // per-row busy sets
   const [statusBusyIds, setStatusBusyIds] = useState(() => new Set());
   const [deleteBusyIds, setDeleteBusyIds] = useState(() => new Set());
   const [renameBusyIds, setRenameBusyIds] = useState(() => new Set());
@@ -426,7 +671,6 @@ export default function DesignationSettings() {
   const activePages = activeQuery.data?.pages ?? 1;
   const inactivePages = inactiveQuery.data?.pages ?? 1;
 
-  // ✅ clamp when pages change
   useEffect(() => {
     if (activePage > activePages) setActivePage(activePages);
     if (activePage < 1) setActivePage(1);
@@ -446,7 +690,6 @@ export default function DesignationSettings() {
 
   const isRefreshing = activeQuery.isRefetching || inactiveQuery.isRefetching;
 
-  // Mutations
   const createMutation = useMutation({
     mutationFn: createDesignation,
     onSuccess: async (_data, vars) => {
@@ -514,7 +757,6 @@ export default function DesignationSettings() {
     },
   });
 
-  // actions
   const onCreate = (e) => {
     e.preventDefault();
     const name = newName.trim();
@@ -571,7 +813,6 @@ export default function DesignationSettings() {
     [newName, createMutation.isPending],
   );
 
-  // totals for compact pagination
   const activeTotalPages = Math.max(activePages, 1);
   const inactiveTotalPages = Math.max(inactivePages, 1);
 
@@ -585,7 +826,13 @@ export default function DesignationSettings() {
     inactiveTotal === 0 ? 0 : Math.min(inactivePage * limit, inactiveTotal);
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col bg-gray-50/50">
+    <div
+      className="w-full flex-1 flex h-full flex-col transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
       <div className="px-1 w-full mx-auto py-2 pb-2">
         <Breadcrumbs
           items={[{ label: "USER MANAGEMENT", to: "/app/user-management" }]}
@@ -594,21 +841,38 @@ export default function DesignationSettings() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
+            <h1
+              className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               Office <span className="font-bold">Designations</span>
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p
+              className="text-sm mt-1 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               Manage designation options used in employee registration and
               storage.
             </p>
           </div>
 
-          {/* Refresh */}
           <button
             onClick={refetchBoth}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-white border border-gray-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold border transition disabled:opacity-40"
             type="button"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
+              color: "var(--accent)",
+            }}
+            onMouseEnter={(e) => {
+              if (isRefreshing) return;
+              e.currentTarget.style.backgroundColor = "var(--accent-soft)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "var(--app-surface)";
+            }}
           >
             <RotateCcw className="w-4 h-4" />
             {isRefreshing ? "Refreshing..." : "Refresh"}
@@ -616,7 +880,7 @@ export default function DesignationSettings() {
         </div>
 
         {/* Add Bar */}
-        <Card className="mt-5">
+        <Card borderColor={borderColor} className="mt-5">
           <div className="p-4">
             <form
               onSubmit={onCreate}
@@ -627,42 +891,97 @@ export default function DesignationSettings() {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   placeholder="Add new designation"
-                  className="w-full h-11 rounded-lg border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+                  className="w-full h-11 rounded-lg border px-3 text-sm outline-none transition"
+                  style={{
+                    borderColor,
+                    backgroundColor: "var(--app-surface-2)",
+                    color: "var(--app-text)",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      "var(--app-surface)";
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 3px var(--accent-soft)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      "var(--app-surface-2)";
+                    e.currentTarget.style.borderColor = borderColor;
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={!canCreate}
-                className={`inline-flex items-center justify-center gap-2 h-11 px-4 rounded-lg text-sm font-bold border transition
-                  ${
-                    canCreate
-                      ? "bg-blue-600 text-white hover:bg-blue-700"
-                      : "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                  }`}
+                className="inline-flex items-center justify-center gap-2 h-11 px-4 rounded-lg text-sm font-bold border transition"
+                style={
+                  canCreate
+                    ? {
+                        backgroundColor: "var(--accent)",
+                        color: "#fff",
+                        borderColor: "var(--accent)",
+                      }
+                    : {
+                        backgroundColor: "var(--app-surface-2)",
+                        color: "var(--app-muted)",
+                        borderColor,
+                        cursor: "not-allowed",
+                      }
+                }
+                onMouseEnter={(e) => {
+                  if (!canCreate) return;
+                  e.currentTarget.style.filter = "brightness(0.95)";
+                }}
+                onMouseLeave={(e) => {
+                  if (!canCreate) return;
+                  e.currentTarget.style.filter = "none";
+                }}
               >
                 <Plus className="w-4 h-4" />
                 {createMutation.isPending ? "Adding..." : "Add designation"}
               </button>
             </form>
 
-            <div className="mt-2 text-xs text-gray-500">
+            <div
+              className="mt-2 text-xs transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               Tip: You can deactivate a designation instead of deleting it.
             </div>
 
-            <InlineError message={inlineError} />
+            <InlineError message={inlineError} resolvedTheme={resolvedTheme} />
 
             {/* Page-size controls */}
             <div className="mt-4 flex items-center justify-between gap-3">
               {/* Desktop select */}
               <div className="hidden md:flex items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Show
                 </span>
                 <select
                   value={limit}
                   onChange={(e) => onLimitChange(Number(e.target.value))}
-                  className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
+                  className="text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer border transition"
+                  style={{
+                    backgroundColor: "var(--app-surface-2)",
+                    borderColor,
+                    color: "var(--app-text)",
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 3px var(--accent-soft)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = borderColor;
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                 >
                   {pageSizeOptions.map((opt) => (
                     <option key={opt} value={opt}>
@@ -674,7 +993,10 @@ export default function DesignationSettings() {
 
               {/* Mobile FilterSelect */}
               <div className="md:hidden flex items-center gap-1.5">
-                <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                <span
+                  className="text-xs font-medium uppercase tracking-wider transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Rows
                 </span>
                 <FilterSelect
@@ -688,7 +1010,10 @@ export default function DesignationSettings() {
 
               {/* Quick chips */}
               <div className="hidden md:flex items-center gap-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Quick
                 </span>
                 {pageSizeOptions.map((n) => (
@@ -696,12 +1021,30 @@ export default function DesignationSettings() {
                     key={n}
                     type="button"
                     onClick={() => onLimitChange(n)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition
-                      ${
-                        limit === n
-                          ? "bg-blue-50 text-blue-700 border-blue-100"
-                          : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                      }`}
+                    className="px-3 py-1.5 rounded-full text-xs font-bold border transition"
+                    style={
+                      limit === n
+                        ? {
+                            backgroundColor: "var(--accent-soft)",
+                            color: "var(--accent)",
+                            borderColor: "var(--accent-soft2)",
+                          }
+                        : {
+                            backgroundColor: "var(--app-surface)",
+                            color: "var(--app-text)",
+                            borderColor,
+                          }
+                    }
+                    onMouseEnter={(e) => {
+                      if (limit === n) return;
+                      e.currentTarget.style.backgroundColor =
+                        "var(--app-surface-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (limit === n) return;
+                      e.currentTarget.style.backgroundColor =
+                        "var(--app-surface)";
+                    }}
                   >
                     {n}
                   </button>
@@ -713,7 +1056,6 @@ export default function DesignationSettings() {
 
         {/* Two Columns */}
         <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Active */}
           <div className="flex flex-col gap-3">
             <StatusCard
               title="Active designations"
@@ -743,10 +1085,12 @@ export default function DesignationSettings() {
                 setActivePage((p) => Math.min(p + 1, activeTotalPages))
               }
               noun="designations"
+              borderColor={borderColor}
+              resolvedTheme={resolvedTheme}
+              skeletonColor={skeletonColor}
             />
           </div>
 
-          {/* Inactive */}
           <div className="flex flex-col gap-3">
             <StatusCard
               title="Inactive designations"
@@ -776,6 +1120,9 @@ export default function DesignationSettings() {
                 setInactivePage((p) => Math.min(p + 1, inactiveTotalPages))
               }
               noun="designations"
+              borderColor={borderColor}
+              resolvedTheme={resolvedTheme}
+              skeletonColor={skeletonColor}
             />
           </div>
         </div>
