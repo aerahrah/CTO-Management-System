@@ -17,6 +17,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { toast } from "react-toastify";
+import { useAuth } from "../../store/authStore";
 
 /* =========================
    Helpers
@@ -24,163 +25,320 @@ import { toast } from "react-toastify";
 const getErrMsg = (err, fallback = "Failed") =>
   err?.response?.data?.message || err?.message || fallback;
 
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+const getErrorStyles = (theme) =>
+  theme === "dark"
+    ? {
+        wrapBg: "rgba(244,63,94,0.12)",
+        wrapBorder: "rgba(244,63,94,0.22)",
+        wrapText: "#fda4af",
+      }
+    : {
+        wrapBg: "rgba(244,63,94,0.08)",
+        wrapBorder: "rgba(244,63,94,0.18)",
+        wrapText: "#be123c",
+      };
+
+const getNoticeToneStyles = (theme, tone = "neutral") => {
+  const isDark = theme === "dark";
+
+  const tones = {
+    amber: isDark
+      ? {
+          wrapBg: "rgba(245,158,11,0.12)",
+          wrapBorder: "rgba(245,158,11,0.20)",
+          title: "#fde68a",
+          text: "#fcd34d",
+          icon: "#fbbf24",
+        }
+      : {
+          wrapBg: "rgba(245,158,11,0.08)",
+          wrapBorder: "rgba(245,158,11,0.16)",
+          title: "#92400e",
+          text: "#b45309",
+          icon: "#d97706",
+        },
+    blue: isDark
+      ? {
+          wrapBg: "rgba(59,130,246,0.12)",
+          wrapBorder: "rgba(59,130,246,0.20)",
+          title: "#bfdbfe",
+          text: "#93c5fd",
+          icon: "#60a5fa",
+        }
+      : {
+          wrapBg: "rgba(59,130,246,0.08)",
+          wrapBorder: "rgba(59,130,246,0.16)",
+          title: "#1e3a8a",
+          text: "#1d4ed8",
+          icon: "#2563eb",
+        },
+    green: isDark
+      ? {
+          wrapBg: "rgba(34,197,94,0.12)",
+          wrapBorder: "rgba(34,197,94,0.20)",
+          title: "#bbf7d0",
+          text: "#86efac",
+          icon: "#4ade80",
+        }
+      : {
+          wrapBg: "rgba(34,197,94,0.08)",
+          wrapBorder: "rgba(34,197,94,0.16)",
+          title: "#166534",
+          text: "#15803d",
+          icon: "#16a34a",
+        },
+    neutral: isDark
+      ? {
+          wrapBg: "rgba(255,255,255,0.04)",
+          wrapBorder: "rgba(255,255,255,0.08)",
+          title: "var(--app-text)",
+          text: "var(--app-muted)",
+          icon: "var(--app-muted)",
+        }
+      : {
+          wrapBg: "rgba(15,23,42,0.03)",
+          wrapBorder: "rgba(15,23,42,0.08)",
+          title: "#111827",
+          text: "#4b5563",
+          icon: "#6b7280",
+        },
+  };
+
+  return tones[tone] || tones.neutral;
+};
+
 /* =========================
-   UI primitives (match your GeneralSettings style)
+   UI primitives
 ========================= */
-const Card = ({ children, className = "" }) => (
+const Card = ({ children, className = "", borderColor }) => (
   <div
     className={[
-      "bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden",
+      "rounded-xl shadow-sm overflow-hidden transition-colors duration-300 ease-out",
       className,
     ].join(" ")}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      border: `1px solid ${borderColor}`,
+    }}
   >
     {children}
   </div>
 );
 
-const InlineError = ({ message }) => {
+const InlineError = ({ message, theme }) => {
   if (!message) return null;
+
+  const s = getErrorStyles(theme);
+
   return (
-    <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700 font-medium">
+    <div
+      className="mt-3 rounded-lg px-3 py-2 text-xs font-medium transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: s.wrapBg,
+        border: `1px solid ${s.wrapBorder}`,
+        color: s.wrapText,
+      }}
+    >
       {message}
     </div>
   );
 };
 
-const SoftNotice = ({ icon: Icon, tone = "neutral", title, children }) => {
-  const tones = {
-    amber: {
-      wrap: "border-amber-100 bg-amber-50",
-      title: "text-amber-900",
-      text: "text-amber-800",
-      icon: "text-amber-700",
-    },
-    blue: {
-      wrap: "border-blue-100 bg-blue-50",
-      title: "text-blue-900",
-      text: "text-blue-800",
-      icon: "text-blue-700",
-    },
-    green: {
-      wrap: "border-emerald-100 bg-emerald-50",
-      title: "text-emerald-900",
-      text: "text-emerald-800",
-      icon: "text-emerald-700",
-    },
-    neutral: {
-      wrap: "border-gray-200 bg-gray-50",
-      title: "text-gray-900",
-      text: "text-gray-700",
-      icon: "text-gray-700",
-    },
-  };
-  const t = tones[tone] || tones.neutral;
+const SoftNotice = ({
+  icon: Icon,
+  tone = "neutral",
+  title,
+  children,
+  theme,
+}) => {
+  const t = getNoticeToneStyles(theme, tone);
 
   return (
-    <div className={`rounded-xl border ${t.wrap} px-4 py-3 flex gap-3`}>
+    <div
+      className="rounded-xl px-4 py-3 flex gap-3 transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: t.wrapBg,
+        border: `1px solid ${t.wrapBorder}`,
+      }}
+    >
       <div className="mt-0.5">
-        <Icon className={`w-4 h-4 ${t.icon}`} />
+        <Icon className="w-4 h-4" style={{ color: t.icon }} />
       </div>
       <div className="min-w-0">
         {title ? (
-          <div className={`text-xs font-semibold ${t.title}`}>{title}</div>
+          <div className="text-xs font-semibold" style={{ color: t.title }}>
+            {title}
+          </div>
         ) : null}
-        <div className={`text-xs leading-relaxed ${t.text}`}>{children}</div>
+        <div className="text-xs leading-relaxed" style={{ color: t.text }}>
+          {children}
+        </div>
       </div>
     </div>
   );
 };
 
-const PrimaryButton = ({ children, disabled, onClick, className = "" }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    className={[
-      "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2",
-      "text-sm font-bold border transition",
-      disabled
-        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-        : "bg-blue-600 text-white border-blue-600 hover:bg-blue-700",
-      className,
-    ].join(" ")}
-  >
-    {children}
-  </button>
-);
+const PrimaryButton = ({
+  children,
+  disabled,
+  onClick,
+  className = "",
+  borderColor,
+  theme,
+}) => {
+  const disabledBg =
+    theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(15,23,42,0.04)";
 
-const GhostButton = ({ children, disabled, onClick, className = "" }) => (
-  <button
-    type="button"
-    onClick={onClick}
-    disabled={disabled}
-    className={[
-      "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2",
-      "text-sm font-bold border transition",
-      disabled
-        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50 hover:border-gray-300",
-      className,
-    ].join(" ")}
-  >
-    {children}
-  </button>
-);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2",
+        "text-sm font-bold transition-colors duration-200 ease-out",
+        className,
+      ].join(" ")}
+      style={{
+        backgroundColor: disabled ? disabledBg : "var(--accent)",
+        color: disabled ? "var(--app-muted)" : "#ffffff",
+        border: `1px solid ${disabled ? borderColor : "var(--accent)"}`,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.65 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+};
 
-/* ✅ Toggle (same behavior as your basis) */
-const Toggle = ({ checked, disabled, onChange, label, hint }) => (
-  <div className="flex items-start gap-3">
-    <div className="min-w-0 flex-1">
-      <div className="text-sm font-semibold text-gray-900 break-words">
-        {label}
-      </div>
-      {hint ? (
-        <div className="text-xs text-gray-500 mt-0.5 leading-relaxed break-words">
-          {hint}
+const GhostButton = ({
+  children,
+  disabled,
+  onClick,
+  className = "",
+  borderColor,
+  theme,
+}) => {
+  const disabledBg =
+    theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(15,23,42,0.04)";
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2",
+        "text-sm font-bold transition-colors duration-200 ease-out",
+        className,
+      ].join(" ")}
+      style={{
+        backgroundColor: disabled ? disabledBg : "var(--app-surface)",
+        color: disabled ? "var(--app-muted)" : "var(--app-text)",
+        border: `1px solid ${borderColor}`,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.65 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
+const Toggle = ({
+  checked,
+  disabled,
+  onChange,
+  label,
+  hint,
+  borderColor,
+  theme,
+}) => {
+  const offBg =
+    theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)";
+
+  return (
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div
+          className="text-sm font-semibold break-words transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-text)" }}
+        >
+          {label}
         </div>
-      ) : null}
-    </div>
+        {hint ? (
+          <div
+            className="text-xs mt-0.5 leading-relaxed break-words transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {hint}
+          </div>
+        ) : null}
+      </div>
 
-    <div className="flex-none shrink-0">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onChange?.(!checked)}
-        className={[
-          "relative inline-flex h-7 w-12 items-center rounded-full transition border",
-          "flex-none shrink-0",
-          disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-          checked
-            ? "bg-blue-600 border-blue-600"
-            : "bg-gray-100 border-gray-200",
-        ].join(" ")}
-        aria-pressed={checked}
-      >
-        <span
-          className={[
-            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-            checked ? "translate-x-6" : "translate-x-1",
-          ].join(" ")}
-        />
-      </button>
+      <div className="flex-none shrink-0">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange?.(!checked)}
+          className="relative inline-flex h-7 w-12 items-center rounded-full transition flex-none shrink-0"
+          style={{
+            backgroundColor: checked ? "var(--accent)" : offBg,
+            border: `1px solid ${checked ? "var(--accent)" : borderColor}`,
+            cursor: disabled ? "not-allowed" : "pointer",
+            opacity: disabled ? 0.55 : 1,
+          }}
+          aria-pressed={checked}
+        >
+          <span
+            className={[
+              "inline-block h-5 w-5 transform rounded-full shadow transition",
+              checked ? "translate-x-6" : "translate-x-1",
+            ].join(" ")}
+            style={{ backgroundColor: "#ffffff" }}
+          />
+        </button>
+      </div>
     </div>
-  </div>
+  );
+};
+
+const SkeletonLine = ({ width = "100%", height = 16, theme }) => (
+  <div
+    className="rounded animate-pulse"
+    style={{
+      width,
+      height,
+      backgroundColor:
+        theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)",
+    }}
+  />
 );
 
-const SkeletonBlock = () => (
+const SkeletonBlock = ({ theme }) => (
   <div className="p-4 space-y-3">
-    <div className="h-4 w-1/3 bg-gray-100 rounded" />
-    <div className="h-10 w-full bg-gray-100 rounded-lg" />
-    <div className="h-20 w-full bg-gray-100 rounded-xl" />
+    <SkeletonLine width="33%" height={16} theme={theme} />
+    <SkeletonLine width="100%" height={40} theme={theme} />
+    <SkeletonLine width="100%" height={80} theme={theme} />
     <div className="flex gap-2">
-      <div className="h-10 w-32 bg-gray-100 rounded-lg" />
-      <div className="h-10 w-32 bg-gray-100 rounded-lg" />
+      <SkeletonLine width={128} height={40} theme={theme} />
+      <SkeletonLine width={128} height={40} theme={theme} />
     </div>
   </div>
 );
 
 /* =========================
-   Settings definition (keys must match backend)
+   Settings definition
 ========================= */
 const GROUPS = [
   {
@@ -247,15 +405,34 @@ const QK = ["emailNotificationSettings"];
 export default function EmailNotificationSettings() {
   const queryClient = useQueryClient();
 
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const subtleBg = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.03)"
+      : "rgba(15,23,42,0.03)";
+  }, [resolvedTheme]);
+
+  const inputBg = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.04)"
+      : "rgba(15,23,42,0.03)";
+  }, [resolvedTheme]);
+
   const [inlineError, setInlineError] = useState("");
   const [search, setSearch] = useState("");
 
-  // form state (flags object)
   const [flags, setFlags] = useState(() =>
     Object.fromEntries(ALL_KEYS.map((k) => [k, true])),
   );
 
-  // snapshot for dirty detection
   const [initial, setInitial] = useState(null);
 
   const settingsQuery = useQuery({
@@ -264,13 +441,11 @@ export default function EmailNotificationSettings() {
     staleTime: 1000 * 60 * 5,
   });
 
-  // API returns { ok, data } where data is flags object
   const doc = settingsQuery.data?.data;
 
   useEffect(() => {
     if (!doc) return;
 
-    // normalize: missing keys default to true
     const normalized = Object.fromEntries(
       ALL_KEYS.map((k) => [k, typeof doc?.[k] === "boolean" ? doc[k] : true]),
     );
@@ -319,8 +494,6 @@ export default function EmailNotificationSettings() {
       const diffs = changedKeys;
       if (!diffs.length) return;
 
-      // update only changed keys (backend updates one key per request)
-      // sequential (stable logs), you can switch to Promise.all if you prefer
       for (const key of diffs) {
         await updateEmailNotificationSetting(key, Boolean(flags[key]));
       }
@@ -363,6 +536,7 @@ export default function EmailNotificationSettings() {
     () => ALL_KEYS.filter((k) => Boolean(flags[k])).length,
     [flags],
   );
+
   const disabledCount = ALL_KEYS.length - enabledCount;
 
   const disabledList = useMemo(() => {
@@ -376,17 +550,28 @@ export default function EmailNotificationSettings() {
   const effectiveIcon = disabledCount ? ShieldAlert : CheckCircle2;
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col bg-gray-50/50">
+    <div
+      className="w-full flex-1 flex h-full flex-col transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
       <div className="px-1 w-full mx-auto py-2 pb-2">
         <Breadcrumbs items={[{ label: "SETTINGS", to: "/app/settings" }]} />
 
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
+            <h1
+              className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               Email <span className="font-bold">Notifications</span>
             </h1>
-            <p className="text-sm text-gray-500 mt-1">
+            <p
+              className="text-sm mt-1 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               Toggle system emails for onboarding, approvals, and credit events.
             </p>
           </div>
@@ -394,7 +579,12 @@ export default function EmailNotificationSettings() {
           <button
             onClick={refetch}
             disabled={isRefreshing}
-            className="inline-flex items-center gap-2 rounded-md px-4 py-2 bg-white border border-gray-200 text-sm font-bold text-blue-600 hover:bg-blue-50 hover:text-blue-800 transition disabled:opacity-40"
+            className="inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition-colors duration-200 ease-out disabled:opacity-40"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              border: `1px solid ${borderColor}`,
+              color: "var(--accent)",
+            }}
             type="button"
           >
             <RotateCcw className="w-4 h-4" />
@@ -403,27 +593,50 @@ export default function EmailNotificationSettings() {
         </div>
 
         <div className="mt-5 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Main */}
           <div className="lg:col-span-2">
-            <Card>
-              <div className="px-4 py-3 border-b border-gray-100 bg-white">
+            <Card borderColor={borderColor}>
+              <div
+                className="px-4 py-3 border-b transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor: borderColor,
+                }}
+              >
                 <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-gray-600" />
-                  <div className="text-sm font-semibold text-gray-900">
+                  <Mail
+                    className="w-4 h-4"
+                    style={{ color: "var(--app-muted)" }}
+                  />
+                  <div
+                    className="text-sm font-semibold transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-text)" }}
+                  >
                     Notification switches
                   </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div
+                  className="text-xs mt-1 transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Defaults are ON. Disabling a switch prevents that email from
                   being sent.
                 </div>
               </div>
 
               {settingsQuery.isLoading ? (
-                <SkeletonBlock />
+                <SkeletonBlock theme={resolvedTheme} />
               ) : settingsQuery.isError ? (
                 <div className="p-4">
-                  <div className="rounded-lg border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-700 font-medium">
+                  <div
+                    className="rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: getErrorStyles(resolvedTheme).wrapBg,
+                      border: `1px solid ${
+                        getErrorStyles(resolvedTheme).wrapBorder
+                      }`,
+                      color: getErrorStyles(resolvedTheme).wrapText,
+                    }}
+                  >
                     {getErrMsg(
                       settingsQuery.error,
                       "Failed to load email notification settings",
@@ -432,19 +645,33 @@ export default function EmailNotificationSettings() {
                 </div>
               ) : (
                 <div className="p-4 space-y-4">
-                  {/* Search */}
-                  <div className="rounded-xl border border-gray-200 bg-white p-3">
+                  <div
+                    className="rounded-xl p-3 transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "var(--app-surface)",
+                      border: `1px solid ${borderColor}`,
+                    }}
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-gray-900">
+                        <div
+                          className="text-sm font-semibold transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           Find a notification
                         </div>
-                        <div className="text-xs text-gray-500 mt-0.5">
+                        <div
+                          className="text-xs mt-0.5 transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
                           Search by name or key (e.g., “approval”, “welcome”,
                           “cto”).
                         </div>
                       </div>
-                      <div className="text-[11px] font-medium text-gray-500">
+                      <div
+                        className="text-[11px] font-medium transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
                         {enabledCount} enabled • {disabledCount} disabled
                       </div>
                     </div>
@@ -453,26 +680,49 @@ export default function EmailNotificationSettings() {
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       placeholder="Search notifications..."
-                      className="mt-3 w-full h-11 rounded-lg border px-3 text-sm text-gray-900 outline-none transition bg-gray-50 border-gray-200 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                      className="mt-3 w-full h-11 rounded-lg px-3 text-sm outline-none transition-colors duration-200 ease-out"
+                      style={{
+                        backgroundColor: inputBg,
+                        border: `1px solid ${borderColor}`,
+                        color: "var(--app-text)",
+                      }}
                     />
                   </div>
 
-                  {/* Groups */}
                   {filteredGroups.map((group) => {
                     const Icon = group.icon || Mail;
                     return (
                       <div
                         key={group.title}
-                        className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+                        className="rounded-xl overflow-hidden transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          border: `1px solid ${borderColor}`,
+                        }}
                       >
-                        <div className="px-4 py-3 border-b border-gray-100 bg-white">
+                        <div
+                          className="px-4 py-3 border-b transition-colors duration-300 ease-out"
+                          style={{
+                            backgroundColor: "var(--app-surface)",
+                            borderColor: borderColor,
+                          }}
+                        >
                           <div className="flex items-center gap-2">
-                            <Icon className="w-4 h-4 text-gray-600" />
-                            <div className="text-sm font-semibold text-gray-900">
+                            <Icon
+                              className="w-4 h-4"
+                              style={{ color: "var(--app-muted)" }}
+                            />
+                            <div
+                              className="text-sm font-semibold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
                               {group.title}
                             </div>
                           </div>
-                          <div className="text-xs text-gray-500 mt-1">
+                          <div
+                            className="text-xs mt-1 transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
                             {group.description}
                           </div>
                         </div>
@@ -488,11 +738,13 @@ export default function EmailNotificationSettings() {
                               hint={
                                 <>
                                   {it.hint}{" "}
-                                  <span className="text-gray-400">
+                                  <span style={{ color: "var(--app-muted)" }}>
                                     ({it.key})
                                   </span>
                                 </>
                               }
+                              borderColor={borderColor}
+                              theme={resolvedTheme}
                             />
                           ))}
                         </div>
@@ -504,23 +756,35 @@ export default function EmailNotificationSettings() {
                     icon={effectiveIcon}
                     tone={effectiveTone}
                     title="Effective behavior"
+                    theme={resolvedTheme}
                   >
                     {disabledCount
                       ? `Some emails are disabled (${disabledCount}). Disabled emails will be skipped by the backend.`
                       : "All email notifications are enabled."}
                   </SoftNotice>
 
-                  <SoftNotice icon={Info} tone="blue" title="Tip">
+                  <SoftNotice
+                    icon={Info}
+                    tone="blue"
+                    title="Tip"
+                    theme={resolvedTheme}
+                  >
                     If you add new notification keys later, they’ll appear
                     enabled by default.
                   </SoftNotice>
 
-                  <InlineError message={inlineError} />
+                  <InlineError message={inlineError} theme={resolvedTheme} />
 
                   <div className="pt-1 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-                    <div className="text-xs text-gray-500">
+                    <div
+                      className="text-xs transition-colors duration-300 ease-out"
+                      style={{ color: "var(--app-muted)" }}
+                    >
                       {isDirty ? (
-                        <span className="font-medium text-gray-700">
+                        <span
+                          className="font-medium"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           You have unsaved changes ({changedKeys.length}).
                         </span>
                       ) : (
@@ -532,6 +796,8 @@ export default function EmailNotificationSettings() {
                       <GhostButton
                         onClick={onResetToDefault}
                         disabled={isSaving}
+                        borderColor={borderColor}
+                        theme={resolvedTheme}
                       >
                         Reset defaults
                       </GhostButton>
@@ -539,6 +805,8 @@ export default function EmailNotificationSettings() {
                       <PrimaryButton
                         onClick={onSave}
                         disabled={!isDirty || isSaving}
+                        borderColor={borderColor}
+                        theme={resolvedTheme}
                       >
                         <Save className="w-4 h-4" />
                         {isSaving ? "Saving..." : "Save changes"}
@@ -550,33 +818,68 @@ export default function EmailNotificationSettings() {
             </Card>
           </div>
 
-          {/* Right rail */}
           <div className="lg:col-span-1">
-            <Card>
-              <div className="px-4 py-3 border-b border-gray-100 bg-white">
-                <div className="text-sm font-semibold text-gray-900">
+            <Card borderColor={borderColor}>
+              <div
+                className="px-4 py-3 border-b transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor: borderColor,
+                }}
+              >
+                <div
+                  className="text-sm font-semibold transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-text)" }}
+                >
                   Summary
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div
+                  className="text-xs mt-1 transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   Quick view of enabled/disabled notifications.
                 </div>
               </div>
 
               <div className="p-4 space-y-3">
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                <div
+                  className="rounded-xl p-4 transition-colors duration-300 ease-out"
+                  style={{
+                    backgroundColor: subtleBg,
+                    border: `1px solid ${borderColor}`,
+                  }}
+                >
+                  <div
+                    className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
                     Status
                   </div>
-                  <div className="mt-1 text-sm font-semibold text-gray-900">
+                  <div
+                    className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-text)" }}
+                  >
                     {disabledCount ? "Partially enabled" : "All enabled"}
                   </div>
-                  <div className="mt-1 text-xs text-gray-500">
+                  <div
+                    className="mt-1 text-xs transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
                     {enabledCount} enabled • {disabledCount} disabled
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                <div
+                  className="rounded-xl p-4 transition-colors duration-300 ease-out"
+                  style={{
+                    backgroundColor: "var(--app-surface)",
+                    border: `1px solid ${borderColor}`,
+                  }}
+                >
+                  <div
+                    className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
                     Disabled
                   </div>
 
@@ -588,26 +891,55 @@ export default function EmailNotificationSettings() {
                           className="flex items-start justify-between gap-3"
                         >
                           <div className="min-w-0">
-                            <div className="text-xs font-semibold text-gray-900">
+                            <div
+                              className="text-xs font-semibold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
                               {it.label}
                             </div>
-                            <div className="text-[11px] text-gray-500 truncate">
+                            <div
+                              className="text-[11px] truncate transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
                               {it.key}
                             </div>
                           </div>
-                          <span className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold border bg-amber-50 text-amber-700 border-amber-100">
+                          <span
+                            className="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors duration-300 ease-out"
+                            style={{
+                              backgroundColor:
+                                resolvedTheme === "dark"
+                                  ? "rgba(245,158,11,0.12)"
+                                  : "rgba(245,158,11,0.08)",
+                              color:
+                                resolvedTheme === "dark"
+                                  ? "#fcd34d"
+                                  : "#b45309",
+                              border: `1px solid ${
+                                resolvedTheme === "dark"
+                                  ? "rgba(245,158,11,0.20)"
+                                  : "rgba(245,158,11,0.16)"
+                              }`,
+                            }}
+                          >
                             OFF
                           </span>
                         </div>
                       ))}
                       {disabledList.length > 6 ? (
-                        <div className="text-[11px] text-gray-500">
+                        <div
+                          className="text-[11px] transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
                           +{disabledList.length - 6} more disabled
                         </div>
                       ) : null}
                     </div>
                   ) : (
-                    <div className="mt-2 text-xs text-gray-600">
+                    <div
+                      className="mt-2 text-xs transition-colors duration-300 ease-out"
+                      style={{ color: "var(--app-text)" }}
+                    >
                       No disabled notifications.
                     </div>
                   )}
@@ -617,7 +949,12 @@ export default function EmailNotificationSettings() {
                   onClick={refetch}
                   disabled={isRefreshing}
                   type="button"
-                  className="w-full inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 bg-white border border-gray-200 text-sm font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-40"
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition-colors duration-200 ease-out disabled:opacity-40"
+                  style={{
+                    backgroundColor: "var(--app-surface)",
+                    border: `1px solid ${borderColor}`,
+                    color: "var(--app-text)",
+                  }}
                 >
                   <RotateCcw className="w-4 h-4" />
                   {isRefreshing ? "Refreshing..." : "Reload settings"}
