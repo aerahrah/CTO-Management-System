@@ -15,21 +15,39 @@ import {
 } from "lucide-react";
 import { getMyProfile, updateMyProfile } from "../../api/employee";
 import { toast } from "react-toastify";
+import { useAuth } from "../../store/authStore";
+
+/* ------------------ Resolve theme (same basis as CTO Credit History) ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
 
 /* =========================
-   Minimal UI Primitives (match MyProfile)
+   Minimal UI Primitives
 ========================= */
 
-const Section = ({ title, children, className = "" }) => (
+const Section = ({ title, children, className = "", borderColor }) => (
   <div
     className={[
-      "bg-white rounded-3xl border border-zinc-100 shadow-sm",
+      "rounded-3xl border shadow-sm transition-colors duration-300 ease-out",
       className,
     ].join(" ")}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      borderColor,
+    }}
   >
     {title && (
       <div className="px-6 pt-6">
-        <h3 className="text-sm font-medium text-zinc-900 tracking-tight">
+        <h3
+          className="text-sm font-medium tracking-tight transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-text)" }}
+        >
           {title}
         </h3>
       </div>
@@ -42,41 +60,125 @@ const ActionButton = ({
   variant = "primary",
   icon: Icon,
   children,
+  borderColor,
   ...props
 }) => {
   const baseStyles =
-    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 active:scale-95";
+    "inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 active:scale-95 disabled:opacity-50";
 
-  const variants = {
-    primary:
-      "bg-blue-600 text-white hover:bg-blue-700 shadow-sm hover:shadow-md",
-    secondary:
-      "bg-white text-zinc-600 border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50",
-    ghost:
-      "bg-transparent text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100/50",
+  const styles = {
+    primary: {
+      backgroundColor: "var(--accent)",
+      color: "#fff",
+      border: "1px solid transparent",
+    },
+    secondary: {
+      backgroundColor: "var(--app-surface)",
+      color: "var(--app-text)",
+      border: `1px solid ${borderColor}`,
+    },
+    ghost: {
+      backgroundColor: "transparent",
+      color: "var(--app-muted)",
+      border: "1px solid transparent",
+    },
   };
 
   return (
-    <button className={`${baseStyles} ${variants[variant]}`} {...props}>
+    <button
+      className={baseStyles}
+      style={styles[variant]}
+      onMouseEnter={(e) => {
+        if (props.disabled) return;
+
+        if (variant === "primary") {
+          e.currentTarget.style.filter = "brightness(0.95)";
+          e.currentTarget.style.boxShadow = "0 10px 24px rgba(0,0,0,0.12)";
+        } else if (variant === "secondary") {
+          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+        } else {
+          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+          e.currentTarget.style.color = "var(--app-text)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.filter = "none";
+        e.currentTarget.style.boxShadow = "none";
+
+        if (variant === "primary") {
+          e.currentTarget.style.backgroundColor = "var(--accent)";
+        } else if (variant === "secondary") {
+          e.currentTarget.style.backgroundColor = "var(--app-surface)";
+        } else {
+          e.currentTarget.style.backgroundColor = "transparent";
+          e.currentTarget.style.color = "var(--app-muted)";
+        }
+      }}
+      {...props}
+    >
       {Icon && <Icon className="w-4 h-4" strokeWidth={2} />}
       {children}
     </button>
   );
 };
 
-const Divider = ({ className = "" }) => (
-  <div className={["h-px bg-zinc-100", className].join(" ")} />
-);
-
-const InlineHint = ({ icon: Icon = Info, children, tone = "blue" }) => {
+const InlineHint = ({
+  icon: Icon = Info,
+  children,
+  tone = "blue",
+  resolvedTheme,
+}) => {
   const tones = {
-    blue: "bg-blue-50/50 border-blue-100/50 text-blue-700",
-    amber: "bg-amber-50/50 border-amber-100/50 text-amber-800",
-    rose: "bg-rose-50/50 border-rose-100/50 text-rose-700",
-    gray: "bg-zinc-50 border-zinc-100 text-zinc-700",
+    blue: {
+      backgroundColor:
+        resolvedTheme === "dark"
+          ? "rgba(59,130,246,0.12)"
+          : "rgba(59,130,246,0.08)",
+      borderColor:
+        resolvedTheme === "dark"
+          ? "rgba(59,130,246,0.24)"
+          : "rgba(59,130,246,0.16)",
+      color: resolvedTheme === "dark" ? "#bfdbfe" : "#1d4ed8",
+    },
+    amber: {
+      backgroundColor:
+        resolvedTheme === "dark"
+          ? "rgba(245,158,11,0.12)"
+          : "rgba(245,158,11,0.10)",
+      borderColor:
+        resolvedTheme === "dark"
+          ? "rgba(245,158,11,0.24)"
+          : "rgba(245,158,11,0.20)",
+      color: resolvedTheme === "dark" ? "#fcd34d" : "#92400e",
+    },
+    rose: {
+      backgroundColor:
+        resolvedTheme === "dark"
+          ? "rgba(244,63,94,0.12)"
+          : "rgba(244,63,94,0.10)",
+      borderColor:
+        resolvedTheme === "dark"
+          ? "rgba(244,63,94,0.24)"
+          : "rgba(244,63,94,0.20)",
+      color: resolvedTheme === "dark" ? "#fda4af" : "#be123c",
+    },
+    gray: {
+      backgroundColor: "var(--app-surface-2)",
+      borderColor:
+        resolvedTheme === "dark"
+          ? "rgba(255,255,255,0.08)"
+          : "rgba(15,23,42,0.08)",
+      color: "var(--app-text)",
+    },
   };
+
+  const style = tones[tone];
+
   return (
-    <div className={`rounded-2xl p-5 border ${tones[tone]}`}>
+    <div
+      className="rounded-2xl p-5 border transition-colors duration-300 ease-out"
+      style={style}
+    >
       <div className="flex gap-3">
         <Icon className="w-5 h-5 shrink-0 opacity-90 mt-0.5" />
         <p className="text-xs leading-relaxed font-semibold">{children}</p>
@@ -85,21 +187,39 @@ const InlineHint = ({ icon: Icon = Info, children, tone = "blue" }) => {
   );
 };
 
-/** Input (minimal, sleek) */
 const FormField = React.forwardRef(
   (
-    { icon: Icon, label, error, required, className = "", hint, ...props },
+    {
+      icon: Icon,
+      label,
+      error,
+      required,
+      className = "",
+      hint,
+      borderColor,
+      ...props
+    },
     ref,
   ) => (
     <div className="w-full pt-2">
-      <label className="block text-xs text-zinc-600 mb-1.5 flex items-center gap-2">
+      <label
+        className="block text-xs mb-1.5 flex items-center gap-2 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
         {Icon && (
-          <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-zinc-50 border border-zinc-100 text-zinc-500">
+          <span
+            className="inline-flex items-center justify-center w-7 h-7 rounded-lg border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+              color: "var(--app-muted)",
+            }}
+          >
             <Icon className="w-4 h-4" strokeWidth={1.8} />
           </span>
         )}
         <span className="font-medium">
-          {label} {required && <span className="text-rose-500">*</span>}
+          {label} {required && <span style={{ color: "#f43f5e" }}>*</span>}
         </span>
       </label>
 
@@ -107,22 +227,46 @@ const FormField = React.forwardRef(
         ref={ref}
         {...props}
         className={[
-          "w-full h-11 px-3",
-          "text-sm text-zinc-900",
-          "rounded-xl border outline-none transition",
-          "bg-white",
-          error
-            ? "border-rose-300 focus:ring-2 focus:ring-rose-200 focus:border-rose-300"
-            : "border-zinc-200 focus:ring-2 focus:ring-blue-200/70 focus:border-blue-300",
-          "disabled:opacity-60 disabled:bg-zinc-50",
+          "w-full h-11 px-3 text-sm rounded-xl border outline-none transition-colors duration-200 ease-out",
+          "disabled:opacity-60",
           className,
         ].join(" ")}
+        style={{
+          backgroundColor: "var(--app-surface)",
+          color: "var(--app-text)",
+          borderColor: error ? "rgba(244,63,94,0.45)" : borderColor,
+          boxShadow: "none",
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = error
+            ? "rgba(244,63,94,0.60)"
+            : "var(--accent)";
+          e.currentTarget.style.boxShadow = error
+            ? "0 0 0 3px rgba(244,63,94,0.14)"
+            : "0 0 0 3px var(--accent-soft)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = error
+            ? "rgba(244,63,94,0.45)"
+            : borderColor;
+          e.currentTarget.style.boxShadow = "none";
+        }}
       />
 
-      {hint && !error && <p className="text-xs text-zinc-500 mt-2">{hint}</p>}
+      {hint && !error && (
+        <p
+          className="text-xs mt-2 transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {hint}
+        </p>
+      )}
 
       {error && (
-        <p className="text-rose-600 text-xs mt-2 flex items-center gap-2">
+        <p
+          className="text-xs mt-2 flex items-center gap-2"
+          style={{ color: "#f43f5e" }}
+        >
           <AlertCircle className="w-4 h-4" />
           {error}
         </p>
@@ -131,55 +275,152 @@ const FormField = React.forwardRef(
   ),
 );
 
+FormField.displayName = "FormField";
+
 /* =========================
    Skeleton & Error
 ========================= */
 
-const PageSkeleton = () => (
-  <div className="min-h-screen bg-zinc-50/50 p-6 md:p-10 animate-pulse">
-    <div className="max-w-5xl mx-auto space-y-8">
-      <div className="h-5 w-64 bg-zinc-200 rounded-lg" />
+const PageSkeleton = ({ borderColor, skeletonColors }) => (
+  <div
+    className="min-h-screen px-1 py-2 transition-colors duration-300 ease-out animate-pulse"
+    style={{ backgroundColor: "var(--app-bg)" }}
+  >
+    <div className="max-w-6xl mx-auto space-y-8">
+      <div
+        className="h-5 w-64 rounded-lg"
+        style={{ backgroundColor: skeletonColors.baseColor }}
+      />
       <div className="flex justify-between items-center gap-4">
         <div className="space-y-2">
-          <div className="h-8 w-56 bg-zinc-200 rounded-lg" />
-          <div className="h-4 w-80 bg-zinc-200 rounded-lg" />
+          <div
+            className="h-8 w-56 rounded-lg"
+            style={{ backgroundColor: skeletonColors.baseColor }}
+          />
+          <div
+            className="h-4 w-80 rounded-lg"
+            style={{ backgroundColor: skeletonColors.baseColor }}
+          />
         </div>
         <div className="flex gap-2">
-          <div className="h-10 w-28 bg-zinc-200 rounded-full" />
-          <div className="h-10 w-36 bg-zinc-200 rounded-full" />
+          <div
+            className="h-10 w-28 rounded-full"
+            style={{ backgroundColor: skeletonColors.baseColor }}
+          />
+          <div
+            className="h-10 w-36 rounded-full"
+            style={{ backgroundColor: skeletonColors.baseColor }}
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-4 h-72 bg-white rounded-3xl border border-zinc-100" />
+        <div
+          className="lg:col-span-4 h-72 rounded-3xl border"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor,
+          }}
+        />
         <div className="lg:col-span-8 space-y-6">
-          <div className="h-56 bg-white rounded-3xl border border-zinc-100" />
-          <div className="h-56 bg-white rounded-3xl border border-zinc-100" />
+          <div
+            className="h-56 rounded-3xl border"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
+            }}
+          />
+          <div
+            className="h-56 rounded-3xl border"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
+            }}
+          />
         </div>
       </div>
     </div>
   </div>
 );
 
-const ErrorState = ({ message }) => (
-  <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
-    <div className="bg-white p-6 rounded-2xl border border-rose-100 shadow-sm max-w-md w-full text-center">
-      <div className="w-12 h-12 bg-rose-50 text-rose-500 rounded-full flex items-center justify-center mx-auto mb-4">
+const ErrorState = ({ message, borderColor }) => (
+  <div
+    className="min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ease-out"
+    style={{ backgroundColor: "var(--app-bg)" }}
+  >
+    <div
+      className="p-6 rounded-2xl shadow-sm max-w-md w-full text-center border transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor: "rgba(244,63,94,0.20)",
+      }}
+    >
+      <div
+        className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4"
+        style={{
+          backgroundColor: "rgba(244,63,94,0.12)",
+          color: "#f43f5e",
+          border: `1px solid ${borderColor}`,
+        }}
+      >
         <AlertCircle className="w-6 h-6" />
       </div>
-      <h3 className="text-lg font-medium text-zinc-900">
+      <h3
+        className="text-lg font-medium transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-text)" }}
+      >
         Unable to load profile
       </h3>
-      <p className="text-sm text-zinc-500 mt-2">{message}</p>
+      <p
+        className="text-sm mt-2 transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
+        {message}
+      </p>
     </div>
   </div>
 );
 
 /* =========================
-   Sidebar Card (matches MyProfile concept)
+   Sidebar Card
 ========================= */
 
-const ProfileSidebar = ({ formData, position }) => {
+const MiniRow = ({ icon: Icon, label, value, muted, borderColor }) => (
+  <div
+    className="flex items-center gap-3 p-3 rounded-2xl border transition-colors duration-300 ease-out"
+    style={{
+      borderColor,
+      backgroundColor: "var(--app-surface)",
+    }}
+  >
+    <div
+      className="p-2 rounded-xl border transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface-2)",
+        borderColor,
+        color: "var(--app-muted)",
+      }}
+    >
+      <Icon className="w-4 h-4" strokeWidth={1.7} />
+    </div>
+    <div className="min-w-0 flex-1">
+      <div
+        className="text-xs transition-colors duration-300 ease-out"
+        style={{ color: "var(--app-muted)" }}
+      >
+        {label}
+      </div>
+      <div
+        className="text-sm font-medium truncate transition-colors duration-300 ease-out"
+        style={{ color: muted ? "var(--app-muted)" : "var(--app-text)" }}
+      >
+        {value}
+      </div>
+    </div>
+  </div>
+);
+
+const ProfileSidebar = ({ formData, position, borderColor }) => {
   const initials = useMemo(() => {
     const a = formData.firstName?.charAt(0) || "";
     const b = formData.lastName?.charAt(0) || "";
@@ -189,51 +430,64 @@ const ProfileSidebar = ({ formData, position }) => {
   const name = `${formData.firstName || ""} ${formData.lastName || ""}`.trim();
 
   return (
-    <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm overflow-hidden">
-      <div className="p-8 flex flex-col items-center text-center border-b border-zinc-50">
-        <div className="w-24 h-24 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-medium shadow-xl shadow-blue-200">
+    <div
+      className="rounded-3xl border shadow-sm overflow-hidden transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+      }}
+    >
+      <div
+        className="p-8 flex flex-col items-center text-center border-b transition-colors duration-300 ease-out"
+        style={{ borderColor }}
+      >
+        <div
+          className="w-24 h-24 rounded-full text-white flex items-center justify-center text-2xl font-medium shadow-xl"
+          style={{
+            backgroundColor: "var(--accent)",
+            boxShadow: "0 16px 40px rgba(37,99,235,0.22)",
+          }}
+        >
           {initials}
         </div>
 
-        <h2 className="text-xl font-semibold text-zinc-900 mt-5">
+        <h2
+          className="text-xl font-semibold mt-5 transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-text)" }}
+        >
           {name || "—"}
         </h2>
-        <p className="text-sm text-zinc-500 mt-1">{position || "Staff"}</p>
+        <p
+          className="text-sm mt-1 transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {position || "Staff"}
+        </p>
 
         <div className="mt-6 w-full" />
       </div>
 
-      <div className="p-6 bg-zinc-50/30 space-y-4">
-        <MiniRow icon={Mail} label="Email" value={formData.email} />
+      <div
+        className="p-6 space-y-4 transition-colors duration-300 ease-out"
+        style={{ backgroundColor: "var(--app-surface-2)" }}
+      >
+        <MiniRow
+          icon={Mail}
+          label="Email"
+          value={formData.email}
+          borderColor={borderColor}
+        />
         <MiniRow
           icon={Phone}
           label="Mobile"
           value={formData.phone || "No phone added"}
           muted={!formData.phone}
+          borderColor={borderColor}
         />
       </div>
     </div>
   );
 };
-
-const MiniRow = ({ icon: Icon, label, value, muted }) => (
-  <div className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-100 bg-white/60">
-    <div className="p-2 rounded-xl bg-zinc-50 border border-zinc-100 text-zinc-500">
-      <Icon className="w-4 h-4" strokeWidth={1.7} />
-    </div>
-    <div className="min-w-0 flex-1">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div
-        className={[
-          "text-sm font-medium truncate",
-          muted ? "text-zinc-400" : "text-zinc-900",
-        ].join(" ")}
-      >
-        {value}
-      </div>
-    </div>
-  </div>
-);
 
 /* =========================
    Main Component
@@ -242,6 +496,28 @@ const MiniRow = ({ icon: Icon, label, value, muted }) => (
 const UpdateProfile = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColors = useMemo(() => {
+    if (resolvedTheme === "dark") {
+      return {
+        baseColor: "rgba(255,255,255,0.06)",
+        highlightColor: "rgba(255,255,255,0.10)",
+      };
+    }
+    return {
+      baseColor: "rgba(15,23,42,0.06)",
+      highlightColor: "rgba(15,23,42,0.10)",
+    };
+  }, [resolvedTheme]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["myProfile"],
@@ -282,8 +558,8 @@ const UpdateProfile = () => {
 
   const mutation = useMutation({
     mutationFn: updateMyProfile,
-    onSuccess: (res) => {
-      queryClient.setQueryData(["myProfile"], res);
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["myProfile"] });
       toast.success("Profile updated successfully");
       navigate("/app/my-profile");
     },
@@ -311,30 +587,54 @@ const UpdateProfile = () => {
     mutation.mutate(formData);
   };
 
-  if (isLoading) return <PageSkeleton />;
-  if (error) return <ErrorState message={error?.message || "Unknown error"} />;
+  if (isLoading) {
+    return (
+      <PageSkeleton borderColor={borderColor} skeletonColors={skeletonColors} />
+    );
+  }
+
+  if (error) {
+    return (
+      <ErrorState
+        message={error?.message || "Unknown error"}
+        borderColor={borderColor}
+      />
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-50/50 px-1 py-2">
-      <form onSubmit={handleSubmit} className="">
-        {/* Breadcrumbs + Header */}
-        <div className="mb-6 ">
+    <div
+      className="min-h-screen px-1 py-2 transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
+      <form onSubmit={handleSubmit}>
+        <div className="mb-6">
           <Breadcrumbs rootLabel="Home" rootTo="/app" />
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-6xl mx-auto">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+              <h1
+                className="text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-text)" }}
+              >
                 Update Information
               </h1>
-              <p className="text-sm text-gray-500 mt-1">
+              <p
+                className="text-sm mt-1 transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
                 Keep your contact details and emergency info up to date.
               </p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <ActionButton
                 type="button"
                 variant="secondary"
+                borderColor={borderColor}
                 onClick={() => navigate(-1)}
               >
                 Cancel
@@ -343,7 +643,8 @@ const UpdateProfile = () => {
               <ActionButton
                 type="submit"
                 variant="primary"
-                icon={Save}
+                icon={mutation.isPending ? Loader2 : Save}
+                borderColor={borderColor}
                 disabled={mutation.isPending}
               >
                 {mutation.isPending ? (
@@ -360,20 +661,25 @@ const UpdateProfile = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start max-w-6xl mx-auto">
-          {/* Sidebar */}
           <div className="lg:col-span-4 lg:sticky lg:top-8 space-y-6">
-            <ProfileSidebar formData={formData} position={profile?.position} />
+            <ProfileSidebar
+              formData={formData}
+              position={profile?.position}
+              borderColor={borderColor}
+            />
 
-            <InlineHint tone="blue">
+            <InlineHint tone="blue" resolvedTheme={resolvedTheme}>
               Restricted Fields: Only HR Administrators can modify employment
               status and job titles.
             </InlineHint>
           </div>
 
-          {/* Main */}
           <div className="lg:col-span-8 space-y-6">
-            <Section title="General Information">
-              <p className="text-xs text-zinc-500 -mt-1 mb-4">
+            <Section title="General Information" borderColor={borderColor}>
+              <p
+                className="text-xs -mt-1 mb-4 transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
                 Legal name and primary contact details.
               </p>
 
@@ -385,6 +691,7 @@ const UpdateProfile = () => {
                   onChange={handleChange}
                   icon={User}
                   required
+                  borderColor={borderColor}
                 />
                 <FormField
                   label="Last Name"
@@ -393,6 +700,7 @@ const UpdateProfile = () => {
                   onChange={handleChange}
                   icon={User}
                   required
+                  borderColor={borderColor}
                 />
                 <FormField
                   label="Email Address"
@@ -402,6 +710,7 @@ const UpdateProfile = () => {
                   icon={Mail}
                   type="email"
                   required
+                  borderColor={borderColor}
                 />
                 <FormField
                   label="Phone Number"
@@ -409,12 +718,13 @@ const UpdateProfile = () => {
                   value={formData.phone}
                   onChange={handleChange}
                   icon={Phone}
+                  borderColor={borderColor}
                 />
               </div>
             </Section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Section title="Personal Address">
+              <Section title="Personal Address" borderColor={borderColor}>
                 <div className="space-y-3">
                   <FormField
                     label="Street"
@@ -422,30 +732,49 @@ const UpdateProfile = () => {
                     value={formData.address.street}
                     onChange={handleChange}
                     icon={MapPin}
+                    borderColor={borderColor}
                   />
                   <FormField
                     label="City"
                     name="address.city"
                     value={formData.address.city}
                     onChange={handleChange}
+                    borderColor={borderColor}
                   />
                   <FormField
                     label="Province"
                     name="address.province"
                     value={formData.address.province}
                     onChange={handleChange}
+                    borderColor={borderColor}
                   />
                 </div>
               </Section>
 
-              <Section title="Emergency Contact">
-                {/* <div className="bg-amber-50/50 rounded-2xl p-4 mb-4 border border-amber-100/50 flex gap-3 items-start">
-                  <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-800 leading-relaxed">
+              <Section title="Emergency Contact" borderColor={borderColor}>
+                <div
+                  className="rounded-2xl p-4 mb-4 border flex gap-3 items-start transition-colors duration-300 ease-out"
+                  style={{
+                    borderColor: "rgba(245,158,11,0.35)",
+                    backgroundColor: "rgba(245,158,11,0.10)",
+                  }}
+                >
+                  <ShieldAlert
+                    className="w-5 h-5 shrink-0 mt-0.5"
+                    style={{
+                      color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+                    }}
+                  />
+                  <p
+                    className="text-xs leading-relaxed"
+                    style={{
+                      color: resolvedTheme === "dark" ? "#fcd34d" : "#92400e",
+                    }}
+                  >
                     This contact will only be used in case of emergencies when
                     we can’t reach you directly.
                   </p>
-                </div> */}
+                </div>
 
                 <div className="space-y-4">
                   <FormField
@@ -454,6 +783,7 @@ const UpdateProfile = () => {
                     value={formData.emergencyContact.name}
                     onChange={handleChange}
                     icon={User}
+                    borderColor={borderColor}
                   />
                   <FormField
                     label="Relationship"
@@ -461,6 +791,7 @@ const UpdateProfile = () => {
                     value={formData.emergencyContact.relation}
                     onChange={handleChange}
                     icon={ShieldAlert}
+                    borderColor={borderColor}
                   />
                   <FormField
                     label="Contact Phone"
@@ -468,6 +799,7 @@ const UpdateProfile = () => {
                     value={formData.emergencyContact.phone}
                     onChange={handleChange}
                     icon={Phone}
+                    borderColor={borderColor}
                   />
                 </div>
               </Section>
