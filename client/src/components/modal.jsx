@@ -1,12 +1,37 @@
 import { Fragment, useEffect, useMemo, useRef } from "react";
 import { Dialog, Transition } from "@headlessui/react";
 
-const variantClasses = {
-  save: "bg-blue-600 text-blue-50 hover:bg-blue-700",
-  cancel: "bg-red-600 text-white hover:bg-red-700",
-  delete: "bg-red-600 text-white hover:bg-red-700",
-  success: "bg-green-600 text-white hover:bg-green-700",
-  default: "bg-neutral-200 text-black hover:bg-neutral-300",
+const actionTones = {
+  save: {
+    bg: "var(--accent, #2563eb)",
+    text: "#eff6ff",
+    hover: "var(--accent-hover, #1d4ed8)",
+    border: "var(--accent-soft2, rgba(37,99,235,0.24))",
+  },
+  cancel: {
+    bg: "#dc2626",
+    text: "#ffffff",
+    hover: "#b91c1c",
+    border: "rgba(220,38,38,0.22)",
+  },
+  delete: {
+    bg: "#dc2626",
+    text: "#ffffff",
+    hover: "#b91c1c",
+    border: "rgba(220,38,38,0.22)",
+  },
+  success: {
+    bg: "#16a34a",
+    text: "#ffffff",
+    hover: "#15803d",
+    border: "rgba(22,163,74,0.22)",
+  },
+  default: {
+    bg: "var(--app-surface-2, #e5e7eb)",
+    text: "var(--app-text, #0f172a)",
+    hover: "var(--app-bg, #f3f4f6)",
+    border: "var(--app-border, rgba(15,23,42,0.10))",
+  },
 };
 
 const Modal = ({
@@ -21,39 +46,28 @@ const Modal = ({
   action = { show: false, disabled: false },
   closeLabel = "Close",
 
-  /**
-   * Busy / close behavior
-   * - isBusy: external busy flag (preferred)
-   * - preventCloseWhenBusy: blocks overlay/esc/close button
-   * - canClose: manual override (backward compatible)
-   */
+  // Busy / close behavior
   isBusy: isBusyProp,
   preventCloseWhenBusy = false,
   canClose = true,
 
-  /**
-   * Optional lifecycle hooks (helpful if you want to run something after animation)
-   */
+  // Optional lifecycle hooks
   afterLeave,
   afterEnter,
 }) => {
   const actionVariant = action?.variant || "default";
-  const actionClass = variantClasses[actionVariant] || variantClasses.default;
+  const actionTone = actionTones[actionVariant] || actionTones.default;
 
-  // Busy = external busy OR action.disabled (backward compatibility)
   const busy = useMemo(
     () => !!(isBusyProp ?? false) || !!action?.disabled,
     [isBusyProp, action?.disabled],
   );
 
-  // If preventing close while busy, enforce it here
   const effectiveCanClose = canClose && !(preventCloseWhenBusy && busy);
 
-  // Immediate click lock (prevents rapid click before disabled renders)
   const actionClickLockRef = useRef(false);
 
   useEffect(() => {
-    // release lock when modal closes or becomes not busy
     if (!isOpen || !busy) actionClickLockRef.current = false;
   }, [isOpen, busy]);
 
@@ -64,10 +78,9 @@ const Modal = ({
 
   const handleActionClick = async () => {
     if (busy) return;
-
     if (actionClickLockRef.current) return;
-    actionClickLockRef.current = true;
 
+    actionClickLockRef.current = true;
     try {
       await action?.onClick?.();
     } finally {
@@ -75,13 +88,22 @@ const Modal = ({
     }
   };
 
-  /**
-   * Important:
-   * When isOpen becomes false, HeadlessUI still keeps the panel mounted briefly
-   * for the leave animation. During that phase, we disable pointer events so the user
-   * can’t click buttons while it’s closing.
-   */
-  const pointerBlockWhileClosing = !isOpen; // true during leave phase
+  const pointerBlockWhileClosing = !isOpen;
+
+  const panelBorderColor = "var(--app-border, rgba(15,23,42,0.10))";
+  const footerBorderColor = "var(--app-border, rgba(15,23,42,0.08))";
+
+  const attachHover = (enabled, baseColor, hoverColor) =>
+    enabled
+      ? {
+          onMouseEnter: (e) => {
+            e.currentTarget.style.backgroundColor = hoverColor;
+          },
+          onMouseLeave: (e) => {
+            e.currentTarget.style.backgroundColor = baseColor;
+          },
+        }
+      : {};
 
   return (
     <Transition
@@ -104,9 +126,12 @@ const Modal = ({
           leaveTo="opacity-0"
         >
           <div
-            className={`fixed inset-0 bg-black/20 backdrop-blur-sm ${
+            className={`fixed inset-0 backdrop-blur-sm ${
               pointerBlockWhileClosing ? "pointer-events-none" : ""
             }`}
+            style={{
+              backgroundColor: "rgba(2, 6, 23, 0.45)",
+            }}
           />
         </Transition.Child>
 
@@ -122,32 +147,59 @@ const Modal = ({
             leaveTo="opacity-0 scale-95"
           >
             <Dialog.Panel
-              className={`bg-white rounded-lg shadow-lg p-3 md:p-3.5 lg:p-5 relative w-full ${maxWidth} ${
+              aria-busy={busy}
+              className={`relative w-full rounded-xl border p-3 md:p-3.5 lg:p-5 shadow-lg transition-colors duration-300 ease-out ${maxWidth} ${
                 pointerBlockWhileClosing ? "pointer-events-none" : ""
               }`}
+              style={{
+                backgroundColor: "var(--app-surface, #ffffff)",
+                color: "var(--app-text, #0f172a)",
+                borderColor: panelBorderColor,
+                boxShadow: "0 20px 50px rgba(2, 6, 23, 0.18)",
+              }}
             >
               {title && (
-                <Dialog.Title className="text-2xl font-semibold mb-4">
+                <Dialog.Title
+                  className="mb-4 text-xl md:text-2xl font-bold transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-text, #0f172a)" }}
+                >
                   {title}
                 </Dialog.Title>
               )}
 
-              {children}
+              <div
+                className="transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-text, #0f172a)" }}
+              >
+                {children}
+              </div>
 
-              {/* Footer (optional) */}
+              {/* Footer */}
               {showFooter && (
-                <div className="flex justify-center gap-4 pt-2 lg:pt-3">
-                  {/* Close button (hide if closeLabel === null) */}
+                <div
+                  className="mt-4 flex justify-center gap-4 border-t pt-3 lg:pt-4"
+                  style={{ borderColor: footerBorderColor }}
+                >
                   {closeLabel !== null && (
                     <button
                       type="button"
                       onClick={safeClose}
                       disabled={!effectiveCanClose}
-                      className={`px-4 py-2 w-full bg-neutral-200 rounded hover:bg-neutral-300 max-w-64 ${
+                      className={`w-full max-w-64 rounded-lg border px-4 py-2 font-semibold transition-colors duration-200 ease-out ${
                         !effectiveCanClose
                           ? "opacity-50 cursor-not-allowed"
                           : "cursor-pointer"
                       }`}
+                      style={{
+                        backgroundColor: "var(--app-surface-2, #f3f4f6)",
+                        borderColor: panelBorderColor,
+                        color: "var(--app-text, #0f172a)",
+                      }}
+                      {...attachHover(
+                        effectiveCanClose,
+                        "var(--app-surface-2, #f3f4f6)",
+                        "var(--app-bg, #e5e7eb)",
+                      )}
                     >
                       {closeLabel}
                     </button>
@@ -158,11 +210,17 @@ const Modal = ({
                       type="button"
                       onClick={handleActionClick}
                       disabled={busy}
-                      className={`px-4 py-2 w-full rounded max-w-64 ${actionClass} ${
+                      className={`w-full max-w-64 rounded-lg border px-4 py-2 font-semibold transition-colors duration-200 ease-out ${
                         busy
                           ? "opacity-70 cursor-not-allowed"
                           : "cursor-pointer"
                       }`}
+                      style={{
+                        backgroundColor: actionTone.bg,
+                        borderColor: actionTone.border,
+                        color: actionTone.text,
+                      }}
+                      {...attachHover(!busy, actionTone.bg, actionTone.hover)}
                     >
                       {action.label}
                     </button>

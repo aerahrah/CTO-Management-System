@@ -5,15 +5,63 @@ import { API_BASE_URL } from "../../../config/env";
 
 /**
  * CTO Memo Modal Content
- * Fix: NO overlay on iframe (so PDF is scrollable)
- * UX: "View PDF" button placed beside Status badge (and optional in footer)
+ * Dark mode aligned with app theme vars
+ * - no hardcoded white/gray surfaces
+ * - soft borders via --app-border
+ * - semantic colors only for states / usage
+ * - iframe remains scrollable
  */
+const ui = {
+  bg: "var(--app-bg, #f8fafc)",
+  surface: "var(--app-surface, #ffffff)",
+  surface2: "var(--app-surface-2, #f8fafc)",
+  text: "var(--app-text, #0f172a)",
+  muted: "var(--app-muted, #64748b)",
+  border: "var(--app-border, rgba(15,23,42,0.10))",
+  borderSoft: "rgba(15,23,42,0.06)",
+  accent: "var(--accent, #2563eb)",
+  accentSoft: "var(--accent-soft, rgba(37,99,235,0.10))",
+  accentSoft2: "var(--accent-soft2, rgba(37,99,235,0.18))",
+};
+
+const tone = {
+  green: {
+    bg: "rgba(34,197,94,0.14)",
+    text: "#16a34a",
+    border: "rgba(34,197,94,0.20)",
+  },
+  red: {
+    bg: "rgba(239,68,68,0.14)",
+    text: "#dc2626",
+    border: "rgba(239,68,68,0.20)",
+  },
+  amber: {
+    bg: "rgba(245,158,11,0.16)",
+    text: "#d97706",
+    border: "rgba(245,158,11,0.22)",
+  },
+  orange: {
+    bg: "rgba(249,115,22,0.16)",
+    text: "#ea580c",
+    border: "rgba(249,115,22,0.22)",
+  },
+  blue: {
+    bg: "rgba(37,99,235,0.12)",
+    text: "var(--accent, #2563eb)",
+    border: "var(--accent-soft2, rgba(37,99,235,0.18))",
+  },
+  neutral: {
+    bg: "var(--app-surface-2, #f8fafc)",
+    text: "var(--app-muted, #64748b)",
+    border: "var(--app-border, rgba(15,23,42,0.10))",
+  },
+};
+
 const CtoMemoModalContent = memo(function CtoMemoModalContent({
   memo,
   baseUrl = API_BASE_URL,
   emptyState = "No memo selected",
   bannerText = "Read-only view. Status updates automatically based on usage.",
-  // Optional: show a 2nd button at the bottom
   showBottomViewPdf = false,
 }) {
   const normalizeBase = useMemo(
@@ -22,7 +70,7 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
   );
 
   const statusMeta = useMemo(() => {
-    if (!memo) return { label: "", className: "" };
+    if (!memo) return { label: "", styles: tone.neutral };
 
     const exhausted = (memo.remainingHours ?? 0) <= 0;
     const used = (memo.usedHours ?? 0) > 0;
@@ -30,26 +78,19 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
     const fullyUsed =
       used && Number(memo.usedHours) === Number(memo.creditedHours);
 
-    let label = "Active";
-    let className = "bg-green-50 text-green-700 border-green-100";
-
     if (exhausted) {
-      label = "Exhausted";
-      className = "bg-red-50 text-red-600 border-red-100";
-    } else if (used) {
-      if (fullyUsed) {
-        label = "Used in this request";
-        className = "bg-amber-50 text-amber-700 border-amber-100";
-      } else {
-        label = "Partially used";
-        className = "bg-orange-50 text-orange-700 border-orange-100";
-      }
-    } else if (reserved) {
-      label = "Used in Application";
-      className = "bg-blue-50 text-blue-700 border-blue-100";
+      return { label: "Exhausted", styles: tone.red };
     }
-
-    return { label, className };
+    if (used) {
+      if (fullyUsed) {
+        return { label: "Used in this request", styles: tone.amber };
+      }
+      return { label: "Partially used", styles: tone.orange };
+    }
+    if (reserved) {
+      return { label: "Used in Application", styles: tone.blue };
+    }
+    return { label: "Active", styles: tone.green };
   }, [memo]);
 
   const pdf = useMemo(() => {
@@ -60,7 +101,6 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
     const href = `${normalizeBase}${path}`;
     const isPdf = raw.toLowerCase().endsWith(".pdf");
 
-    // Keep it scrollable; no overlay on top of iframe
     const src = isPdf
       ? `${href}#toolbar=0&navpanes=0&scrollbar=1&view=FitH`
       : null;
@@ -70,7 +110,14 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
 
   if (!memo) {
     return (
-      <div className="h-64 flex flex-col items-center justify-center text-gray-400 text-sm bg-gray-50 border border-dashed rounded-lg">
+      <div
+        className="flex h-64 flex-col items-center justify-center rounded-lg border border-dashed text-sm transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: ui.surface2,
+          borderColor: ui.border,
+          color: ui.muted,
+        }}
+      >
         <FileText size={28} className="mb-2 opacity-40" />
         {emptyState}
       </div>
@@ -80,22 +127,42 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
   return (
     <div className="space-y-2 pb-2">
       {/* Compact Description Banner */}
-      <div className="mb-4 bg-gray-50 border border-gray-200 rounded-md p-3 flex items-center gap-3 text-sm text-gray-600">
-        <Clipboard size={16} className="text-gray-400" />
+      <div
+        className="mb-4 flex items-center gap-3 rounded-md border p-3 text-sm transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: ui.surface2,
+          borderColor: ui.border,
+          color: ui.muted,
+        }}
+      >
+        <Clipboard size={16} style={{ color: ui.muted }} />
         <span>{bannerText}</span>
       </div>
 
       {/* Memo Card */}
-      <div className="bg-white border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+      <div
+        className="overflow-hidden rounded-lg border shadow-sm transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: ui.surface,
+          borderColor: ui.border,
+        }}
+      >
         {/* Header */}
         <div className="p-3 pb-2">
-          <div className="flex justify-between items-start mb-2 gap-3">
+          <div className="mb-2 flex items-start justify-between gap-3">
             <div>
-              <div className="flex items-center gap-1.5 text-gray-800 font-semibold text-sm">
-                <FileText size={14} className="text-gray-400" />
+              <div
+                className="flex items-center gap-1.5 text-sm font-semibold transition-colors duration-300 ease-out"
+                style={{ color: ui.text }}
+              >
+                <FileText size={14} style={{ color: ui.muted }} />
                 {memo.memoNo || "-"}
               </div>
-              <div className="flex items-center gap-1 text-xs text-gray-500 mt-0.5 ml-0.5">
+
+              <div
+                className="ml-0.5 mt-0.5 flex items-center gap-1 text-xs transition-colors duration-300 ease-out"
+                style={{ color: ui.muted }}
+              >
                 <Calendar size={10} />
                 {memo.dateApproved
                   ? new Date(memo.dateApproved).toLocaleDateString()
@@ -103,10 +170,15 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
               </div>
             </div>
 
-            {/* Status + View PDF button */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Status + View PDF */}
+            <div className="flex shrink-0 items-center gap-2">
               <span
-                className={`px-2 py-0.5 rounded text-[10px] uppercase tracking-wide font-bold border ${statusMeta.className}`}
+                className="rounded px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide border transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: statusMeta.styles.bg,
+                  color: statusMeta.styles.text,
+                  borderColor: statusMeta.styles.border,
+                }}
               >
                 {statusMeta.label}
               </span>
@@ -116,9 +188,21 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
                   href={pdf.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-300 bg-white text-gray-700
-                             text-[11px] font-semibold hover:bg-gray-50"
+                  className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-semibold transition-colors duration-200 ease-out"
+                  style={{
+                    borderColor: ui.border,
+                    backgroundColor: ui.surface,
+                    color: ui.muted,
+                  }}
                   title="Open PDF in a new tab"
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = ui.surface2;
+                    e.currentTarget.style.color = ui.accent;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = ui.surface;
+                    e.currentTarget.style.color = ui.muted;
+                  }}
                 >
                   <ExternalLink size={12} />
                   View PDF
@@ -128,33 +212,67 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
           </div>
 
           {/* Hours Grid */}
-          <div className="flex items-stretch border border-gray-100 rounded bg-gray-50/50 mt-2">
-            <div className="flex-1 py-1.5 px-2 text-center border-r border-gray-100">
-              <span className="block text-[10px] text-gray-500 uppercase">
+          <div
+            className="mt-2 flex items-stretch rounded border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: ui.surface2,
+              borderColor: ui.borderSoft,
+            }}
+          >
+            <div
+              className="flex-1 border-r px-2 py-1.5 text-center transition-colors duration-300 ease-out"
+              style={{ borderColor: ui.borderSoft }}
+            >
+              <span
+                className="block text-[10px] uppercase transition-colors duration-300 ease-out"
+                style={{ color: ui.muted }}
+              >
                 Credited
               </span>
-              <span className="text-sm font-medium text-gray-700">
+              <span
+                className="text-sm font-medium transition-colors duration-300 ease-out"
+                style={{ color: ui.text }}
+              >
                 {memo.creditedHours || 0}h
               </span>
             </div>
-            <div className="flex-1 py-1.5 px-2 text-center border-r border-gray-100 bg-white">
-              <span className="block text-[10px] text-gray-500 uppercase">
+
+            <div
+              className="flex-1 border-r px-2 py-1.5 text-center transition-colors duration-300 ease-out"
+              style={{
+                borderColor: ui.borderSoft,
+                backgroundColor: ui.surface,
+              }}
+            >
+              <span
+                className="block text-[10px] uppercase transition-colors duration-300 ease-out"
+                style={{ color: ui.muted }}
+              >
                 Used
               </span>
-              <span className="text-sm font-medium text-amber-600">
+              <span
+                className="text-sm font-medium"
+                style={{ color: "#d97706" }}
+              >
                 {memo.usedHours || 0}h
               </span>
             </div>
-            <div className="flex-1 py-1.5 px-2 text-center bg-white">
-              <span className="block text-[10px] text-gray-500 uppercase">
+
+            <div
+              className="flex-1 px-2 py-1.5 text-center transition-colors duration-300 ease-out"
+              style={{ backgroundColor: ui.surface }}
+            >
+              <span
+                className="block text-[10px] uppercase transition-colors duration-300 ease-out"
+                style={{ color: ui.muted }}
+              >
                 Remaining
               </span>
               <span
-                className={`text-sm font-bold ${
-                  (memo.remainingHours || 0) > 0
-                    ? "text-green-600"
-                    : "text-gray-400"
-                }`}
+                className="text-sm font-bold transition-colors duration-300 ease-out"
+                style={{
+                  color: (memo.remainingHours || 0) > 0 ? "#16a34a" : ui.muted,
+                }}
               >
                 {memo.remainingHours || 0}h
               </span>
@@ -162,36 +280,59 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
           </div>
         </div>
 
-        {/* PDF Preview (scrollable) */}
-        <div className="relative bg-gray-100 border-y border-gray-100">
+        {/* PDF Preview */}
+        <div
+          className="relative border-y transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: ui.surface2,
+            borderColor: ui.borderSoft,
+          }}
+        >
           {pdf.isPdf && pdf.src ? (
-            <div className="h-64 md:h-80 w-full relative">
+            <div className="relative h-64 w-full md:h-80">
               <iframe
                 src={pdf.src}
-                className="w-full h-full"
+                className="h-full w-full"
                 title={memo.memoNo || "Memo PDF"}
                 loading="lazy"
+                style={{ backgroundColor: ui.surface }}
               />
             </div>
           ) : (
-            <div className="h-36 flex flex-col items-center justify-center text-gray-400">
+            <div
+              className="flex h-36 flex-col items-center justify-center transition-colors duration-300 ease-out"
+              style={{ color: ui.muted }}
+            >
               <span className="text-xs">No Preview</span>
             </div>
           )}
         </div>
 
-        {/* Footer Warnings + optional bottom button */}
-        <div className="bg-white">
+        {/* Footer notices + optional bottom button */}
+        <div style={{ backgroundColor: ui.surface }}>
           {(memo.usedHours || 0) > 0 || (memo.reservedHours || 0) > 0 ? (
-            <div className="bg-yellow-50 px-3 py-2 border-t border-yellow-100">
+            <div
+              className="border-t px-3 py-2 transition-colors duration-300 ease-out"
+              style={{
+                backgroundColor: "rgba(245,158,11,0.10)",
+                borderColor: "rgba(245,158,11,0.16)",
+              }}
+            >
               {(memo.usedHours || 0) > 0 && (
-                <div className="flex justify-between text-xs text-yellow-800">
+                <div
+                  className="flex justify-between text-xs"
+                  style={{ color: "#92400e" }}
+                >
                   <span>Used in request:</span>
                   <span className="font-bold">{memo.usedHours} hrs</span>
                 </div>
               )}
+
               {(memo.reservedHours || 0) > 0 && (memo.usedHours || 0) === 0 && (
-                <div className="flex justify-between text-xs text-blue-700">
+                <div
+                  className="flex justify-between text-xs"
+                  style={{ color: ui.accent }}
+                >
                   <span>Reserved in a pending Application:</span>
                   <span className="font-medium">{memo.reservedHours} hrs</span>
                 </div>
@@ -207,8 +348,20 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
                 href={pdf.href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded border border-gray-300
-                           bg-white text-gray-700 text-sm font-semibold hover:bg-gray-50"
+                className="inline-flex w-full items-center justify-center gap-2 rounded border px-3 py-2 text-sm font-semibold transition-colors duration-200 ease-out"
+                style={{
+                  borderColor: ui.border,
+                  backgroundColor: ui.surface,
+                  color: ui.muted,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = ui.surface2;
+                  e.currentTarget.style.color = ui.accent;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = ui.surface;
+                  e.currentTarget.style.color = ui.muted;
+                }}
               >
                 <ExternalLink size={14} />
                 View PDF
