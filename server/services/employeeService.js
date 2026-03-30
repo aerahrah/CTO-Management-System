@@ -216,7 +216,7 @@ const createEmployeeService = async (employeeData) => {
     email: employee.email || null,
   });
 
-  const frontendUrl = process.env.FRONTEND_URL || "http://cto.dictr2.online";
+  const frontendUrl = process.env.FRONTEND_URL || "https://cto.dictr2.cloud";
 
   if (employee.email) {
     try {

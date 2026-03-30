@@ -1,0 +1,278 @@
+const mongoose = require("mongoose");
+const Notification = require("../models/notificationsModel");
+
+class NotificationService {
+  static async createNotification(payload) {
+    return Notification.create(payload);
+  }
+
+  static async createManyNotifications(notifications = []) {
+    if (!Array.isArray(notifications) || notifications.length === 0) {
+      return [];
+    }
+
+    return Notification.insertMany(notifications);
+  }
+
+  static async getUserNotifications(recipientId, options = {}) {
+    const page = Math.max(Number(options.page) || 1, 1);
+    const limit = Math.max(Number(options.limit) || 20, 1);
+    const skip = (page - 1) * limit;
+
+    const filter = {
+      recipient: new mongoose.Types.ObjectId(recipientId),
+    };
+
+    if (typeof options.isRead !== "undefined") {
+      filter.isRead = options.isRead === "true" || options.isRead === true;
+    }
+
+    if (options.type) {
+      filter.type = options.type;
+    }
+
+    const [notifications, total, unreadCount] = await Promise.all([
+      Notification.find(filter)
+        .populate("actor", "firstName lastName username role")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Notification.countDocuments(filter),
+      Notification.countDocuments({
+        recipient: recipientId,
+        isRead: false,
+      }),
+    ]);
+
+    return {
+      data: notifications,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+      unreadCount,
+    };
+  }
+
+  static async getUnreadCount(recipientId) {
+    return Notification.countDocuments({
+      recipient: recipientId,
+      isRead: false,
+    });
+  }
+
+  static async markAsRead(notificationId, recipientId) {
+    const notification = await Notification.findOneAndUpdate(
+      {
+        _id: notificationId,
+        recipient: recipientId,
+      },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      },
+      { new: true },
+    );
+
+    if (!notification) {
+      throw new Error("Notification not found.");
+    }
+
+    return notification;
+  }
+
+  static async markAllAsRead(recipientId) {
+    const result = await Notification.updateMany(
+      {
+        recipient: recipientId,
+        isRead: false,
+      },
+      {
+        $set: {
+          isRead: true,
+          readAt: new Date(),
+        },
+      },
+    );
+
+    return result;
+  }
+
+  static async deleteNotification(notificationId, recipientId) {
+    const deleted = await Notification.findOneAndDelete({
+      _id: notificationId,
+      recipient: recipientId,
+    });
+
+    if (!deleted) {
+      throw new Error("Notification not found.");
+    }
+
+    return deleted;
+  }
+
+  // =========================
+  // CTO-specific helpers
+  // =========================
+
+  static async notifyApproversOnCtoSubmission({
+    approverIds = [],
+    employee,
+    ctoApplication,
+  }) {
+    if (!approverIds.length) return [];
+
+    const fullName = `${employee.firstName} ${employee.lastName}`;
+    const uniqueApproverIds = [...new Set(approverIds.map(String))];
+
+    const notifications = uniqueApproverIds.map((approverId) => ({
+      recipient: approverId,
+      actor: employee._id,
+      type: "CTO_APPLICATION_SUBMITTED",
+      title: "New CTO Application",
+      message: `${fullName} submitted a CTO application for approval.`,
+      link: `/cto/applications/${ctoApplication._id}`,
+      priority: "HIGH",
+      metadata: {
+        ctoApplicationId: ctoApplication._id,
+        employeeId: employee._id,
+        extra: {
+          requestedHours: ctoApplication.requestedHours,
+          inclusiveDates: ctoApplication.inclusiveDates,
+        },
+      },
+    }));
+
+    return this.createManyNotifications(notifications);
+  }
+
+  static async notifyEmployeeOnCtoApproval({
+    employeeId,
+    approver,
+    ctoApplication,
+    approvalStep = null,
+  }) {
+    const fullName = approver
+      ? `${approver.firstName} ${approver.lastName}`
+      : "Approver";
+
+    return this.createNotification({
+      recipient: employeeId,
+      actor: approver?._id || null,
+      type: "CTO_APPLICATION_APPROVED",
+      title: "CTO Application Approved",
+      message: `${fullName} approved your CTO application.`,
+      link: `/cto/my-applications/${ctoApplication._id}`,
+      priority: "HIGH",
+      metadata: {
+        ctoApplicationId: ctoApplication._id,
+        approvalStepId: approvalStep?._id || null,
+        employeeId,
+        extra: {
+          overallStatus: ctoApplication.overallStatus,
+        },
+      },
+    });
+  }
+
+  static async notifyEmployeeOnCtoRejection({
+    employeeId,
+    approver,
+    ctoApplication,
+    approvalStep = null,
+    remarks = "",
+  }) {
+    const fullName = approver
+      ? `${approver.firstName} ${approver.lastName}`
+      : "Approver";
+
+    return this.createNotification({
+      recipient: employeeId,
+      actor: approver?._id || null,
+      type: "CTO_APPLICATION_REJECTED",
+      title: "CTO Application Rejected",
+      message: remarks
+        ? `${fullName} rejected your CTO application. Remarks: ${remarks}`
+        : `${fullName} rejected your CTO application.`,
+      link: `/cto/my-applications/${ctoApplication._id}`,
+      priority: "HIGH",
+      metadata: {
+        ctoApplicationId: ctoApplication._id,
+        approvalStepId: approvalStep?._id || null,
+        employeeId,
+        extra: {
+          overallStatus: ctoApplication.overallStatus,
+          remarks,
+        },
+      },
+    });
+  }
+
+  static async notifyEmployeeOnCtoCredit({
+    employeeId,
+    hrEmployee,
+    ctoCredit,
+    creditedHours,
+  }) {
+    const fullName = hrEmployee
+      ? `${hrEmployee.firstName} ${hrEmployee.lastName}`
+      : "HR";
+
+    return this.createNotification({
+      recipient: employeeId,
+      actor: hrEmployee?._id || null,
+      type: "CTO_CREDITED",
+      title: "CTO Credited",
+      message: `${fullName} credited ${creditedHours} CTO hour(s) to your balance.`,
+      link: `/cto/credits/${ctoCredit._id}`,
+      priority: "MEDIUM",
+      metadata: {
+        ctoCreditId: ctoCredit._id,
+        employeeId,
+        extra: {
+          creditedHours,
+          memoNo: ctoCredit.memoNo,
+        },
+      },
+    });
+  }
+
+  static async notifyEmployeeOnCtoRollback({
+    employeeId,
+    hrEmployee,
+    ctoCredit,
+    rolledBackHours = null,
+  }) {
+    const fullName = hrEmployee
+      ? `${hrEmployee.firstName} ${hrEmployee.lastName}`
+      : "HR";
+
+    return this.createNotification({
+      recipient: employeeId,
+      actor: hrEmployee?._id || null,
+      type: "CTO_ROLLEDBACK",
+      title: "CTO Rolled Back",
+      message:
+        rolledBackHours !== null
+          ? `${fullName} rolled back ${rolledBackHours} CTO hour(s) from your balance.`
+          : `${fullName} rolled back a CTO credit from your balance.`,
+      link: `/cto/credits/${ctoCredit._id}`,
+      priority: "HIGH",
+      metadata: {
+        ctoCreditId: ctoCredit._id,
+        employeeId,
+        extra: {
+          rolledBackHours,
+          memoNo: ctoCredit.memoNo,
+        },
+      },
+    });
+  }
+}
+
+module.exports = NotificationService;

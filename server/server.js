@@ -17,6 +17,7 @@ const projectRoutes = require("./routers/projectRoute");
 const ctoBackupRoutes = require("./routers/ctoBackupRoute.js");
 const generalSettingRoutes = require("./routers/generalSettingsRoute");
 const userPreferenceRoutes = require("./routers/userPreferencesRoutes");
+const notificationRoutes = require("./routers/notificationRoutes");
 
 // ✅ ADD THIS: email notification settings routes
 const emailNotificationSettingRoutes = require("./routers/emailNotificationSettingsRoutes");
@@ -42,7 +43,7 @@ app.use(
 );
 
 // ---- CORS ----
-const allowedOrigins = "https://cto.dictr2.online"
+const allowedOrigins = "https://cto.dictr2.cloud"
   .split(",")
   .map((o) => o.trim().replace(/^"(.+)"$/, "$1"))
   .filter(Boolean);
@@ -89,6 +90,7 @@ app.use("/api/settings/projects", projectRoutes);
 app.use("/api/settings/mongodb", ctoBackupRoutes);
 app.use("/api/settings/general", generalSettingRoutes);
 app.use("/api/settings/preferences", userPreferenceRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // ✅ ADD THIS ROUTE MOUNT
 // GET  /api/email-notification-settings

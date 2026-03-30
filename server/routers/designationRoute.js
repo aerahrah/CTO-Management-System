@@ -17,10 +17,7 @@ const {
 
 const router = express.Router();
 
-/**
- * ✅ LIST (paginated)
- * GET /settings/provincial-office?status=Active&page=1&limit=20|50|100
- */
+
 router.get(
   "/",
   authenticateToken,
@@ -28,10 +25,6 @@ router.get(
   getAllDesignations,
 );
 
-/**
- * ✅ OPTIONS (no pagination; for dropdown)
- * GET /settings/provincial-office/options?status=Active
- */
 router.get(
   "/options",
   authenticateToken,
@@ -39,10 +32,7 @@ router.get(
   listAll,
 );
 
-/**
- * ✅ GET by id
- * GET /settings/provincial-office/:id
- */
+
 router.get(
   "/:id",
   authenticateToken,
@@ -50,11 +40,6 @@ router.get(
   getDesignationById,
 );
 
-/**
- * ✅ CREATE
- * POST /settings/provincial-office
- * body: { name: string, status?: "Active"|"Inactive" }
- */
 router.post(
   "/",
   authenticateToken,
@@ -62,11 +47,7 @@ router.post(
   createDesignation,
 );
 
-/**
- * ✅ UPDATE (partial-like behavior even if you keep PUT)
- * PUT /settings/provincial-office/:id
- * body: { name?: string, status?: "Active"|"Inactive" }
- */
+
 router.put(
   "/:id",
   authenticateToken,
@@ -74,11 +55,6 @@ router.put(
   updateDesignation,
 );
 
-/**
- * ✅ UPDATE STATUS (single endpoint)
- * PATCH /settings/provincial-office/:id/status
- * body: { status: "Active"|"Inactive" }
- */
 router.patch(
   "/:id/status",
   authenticateToken,
@@ -86,10 +62,7 @@ router.patch(
   updateStatus,
 );
 
-/**
- * ✅ DELETE
- * DELETE /settings/provincial-office/:id
- */
+
 router.delete(
   "/:id",
   authenticateToken,

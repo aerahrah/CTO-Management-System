@@ -1,7 +1,7 @@
-// routes/userPreferenceRoute.js
+// routes/userPreferenceRoutes.js
 const express = require("express");
 const router = express.Router();
-const controller = require("../controllers/userPreferencesController");
+const controller = require("../controllers/userPreferencesController.js");
 
 const { authenticateToken } = require("../middlewares/authMiddleware.js");
 
