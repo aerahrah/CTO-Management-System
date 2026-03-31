@@ -1,7 +1,7 @@
-// services/ctoCredit.service.js
 const mongoose = require("mongoose");
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
+const NotificationService = require("./notificationService");
 
 // ✅ NEW: email sender + templates
 const sendEmail = require("../utils/sendEmail");
@@ -136,6 +136,29 @@ async function addCredit({
       );
     });
 
+    // ✅ IN-APP NOTIFICATIONS AFTER SUCCESSFUL TRANSACTION
+    try {
+      const hrEmployee = await Employee.findById(userId)
+        .select("firstName lastName")
+        .lean();
+
+      await Promise.all(
+        employeeIds.map(async (employeeId) => {
+          await NotificationService.notifyEmployeeOnCtoCredit({
+            employeeId,
+            hrEmployee,
+            ctoCredit: created,
+            creditedHours: totalHours,
+          });
+        }),
+      );
+    } catch (e) {
+      console.error(
+        "Failed creating CTO credit notifications:",
+        e?.message || e,
+      );
+    }
+
     // ✅ Send emails AFTER successful transaction (gated by toggle)
     try {
       const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ADDED);
@@ -236,6 +259,29 @@ async function rollbackCredit({ creditId, userId }) {
       updated = await credit.save({ session });
     });
 
+    // ✅ IN-APP NOTIFICATIONS AFTER SUCCESSFUL TRANSACTION
+    try {
+      const hrEmployee = await Employee.findById(userId)
+        .select("firstName lastName")
+        .lean();
+
+      await Promise.all(
+        (updated.employees || []).map(async (row) => {
+          await NotificationService.notifyEmployeeOnCtoRollback({
+            employeeId: row.employee,
+            hrEmployee,
+            ctoCredit: updated,
+            rolledBackHours: row.creditedHours || 0,
+          });
+        }),
+      );
+    } catch (e) {
+      console.error(
+        "Failed creating CTO rollback notifications:",
+        e?.message || e,
+      );
+    }
+
     // ✅ Send emails AFTER successful transaction (gated by toggle)
     try {
       const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK);
@@ -303,7 +349,6 @@ async function getAllCredits({
   if (q) {
     const safe = escapeRegExp(q);
 
-    // employee name search
     const employees = await Employee.find({
       $or: [
         { firstName: { $regex: safe, $options: "i" } },
@@ -313,7 +358,6 @@ async function getAllCredits({
 
     const employeeIds = employees.map((e) => e._id);
 
-    // allow memoNo search too
     query.$or = [
       { memoNo: { $regex: safe, $options: "i" } },
       { "employees.employee": { $in: employeeIds } },
@@ -368,7 +412,6 @@ async function getEmployeeCredits(
   limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
   const skip = (page - 1) * limit;
 
-  // ✅ totals should NOT include rolled back credits
   const [totalsAgg] = await CtoCredit.aggregate([
     {
       $match: {

@@ -1,9 +1,20 @@
 const NotificationService = require("../services/notificationService");
 
+function getRecipientId(req) {
+  return req?.user?._id || req?.user?.id || null;
+}
+
 class NotificationController {
   static async getMyNotifications(req, res) {
     try {
-      const recipientId = req.user._id;
+      const recipientId = getRecipientId(req);
+
+      if (!recipientId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
 
       const result = await NotificationService.getUserNotifications(
         recipientId,
@@ -30,9 +41,16 @@ class NotificationController {
 
   static async getMyUnreadCount(req, res) {
     try {
-      const unreadCount = await NotificationService.getUnreadCount(
-        req.user._id,
-      );
+      const recipientId = getRecipientId(req);
+
+      if (!recipientId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
+      const unreadCount = await NotificationService.getUnreadCount(recipientId);
 
       return res.status(200).json({
         success: true,
@@ -48,9 +66,18 @@ class NotificationController {
 
   static async markOneAsRead(req, res) {
     try {
+      const recipientId = getRecipientId(req);
+
+      if (!recipientId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
       const notification = await NotificationService.markAsRead(
         req.params.id,
-        req.user._id,
+        recipientId,
       );
 
       return res.status(200).json({
@@ -68,7 +95,16 @@ class NotificationController {
 
   static async markAllAsRead(req, res) {
     try {
-      const result = await NotificationService.markAllAsRead(req.user._id);
+      const recipientId = getRecipientId(req);
+
+      if (!recipientId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
+      const result = await NotificationService.markAllAsRead(recipientId);
 
       return res.status(200).json({
         success: true,
@@ -85,7 +121,16 @@ class NotificationController {
 
   static async deleteOne(req, res) {
     try {
-      await NotificationService.deleteNotification(req.params.id, req.user._id);
+      const recipientId = getRecipientId(req);
+
+      if (!recipientId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized",
+        });
+      }
+
+      await NotificationService.deleteNotification(req.params.id, recipientId);
 
       return res.status(200).json({
         success: true,

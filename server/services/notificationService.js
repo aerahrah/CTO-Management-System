@@ -87,7 +87,7 @@ class NotificationService {
   }
 
   static async markAllAsRead(recipientId) {
-    const result = await Notification.updateMany(
+    return Notification.updateMany(
       {
         recipient: recipientId,
         isRead: false,
@@ -99,8 +99,6 @@ class NotificationService {
         },
       },
     );
-
-    return result;
   }
 
   static async deleteNotification(notificationId, recipientId) {
@@ -136,7 +134,7 @@ class NotificationService {
       type: "CTO_APPLICATION_SUBMITTED",
       title: "New CTO Application",
       message: `${fullName} submitted a CTO application for approval.`,
-      link: `/cto/applications/${ctoApplication._id}`,
+      link: `/app/cto-approvals/${ctoApplication._id}`,
       priority: "HIGH",
       metadata: {
         ctoApplicationId: ctoApplication._id,
@@ -149,6 +147,31 @@ class NotificationService {
     }));
 
     return this.createManyNotifications(notifications);
+  }
+
+  // Optional: lets the employee also see a bell item right after applying
+  static async notifyEmployeeOnCtoSubmissionCreated({
+    employee,
+    ctoApplication,
+  }) {
+    return this.createNotification({
+      recipient: employee._id,
+      actor: employee._id,
+      type: "CTO_APPLICATION_SUBMITTED",
+      title: "CTO Application Submitted",
+      message: "Your CTO application was submitted successfully.",
+      link: `/app/cto-apply`,
+      priority: "MEDIUM",
+      metadata: {
+        ctoApplicationId: ctoApplication._id,
+        employeeId: employee._id,
+        extra: {
+          requestedHours: ctoApplication.requestedHours,
+          inclusiveDates: ctoApplication.inclusiveDates,
+          overallStatus: ctoApplication.overallStatus,
+        },
+      },
+    });
   }
 
   static async notifyEmployeeOnCtoApproval({
@@ -167,7 +190,7 @@ class NotificationService {
       type: "CTO_APPLICATION_APPROVED",
       title: "CTO Application Approved",
       message: `${fullName} approved your CTO application.`,
-      link: `/cto/my-applications/${ctoApplication._id}`,
+      link: `/app/cto-apply`,
       priority: "HIGH",
       metadata: {
         ctoApplicationId: ctoApplication._id,
@@ -199,7 +222,7 @@ class NotificationService {
       message: remarks
         ? `${fullName} rejected your CTO application. Remarks: ${remarks}`
         : `${fullName} rejected your CTO application.`,
-      link: `/cto/my-applications/${ctoApplication._id}`,
+      link: `/app/cto-apply`,
       priority: "HIGH",
       metadata: {
         ctoApplicationId: ctoApplication._id,
@@ -229,7 +252,7 @@ class NotificationService {
       type: "CTO_CREDITED",
       title: "CTO Credited",
       message: `${fullName} credited ${creditedHours} CTO hour(s) to your balance.`,
-      link: `/cto/credits/${ctoCredit._id}`,
+      link: `/app/cto-my-credits`,
       priority: "MEDIUM",
       metadata: {
         ctoCreditId: ctoCredit._id,
@@ -261,7 +284,7 @@ class NotificationService {
         rolledBackHours !== null
           ? `${fullName} rolled back ${rolledBackHours} CTO hour(s) from your balance.`
           : `${fullName} rolled back a CTO credit from your balance.`,
-      link: `/cto/credits/${ctoCredit._id}`,
+      link: `/app/cto-my-credits`,
       priority: "HIGH",
       metadata: {
         ctoCreditId: ctoCredit._id,

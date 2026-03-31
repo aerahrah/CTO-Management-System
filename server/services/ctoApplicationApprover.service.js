@@ -1,17 +1,15 @@
-// services/ctoApplicationApprover.service.js
 const mongoose = require("mongoose");
 const ApprovalStep = require("../models/approvalStepModel");
 const CtoApplication = require("../models/ctoApplicationModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
+const NotificationService = require("./notificationService");
 
 const sendEmail = require("../utils/sendEmail");
 
-// ✅ NEW: email notification toggles (flags Map doc)
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 
-// ✅ UPDATED: centralized templates (single file)
 const {
   ctoApprovalEmail,
   ctoRejectionEmail,
@@ -55,7 +53,6 @@ const getEffectiveStatusForApprover = (app, myStep) => {
 const clampPage = (v) => Math.max(parseInt(v, 10) || 1, 1);
 const clampLimit = (v) => Math.min(Math.max(parseInt(v, 10) || 10, 1), 100);
 
-// ✅ Optional: fail-safe wrapper so approval/reject won't fail if email fails
 async function safeSendEmail(to, subject, html) {
   try {
     await sendEmail(to, subject, html);
@@ -70,7 +67,6 @@ async function safeSendEmail(to, subject, html) {
   }
 }
 
-// ✅ Helper: check toggle (defaults to ON if missing/error, depending on your util)
 async function canSend(key) {
   return await isEmailEnabled(key);
 }
@@ -391,7 +387,7 @@ const approveCtoApplicationService = async ({
     session.endSession();
 
     const approver = await Employee.findById(approverId)
-      .select("username")
+      .select("username firstName lastName")
       .lean();
 
     const auditBody = {
@@ -423,6 +419,25 @@ const approveCtoApplicationService = async ({
       summary: auditDetails.summary,
       timestamp: new Date(),
     });
+
+    // ✅ IN-APP NOTIFICATION TO EMPLOYEE WHEN AN APPROVER APPROVES
+    try {
+      await NotificationService.notifyEmployeeOnCtoApproval({
+        employeeId: application.employee._id,
+        approver: approver || {
+          _id: approverId,
+          firstName: "Approver",
+          lastName: "",
+        },
+        ctoApplication: application,
+        approvalStep: currentStep,
+      });
+    } catch (e) {
+      console.error(
+        "Failed creating CTO approval notification:",
+        e?.message || e,
+      );
+    }
 
     // ✅ EMAILS USING CENTRAL TEMPLATE + TOGGLES
     if (!allApproved) {
@@ -610,7 +625,7 @@ const rejectCtoApplicationService = async ({
     session.endSession();
 
     const approver = await Employee.findById(approverId)
-      .select("username")
+      .select("username firstName lastName")
       .lean();
 
     const auditBody = {
@@ -642,6 +657,26 @@ const rejectCtoApplicationService = async ({
       summary: auditDetails.summary,
       timestamp: new Date(),
     });
+
+    // ✅ IN-APP NOTIFICATION TO EMPLOYEE WHEN AN APPROVER REJECTS
+    try {
+      await NotificationService.notifyEmployeeOnCtoRejection({
+        employeeId: application.employee._id,
+        approver: approver || {
+          _id: approverId,
+          firstName: "Approver",
+          lastName: "",
+        },
+        ctoApplication: application,
+        approvalStep: currentStep,
+        remarks: remarks || "",
+      });
+    } catch (e) {
+      console.error(
+        "Failed creating CTO rejection notification:",
+        e?.message || e,
+      );
+    }
 
     // ✅ EMAIL USING CENTRAL TEMPLATE + TOGGLE
     if (application.employee.email) {
