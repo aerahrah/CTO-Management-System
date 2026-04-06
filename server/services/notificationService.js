@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const Notification = require("../models/notificationsModel");
 
+const ALLOWED_PAGE_SIZES = [25, 50, 75, 100];
+const DEFAULT_PAGE_SIZE = 25;
+
 class NotificationService {
   static async createNotification(payload) {
     return Notification.create(payload);
@@ -14,13 +17,26 @@ class NotificationService {
     return Notification.insertMany(notifications);
   }
 
-  static async getUserNotifications(recipientId, options = {}) {
-    const page = Math.max(Number(options.page) || 1, 1);
-    const limit = Math.max(Number(options.limit) || 20, 1);
+  static normalizePagination(options = {}) {
+    const page = Math.max(parseInt(options.page, 10) || 1, 1);
+
+    let limit = parseInt(options.limit, 10);
+    if (!ALLOWED_PAGE_SIZES.includes(limit)) {
+      limit = DEFAULT_PAGE_SIZE;
+    }
+
     const skip = (page - 1) * limit;
 
+    return { page, limit, skip };
+  }
+
+  static async getUserNotifications(recipientId, options = {}) {
+    const { page, limit, skip } = this.normalizePagination(options);
+
+    const recipientObjectId = new mongoose.Types.ObjectId(recipientId);
+
     const filter = {
-      recipient: new mongoose.Types.ObjectId(recipientId),
+      recipient: recipientObjectId,
     };
 
     if (typeof options.isRead !== "undefined") {
@@ -40,10 +56,12 @@ class NotificationService {
         .lean(),
       Notification.countDocuments(filter),
       Notification.countDocuments({
-        recipient: recipientId,
+        recipient: recipientObjectId,
         isRead: false,
       }),
     ]);
+
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
 
     return {
       data: notifications,
@@ -51,7 +69,11 @@ class NotificationService {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages,
+        hasPrevPage: page > 1,
+        hasNextPage: page < totalPages,
+        allowedPageSizes: ALLOWED_PAGE_SIZES,
+        defaultPageSize: DEFAULT_PAGE_SIZE,
       },
       unreadCount,
     };
@@ -59,7 +81,7 @@ class NotificationService {
 
   static async getUnreadCount(recipientId) {
     return Notification.countDocuments({
-      recipient: recipientId,
+      recipient: new mongoose.Types.ObjectId(recipientId),
       isRead: false,
     });
   }
@@ -149,7 +171,6 @@ class NotificationService {
     return this.createManyNotifications(notifications);
   }
 
-  // Optional: lets the employee also see a bell item right after applying
   static async notifyEmployeeOnCtoSubmissionCreated({
     employee,
     ctoApplication,
