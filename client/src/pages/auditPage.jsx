@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getAuditLogs } from "../api/audit";
 import Breadcrumbs from "../components/breadCrumbs";
+import { useAuth } from "../store/authStore";
 import {
   Search,
   Filter,
@@ -17,48 +18,130 @@ import {
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"];
 const LIMIT_OPTIONS = [10, 20, 50, 100];
 
-// Helper for Status Badge Colors
-const getStatusColor = (code) => {
-  if (code >= 200 && code < 300)
-    return "bg-green-50 text-green-700 border-green-200";
-  if (code >= 300 && code < 400)
-    return "bg-blue-50 text-blue-700 border-blue-200";
-  if (code >= 400 && code < 500)
-    return "bg-orange-50 text-orange-700 border-orange-200";
-  if (code >= 500) return "bg-red-50 text-red-700 border-red-200";
-  return "bg-gray-50 text-gray-700 border-gray-200";
+/* ------------------ Resolve theme ------------------ */
+function resolveTheme(prefTheme) {
+  if (prefTheme === "system") {
+    const systemDark =
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+    return systemDark ? "dark" : "light";
+  }
+  return prefTheme === "dark" ? "dark" : "light";
+}
+
+/* ------------------ Semantic badge styles ------------------ */
+const getStatusBadgeStyle = (code, resolvedTheme) => {
+  const isDark = resolvedTheme === "dark";
+
+  if (code >= 200 && code < 300) {
+    return {
+      backgroundColor: isDark
+        ? "rgba(16,185,129,0.14)"
+        : "rgba(16,185,129,0.10)",
+      color: isDark ? "#6ee7b7" : "#047857",
+      borderColor: isDark ? "rgba(16,185,129,0.28)" : "rgba(16,185,129,0.18)",
+    };
+  }
+  if (code >= 300 && code < 400) {
+    return {
+      backgroundColor: isDark
+        ? "rgba(59,130,246,0.14)"
+        : "rgba(59,130,246,0.10)",
+      color: isDark ? "#93c5fd" : "#1d4ed8",
+      borderColor: isDark ? "rgba(59,130,246,0.28)" : "rgba(59,130,246,0.18)",
+    };
+  }
+  if (code >= 400 && code < 500) {
+    return {
+      backgroundColor: isDark
+        ? "rgba(245,158,11,0.14)"
+        : "rgba(245,158,11,0.10)",
+      color: isDark ? "#fcd34d" : "#b45309",
+      borderColor: isDark ? "rgba(245,158,11,0.28)" : "rgba(245,158,11,0.18)",
+    };
+  }
+  if (code >= 500) {
+    return {
+      backgroundColor: isDark ? "rgba(244,63,94,0.14)" : "rgba(244,63,94,0.10)",
+      color: isDark ? "#fda4af" : "#be123c",
+      borderColor: isDark ? "rgba(244,63,94,0.28)" : "rgba(244,63,94,0.18)",
+    };
+  }
+
+  return {
+    backgroundColor: isDark
+      ? "rgba(148,163,184,0.14)"
+      : "rgba(148,163,184,0.10)",
+    color: isDark ? "#cbd5e1" : "#475569",
+    borderColor: isDark ? "rgba(148,163,184,0.22)" : "rgba(148,163,184,0.18)",
+  };
 };
 
-// Helper for Method Badge Colors
-const getMethodColor = (method) => {
+const getMethodBadgeStyle = (method, resolvedTheme) => {
+  const isDark = resolvedTheme === "dark";
+
   switch (method) {
     case "GET":
-      return "text-blue-700 bg-blue-50 border-blue-200";
+      return {
+        backgroundColor: isDark
+          ? "rgba(59,130,246,0.14)"
+          : "rgba(59,130,246,0.10)",
+        color: isDark ? "#93c5fd" : "#1d4ed8",
+        borderColor: isDark ? "rgba(59,130,246,0.28)" : "rgba(59,130,246,0.18)",
+      };
     case "POST":
-      return "text-green-700 bg-green-50 border-green-200";
+      return {
+        backgroundColor: isDark
+          ? "rgba(16,185,129,0.14)"
+          : "rgba(16,185,129,0.10)",
+        color: isDark ? "#6ee7b7" : "#047857",
+        borderColor: isDark ? "rgba(16,185,129,0.28)" : "rgba(16,185,129,0.18)",
+      };
     case "PUT":
-      return "text-orange-700 bg-orange-50 border-orange-200";
+      return {
+        backgroundColor: isDark
+          ? "rgba(245,158,11,0.14)"
+          : "rgba(245,158,11,0.10)",
+        color: isDark ? "#fcd34d" : "#b45309",
+        borderColor: isDark ? "rgba(245,158,11,0.28)" : "rgba(245,158,11,0.18)",
+      };
     case "PATCH":
-      return "text-violet-700 bg-violet-50 border-violet-200";
+      return {
+        backgroundColor: isDark
+          ? "rgba(168,85,247,0.14)"
+          : "rgba(168,85,247,0.10)",
+        color: isDark ? "#d8b4fe" : "#7c3aed",
+        borderColor: isDark ? "rgba(168,85,247,0.28)" : "rgba(168,85,247,0.18)",
+      };
     case "DELETE":
-      return "text-red-700 bg-red-50 border-red-200";
+      return {
+        backgroundColor: isDark
+          ? "rgba(244,63,94,0.14)"
+          : "rgba(244,63,94,0.10)",
+        color: isDark ? "#fda4af" : "#be123c",
+        borderColor: isDark ? "rgba(244,63,94,0.28)" : "rgba(244,63,94,0.18)",
+      };
     default:
-      return "text-gray-700 bg-gray-50 border-gray-200";
+      return {
+        backgroundColor: isDark
+          ? "rgba(148,163,184,0.14)"
+          : "rgba(148,163,184,0.10)",
+        color: isDark ? "#cbd5e1" : "#475569",
+        borderColor: isDark
+          ? "rgba(148,163,184,0.22)"
+          : "rgba(148,163,184,0.18)",
+      };
   }
 };
 
-/* =========================
-   ✅ MOBILE CARD LEFT STRIP (by statusCode)
-========================= */
-const getLeftStripClassByStatus = (code) => {
+const getLeftStripStyleByStatus = (code) => {
   const c = Number(code);
   if (Number.isFinite(c)) {
-    if (c >= 200 && c < 300) return "border-l-4 border-l-emerald-500";
-    if (c >= 300 && c < 400) return "border-l-4 border-l-blue-500";
-    if (c >= 400 && c < 500) return "border-l-4 border-l-amber-500";
-    if (c >= 500) return "border-l-4 border-l-rose-500";
+    if (c >= 200 && c < 300) return { borderLeftColor: "#10b981" };
+    if (c >= 300 && c < 400) return { borderLeftColor: "#3b82f6" };
+    if (c >= 400 && c < 500) return { borderLeftColor: "#f59e0b" };
+    if (c >= 500) return { borderLeftColor: "#f43f5e" };
   }
-  return "border-l-4 border-l-slate-300";
+  return { borderLeftColor: "#94a3b8" };
 };
 
 /* =========================
@@ -72,7 +155,6 @@ function useDebounce(value, delay) {
     return () => clearTimeout(handler);
   }, [value, delay]);
 
-  // ✅ allows forcing the debounced value immediately (for Refresh)
   const flush = useCallback(() => {
     setDebouncedValue(value);
   }, [value]);
@@ -93,15 +175,27 @@ const CompactPagination = ({
   onNext,
   label = "items",
   rightSlot,
+  borderColor,
 }) => {
   return (
-    <div className="px-4 md:px-6 py-3 border-t border-gray-100 bg-white">
+    <div
+      className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+      }}
+    >
       {/* Mobile */}
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
           onClick={onPrev}
           disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-semibold text-gray-700 disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-semibold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            borderColor,
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+          }}
           type="button"
         >
           <ChevronLeft className="w-4 h-4" />
@@ -109,10 +203,16 @@ const CompactPagination = ({
         </button>
 
         <div className="text-center min-w-0">
-          <div className="text-xs font-mono font-semibold text-gray-700">
+          <div
+            className="text-xs font-mono font-semibold transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-text)" }}
+          >
             {page} / {Math.max(totalPages, 1)}
           </div>
-          <div className="text-[11px] text-gray-500">
+          <div
+            className="text-[11px] transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
             {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
           </div>
         </div>
@@ -120,7 +220,12 @@ const CompactPagination = ({
         <button
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border border-gray-200 bg-white text-sm font-semibold text-gray-700 disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-semibold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            borderColor,
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+          }}
           type="button"
         >
           Next
@@ -130,35 +235,69 @@ const CompactPagination = ({
 
       {/* Desktop */}
       <div className="hidden md:flex items-center justify-between gap-4">
-        <div className="text-xs text-gray-500 font-medium">
+        <div
+          className="text-xs font-medium transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
           Showing{" "}
-          <span className="font-bold text-gray-900">
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
             {total === 0 ? 0 : `${startItem}-${endItem}`}
           </span>{" "}
-          of <span className="font-bold text-gray-900">{total}</span> {label}
+          of{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total}
+          </span>{" "}
+          {label}
         </div>
 
         <div className="flex items-center gap-3">
           {rightSlot}
-          <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-lg border border-gray-100">
+          <div
+            className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+            }}
+          >
             <button
               onClick={onPrev}
               disabled={page === 1 || total === 0}
-              className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
+              className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+              style={{ color: "var(--app-muted)" }}
               aria-label="Previous"
               type="button"
+              onMouseEnter={(e) => {
+                if (page === 1 || total === 0) return;
+                e.currentTarget.style.backgroundColor = "var(--app-surface)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-mono font-medium px-3 text-gray-600">
+
+            <span
+              className="text-xs font-mono font-medium px-3 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               {page} / {Math.max(totalPages, 1)}
             </span>
+
             <button
               onClick={onNext}
               disabled={page >= totalPages || total === 0}
-              className="p-1.5 rounded-md hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent disabled:shadow-none transition-all text-gray-600"
+              className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+              style={{ color: "var(--app-muted)" }}
               aria-label="Next"
               type="button"
+              onMouseEnter={(e) => {
+                if (page >= totalPages || total === 0) return;
+                e.currentTarget.style.backgroundColor = "var(--app-surface)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+              }}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -170,27 +309,67 @@ const CompactPagination = ({
 };
 
 const FieldLabel = ({ children }) => (
-  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-[0.14em] mb-1">
+  <label
+    className="block text-[10px] font-bold uppercase tracking-[0.14em] mb-1 transition-colors duration-300 ease-out"
+    style={{ color: "var(--app-muted)" }}
+  >
     {children}
   </label>
 );
 
-const inputBase =
-  "w-full h-10 px-3 text-sm bg-gray-50 border border-gray-200 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-gray-700";
-const iconInputBase =
-  "w-full h-10 pl-9 pr-9 text-sm bg-gray-50 border border-gray-200 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all text-gray-700";
-
 const Chip = ({ children }) => (
-  <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-[10px] font-semibold">
+  <span
+    className="px-2 py-0.5 rounded border text-[10px] font-semibold transition-colors duration-300 ease-out"
+    style={{
+      backgroundColor: "var(--accent-soft)",
+      color: "var(--accent)",
+      borderColor: "var(--accent-soft2)",
+    }}
+  >
     {children}
   </span>
 );
 
 const AuditLogTable = () => {
+  const prefTheme = useAuth((s) => s.preferences?.theme || "system");
+  const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
+
+  const skeletonColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.08)"
+      : "rgba(15,23,42,0.08)";
+  }, [resolvedTheme]);
+
+  const rowAltColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.02)"
+      : "rgba(15,23,42,0.025)";
+  }, [resolvedTheme]);
+
+  const rowHoverColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "var(--accent-soft)"
+      : "rgba(37,99,235,0.06)";
+  }, [resolvedTheme]);
+
+  const inputStyle = useMemo(
+    () => ({
+      backgroundColor: "var(--app-surface-2)",
+      borderColor,
+      color: "var(--app-text)",
+    }),
+    [borderColor],
+  );
+
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  // Inputs -> debounce
   const [usernameInput, setUsernameInput] = useState("");
   const [endpointInput, setEndpointInput] = useState("");
   const [statusInput, setStatusInput] = useState("");
@@ -208,7 +387,6 @@ const AuditLogTable = () => {
     350,
   );
 
-  // Select/date filters
   const [method, setMethod] = useState("All");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -234,16 +412,13 @@ const AuditLogTable = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // reset page when filters change
   useEffect(() => {
     setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit, username, endpoint, statusCode, method, startDate, endDate]);
 
   const total = data?.total || 0;
   const totalPages = Math.max(Math.ceil(total / limit) || 1, 1);
 
-  // keep page in range
   useEffect(() => {
     setPage((p) => {
       if (p > totalPages) return totalPages;
@@ -277,7 +452,6 @@ const AuditLogTable = () => {
     setPage(1);
   };
 
-  // ✅ Refresh uses latest typed values immediately (flush debounce) then refetch
   const handleRefresh = useCallback(async () => {
     flushUsername();
     flushEndpoint();
@@ -287,16 +461,28 @@ const AuditLogTable = () => {
   }, [flushUsername, flushEndpoint, flushStatus, refetch]);
 
   return (
-    <div className="w-full flex-1 flex h-full flex-col">
+    <div
+      className="w-full flex-1 flex h-full flex-col transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
+        color: "var(--app-text, #0f172a)",
+      }}
+    >
       {/* HEADER */}
-      <div className="pt-2 pb-3 sm:pb-6 ">
+      <div className="pt-2 pb-3 sm:pb-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div className="min-w-0 px-1">
             <Breadcrumbs rootLabel="home" rootTo="/app" />
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
+            <h2
+              className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
               System Audit Logs
             </h2>
-            <p className="text-sm text-gray-500 mt-1 max-w-2xl">
+            <p
+              className="text-sm mt-1 max-w-2xl transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
               Track and monitor system activities and security events.
             </p>
           </div>
@@ -306,8 +492,16 @@ const AuditLogTable = () => {
               onClick={handleRefresh}
               disabled={isFetching}
               type="button"
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-blue-700 disabled:opacity-60 w-full sm:w-auto"
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all disabled:opacity-60 w-full sm:w-auto"
+              style={{ backgroundColor: "var(--accent)" }}
               title="Refresh"
+              onMouseEnter={(e) => {
+                if (isFetching) return;
+                e.currentTarget.style.filter = "brightness(0.95)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.filter = "none";
+              }}
             >
               <RefreshCw
                 size={16}
@@ -320,9 +514,21 @@ const AuditLogTable = () => {
       </div>
 
       {/* MAIN SURFACE */}
-      <div className="mb-1 flex flex-col flex-1 min-h-0 bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div
+        className="mb-1 flex flex-col flex-1 min-h-0 rounded-xl shadow-sm overflow-hidden border transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: "var(--app-surface)",
+          borderColor,
+        }}
+      >
         {/* TOOLBAR */}
-        <div className="p-4 border-b border-gray-100 bg-white">
+        <div
+          className="p-4 border-b transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor,
+          }}
+        >
           <div className="grid grid-cols-2 xl:grid-cols-12 gap-3">
             {/* Method */}
             <div className="sm:col-span-1 xl:col-span-2">
@@ -330,7 +536,17 @@ const AuditLogTable = () => {
               <select
                 value={method}
                 onChange={(e) => setMethod(e.target.value)}
-                className={`${inputBase} cursor-pointer`}
+                className="w-full h-10 px-3 text-sm rounded-lg outline-none cursor-pointer border transition-colors duration-200 ease-out"
+                style={inputStyle}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px var(--accent-soft)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = borderColor;
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               >
                 <option value="All">All</option>
                 {METHODS.map((m) => (
@@ -344,27 +560,43 @@ const AuditLogTable = () => {
             {/* Start date */}
             <div className="sm:col-span-1 xl:col-span-2">
               <FieldLabel>Start</FieldLabel>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className={inputBase}
-                />
-              </div>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full h-10 px-3 text-sm rounded-lg outline-none border transition-colors duration-200 ease-out"
+                style={inputStyle}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px var(--accent-soft)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = borderColor;
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
             </div>
 
             {/* End date */}
             <div className="sm:col-span-1 xl:col-span-2">
               <FieldLabel>End</FieldLabel>
-              <div className="relative">
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className={inputBase}
-                />
-              </div>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full h-10 px-3 text-sm rounded-lg outline-none border transition-colors duration-200 ease-out"
+                style={inputStyle}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px var(--accent-soft)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = borderColor;
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
             </div>
 
             {/* Status */}
@@ -375,7 +607,17 @@ const AuditLogTable = () => {
                 placeholder="e.g. 200"
                 value={statusInput}
                 onChange={(e) => setStatusInput(e.target.value)}
-                className={inputBase}
+                className="w-full h-10 px-3 text-sm rounded-lg outline-none border transition-colors duration-200 ease-out"
+                style={inputStyle}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px var(--accent-soft)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = borderColor;
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               />
             </div>
 
@@ -385,19 +627,31 @@ const AuditLogTable = () => {
               <div className="relative">
                 <Search
                   size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: "var(--app-muted)" }}
                 />
                 <input
                   type="text"
                   placeholder="Search username…"
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
-                  className={iconInputBase}
+                  className="w-full h-10 pl-9 pr-9 text-sm rounded-lg outline-none border transition-colors duration-200 ease-out"
+                  style={inputStyle}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 3px var(--accent-soft)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = borderColor;
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                 />
                 {usernameInput && (
                   <button
                     onClick={() => setUsernameInput("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                    style={{ color: "var(--app-muted)" }}
                     aria-label="Clear user"
                     title="Clear"
                     type="button"
@@ -414,19 +668,31 @@ const AuditLogTable = () => {
               <div className="relative">
                 <Filter
                   size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: "var(--app-muted)" }}
                 />
                 <input
                   type="text"
                   placeholder="/api/v1/…"
                   value={endpointInput}
                   onChange={(e) => setEndpointInput(e.target.value)}
-                  className={`${iconInputBase} font-mono`}
+                  className="w-full h-10 pl-9 pr-9 text-sm rounded-lg outline-none border transition-colors duration-200 ease-out font-mono"
+                  style={inputStyle}
+                  onFocus={(e) => {
+                    e.currentTarget.style.borderColor = "var(--accent)";
+                    e.currentTarget.style.boxShadow =
+                      "0 0 0 3px var(--accent-soft)";
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.borderColor = borderColor;
+                    e.currentTarget.style.boxShadow = "none";
+                  }}
                 />
                 {endpointInput && (
                   <button
                     onClick={() => setEndpointInput("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                    style={{ color: "var(--app-muted)" }}
                     aria-label="Clear endpoint"
                     title="Clear"
                     type="button"
@@ -441,12 +707,18 @@ const AuditLogTable = () => {
           {/* Active filters + actions */}
           <div className="mt-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.14em]">
+              <span
+                className="text-[10px] font-bold uppercase tracking-[0.14em] transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
                 Active
               </span>
 
               {!hasActiveFilters ? (
-                <span className="text-xs text-gray-500">
+                <span
+                  className="text-xs transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   No filters applied
                 </span>
               ) : (
@@ -466,17 +738,23 @@ const AuditLogTable = () => {
                 type="button"
                 onClick={clearFilters}
                 disabled={!hasActiveFilters && limit === 20}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold disabled:opacity-50 transition-colors duration-200 ease-out"
+                style={{
+                  borderColor,
+                  backgroundColor: "var(--app-surface)",
+                  color: "var(--app-text)",
+                }}
                 title="Clear filters"
               >
-                <X size={14} className="text-gray-500" />
+                <X size={14} style={{ color: "var(--app-muted)" }} />
                 Clear
               </button>
 
               {hasActiveFilters && (
                 <button
                   onClick={clearFilters}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:text-blue-700"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-bold transition-colors duration-200 ease-out"
+                  style={{ color: "var(--accent)" }}
                   title="Reset all"
                   type="button"
                 >
@@ -489,11 +767,23 @@ const AuditLogTable = () => {
         </div>
 
         {/* TABLE (Desktop/Tablet) */}
-        <div className="hidden sm:block flex-1 overflow-y-auto bg-white min-h-[320px]">
+        <div
+          className="hidden sm:block flex-1 overflow-y-auto min-h-[320px] transition-colors duration-300 ease-out"
+          style={{ backgroundColor: "var(--app-surface)" }}
+        >
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
-              <thead className="bg-white sticky top-0 z-10 border-b border-gray-100">
-                <tr className="text-[10px] uppercase tracking-[0.14em] text-gray-400 font-bold">
+              <thead
+                className="sticky top-0 z-10 border-b transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor,
+                }}
+              >
+                <tr
+                  className="text-[10px] uppercase tracking-[0.14em] font-bold"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   <th className="px-4 md:px-6 py-4 w-44">Timestamp</th>
                   <th className="px-4 md:px-6 py-4 w-56">User</th>
                   <th className="px-4 md:px-6 py-4">Request Details</th>
@@ -506,136 +796,216 @@ const AuditLogTable = () => {
                 </tr>
               </thead>
 
-              <tbody className="divide-y divide-gray-50">
+              <tbody>
                 {(isPending && !data) || (isFetching && !data) ? (
                   [...Array(6)].map((_, i) => (
-                    <tr key={i} className="animate-pulse">
+                    <tr key={i}>
                       <td className="px-4 md:px-6 py-4">
-                        <div className="h-4 bg-gray-200 rounded w-28 mb-1" />
-                        <div className="h-3 bg-gray-100 rounded w-20" />
+                        <div
+                          className="h-4 rounded w-28 mb-1"
+                          style={{ backgroundColor: skeletonColor }}
+                        />
+                        <div
+                          className="h-3 rounded w-20"
+                          style={{ backgroundColor: skeletonColor }}
+                        />
                       </td>
                       <td className="px-4 md:px-6 py-4">
-                        <div className="h-4 bg-gray-200 rounded w-36" />
+                        <div
+                          className="h-4 rounded w-36"
+                          style={{ backgroundColor: skeletonColor }}
+                        />
                       </td>
                       <td className="px-4 md:px-6 py-4">
                         <div className="flex items-center gap-2 mb-2">
-                          <div className="h-5 bg-gray-200 rounded w-14" />
-                          <div className="h-4 bg-gray-200 rounded w-64" />
+                          <div
+                            className="h-5 rounded w-14"
+                            style={{ backgroundColor: skeletonColor }}
+                          />
+                          <div
+                            className="h-4 rounded w-64"
+                            style={{ backgroundColor: skeletonColor }}
+                          />
                         </div>
-                        <div className="h-3 bg-gray-100 rounded w-28" />
+                        <div
+                          className="h-3 rounded w-28"
+                          style={{ backgroundColor: skeletonColor }}
+                        />
                       </td>
                       <td className="px-4 md:px-6 py-4 hidden md:table-cell">
-                        <div className="h-4 bg-gray-200 rounded w-44" />
+                        <div
+                          className="h-4 rounded w-44"
+                          style={{ backgroundColor: skeletonColor }}
+                        />
                       </td>
                       <td className="px-4 md:px-6 py-4 hidden lg:table-cell">
-                        <div className="h-4 bg-gray-200 rounded w-24" />
+                        <div
+                          className="h-4 rounded w-24"
+                          style={{ backgroundColor: skeletonColor }}
+                        />
                       </td>
                     </tr>
                   ))
                 ) : rows.length > 0 ? (
-                  rows.map((log, idx) => (
-                    <tr
-                      key={log._id}
-                      className={`group transition-colors hover:bg-blue-50/40 ${
-                        idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                      }`}
-                    >
-                      <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        <div className="flex flex-col">
-                          <span className="text-gray-900 font-semibold">
-                            {new Date(log.timestamp).toLocaleDateString()}
-                          </span>
-                          <span className="text-xs text-gray-400">
-                            {new Date(log.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      </td>
+                  rows.map((log, idx) => {
+                    const methodStyle = getMethodBadgeStyle(
+                      log.method,
+                      resolvedTheme,
+                    );
+                    const statusStyle = getStatusBadgeStyle(
+                      log.statusCode,
+                      resolvedTheme,
+                    );
+                    const bg =
+                      idx % 2 === 0 ? "var(--app-surface)" : rowAltColor;
 
-                      <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
-                        <span className="block max-w-[220px]">
-                          {log.username}
-                        </span>
-                      </td>
-
-                      <td className="px-4 md:px-6 py-4">
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    return (
+                      <tr
+                        key={log._id}
+                        className="transition-colors duration-200 ease-out"
+                        style={{ backgroundColor: bg }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = rowHoverColor;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = bg;
+                        }}
+                      >
+                        <td
+                          className="px-4 md:px-6 py-4 whitespace-nowrap text-sm transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          <div className="flex flex-col">
                             <span
-                              className={`px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider ${getMethodColor(
-                                log.method,
-                              )}`}
+                              className="font-semibold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
                             >
-                              {log.method}
+                              {new Date(log.timestamp).toLocaleDateString()}
                             </span>
-
                             <span
-                              className="font-mono text-sm text-gray-800 font-medium max-w-[520px]"
-                              title={log.endpoint}
+                              className="text-xs transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
                             >
-                              {log.endpoint}
+                              {new Date(log.timestamp).toLocaleTimeString()}
                             </span>
                           </div>
+                        </td>
 
-                          <div className="flex items-center gap-2 pl-0.5 min-w-0 flex-wrap">
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${getStatusColor(
-                                log.statusCode,
-                              )}`}
-                            >
-                              <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
-                              {log.statusCode}
-                            </span>
+                        <td
+                          className="px-4 md:px-6 py-4 whitespace-nowrap text-sm font-semibold transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          <span className="block max-w-[220px]">
+                            {log.username}
+                          </span>
+                        </td>
 
-                            {log.url && log.url !== log.endpoint && (
+                        <td className="px-4 md:px-6 py-4">
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2 min-w-0 flex-wrap">
                               <span
-                                className="text-xs text-gray-400 font-mono max-w-[520px]"
-                                title={log.url}
+                                className="px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider"
+                                style={methodStyle}
                               >
-                                {log.url}
+                                {log.method}
+                              </span>
+
+                              <span
+                                className="font-mono text-sm font-medium max-w-[520px] transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                                title={log.endpoint}
+                              >
+                                {log.endpoint}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 pl-0.5 min-w-0 flex-wrap">
+                              <span
+                                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold"
+                                style={statusStyle}
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
+                                {log.statusCode}
+                              </span>
+
+                              {log.url && log.url !== log.endpoint && (
+                                <span
+                                  className="text-xs font-mono max-w-[520px] transition-colors duration-300 ease-out"
+                                  style={{ color: "var(--app-muted)" }}
+                                  title={log.url}
+                                >
+                                  {log.url}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td
+                          className="px-4 md:px-6 py-4 text-xs hidden md:table-cell transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          <div
+                            className="max-w-[520px]"
+                            title={log?.summary || ""}
+                          >
+                            {log?.summary || (
+                              <span
+                                className="italic transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                No summary
                               </span>
                             )}
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-4 md:px-6 py-4 text-xs text-gray-600 hidden md:table-cell">
-                        <div
-                          className="max-w-[520px]"
-                          title={log?.summary || ""}
+                        <td
+                          className="px-4 md:px-6 py-4 whitespace-nowrap text-sm font-mono hidden lg:table-cell transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
                         >
-                          {log?.summary || (
-                            <span className="text-gray-300 italic">
-                              No summary
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="px-4 md:px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono hidden lg:table-cell">
-                        {log.ip}
-                      </td>
-                    </tr>
-                  ))
+                          {log.ip}
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   <tr>
                     <td
                       colSpan={5}
-                      className="px-6 py-16 text-center text-gray-500"
+                      className="px-6 py-16 text-center transition-colors duration-300 ease-out"
+                      style={{ color: "var(--app-muted)" }}
                     >
                       <div className="flex flex-col items-center justify-center">
-                        <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                          <Search size={24} className="text-gray-300" />
+                        <div
+                          className="p-6 rounded-full mb-4 ring-1 transition-colors duration-300 ease-out"
+                          style={{
+                            backgroundColor: "var(--app-surface-2)",
+                            borderColor,
+                          }}
+                        >
+                          <Search
+                            size={24}
+                            style={{ color: "var(--app-muted)" }}
+                          />
                         </div>
-                        <p className="text-lg font-bold text-gray-900">
+                        <p
+                          className="text-lg font-bold transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           No logs found
                         </p>
-                        <p className="text-sm text-gray-500 mt-1">
+                        <p
+                          className="text-sm mt-1 transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
                           Try adjusting your filters or search terms.
                         </p>
                         {hasActiveFilters && (
                           <button
                             onClick={clearFilters}
-                            className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                            className="mt-6 text-sm font-bold underline transition-colors duration-200 ease-out"
+                            style={{ color: "var(--accent)" }}
                             type="button"
                           >
                             Clear all filters
@@ -650,114 +1020,175 @@ const AuditLogTable = () => {
           </div>
         </div>
 
-        {/* ✅ MOBILE LIST (Improved card width + left strip) */}
-        <div className="sm:hidden flex-1 overflow-y-auto bg-white">
-          {/* make sure cards have enough usable width and don't feel cramped */}
+        {/* MOBILE LIST */}
+        <div
+          className="sm:hidden flex-1 overflow-y-auto transition-colors duration-300 ease-out"
+          style={{ backgroundColor: "var(--app-surface)" }}
+        >
           <div className="p-3 space-y-2 w-full">
             {(isPending && !data) || (isFetching && !data) ? (
               [...Array(6)].map((_, i) => (
                 <div
                   key={i}
-                  className="w-full min-w-0 border border-gray-200 rounded-xl p-3 animate-pulse"
+                  className="w-full min-w-0 rounded-xl p-3 animate-pulse border"
+                  style={{
+                    backgroundColor: "var(--app-surface)",
+                    borderColor,
+                  }}
                 >
-                  <div className="h-4 bg-gray-200 rounded w-40 mb-2" />
-                  <div className="h-3 bg-gray-100 rounded w-24 mb-3" />
-                  <div className="h-4 bg-gray-200 rounded w-full mb-2" />
-                  <div className="h-3 bg-gray-100 rounded w-32" />
+                  <div
+                    className="h-4 rounded w-40 mb-2"
+                    style={{ backgroundColor: skeletonColor }}
+                  />
+                  <div
+                    className="h-3 rounded w-24 mb-3"
+                    style={{ backgroundColor: skeletonColor }}
+                  />
+                  <div
+                    className="h-4 rounded w-full mb-2"
+                    style={{ backgroundColor: skeletonColor }}
+                  />
+                  <div
+                    className="h-3 rounded w-32"
+                    style={{ backgroundColor: skeletonColor }}
+                  />
                 </div>
               ))
             ) : rows.length > 0 ? (
               rows.map((log) => {
-                const leftStrip = getLeftStripClassByStatus(log.statusCode);
+                const leftStrip = getLeftStripStyleByStatus(log.statusCode);
+                const methodStyle = getMethodBadgeStyle(
+                  log.method,
+                  resolvedTheme,
+                );
+                const statusStyle = getStatusBadgeStyle(
+                  log.statusCode,
+                  resolvedTheme,
+                );
 
                 return (
                   <div
                     key={log._id}
-                    className={`w-full min-w-0 border border-gray-200 rounded-xl p-3 bg-white shadow-sm overflow-hidden ${leftStrip}`}
+                    className="w-full min-w-0 rounded-xl p-3 shadow-sm overflow-hidden border-l-4 border transition-colors duration-300 ease-out"
+                    style={{
+                      ...leftStrip,
+                      borderTopColor: borderColor,
+                      borderRightColor: borderColor,
+                      borderBottomColor: borderColor,
+                      backgroundColor: "var(--app-surface)",
+                    }}
                   >
-                    {/* Top row */}
                     <div className="flex items-start justify-between gap-3 min-w-0">
                       <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold text-gray-900 truncate">
+                        <div
+                          className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
                           {log.username || "Unknown user"}
                         </div>
-                        <div className="text-xs text-gray-500 whitespace-nowrap">
+                        <div
+                          className="text-xs whitespace-nowrap transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
                           {new Date(log.timestamp).toLocaleDateString()} •{" "}
                           {new Date(log.timestamp).toLocaleTimeString()}
                         </div>
                       </div>
 
                       <span
-                        className={`flex-none inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold ${getStatusColor(
-                          log.statusCode,
-                        )}`}
+                        className="flex-none inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-semibold"
+                        style={statusStyle}
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-current opacity-60" />
                         {log.statusCode}
                       </span>
                     </div>
 
-                    {/* Method + endpoint */}
                     <div className="mt-2 flex items-center gap-2 flex-wrap min-w-0">
                       <span
-                        className={`flex-none px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider ${getMethodColor(
-                          log.method,
-                        )}`}
+                        className="flex-none px-2 py-0.5 rounded text-[11px] font-bold border uppercase tracking-wider"
+                        style={methodStyle}
                       >
                         {log.method}
                       </span>
 
-                      {/* ✅ ensures long endpoints don't shrink the card; wraps safely */}
                       <span
-                        className="min-w-0 flex-1 font-mono text-xs text-gray-700 break-words"
+                        className="min-w-0 flex-1 font-mono text-xs break-words transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-text)" }}
                         title={log.endpoint}
                       >
                         {log.endpoint}
                       </span>
                     </div>
 
-                    {/* Summary */}
                     {log?.summary ? (
-                      <div className="mt-2 text-xs text-gray-600 break-words">
+                      <div
+                        className="mt-2 text-xs break-words transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
                         {log.summary}
                       </div>
                     ) : (
-                      <div className="mt-2 text-xs text-gray-300 italic">
+                      <div
+                        className="mt-2 text-xs italic transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
                         No summary
                       </div>
                     )}
 
-                    {/* Bottom row */}
-                    <div className="mt-2 text-[11px] text-gray-500 flex items-start justify-between gap-2 min-w-0">
+                    <div className="mt-2 text-[11px] flex items-start justify-between gap-2 min-w-0">
                       <span
-                        className="min-w-0 flex-1 font-mono break-words"
+                        className="min-w-0 flex-1 font-mono break-words transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
                         title={
                           log.url && log.url !== log.endpoint ? log.url : ""
                         }
                       >
                         {log.url && log.url !== log.endpoint ? log.url : ""}
                       </span>
-                      <span className="flex-none font-mono">{log.ip}</span>
+                      <span
+                        className="flex-none font-mono transition-colors duration-300 ease-out"
+                        style={{ color: "var(--app-muted)" }}
+                      >
+                        {log.ip}
+                      </span>
                     </div>
                   </div>
                 );
               })
             ) : (
-              <div className="px-4 py-14 text-center text-gray-500">
+              <div
+                className="px-4 py-14 text-center transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
                 <div className="flex flex-col items-center justify-center">
-                  <div className="bg-gray-50 p-6 rounded-full mb-4 ring-1 ring-gray-100">
-                    <Search size={24} className="text-gray-300" />
+                  <div
+                    className="p-6 rounded-full mb-4 ring-1 transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor,
+                    }}
+                  >
+                    <Search size={24} style={{ color: "var(--app-muted)" }} />
                   </div>
-                  <p className="text-lg font-bold text-gray-900">
+                  <p
+                    className="text-lg font-bold transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-text)" }}
+                  >
                     No logs found
                   </p>
-                  <p className="text-sm text-gray-500 mt-1">
+                  <p
+                    className="text-sm mt-1 transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
                     Try adjusting your filters or search terms.
                   </p>
                   {hasActiveFilters && (
                     <button
                       onClick={clearFilters}
-                      className="mt-6 text-sm font-bold text-blue-600 hover:text-blue-700 underline"
+                      className="mt-6 text-sm font-bold underline transition-colors duration-200 ease-out"
+                      style={{ color: "var(--accent)" }}
                       type="button"
                     >
                       Clear all filters
@@ -781,9 +1212,13 @@ const AuditLogTable = () => {
           onNext={() => {
             if (!isPlaceholderData && page < totalPages) setPage((p) => p + 1);
           }}
+          borderColor={borderColor}
           rightSlot={
             <div className="hidden md:flex items-center gap-2">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
                 Show
               </span>
               <select
@@ -792,7 +1227,17 @@ const AuditLogTable = () => {
                   setLimit(parseInt(e.target.value, 10));
                   setPage(1);
                 }}
-                className="bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-1.5 font-medium outline-none cursor-pointer"
+                className="text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer border transition-colors duration-200 ease-out"
+                style={inputStyle}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--accent)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px var(--accent-soft)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = borderColor;
+                  e.currentTarget.style.boxShadow = "none";
+                }}
               >
                 {LIMIT_OPTIONS.map((l) => (
                   <option key={l} value={l}>
