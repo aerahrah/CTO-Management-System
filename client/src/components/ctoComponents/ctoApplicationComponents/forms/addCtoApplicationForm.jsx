@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchApproverSettings,
   addApplicationRequest,
   fetchMyCtoMemos,
 } from "../../../../api/cto";
 import { fetchWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
+import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
 import { useAuth } from "../../../../store/authStore";
 import {
   Clock,
@@ -89,7 +89,7 @@ const makeClientRequestId = () => {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID)
       return crypto.randomUUID();
-  } catch {}
+  } catch { }
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
@@ -174,24 +174,24 @@ const Banner = ({ tone = "error", message, borderColor }) => {
   const palette =
     tone === "info"
       ? {
-          bg: "rgba(37,99,235,0.10)",
-          br: "rgba(37,99,235,0.18)",
-          fg: "var(--app-text)",
-          icon: "var(--accent)",
-        }
+        bg: "rgba(37,99,235,0.10)",
+        br: "rgba(37,99,235,0.18)",
+        fg: "var(--app-text)",
+        icon: "var(--accent)",
+      }
       : tone === "success"
         ? {
-            bg: "rgba(34,197,94,0.12)",
-            br: "rgba(34,197,94,0.20)",
-            fg: "var(--app-text)",
-            icon: "#16a34a",
-          }
+          bg: "rgba(34,197,94,0.12)",
+          br: "rgba(34,197,94,0.20)",
+          fg: "var(--app-text)",
+          icon: "#16a34a",
+        }
         : {
-            bg: "rgba(239,68,68,0.10)",
-            br: "rgba(239,68,68,0.18)",
-            fg: "var(--app-text)",
-            icon: "#ef4444",
-          };
+          bg: "rgba(239,68,68,0.10)",
+          br: "rgba(239,68,68,0.18)",
+          fg: "var(--app-text)",
+          icon: "#ef4444",
+        };
 
   return (
     <div
@@ -273,9 +273,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       reason: "",
       memos: [],
       inclusiveDates: [],
-      approver1: "",
-      approver2: "",
-      approver3: "",
+      routeId: "",
     }),
     [],
   );
@@ -344,10 +342,9 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workingDaysIsError]);
 
-  const { data: approverResponse, isLoading: isApproverLoading } = useQuery({
-    queryKey: ["approverSettings", admin?.designation],
-    queryFn: () => fetchApproverSettings(admin.designation),
-    enabled: !!admin?.designation,
+  const { data: routesResponse, isLoading: isRoutesLoading } = useQuery({
+    queryKey: ["approvalRoutes"],
+    queryFn: fetchAllApprovalRoutes,
   });
 
   const { data: memoResponse, isLoading: memoLoading } = useQuery({
@@ -379,17 +376,21 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     setMaxRequestedHours(totalRemaining);
   }, [validMemos]);
 
+  // (Removed old approverResponse effect)
+
+  // Automatically select the user's personal route
   useEffect(() => {
-    if (approverResponse?.data) {
-      const a = approverResponse.data;
-      setFormData((prev) => ({
-        ...prev,
-        approver1: a.level1Approver?._id || "",
-        approver2: a.level2Approver?._id || "",
-        approver3: a.level3Approver?._id || "",
-      }));
+    if (routesResponse && Array.isArray(routesResponse) && !formData.routeId) {
+      const myRoute = routesResponse.find(
+        (r) =>
+          String(r.createdBy?._id || r.createdBy) ===
+          String(admin?.id || admin?._id),
+      );
+      if (myRoute) {
+        setFormData((prev) => ({ ...prev, routeId: myRoute._id }));
+      }
     }
-  }, [approverResponse]);
+  }, [routesResponse, admin, formData.routeId]);
 
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
@@ -588,7 +589,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
     try {
       dateInputRef.current?.focus?.();
-    } catch {}
+    } catch { }
   };
 
   const handleDateRemove = (date) => {
@@ -667,10 +668,10 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
       };
     }
 
-    if (!formData.approver1) {
+    if (!formData.routeId) {
       return {
         ok: false,
-        message: "Approver routing is not available. Please contact HR.",
+        message: "Please select an approval route.",
       };
     }
 
@@ -686,9 +687,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
         reason,
         memos,
         inclusiveDates,
-        approver1: formData.approver1 || "",
-        approver2: formData.approver2 || "",
-        approver3: formData.approver3 || "",
+        routeId: formData.routeId,
       },
     };
   };
@@ -1031,8 +1030,8 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                 </div>
 
                 {requiredDays > 0 &&
-                formData.inclusiveDates.length > 0 &&
-                formData.inclusiveDates.length !== requiredDays ? (
+                  formData.inclusiveDates.length > 0 &&
+                  formData.inclusiveDates.length !== requiredDays ? (
                   <div
                     className="text-[11px] font-semibold"
                     style={{ color: "#ef4444" }}
@@ -1234,21 +1233,31 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
               </button>
 
               <div
-                className={`overflow-hidden transition-all duration-300 ${
-                  showRouting
+                className={`overflow-hidden transition-all duration-300 ${showRouting
                     ? "max-h-[420px] opacity-100"
                     : "max-h-0 opacity-0"
-                }`}
+                  }`}
               >
-                <div className="space-y-2 pt-1">
-                  {isApproverLoading ? (
-                    <Skeleton height={50} count={3} borderRadius={8} />
+                <div className="space-y-3 pt-1 px-1">
+                  {isRoutesLoading ? (
+                    <Skeleton height={40} borderRadius={8} />
+                  ) : !formData.routeId ? (
+                    <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-medium flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      You haven't set up an approval route yet.
+                      <a href="/app/approval-routes" className="underline font-bold">Set it up here</a>
+                    </div>
                   ) : (
-                    [
-                      approverResponse?.data?.level1Approver,
-                      approverResponse?.data?.level2Approver,
-                      approverResponse?.data?.level3Approver,
-                    ].map((app, idx) => (
+                    <div className="px-3 py-2 rounded-lg border bg-[color:var(--app-surface-2)] border-[color:var(--app-border)]">
+                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Active Workflow</p>
+                      <p className="text-sm font-bold text-[color:var(--app-text)]">
+                        {routesResponse?.find(r => r._id === formData.routeId)?.name || "Personal Workflow"}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="space-y-2 mt-2 max-h-[250px] overflow-y-auto pr-1 cto-scrollbar">
+                    {formData.routeId && routesResponse?.find(r => r._id === formData.routeId)?.steps?.filter(s => s.isEnabled !== false)?.map((step, idx) => (
                       <div
                         key={idx}
                         className="flex items-center gap-3 p-3 rounded-lg shadow-sm border transition-colors duration-300 ease-out"
@@ -1274,20 +1283,25 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                             className="text-xs font-semibold truncate"
                             style={{ color: "var(--app-text)" }}
                           >
-                            {app
-                              ? `${app.firstName} ${app.lastName}`
+                            {step.approver
+                              ? `${step.approver.firstName} ${step.approver.lastName}`
                               : "Not Assigned"}
                           </p>
                           <p
                             className="text-[10px] uppercase tracking-tight truncate"
                             style={{ color: "var(--app-muted)" }}
                           >
-                            {app?.position || "Position not specified"}
+                            {step.approver?.position || "Position not specified"}
                           </p>
                         </div>
                       </div>
-                    ))
-                  )}
+                    ))}
+                    {!formData.routeId && !isRoutesLoading && (
+                      <div className="p-3 text-center text-xs italic" style={{ color: "var(--app-muted)" }}>
+                        Please select an approval route from the dropdown above.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -1326,7 +1340,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
             <button
               type="submit"
-              disabled={isBusy || workingDaysLoading}
+              disabled={isBusy || (workingDaysLoading && !workingDaysIsError)}
               className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded-lg font-bold disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
               style={{
                 backgroundColor: "var(--accent)",

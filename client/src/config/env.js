@@ -1,4 +1,4 @@
-const defaultApiBaseUrl = "https://cto.dictr2.online";
+const defaultApiBaseUrl = "https://cto.dictr2.cloud";
 
 export const API_BASE_URL = String(defaultApiBaseUrl).replace(/\/$/, "");
 

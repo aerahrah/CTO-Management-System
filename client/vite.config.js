@@ -67,9 +67,9 @@ export default defineConfig(({ mode }) => {
 
     server: {
       proxy: {
-        "/settings": "https://cto.dictr2.online",
-        "/cto": "https://cto.dictr2.online",
-        "/auth": "https://cto.dictr2.online",
+        "/settings": "https://cto.dictr2.cloud",
+        "/cto": "https://cto.dictr2.cloud",
+        "/auth": "https://cto.dictr2.cloud",
       },
     },
   };

@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../api/employee";
-import { fetchCtoApplicationsPendingRequest } from "../api/cto";
+import { fetchDashboard } from "../api/cto";
 import { useAuth } from "../store/authStore";
 import ScrollbarsSync from "./scrollbarSync";
 
@@ -33,6 +33,7 @@ import {
   CalendarDays,
   Mail,
   Palette,
+  Route,
 } from "lucide-react";
 
 /* =========================
@@ -103,20 +104,27 @@ const Sidebar = ({
   }, [accentHex]);
 
   const adminId = String(admin?.id || admin?._id || "");
-  const canSeePendingApprovals = ["admin", "supervisor"].includes(role);
 
-  const { data: pendingCount = 0, isPending } = useQuery({
-    queryKey: ["ctoPendingCount", adminId],
-    queryFn: fetchCtoApplicationsPendingRequest,
-    enabled: !!adminId && canSeePendingApprovals,
-    staleTime: 1000 * 30,
+  // Any role can be configured as an approver in the approval chain,
+  // so run the query for everyone. teamPendingApprovals will be 0
+  // for non-approvers, keeping the sidebar item hidden naturally.
+  const { data: dashboardData } = useQuery({
+    queryKey: ["ctoDashboard"],
+    queryFn: fetchDashboard,
+    enabled: !!adminId,
+    staleTime: 1000 * 60,
   });
 
-  const isLockedOpenRole = ["hr", "supervisor", "employee"].includes(role);
+  // Mirror exactly how ctoDashboard.jsx derives pendingCount:
+  // data.teamPendingApprovals is set by getSupervisorSummary / getAdminSummary
+  const pendingCount = Number(dashboardData?.teamPendingApprovals || 0);
+
+
 
   const [hoveredItem, setHoveredItem] = useState(null);
   const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
-  const [openMenus, setOpenMenus] = useState({});
+  // Default "CTO Service" open so all subitems (including Pending Approvals) are visible immediately
+  const [openMenus, setOpenMenus] = useState({ "CTO Service": true });
 
   const safeNavigate = (path) => {
     if (typeof path !== "string") return;
@@ -154,24 +162,29 @@ const Sidebar = ({
             icon: <PenLine size={14} />,
           },
           {
+            name: "Approval Routes",
+            path: "/app/approval-routes",
+            icon: <Route size={14} />,
+            roles: ["admin", "hr", "supervisor", "employee"],
+          },
+          {
             name: "All CTO Applications",
             path: "/app/cto-all-applications",
             icon: <Files size={14} />,
             roles: ["admin", "hr"],
           },
-          {
-            name: "Pending Approvals",
-            path: "/app/cto-approvals",
-            icon: <UserCheck size={14} />,
-            roles: ["admin", "supervisor"],
-            badge: !canSeePendingApprovals
-              ? null
-              : isPending
-                ? "..."
-                : pendingCount > 0
-                  ? pendingCount
-                  : null,
-          },
+          // Only show Pending Approvals when pendingCount > 0 (mirrors ctoDashboard.jsx)
+          ...(pendingCount > 0
+            ? [
+              {
+                name: "Pending Approvals",
+                path: "/app/cto-approvals",
+                icon: <UserCheck size={14} />,
+                roles: ["admin", "supervisor", "hr", "employee"],
+                badge: pendingCount,
+              },
+            ]
+            : []),
           {
             name: "All CTO Records",
             path: "/app/cto-records",
@@ -209,11 +222,6 @@ const Sidebar = ({
         roles: ["admin", "hr"],
         subItems: [
           {
-            name: "CTO Routing Settings",
-            path: "/app/cto-settings",
-            icon: <SlidersHorizontal size={14} />,
-          },
-          {
             name: "Designations Settings",
             path: "/app/designations",
             icon: <MapPin size={14} />,
@@ -246,7 +254,7 @@ const Sidebar = ({
         ],
       },
     ],
-    [canSeePendingApprovals, isPending, pendingCount],
+    [pendingCount],
   );
 
   const { mutateAsync } = useMutation({
@@ -264,13 +272,11 @@ const Sidebar = ({
   };
 
   const toggleMenu = (name) => {
-    if (isLockedOpenRole) return;
     setOpenMenus((prev) => ({ ...prev, [name]: !prev[name] }));
   };
 
   const handleItemClick = async (item) => {
     if (item.subItems) {
-      if (isLockedOpenRole) return;
       if (collapsed && !mobileOpen) return;
       toggleMenu(item.name);
     } else {
@@ -317,11 +323,10 @@ const Sidebar = ({
         className={`fixed inset-y-0 left-0 z-50 border-r flex flex-col transition-all duration-150 lg:sticky lg:top-0 lg:h-screen flex-shrink-0
         bg-[color:var(--app-surface)] border-[color:var(--app-border)]
         ${collapsed ? "lg:w-20" : "lg:w-72"}
-        ${
-          mobileOpen
+        ${mobileOpen
             ? "translate-x-0 w-72"
             : "-translate-x-full lg:translate-x-0"
-        }`}
+          }`}
       >
         <div className="flex flex-shrink-0 items-center h-14 justify-between px-4 border-b border-[color:var(--app-border)]">
           {(!collapsed || mobileOpen) && (
@@ -336,9 +341,8 @@ const Sidebar = ({
             onClick={() =>
               mobileOpen ? setMobileOpen(false) : setCollapsed(!collapsed)
             }
-            className={`p-2 rounded-lg transition ${
-              collapsed && !mobileOpen ? "mx-auto" : ""
-            }`}
+            className={`p-2 rounded-lg transition ${collapsed && !mobileOpen ? "mx-auto" : ""
+              }`}
             style={{
               color: "var(--app-muted)",
             }}
@@ -372,7 +376,7 @@ const Sidebar = ({
             const isMainItemActive = item.path && isActive(item.path);
 
             const isOpen =
-              isLockedOpenRole || openMenus[item.name] || isSubItemActive;
+              openMenus[item.name] || isSubItemActive;
 
             const activeMain =
               isMainItemActive || (isSubItemActive && collapsed);
@@ -392,19 +396,18 @@ const Sidebar = ({
                   style={
                     activeMain
                       ? {
-                          backgroundColor: "var(--accent)",
-                          boxShadow:
-                            "0 18px 45px -28px var(--accent-ring), 0 10px 30px -20px rgba(2,6,23,0.28)",
-                          color: "#fff",
-                        }
+                        backgroundColor: "var(--accent)",
+                        boxShadow:
+                          "0 18px 45px -28px var(--accent-ring), 0 10px 30px -20px rgba(2,6,23,0.28)",
+                        color: "#fff",
+                      }
                       : {
-                          color: "var(--app-muted)",
-                        }
+                        color: "var(--app-muted)",
+                      }
                   }
                   className={`flex items-center py-2.5 px-3 rounded-xl cursor-pointer transition-all duration-200
                     ${collapsed && !mobileOpen ? "justify-center" : "gap-3"}
-                    ${activeMain ? "" : "hover:bg-[color:var(--accent-soft)]"}
-                    ${isLockedOpenRole && hasSubItems ? "cursor-default" : ""}`}
+                    ${activeMain ? "" : "hover:bg-[color:var(--accent-soft)]"}`}
                 >
                   <div
                     style={{
@@ -430,15 +433,14 @@ const Sidebar = ({
                         {item.name}
                       </span>
 
-                      {hasSubItems && !isLockedOpenRole && (
+                      {hasSubItems && (
                         <ChevronDown
                           size={16}
                           style={{
                             color: activeMain ? "#fff" : "var(--app-muted)",
                           }}
-                          className={`transition-transform duration-150 ${
-                            isOpen ? "rotate-180" : ""
-                          }`}
+                          className={`transition-transform duration-150 ${isOpen ? "rotate-180" : ""
+                            }`}
                         />
                       )}
                     </>
@@ -454,12 +456,9 @@ const Sidebar = ({
                         <div
                           key={sub.name}
                           onClick={() => {
-                            if (
-                              sub.path === "/app/cto-approvals" &&
-                              canSeePendingApprovals
-                            ) {
+                            if (sub.path === "/app/cto-approvals") {
                               queryClient.invalidateQueries({
-                                queryKey: ["ctoPendingCount", adminId],
+                                queryKey: ["ctoDashboard"],
                               });
                             }
 
@@ -472,10 +471,9 @@ const Sidebar = ({
                               : { color: "var(--app-muted)" }
                           }
                           className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
-                            ${
-                              subActive
-                                ? "text-[color:var(--accent)]"
-                                : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
+                            ${subActive
+                              ? "text-[color:var(--accent)]"
+                              : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
                             }`}
                         >
                           <span
@@ -502,11 +500,10 @@ const Sidebar = ({
 
                           {sub.badge !== undefined && sub.badge !== null && (
                             <span
-                              className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                sub.badge === "..."
-                                  ? "bg-gray-300 text-gray-800 animate-pulse"
-                                  : "bg-red-500 text-white"
-                              }`}
+                              className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${sub.badge === "..."
+                                ? "bg-gray-300 text-gray-800 animate-pulse"
+                                : "bg-red-500 text-white"
+                                }`}
                             >
                               {sub.badge}
                             </span>
@@ -552,12 +549,9 @@ const Sidebar = ({
                             <div
                               key={sub.name}
                               onClick={() => {
-                                if (
-                                  sub.path === "/app/cto-approvals" &&
-                                  canSeePendingApprovals
-                                ) {
+                                if (sub.path === "/app/cto-approvals") {
                                   queryClient.invalidateQueries({
-                                    queryKey: ["ctoPendingCount", adminId],
+                                    queryKey: ["ctoDashboard"],
                                   });
                                 }
 
@@ -567,18 +561,17 @@ const Sidebar = ({
                               style={
                                 subActive
                                   ? {
-                                      backgroundColor: "var(--accent)",
-                                      color: "#fff",
-                                      boxShadow:
-                                        "0 12px 28px -22px var(--accent-ring)",
-                                    }
+                                    backgroundColor: "var(--accent)",
+                                    color: "#fff",
+                                    boxShadow:
+                                      "0 12px 28px -22px var(--accent-ring)",
+                                  }
                                   : { color: "var(--app-muted)" }
                               }
-                              className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${
-                                subActive
-                                  ? ""
-                                  : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
-                              }`}
+                              className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${subActive
+                                ? ""
+                                : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
+                                }`}
                             >
                               <span
                                 style={{

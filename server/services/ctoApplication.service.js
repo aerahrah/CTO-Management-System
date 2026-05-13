@@ -3,7 +3,7 @@ const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const mongoose = require("mongoose");
-
+const { resolveApproversFromRoute } = require("./approvalRoute.service");
 const sendEmail = require("../utils/sendEmail");
 const NotificationService = require("./notificationService");
 
@@ -155,6 +155,7 @@ const addCtoApplicationService = async ({
   userId,
   requestedHours,
   reason,
+  routeId,
   approvers,
   inclusiveDates,
   memos,
@@ -166,9 +167,16 @@ const addCtoApplicationService = async ({
     );
   }
 
-  if (!approvers || approvers.length !== 3 || approvers.some((a) => !a)) {
+  let finalApprovers = [];
+  if (routeId) {
+    finalApprovers = await resolveApproversFromRoute(routeId);
+  } else if (approvers && Array.isArray(approvers)) {
+    finalApprovers = approvers.filter(Boolean);
+  }
+
+  if (!finalApprovers || finalApprovers.length === 0) {
     throw Object.assign(
-      new Error("Three approvers (Level 1, 2, 3) are required."),
+      new Error("At least one approver is required (via route template or custom selection)."),
       { status: 400 },
     );
   }
@@ -275,7 +283,7 @@ const addCtoApplicationService = async ({
   await newApplication.save();
 
   const approvalSteps = await Promise.all(
-    approvers.map((approverId, index) =>
+    finalApprovers.map((approverId, index) =>
       ApprovalStep.create({
         level: index + 1,
         approver: approverId,
@@ -293,7 +301,7 @@ const addCtoApplicationService = async ({
   // Notify approvers
   try {
     await NotificationService.notifyApproversOnCtoSubmission({
-      approverIds: approvers,
+      approverIds: finalApprovers,
       employee,
       ctoApplication: newApplication,
     });

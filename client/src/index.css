@@ -4,7 +4,17 @@
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
- 
 }
 
+/* Disable transitions until theme is applied */
+:root:not(.theme-ready) .theme-transition {
+  transition: none !important;
+}
+
+/* Consistent transition once ready */
+.theme-ready .theme-transition {
+  transition:
+    background-color 220ms ease,
+    color 220ms ease,
+    border-color 220ms ease;
+}

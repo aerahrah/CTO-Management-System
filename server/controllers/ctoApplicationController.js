@@ -10,9 +10,8 @@ const addCtoApplicationRequest = async (req, res) => {
     const {
       requestedHours,
       reason,
-      approver1,
-      approver2,
-      approver3,
+      routeId, // new
+      approvers, // flexible array
       inclusiveDates,
       memos,
     } = req.body;
@@ -23,7 +22,8 @@ const addCtoApplicationRequest = async (req, res) => {
       userId,
       requestedHours,
       reason,
-      approvers: [approver1, approver2, approver3],
+      routeId,
+      approvers,
       inclusiveDates,
       memos,
     });

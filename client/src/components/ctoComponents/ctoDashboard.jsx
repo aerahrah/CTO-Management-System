@@ -1225,134 +1225,143 @@ const CtoDashboard = () => {
                 </div>
               )}
 
-              {/* Priority row */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Urgent Approvals */}
-                <Card className="relative" borderColor={borderColor}>
-                  <CardHeader
-                    title="Approvals queue"
-                    icon={AlertCircle}
-                    subtitle="Items awaiting your review."
-                    borderColor={borderColor}
-                    action={
-                      pendingCount > 0 ? (
-                        <Pill tone="amber">{pendingCount} pending</Pill>
-                      ) : (
-                        <Pill tone="green">Cleared</Pill>
-                      )
-                    }
-                  />
+              {pendingCount > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Priority row */}
 
-                  <div className="p-4">
-                    <div
-                      className="rounded-xl flex flex-col justify-between h-56 border p-4 transition-colors duration-300 ease-out"
-                      style={{
-                        borderColor: borderColor,
-                        backgroundColor: "var(--app-surface-2)",
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="min-w-0 ">
-                          <div
-                            className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            Pending approvals
-                          </div>
-                          <div
-                            className="mt-1 text-5xl font-extrabold transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-text)" }}
-                          >
-                            {pendingCount}
-                          </div>
-                          <div
-                            className="mt-2 text-sm leading-relaxed transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            {pendingCount > 0
-                              ? "Some employees are waiting for approval."
-                              : "All caught up! No approvals currently pending."}
-                          </div>
-                        </div>
+                  {/* Approvals queue */}
+                  <Card className="relative" borderColor={borderColor}>
+                    <CardHeader
+                      title="Approvals queue"
+                      icon={AlertCircle}
+                      subtitle="Items awaiting your review."
+                      borderColor={borderColor}
+                      action={
+                        pendingCount > 0 ? (
+                          <Pill tone="amber">{pendingCount} pending</Pill>
+                        ) : (
+                          <Pill tone="green">Cleared</Pill>
+                        )
+                      }
+                    />
 
-                        <div
-                          className="flex-shrink-0 w-12 h-12 rounded-xl border flex items-center justify-center transition-colors duration-300 ease-out"
-                          style={{
-                            borderColor: borderColor,
-                            backgroundColor: "var(--app-surface)",
-                            color: "var(--app-muted)",
-                          }}
-                        >
-                          <TrendingUp className="w-5 h-5" />
-                        </div>
-                      </div>
-
-                      <div className="mt-4">
-                        <PrimaryButton
-                          disabled={pendingCount === 0}
-                          onClick={() => {
-                            if (pendingCount > 0)
-                              window.location.href = "/app/cto-approvals";
-                          }}
-                          className="w-full"
-                        >
-                          {pendingCount > 0 ? "Process approvals" : "Complete"}
-                        </PrimaryButton>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-
-                {/* Recent Pending */}
-                <Card borderColor={borderColor}>
-                  <CardHeader
-                    title="Recent pending requests"
-                    icon={History}
-                    subtitle="Latest inbound submissions needing review."
-                    borderColor={borderColor}
-                    action={
-                      <Pill tone={pendingRequests.length ? "amber" : "neutral"}>
-                        {pendingRequests.length} new
-                      </Pill>
-                    }
-                  />
-                  <div className="p-4">
-                    {pendingRequests.length > 0 ? (
-                      <div className="max-h-56 overflow-y-auto pr-1 cto-scrollbar">
-                        {pendingRequests.map((req) => (
-                          <PendingRequestItem
-                            key={req.id}
-                            request={req}
-                            borderColor={borderColor}
-                          />
-                        ))}
-                      </div>
-                    ) : (
+                    <div className="p-4">
                       <div
-                        className="rounded-xl border border-dashed p-6 text-center transition-colors duration-300 ease-out"
+                        className="rounded-xl flex flex-col justify-between h-56 border p-4 transition-colors duration-300 ease-out"
                         style={{
                           borderColor: borderColor,
                           backgroundColor: "var(--app-surface-2)",
                         }}
                       >
-                        <div
-                          className="text-sm font-semibold transition-colors duration-300 ease-out"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          No new requests
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0 ">
+                            <div
+                              className="text-[10px] font-bold uppercase tracking-wider"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Pending approvals
+                            </div>
+
+                            <div
+                              className="mt-1 text-5xl font-extrabold"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {pendingCount}
+                            </div>
+
+                            <div
+                              className="mt-2 text-sm leading-relaxed"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              {pendingCount > 0
+                                ? "Some employees are waiting for approval."
+                                : "All caught up! No approvals currently pending."}
+                            </div>
+                          </div>
+
+                          <div
+                            className="flex-shrink-0 w-12 h-12 rounded-xl border flex items-center justify-center"
+                            style={{
+                              borderColor: borderColor,
+                              backgroundColor: "var(--app-surface)",
+                              color: "var(--app-muted)",
+                            }}
+                          >
+                            <TrendingUp className="w-5 h-5" />
+                          </div>
                         </div>
-                        <div
-                          className="text-xs mt-1 transition-colors duration-300 ease-out"
-                          style={{ color: "var(--app-muted)" }}
-                        >
-                          You’re all set—nothing to review right now.
+
+                        <div className="mt-4">
+                          <PrimaryButton
+                            disabled={pendingCount === 0}
+                            onClick={() => {
+                              if (pendingCount > 0)
+                                window.location.href = "/app/cto-approvals";
+                            }}
+                            className="w-full"
+                          >
+                            {pendingCount > 0
+                              ? "Process approvals"
+                              : "Complete"}
+                          </PrimaryButton>
                         </div>
                       </div>
-                    )}
-                  </div>
-                </Card>
-              </div>
+                    </div>
+                  </Card>
 
+                  {/* Recent Pending */}
+                  <Card borderColor={borderColor}>
+                    <CardHeader
+                      title="Recent pending requests"
+                      icon={History}
+                      subtitle="Latest inbound submissions needing review."
+                      borderColor={borderColor}
+                      action={
+                        <Pill
+                          tone={pendingRequests.length ? "amber" : "neutral"}
+                        >
+                          {pendingRequests.length} new
+                        </Pill>
+                      }
+                    />
+
+                    <div className="p-4">
+                      {pendingRequests.length > 0 ? (
+                        <div className="max-h-56 overflow-y-auto pr-1 cto-scrollbar">
+                          {pendingRequests.map((req) => (
+                            <PendingRequestItem
+                              key={req.id}
+                              request={req}
+                              borderColor={borderColor}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div
+                          className="rounded-xl border border-dashed p-6 text-center"
+                          style={{
+                            borderColor: borderColor,
+                            backgroundColor: "var(--app-surface-2)",
+                          }}
+                        >
+                          <div
+                            className="text-sm font-semibold"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            No new requests
+                          </div>
+                          <div
+                            className="text-xs mt-1"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            You’re all set—nothing to review right now.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </div>
+              )}
               {/* My CTO Dashboard */}
               <div className="space-y-3">
                 <SectionTitle

@@ -22,6 +22,9 @@ const notificationRoutes = require("./routers/notificationRoutes");
 // ✅ ADD THIS: email notification settings routes
 const emailNotificationSettingRoutes = require("./routers/emailNotificationSettingsRoutes");
 
+// ✅ ADD THIS: approval routes
+const approvalRouteRoutes = require("./routers/approvalRouteRoute");
+
 const auditLogger = require("./middlewares/auditLogMiddleware");
 
 dotenv.config();
@@ -73,6 +76,12 @@ app.use(cors(corsOptions));
 // ✅ Express 5 safe: RegExp catch-all, NOT "*"
 app.options(/.*/, cors(corsOptions));
 
+// Request logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
 // Health
 app.get("/health", (req, res) => res.json({ status: "ok", env: NODE_ENV }));
 
@@ -96,6 +105,9 @@ app.use("/api/notifications", notificationRoutes);
 // GET  /api/email-notification-settings
 // PUT  /api/email-notification-settings/:key
 app.use("/api/email-notification-settings", emailNotificationSettingRoutes);
+
+// ✅ Flexible Approval Routes
+app.use("/api/approval-routes", approvalRouteRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ message: "Not found" }));

@@ -30,6 +30,7 @@ import CtoRecords from "./components/ctoComponents/ctoRecords";
 import CtoEmployeeInformation from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
 import EmployeePlaceholder from "./components/ctoComponents/ctoApplicationApprovalsComponents/ctoEmployeePlaceholder";
 import EmployeeRecordsPlaceholder from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeRecordPlaceholder";
+import PendingApprovalsGuard from "./components/pendingApprovalsGuard";
 
 /* Employee Components */
 import AddEmployeeForm from "./components/employeeDashboard/forms/addEmployeeForm";
@@ -47,6 +48,7 @@ import WorkingDaysSettings from "./components/generalSettingsComponents/workingD
 
 // ✅ Email Notification Settings
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
+import ApprovalRoutesPage from "./components/generalSettingsComponents/approvalRoutes/approvalRoutesPage";
 
 // ✅ User Preferences Settings (theme + accent)
 import UserPreferencesSettings from "./components/generalSettingsComponents/userPreferencesSetting";
@@ -136,6 +138,7 @@ function App() {
 
             <Route path="cto-apply" element={<CtoApplication />} />
             <Route path="cto-my-credits" element={<MyCtoCredits />} />
+            <Route path="approval-routes" element={<ApprovalRoutesPage />} />
 
             <Route path="my-profile" element={<MyProfile />} />
             <Route path="my-profile/edit" element={<UpdateProfile />} />
@@ -199,15 +202,9 @@ function App() {
           </Route>
 
           {/* ===================== */}
-          {/* ADMIN + SUPERVISOR + HR + EMPLOYEE */}
+          {/* APPROVALS — dynamic guard: accessible only when user has pending count */}
           {/* ===================== */}
-          <Route
-            element={
-              <ProtectedRoute
-                allowedRoles={["admin", "supervisor", "hr", "employee"]}
-              />
-            }
-          >
+          <Route element={<PendingApprovalsGuard />}>
             <Route path="cto-approvals" element={<CtoApplicationApprovals />}>
               <Route index element={<EmployeePlaceholder />} />
               <Route path=":id" element={<CtoApplicationDetails />} />
