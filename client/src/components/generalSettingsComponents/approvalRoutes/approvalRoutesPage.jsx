@@ -58,7 +58,7 @@ const ApprovalRoutesPage = () => {
   // State for the single workflow
   const [steps, setSteps] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+
   // Modal Form State
   const [editingStepId, setEditingStepId] = useState(null);
   const [modalData, setModalData] = useState({
@@ -147,8 +147,8 @@ const ApprovalRoutesPage = () => {
     const payload = {
       name: `${admin?.firstName || 'Personal'}'s Workflow`,
       isPublic: false,
-      steps: newSteps.map((s, i) => ({ 
-        level: i + 1, 
+      steps: newSteps.map((s, i) => ({
+        level: i + 1,
         approver: s.approver,
         role: s.role || "",
         notes: s.notes || "",
@@ -167,10 +167,10 @@ const ApprovalRoutesPage = () => {
 
   const openEditStep = (step) => {
     setEditingStepId(step.id);
-    setModalData({ 
-      approver: step.approver, 
-      role: step.role || "other", 
-      notes: step.notes || "" 
+    setModalData({
+      approver: step.approver,
+      role: step.role || "other",
+      notes: step.notes || ""
     });
     setIsModalOpen(true);
   };
@@ -183,11 +183,11 @@ const ApprovalRoutesPage = () => {
     if (editingStepId) {
       newSteps = steps.map(s => s.id === editingStepId ? { ...s, ...modalData } : s);
     } else {
-      newSteps = [...steps, { 
-        id: Date.now().toString(), 
-        level: steps.length + 1, 
+      newSteps = [...steps, {
+        id: Date.now().toString(),
+        level: steps.length + 1,
         isEnabled: true,
-        ...modalData 
+        ...modalData
       }];
     }
     setSteps(newSteps);
@@ -225,9 +225,9 @@ const ApprovalRoutesPage = () => {
         </div>
         <div className="flex gap-3">
           {mutation.isPending && (
-             <div className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-500">
-               Saving...
-             </div>
+            <div className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-slate-500">
+              Saving...
+            </div>
           )}
           <button
             onClick={openCreateStep}
@@ -269,16 +269,16 @@ const ApprovalRoutesPage = () => {
         {/* Table Toolbar */}
         <div className="p-4 border-b flex items-center justify-between gap-4" style={{ borderColor }}>
           <div className="flex items-center gap-3">
-             <div className="p-2 rounded-lg hover:bg-slate-50 transition cursor-pointer" style={{ color: "var(--app-muted)" }}>
-               <GripVertical size={18} />
-             </div>
+            <div className="p-2 rounded-lg hover:bg-slate-50 transition cursor-pointer" style={{ color: "var(--app-muted)" }}>
+              <GripVertical size={18} />
+            </div>
           </div>
-          
+
           <div className="flex-1 max-w-md relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" />
-            <input 
-              type="text" 
-              placeholder="Search..." 
+            <input
+              type="text"
+              placeholder="Search..."
               className="w-full pl-10 pr-4 py-2 rounded-xl text-sm outline-none border transition-all focus:ring-2 focus:ring-blue-500/20"
               style={{ backgroundColor: "var(--app-surface-2)", borderColor, color: "var(--app-text)" }}
             />
@@ -296,13 +296,13 @@ const ApprovalRoutesPage = () => {
           {steps.length === 0 ? (
             <div className="p-12 text-center flex flex-col items-center">
               <div className="w-16 h-16 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500 mb-4">
-                 <RouteIcon size={32} />
+                <RouteIcon size={32} />
               </div>
               <h3 className="text-lg font-bold" style={{ color: "var(--app-text)" }}>No Steps Configured</h3>
               <p className="text-sm mt-1 max-w-sm" style={{ color: "var(--app-muted)" }}>
                 You haven't added any steps to your workflow yet. Click "Create Step" to assign an approver and map their signature role.
               </p>
-              <button 
+              <button
                 onClick={openCreateStep}
                 className="mt-6 px-5 py-2.5 rounded-xl font-bold text-white shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]"
                 style={{ backgroundColor: "var(--accent)" }}
@@ -326,7 +326,7 @@ const ApprovalRoutesPage = () => {
                 {steps.map((step, idx) => {
                   const selectedApprover = approverOptions.find(o => o.value === step.approver);
                   const roleObj = APPROVER_ROLES.find(r => r.id === step.role);
-                  
+
                   return (
                     <tr key={step.id} className="group hover:bg-slate-50/50 transition-colors">
                       <td className="px-6 py-6">
@@ -343,43 +343,43 @@ const ApprovalRoutesPage = () => {
                         </div>
                       </td>
                       <td className="px-6 py-6">
-                         <span className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                           {roleObj?.label || "None"}
-                         </span>
+                        <span className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                          {roleObj?.label || "None"}
+                        </span>
                       </td>
                       <td className="px-6 py-6">
-                         <p className="text-xs max-w-[200px] truncate" style={{ color: "var(--app-muted)" }}>
-                           {step.notes || "—"}
-                         </p>
+                        <p className="text-xs max-w-[200px] truncate" style={{ color: "var(--app-muted)" }}>
+                          {step.notes || "—"}
+                        </p>
                       </td>
                       <td className="px-6 py-6">
-                         <div className="flex justify-center">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                              <input 
-                                type="checkbox" 
-                                className="sr-only peer" 
-                                checked={step.isEnabled !== false} 
-                                onChange={() => toggleStepEnabled(step.id)} 
-                              />
-                              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                            </label>
-                         </div>
+                        <div className="flex justify-center">
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={step.isEnabled !== false}
+                              onChange={() => toggleStepEnabled(step.id)}
+                            />
+                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                          </label>
+                        </div>
                       </td>
                       <td className="px-6 py-6">
-                         <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button 
-                              onClick={() => openEditStep(step)}
-                              className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition"
-                            >
-                              <MoreHorizontal size={18} />
-                            </button>
-                            <button 
-                              onClick={() => removeStep(step.id)}
-                              className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                         </div>
+                        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => openEditStep(step)}
+                            className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition"
+                          >
+                            <MoreHorizontal size={18} />
+                          </button>
+                          <button
+                            onClick={() => removeStep(step.id)}
+                            className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -393,7 +393,7 @@ const ApprovalRoutesPage = () => {
       {/* Modal for Creating/Editing a Step */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-in fade-in p-4">
-          <div 
+          <div
             className="w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
             style={{ backgroundColor: cardBg, border: `1px solid ${borderColor}` }}
           >
@@ -413,7 +413,7 @@ const ApprovalRoutesPage = () => {
                   <h3 className="text-sm font-bold flex items-center gap-2 mb-4" style={{ color: "var(--app-text)" }}>
                     <RouteIcon size={16} /> Step Configuration
                   </h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div className="space-y-2">
                       <label className="text-xs font-bold" style={{ color: "var(--app-muted)" }}>Sequence Number <span className="text-red-500">*</span></label>
@@ -436,7 +436,7 @@ const ApprovalRoutesPage = () => {
 
                   <div className="space-y-2">
                     <label className="text-xs font-bold" style={{ color: "var(--app-muted)" }}>Internal Notes</label>
-                    <textarea 
+                    <textarea
                       value={modalData.notes}
                       onChange={(e) => setModalData(p => ({ ...p, notes: e.target.value }))}
                       placeholder="Describe the purpose of this approval step..."
@@ -456,14 +456,13 @@ const ApprovalRoutesPage = () => {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {APPROVER_ROLES.map((role) => (
-                      <div 
+                      <div
                         key={role.id}
                         onClick={() => setModalData(p => ({ ...p, role: role.id }))}
-                        className={`flex gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
-                          modalData.role === role.id 
-                            ? "bg-blue-50 border-blue-200 shadow-sm" 
+                        className={`flex gap-3 p-3 rounded-xl border cursor-pointer transition-all ${modalData.role === role.id
+                            ? "bg-blue-50 border-blue-200 shadow-sm"
                             : "hover:bg-slate-50"
-                        }`}
+                          }`}
                         style={{ borderColor: modalData.role !== role.id ? borderColor : undefined }}
                       >
                         <div className="pt-0.5">
@@ -488,14 +487,14 @@ const ApprovalRoutesPage = () => {
             </div>
 
             <div className="p-4 border-t flex justify-end gap-3 bg-slate-50/50" style={{ borderColor }}>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="px-5 py-2.5 rounded-xl font-bold border transition-colors hover:bg-slate-100"
                 style={{ borderColor, color: "var(--app-text)" }}
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={saveModalStep}
                 className="px-6 py-2.5 rounded-xl font-bold text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 style={{ backgroundColor: "var(--accent)" }}

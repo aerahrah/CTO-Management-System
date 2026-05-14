@@ -11,13 +11,13 @@ const {
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
 // ✅ reuse auth middleware for these routes
-const settingsAuth = [authenticateToken, authorizeRoles("admin", "hr")];
+const settingsAuth = [authenticateToken, authorize("settings.edit")];
 
 /* =========================
    SESSION SETTINGS

@@ -7,7 +7,7 @@ import React, {
   useRef,
 } from "react";
 import { toast } from "react-toastify";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../../store/authStore";
 import {
   ShieldCheck,
@@ -19,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { updateEmployeeRole } from "../../api/employee";
+import { getRoles } from "../../api/role";
 
 /* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
@@ -77,32 +78,7 @@ const getRoleTone = (roleId, resolvedTheme) => {
   return tones[roleId] || tones.employee;
 };
 
-const roleDetailsBase = [
-  {
-    id: "employee",
-    label: "Employee",
-    desc: "Basic access to personal profile and CTO",
-    icon: User,
-  },
-  {
-    id: "supervisor",
-    label: "Supervisor",
-    desc: "Can manage team approvals.",
-    icon: Briefcase,
-  },
-  {
-    id: "hr",
-    label: "HR Manager",
-    desc: "Full access to employee records and CTOs.",
-    icon: Users2,
-  },
-  {
-    id: "admin",
-    label: "System Admin",
-    desc: "Total control over system settings and roles.",
-    icon: ShieldCheck,
-  },
-];
+// Removed static roleDetailsBase
 
 const EmployeeRoleChanger = forwardRef(
   (
@@ -148,22 +124,30 @@ const EmployeeRoleChanger = forwardRef(
       };
     }, []);
 
+    const { data: roles, isLoading: isRolesLoading } = useQuery({
+      queryKey: ["roles"],
+      queryFn: getRoles,
+      staleTime: 5 * 60 * 1000,
+    });
+
     const submitLockRef = useRef(false);
     const submittedSuccessRef = useRef(false);
 
-    const [selectedRole, setSelectedRole] = useState(currentRole || "employee");
+    const currentRoleId = typeof currentRole === 'object' ? currentRole?._id : currentRole;
+
+    const [selectedRole, setSelectedRole] = useState(currentRoleId || "");
     const [lockAfterSuccess, setLockAfterSuccess] = useState(false);
 
     useEffect(() => {
-      setSelectedRole(currentRole || "employee");
+      setSelectedRole(currentRoleId || "");
       setLockAfterSuccess(false);
       submitLockRef.current = false;
       submittedSuccessRef.current = false;
-    }, [employeeId, currentRole]);
+    }, [employeeId, currentRoleId]);
 
     const dirty = useMemo(
-      () => (currentRole || "employee") !== selectedRole,
-      [currentRole, selectedRole],
+      () => (currentRoleId || "") !== selectedRole,
+      [currentRoleId, selectedRole],
     );
 
     useEffect(() => {
@@ -241,7 +225,7 @@ const EmployeeRoleChanger = forwardRef(
       cancel,
       isLoading: busy,
       isDirty: dirty,
-      reset: () => setSelectedRole(currentRole || "employee"),
+      reset: () => setSelectedRole(currentRoleId || ""),
     }));
 
     return (
@@ -265,18 +249,23 @@ const EmployeeRoleChanger = forwardRef(
           </div>
 
           <div className="space-y-2">
-            {roleDetailsBase.map((role) => {
-              const Icon = role.icon;
-              const isActive = selectedRole === role.id;
-              const isCurrent = (currentRole || "employee") === role.id;
-              const tone = getRoleTone(role.id, resolvedTheme);
+            {isRolesLoading ? (
+              <div className="flex justify-center p-4">
+                <Loader2 className="w-6 h-6 animate-spin text-[var(--app-muted)]" />
+              </div>
+            ) : (
+              roles?.map((role) => {
+                const Icon = ShieldCheck;
+                const isActive = selectedRole === role._id;
+                const isCurrent = (currentRoleId || "") === role._id;
+                const tone = getRoleTone(role.name.toLowerCase(), resolvedTheme);
 
               return (
                 <button
-                  key={role.id}
+                  key={role._id}
                   type="button"
                   disabled={busy}
-                  onClick={() => setSelectedRole(role.id)}
+                  onClick={() => setSelectedRole(role._id)}
                   className={`w-full flex items-start gap-3 p-4 rounded-2xl border transition text-left ${
                     busy ? "opacity-60 cursor-not-allowed" : ""
                   }`}
@@ -324,7 +313,7 @@ const EmployeeRoleChanger = forwardRef(
                         className="font-bold text-sm transition-colors duration-300 ease-out"
                         style={{ color: "var(--app-text)" }}
                       >
-                        {role.label}
+                        {role.name}
                       </span>
 
                       {isCurrent && (
@@ -340,7 +329,7 @@ const EmployeeRoleChanger = forwardRef(
                         className="text-[10px] font-bold px-2 py-0.5 rounded-full border"
                         style={tone.pill}
                       >
-                        {role.id.toUpperCase()}
+                        {role.name.toUpperCase()}
                       </span>
                     </div>
 
@@ -348,7 +337,7 @@ const EmployeeRoleChanger = forwardRef(
                       className="text-xs mt-1 transition-colors duration-300 ease-out"
                       style={{ color: "var(--app-muted)" }}
                     >
-                      {role.desc}
+                      {role.description || "No description."}
                     </p>
                   </div>
 
@@ -360,7 +349,7 @@ const EmployeeRoleChanger = forwardRef(
                   )}
                 </button>
               );
-            })}
+            }))}
           </div>
 
           <div className="pt-2">
@@ -373,7 +362,7 @@ const EmployeeRoleChanger = forwardRef(
                 className="font-bold transition-colors duration-300 ease-out"
                 style={{ color: "var(--app-text)" }}
               >
-                {String(selectedRole).toUpperCase()}
+                {roles?.find(r => r._id === selectedRole)?.name?.toUpperCase() || "NONE"}
               </span>
               {!dirty && (
                 <span

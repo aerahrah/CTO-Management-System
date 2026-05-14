@@ -1287,7 +1287,9 @@ const CtoApplicationDetails = () => {
                   Total Duration
                 </p>
                 <p className="text-xl font-bold">
-                  {application.requestedHours} Hours
+                  {application.type === "WELLNESS" 
+                    ? `${application.totalDays} Days`
+                    : `${application.requestedHours} Hours`}
                 </p>
               </div>
             </div>

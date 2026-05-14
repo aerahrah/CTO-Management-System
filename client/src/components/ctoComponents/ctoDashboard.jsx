@@ -7,6 +7,7 @@ import { useAuth } from "../../store/authStore";
 import Breadcrumbs from "../breadCrumbs";
 import ThemeSync from "../themeSync";
 import ScrollbarsSync from "../../components/scrollbarSync";
+import { usePermissions } from "../../hooks/usePermissions";
 
 import {
   Activity,
@@ -221,17 +222,17 @@ const PrimaryButton = ({
     style={
       disabled
         ? {
-            backgroundColor: "var(--app-surface-2)",
-            color: "var(--app-muted)",
-            borderColor: "var(--app-border)",
-            cursor: "not-allowed",
-            opacity: 0.7,
-          }
+          backgroundColor: "var(--app-surface-2)",
+          color: "var(--app-muted)",
+          borderColor: "var(--app-border)",
+          cursor: "not-allowed",
+          opacity: 0.7,
+        }
         : {
-            backgroundColor: "var(--accent)",
-            color: "#fff",
-            borderColor: "var(--accent)",
-          }
+          backgroundColor: "var(--accent)",
+          color: "#fff",
+          borderColor: "var(--accent)",
+        }
     }
     onMouseEnter={(e) => {
       if (disabled) return;
@@ -392,7 +393,8 @@ const Skeleton = ({ className = "" }) => (
 );
 
 const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
-  const showOrg = role === "admin" || role === "hr";
+  const { can } = usePermissions();
+  const showOrg = can("cto.view_all");
 
   const SkIconBox = ({ sizeClass = "w-10 h-10", inner = "w-5 h-5" }) => (
     <div
@@ -970,13 +972,13 @@ const PendingRequestItem = ({ request, borderColor }) => {
 
   const formattedDate = request.createdAt
     ? new Intl.DateTimeFormat("en-US", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "numeric",
-        hour12: true,
-      }).format(new Date(request.createdAt))
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: true,
+    }).format(new Date(request.createdAt))
     : "Date N/A";
 
   return (
@@ -1006,7 +1008,7 @@ const PendingRequestItem = ({ request, borderColor }) => {
                 {request.employeeName}
               </div>
               <Pill tone="blue" className="normal-case">
-                {request.requestedHours}h
+                {request.requestedHours}h (CTO)
               </Pill>
             </div>
             <div
@@ -1020,6 +1022,7 @@ const PendingRequestItem = ({ request, borderColor }) => {
 
         <Link
           to={`/app/cto-approvals/${request.id}`}
+          state={{ type: request.type }}
           className="inline-flex items-center justify-center rounded-lg px-3 py-2 text-xs font-bold border transition-colors duration-300 ease-out"
           style={{
             backgroundColor: "var(--accent)",
@@ -1049,6 +1052,8 @@ const CtoDashboard = () => {
 
   const { admin } = useAuth();
   const role = admin?.role;
+  const { can } = usePermissions();
+  const showOrg = can("cto.view_all");
 
   // Theme-aware styling (design only)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
@@ -1061,7 +1066,7 @@ const CtoDashboard = () => {
   }, [resolvedTheme]);
 
   // Keep your existing useEffect import; no removal.
-  useEffect(() => {}, []);
+  useEffect(() => { }, []);
 
   if (isLoading)
     return (
@@ -1181,7 +1186,7 @@ const CtoDashboard = () => {
             {/* MAIN */}
             <div className="xl:col-span-8 space-y-4">
               {/* Organization Insights */}
-              {(role === "admin" || role === "hr") && (
+              {showOrg && (
                 <div className="space-y-3">
                   <SectionTitle
                     icon={ShieldCheck}
@@ -1603,7 +1608,7 @@ const CtoDashboard = () => {
                 />
                 <div className="p-4">
                   {myCtoSummary?.recentRequests &&
-                  myCtoSummary.recentRequests.length > 0 ? (
+                    myCtoSummary.recentRequests.length > 0 ? (
                     <div
                       className="border rounded-xl overflow-hidden transition-colors duration-300 ease-out"
                       style={{

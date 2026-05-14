@@ -6,6 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../api/employee";
 import { fetchDashboard } from "../api/cto";
 import { useAuth } from "../store/authStore";
+import { usePermissions } from "../hooks/usePermissions";
 import ScrollbarsSync from "./scrollbarSync";
 
 import {
@@ -72,7 +73,8 @@ const Sidebar = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const role = admin?.role;
+  const { can } = usePermissions();
+  const role = typeof admin?.role === 'string' ? admin?.role : admin?.role?.name;
 
   // ✅ Reusable scrollbar sync (themes html/body + any .app-scrollbar containers)
   // (same pattern as UserPreferencesSettings)
@@ -149,6 +151,7 @@ const Sidebar = ({
             name: "Credit CTO",
             path: "/app/cto-credit",
             icon: <CirclePlus size={14} />,
+            requiredPermission: "cto.view_all",
             roles: ["admin", "hr"],
           },
           {
@@ -162,6 +165,11 @@ const Sidebar = ({
             icon: <PenLine size={14} />,
           },
           {
+            name: "Apply Wellness Leave",
+            path: "/app/wellness-apply",
+            icon: <PenLine size={14} />,
+          },
+          {
             name: "Approval Routes",
             path: "/app/approval-routes",
             icon: <Route size={14} />,
@@ -171,6 +179,7 @@ const Sidebar = ({
             name: "All CTO Applications",
             path: "/app/cto-all-applications",
             icon: <Files size={14} />,
+            requiredPermission: "cto.view_all",
             roles: ["admin", "hr"],
           },
           // Only show Pending Approvals when pendingCount > 0 (mirrors ctoDashboard.jsx)
@@ -189,6 +198,7 @@ const Sidebar = ({
             name: "All CTO Records",
             path: "/app/cto-records",
             icon: <Archive size={14} />,
+            requiredPermission: "cto.view_all",
             roles: ["admin", "hr"],
           },
         ],
@@ -197,6 +207,7 @@ const Sidebar = ({
         name: "Employee Management",
         icon: <UserRound size={18} />,
         path: "/app/employees",
+        requiredPermission: "employees.view",
         roles: ["admin", "hr"],
       },
       {
@@ -214,17 +225,25 @@ const Sidebar = ({
         name: "Audit Logs",
         icon: <ShieldCheck size={18} />,
         path: "/app/audit-logs",
+        requiredPermission: "settings.view",
         roles: ["admin", "hr"],
       },
       {
         name: "General Settings",
         icon: <Settings size={18} />,
+        requiredPermission: "settings.view",
         roles: ["admin", "hr"],
         subItems: [
           {
             name: "Designations Settings",
             path: "/app/designations",
             icon: <MapPin size={14} />,
+          },
+          {
+            name: "Roles & Permissions",
+            path: "/app/roles",
+            icon: <ShieldCheck size={14} />,
+            requiredPermission: "settings.edit",
           },
           {
             name: "Projects Settings",
@@ -294,11 +313,19 @@ const Sidebar = ({
   };
 
   const filteredItems = menuItems
-    .filter((item) => !item.roles || item.roles.includes(role))
+    .filter((item) => {
+      if (item.requiredPermission) return can(item.requiredPermission);
+      if (item.roles) return item.roles.includes(role);
+      return true;
+    })
     .map((item) => ({
       ...item,
       subItems: item.subItems?.filter(
-        (sub) => !sub.roles || sub.roles.includes(role),
+        (sub) => {
+          if (sub.requiredPermission) return can(sub.requiredPermission);
+          if (sub.roles) return sub.roles.includes(role);
+          return true;
+        },
       ),
     }));
 

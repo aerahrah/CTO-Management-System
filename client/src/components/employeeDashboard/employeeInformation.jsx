@@ -697,7 +697,7 @@ const EmployeeInformation = () => {
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       <Pill tone="slate" resolvedTheme={resolvedTheme}>
-                        Employee
+                        {emp?.role?.name || "Employee"}
                       </Pill>
                       {emp?.dateHired && (
                         <Pill tone="emerald" resolvedTheme={resolvedTheme}>

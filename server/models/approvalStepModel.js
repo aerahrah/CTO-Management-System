@@ -18,7 +18,12 @@ const approvalStepSchema = new mongoose.Schema(
     ctoApplication: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CtoApplication",
-      required: true,
+      required: false,
+    },
+    wellnessApplication: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "WellnessApplication",
+      required: false,
     },
   },
   { timestamps: true },

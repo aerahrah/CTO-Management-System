@@ -7,7 +7,7 @@ const {
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
@@ -16,7 +16,7 @@ const router = express.Router();
 router.get(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   getEmailNotificationSettingsController,
 );
 
@@ -26,7 +26,7 @@ router.get(
 router.put(
   "/:key",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   updateEmailNotificationSettingController,
 );
 

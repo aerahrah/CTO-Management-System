@@ -5,49 +5,49 @@ const projectController = require("../controllers/projectController");
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware.js");
 
 router.post(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.create,
 );
 router.get(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.list,
 );
 router.get(
   "/options",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.listAll,
 );
 router.get(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.getOne,
 );
 router.patch(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.update,
 );
 router.delete(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.remove,
 );
 router.patch(
   "/:id/status",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   projectController.updateStatus,
 );
 

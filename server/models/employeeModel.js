@@ -14,9 +14,9 @@ const employeeSchema = new mongoose.Schema(
     },
 
     role: {
-      type: String,
-      enum: ["employee", "supervisor", "hr", "admin"],
-      default: "employee",
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Role",
+      required: true,
     },
 
     designation: {
@@ -50,6 +50,7 @@ const employeeSchema = new mongoose.Schema(
       vlHours: { type: Number, default: 0 },
       slHours: { type: Number, default: 0 },
       ctoHours: { type: Number, default: 0 },
+      wellnessDays: { type: Number, default: 0 },
     },
 
     address: {

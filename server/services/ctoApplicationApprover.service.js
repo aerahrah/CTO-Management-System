@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const ApprovalStep = require("../models/approvalStepModel");
 const CtoApplication = require("../models/ctoApplicationModel");
+const WellnessApplication = require("../models/wellnessApplicationModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const NotificationService = require("./notificationService");
@@ -254,9 +255,9 @@ const getCtoApplicationsForApproverService = async (
 
 const getCtoApplicationByIdService = async (ctoApplicationId) => {
   if (!ctoApplicationId)
-    throw httpError("CTO Application ID is required.", 400);
+    throw httpError("Application ID is required.", 400);
 
-  const application = await CtoApplication.findById(ctoApplicationId)
+  let application = await CtoApplication.findById(ctoApplicationId)
     .populate({
       path: "employee",
       select: "firstName lastName position department",
@@ -267,8 +268,36 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
     })
     .populate({ path: "memo.memoId", select: "memoNo" });
 
-  if (!application) throw httpError("CTO Application not found", 404);
-  return application;
+  if (!application) {
+    application = await WellnessApplication.findById(ctoApplicationId)
+      .populate({
+        path: "employee",
+        select: "firstName lastName position department",
+      })
+      .populate({
+        path: "approvals",
+        populate: { path: "approver", select: "firstName lastName position" },
+      });
+  }
+
+  if (!application) throw httpError("Application not found", 404);
+  
+  // Tag with type so frontend knows what to render
+  const appObj = application.toObject ? application.toObject() : application;
+  appObj.type = appObj.totalDays !== undefined ? "WELLNESS" : "CTO";
+  
+  if (appObj.type === "WELLNESS" && appObj.startDate && appObj.endDate) {
+    const dates = [];
+    let cur = new Date(appObj.startDate);
+    const end = new Date(appObj.endDate);
+    while (cur <= end) {
+      dates.push(cur.toISOString());
+      cur.setDate(cur.getDate() + 1);
+    }
+    appObj.inclusiveDates = dates;
+  }
+  
+  return appObj;
 };
 
 const approveCtoApplicationService = async ({
@@ -283,12 +312,22 @@ const approveCtoApplicationService = async ({
   session.startTransaction();
 
   try {
-    const application = await CtoApplication.findById(applicationId)
+    let application = await CtoApplication.findById(applicationId)
       .populate("approvals")
       .populate("employee")
       .session(session);
+      
+    let isWellness = false;
 
-    if (!application) throw httpError("CTO Application not found.", 404);
+    if (!application) {
+      application = await WellnessApplication.findById(applicationId)
+        .populate("approvals")
+        .populate("employee")
+        .session(session);
+      isWellness = true;
+    }
+
+    if (!application) throw httpError("Application not found.", 404);
     if (application.overallStatus !== "PENDING")
       throw httpError("Application already processed.", 400);
 
@@ -334,53 +373,55 @@ const approveCtoApplicationService = async ({
 
       const employeeId = application.employee._id;
 
-      for (const memoItem of application.memo || []) {
-        const memoId = memoItem.memoId;
-        const credit = await CtoCredit.findById(memoId).session(session);
-        if (!credit) continue;
+      if (!isWellness) {
+        for (const memoItem of application.memo || []) {
+          const memoId = memoItem.memoId;
+          const credit = await CtoCredit.findById(memoId).session(session);
+          if (!credit) continue;
 
-        const empCredit = credit.employees.find(
-          (e) => String(e.employee) === String(employeeId),
-        );
-        if (!empCredit) continue;
+          const empCredit = credit.employees.find(
+            (e) => String(e.employee) === String(employeeId),
+          );
+          if (!empCredit) continue;
 
-        const appliedHours = Number(memoItem.appliedHours || 0);
-        if (appliedHours <= 0) continue;
+          const appliedHours = Number(memoItem.appliedHours || 0);
+          if (appliedHours <= 0) continue;
 
-        if ((empCredit.reservedHours || 0) < appliedHours) {
-          throw httpError(
-            "Reserved hours mismatch. Please contact admin.",
-            400,
+          if ((empCredit.reservedHours || 0) < appliedHours) {
+            throw httpError(
+              "Reserved hours mismatch. Please contact admin.",
+              400,
+            );
+          }
+
+          empCredit.reservedHours = (empCredit.reservedHours || 0) - appliedHours;
+          empCredit.usedHours = (empCredit.usedHours || 0) + appliedHours;
+          empCredit.remainingHours =
+            (empCredit.creditedHours || 0) -
+            (empCredit.usedHours || 0) -
+            (empCredit.reservedHours || 0);
+
+          if (empCredit.remainingHours <= 0) {
+            empCredit.remainingHours = 0;
+            empCredit.status = "EXHAUSTED";
+          }
+
+          await CtoCredit.updateOne(
+            { _id: credit._id, "employees.employee": employeeId },
+            { $set: { "employees.$": empCredit } },
+            { session },
           );
         }
 
-        empCredit.reservedHours = (empCredit.reservedHours || 0) - appliedHours;
-        empCredit.usedHours = (empCredit.usedHours || 0) + appliedHours;
-        empCredit.remainingHours =
-          (empCredit.creditedHours || 0) -
-          (empCredit.usedHours || 0) -
-          (empCredit.reservedHours || 0);
+        const newBal =
+          (application.employee.balances?.ctoHours || 0) -
+          (application.requestedHours || 0);
+        if (newBal < 0)
+          throw httpError("Employee CTO balance would go negative.", 400);
 
-        if (empCredit.remainingHours <= 0) {
-          empCredit.remainingHours = 0;
-          empCredit.status = "EXHAUSTED";
-        }
-
-        await CtoCredit.updateOne(
-          { _id: credit._id, "employees.employee": employeeId },
-          { $set: { "employees.$": empCredit } },
-          { session },
-        );
+        application.employee.balances.ctoHours = newBal;
+        await application.employee.save({ session });
       }
-
-      const newBal =
-        (application.employee.balances?.ctoHours || 0) -
-        (application.requestedHours || 0);
-      if (newBal < 0)
-        throw httpError("Employee CTO balance would go negative.", 400);
-
-      application.employee.balances.ctoHours = newBal;
-      await application.employee.save({ session });
     }
 
     await session.commitTransaction();
@@ -400,7 +441,7 @@ const approveCtoApplicationService = async ({
     };
 
     const auditDetails = buildAuditDetails({
-      endpoint: "Approve CTO Application",
+      endpoint: "Approve Application",
       actor: auditBody.approverName,
       targetUser: auditBody.employeeName,
       body: auditBody,
@@ -412,7 +453,7 @@ const approveCtoApplicationService = async ({
       userId: approverId,
       username: auditBody.approverUsername,
       method: "POST",
-      endpoint: "Approve CTO Application",
+      endpoint: "Approve Application",
       url: `/cto/applications/approver/${application._id}/approve`,
       statusCode: 200,
       ip: getClientIp(req),
@@ -493,16 +534,29 @@ const approveCtoApplicationService = async ({
       }
     }
 
-    return CtoApplication.findById(applicationId)
-      .populate({
-        path: "approvals",
-        populate: {
-          path: "approver",
-          select: "firstName lastName position email",
-        },
-      })
-      .populate("employee", "firstName lastName position email")
-      .populate("memo.memoId", "memoNo uploadedMemo");
+    // Re-fetch appropriately
+    if (isWellness) {
+      return WellnessApplication.findById(applicationId)
+        .populate({
+          path: "approvals",
+          populate: {
+            path: "approver",
+            select: "firstName lastName position email",
+          },
+        })
+        .populate("employee", "firstName lastName position email");
+    } else {
+      return CtoApplication.findById(applicationId)
+        .populate({
+          path: "approvals",
+          populate: {
+            path: "approver",
+            select: "firstName lastName position email",
+          },
+        })
+        .populate("employee", "firstName lastName position email")
+        .populate("memo.memoId", "memoNo uploadedMemo");
+    }
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -523,13 +577,23 @@ const rejectCtoApplicationService = async ({
   session.startTransaction();
 
   try {
-    const application = await CtoApplication.findById(applicationId)
+    let application = await CtoApplication.findById(applicationId)
       .populate("approvals")
       .populate("memo.memoId")
       .populate("employee", "username firstName lastName email balances")
       .session(session);
+      
+    let isWellness = false;
 
-    if (!application) throw httpError("CTO Application not found.", 404);
+    if (!application) {
+      application = await WellnessApplication.findById(applicationId)
+        .populate("approvals")
+        .populate("employee", "username firstName lastName email balances")
+        .session(session);
+      isWellness = true;
+    }
+
+    if (!application) throw httpError("Application not found.", 404);
     if (application.overallStatus !== "PENDING")
       throw httpError("Application already processed.", 400);
 
@@ -556,36 +620,45 @@ const rejectCtoApplicationService = async ({
 
     const employeeId = application.employee._id;
 
-    for (const memoItem of application.memo || []) {
-      const memoId = memoItem.memoId?._id || memoItem.memoId;
-      const appliedHours = Number(memoItem.appliedHours || 0);
-      if (!memoId || appliedHours <= 0) continue;
+    if (isWellness) {
+      // Refund Wellness Days
+      await Employee.updateOne(
+        { _id: employeeId },
+        { $inc: { "balances.wellnessDays": application.totalDays } },
+        { session }
+      );
+    } else {
+      for (const memoItem of application.memo || []) {
+        const memoId = memoItem.memoId?._id || memoItem.memoId;
+        const appliedHours = Number(memoItem.appliedHours || 0);
+        if (!memoId || appliedHours <= 0) continue;
 
-      const res = await CtoCredit.updateOne(
-        {
-          _id: memoId,
-          employees: {
-            $elemMatch: {
-              employee: employeeId,
-              reservedHours: { $gte: appliedHours },
+        const res = await CtoCredit.updateOne(
+          {
+            _id: memoId,
+            employees: {
+              $elemMatch: {
+                employee: employeeId,
+                reservedHours: { $gte: appliedHours },
+              },
             },
           },
-        },
-        {
-          $inc: {
-            "employees.$.reservedHours": -appliedHours,
-            "employees.$.remainingHours": appliedHours,
+          {
+            $inc: {
+              "employees.$.reservedHours": -appliedHours,
+              "employees.$.remainingHours": appliedHours,
+            },
+            $set: { "employees.$.status": "ACTIVE" },
           },
-          $set: { "employees.$.status": "ACTIVE" },
-        },
-        { session },
-      );
-
-      if (res.modifiedCount !== 1) {
-        throw httpError(
-          "Failed to release reserved hours (data mismatch).",
-          400,
+          { session },
         );
+
+        if (res.modifiedCount !== 1) {
+          throw httpError(
+            "Failed to release reserved hours (data mismatch).",
+            400,
+          );
+        }
       }
     }
 
@@ -638,7 +711,7 @@ const rejectCtoApplicationService = async ({
     };
 
     const auditDetails = buildAuditDetails({
-      endpoint: "Reject CTO Application",
+      endpoint: "Reject Application",
       actor: auditBody.approverName,
       targetUser: auditBody.employeeName,
       body: auditBody,
@@ -650,7 +723,7 @@ const rejectCtoApplicationService = async ({
       userId: approverId,
       username: auditBody.approverUsername,
       method: "POST",
-      endpoint: "Reject CTO Application",
+      endpoint: "Reject Application",
       url: `/cto/applications/approver/${application._id}/reject`,
       statusCode: 200,
       ip: getClientIp(req),
@@ -700,13 +773,22 @@ const rejectCtoApplicationService = async ({
       }
     }
 
-    return CtoApplication.findById(applicationId)
-      .populate({
-        path: "approvals",
-        populate: { path: "approver", select: "firstName lastName position" },
-      })
-      .populate("employee", "firstName lastName position email")
-      .populate("memo.memoId", "memoNo uploadedMemo");
+    if (isWellness) {
+      return WellnessApplication.findById(applicationId)
+        .populate({
+          path: "approvals",
+          populate: { path: "approver", select: "firstName lastName position" },
+        })
+        .populate("employee", "firstName lastName position email");
+    } else {
+      return CtoApplication.findById(applicationId)
+        .populate({
+          path: "approvals",
+          populate: { path: "approver", select: "firstName lastName position" },
+        })
+        .populate("employee", "firstName lastName position email")
+        .populate("memo.memoId", "memoNo uploadedMemo");
+    }
   } catch (err) {
     await session.abortTransaction();
     session.endSession();

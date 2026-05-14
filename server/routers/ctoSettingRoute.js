@@ -8,7 +8,7 @@ const {
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware.js");
 
 const router = express.Router();
@@ -16,25 +16,28 @@ const router = express.Router();
 router.get(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   getAllApproverSettings,
 );
 router.get(
   "/:designationId",
   authenticateToken,
-  authorizeRoles("admin", "hr", "employee", "supervisor"),
+  // We can just rely on authenticateToken since anyone can get settings
+  // But strictly, anyone with basic viewing permissions
+  // Let's just remove authorize for reading settings
+
   getApproversByDesignation,
 );
 router.post(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   upsertApproverSetting,
 );
 router.delete(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   deleteApproverSetting,
 );
 

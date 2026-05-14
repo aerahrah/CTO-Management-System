@@ -23,6 +23,7 @@ const notificationSchema = new mongoose.Schema(
         "CTO_APPLICATION_APPROVED",
         "CTO_APPLICATION_REJECTED",
         "CTO_APPLICATION_CANCELLED",
+        "WELLNESS_APPROVAL_REQUIRED",
         "CTO_CREDITED",
         "CTO_ROLLEDBACK",
         "GENERAL",

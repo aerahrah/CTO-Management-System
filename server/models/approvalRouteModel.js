@@ -22,6 +22,13 @@ const approvalRouteSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // The routing group category
+    category: {
+      type: String,
+      enum: ["sick_vacation", "cto_wellness"],
+      default: "cto_wellness",
+      required: true,
+    },
     // Ordered list of approver steps (level 1 → N)
     steps: [
       {

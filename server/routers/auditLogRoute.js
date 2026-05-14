@@ -4,13 +4,13 @@ const router = express.Router();
 const auditLogController = require("../controllers/auditLogController");
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware");
 
 router.get(
   "/",
   authenticateToken,
-  authorizeRoles("admin"),
+  authorize("settings.view"),
   auditLogController.getAuditLogs,
 );
 

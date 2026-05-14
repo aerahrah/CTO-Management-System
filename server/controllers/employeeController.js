@@ -10,6 +10,7 @@ const {
   getProfile,
   updateProfile,
   resetPassword,
+  getEmployeeWellnessBalanceService,
 } = require("../services/employeeService");
 
 function sendError(res, err) {
@@ -206,6 +207,30 @@ const resetMyPassword = async (req, res) => {
   }
 };
 
+// ✅ NEW: Get an employee's wellness balance by ID
+const getEmployeeWellnessBalanceById = async (req, res) => {
+  try {
+    const employeeId = req.params.id;
+    const wellnessDays = await getEmployeeWellnessBalanceService(employeeId);
+    return res.status(200).json({ success: true, data: { wellnessDays } });
+  } catch (err) {
+    return sendError(res, err);
+  }
+};
+
+// ✅ NEW: Get the logged-in user's wellness balance
+const getMyWellnessBalance = async (req, res) => {
+  try {
+    const employeeId = req.user?.id;
+    if (!employeeId) return res.status(401).json({ message: "Unauthorized" });
+
+    const wellnessDays = await getEmployeeWellnessBalanceService(employeeId);
+    return res.status(200).json({ success: true, data: { wellnessDays } });
+  } catch (err) {
+    return sendError(res, err);
+  }
+};
+
 module.exports = {
   updateRole,
   updateEmployee,
@@ -218,4 +243,6 @@ module.exports = {
   getMyProfile,
   updateMyProfile,
   resetMyPassword,
+  getEmployeeWellnessBalanceById,
+  getMyWellnessBalance,
 };

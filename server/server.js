@@ -25,7 +25,14 @@ const emailNotificationSettingRoutes = require("./routers/emailNotificationSetti
 // ✅ ADD THIS: approval routes
 const approvalRouteRoutes = require("./routers/approvalRouteRoute");
 
+// ✅ ADD THIS: role routes
+const roleRoutes = require("./routers/roleRoutes");
+
+// ✅ ADD THIS: wellness routes
+const wellnessRoutes = require("./routers/wellnessRoutes");
+
 const auditLogger = require("./middlewares/auditLogMiddleware");
+const initWellnessCron = require("./cron/wellnessCron");
 
 dotenv.config();
 
@@ -91,6 +98,7 @@ app.use(auditLogger);
 // Routes
 app.use("/api/employee", employeeRoutes);
 app.use("/api/cto", ctoRoutes);
+app.use("/api/wellness", wellnessRoutes);
 app.use("/api/cto", ctoDashboardRoutes);
 app.use("/api/cto/settings", ctoSettingRoutes);
 app.use("/api/settings/designation", designationRoutes);
@@ -109,6 +117,8 @@ app.use("/api/email-notification-settings", emailNotificationSettingRoutes);
 // ✅ Flexible Approval Routes
 app.use("/api/approval-routes", approvalRouteRoutes);
 
+app.use("/api/roles", roleRoutes);
+
 // 404
 app.use((req, res) => res.status(404).json({ message: "Not found" }));
 
@@ -123,6 +133,7 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await connectDB();
+    initWellnessCron();
     app.listen(PORT, () =>
       console.log(`✅ Server running on port ${PORT} (${NODE_ENV})`),
     );

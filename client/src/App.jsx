@@ -22,6 +22,7 @@ import AuditLogTable from "./pages/auditPage";
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 import CtoCredits from "./components/ctoComponents/ctoCredits";
 import CtoApplication from "./components/ctoComponents/ctoApplication";
+import MyWellnessApplications from "./components/wellnessComponents/wellnessApplicationComponents/myWellnessApplicationHistory";
 import MyCtoCredits from "./components/ctoComponents/myCtoCredits";
 import AllCtoApplications from "./components/ctoComponents/ctoAllApplications";
 import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationApprovals";
@@ -45,6 +46,7 @@ import DesignationSettings from "./components/generalSettingsComponents/designat
 import BackupSettings from "./components/generalSettingsComponents/backupSettings/backupSettings";
 import GeneralSettings from "./components/generalSettingsComponents/generalSettings";
 import WorkingDaysSettings from "./components/generalSettingsComponents/workingDaysSettings";
+import RolesSettings from "./components/generalSettingsComponents/rolesSettings/rolesSettings";
 
 // ✅ Email Notification Settings
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
@@ -137,6 +139,7 @@ function App() {
             <Route index element={<CtoDashboard />} />
 
             <Route path="cto-apply" element={<CtoApplication />} />
+            <Route path="wellness-apply" element={<MyWellnessApplications />} />
             <Route path="cto-my-credits" element={<MyCtoCredits />} />
             <Route path="approval-routes" element={<ApprovalRoutesPage />} />
 
@@ -158,9 +161,9 @@ function App() {
           </Route>
 
           {/* ===================== */}
-          {/* ADMIN + HR ROUTES */}
+          {/* HR / EMPLOYEES */}
           {/* ===================== */}
-          <Route element={<ProtectedRoute allowedRoles={["admin", "hr"]} />}>
+          <Route element={<ProtectedRoute requiredPermission="employees.view" />}>
             <Route path="employees" element={<EmployeesPage />} />
             <Route
               path="employees/add-employee"
@@ -168,8 +171,6 @@ function App() {
             />
             <Route path="employees/:id" element={<EmployeeInformation />} />
             <Route path="employees/:id/update" element={<AddEmployeeForm />} />
-
-            <Route path="audit-logs" element={<AuditLogTable />} />
 
             <Route path="cto-credit" element={<CtoCredits />} />
             <Route
@@ -181,6 +182,13 @@ function App() {
               <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
             </Route>
+          </Route>
+
+          {/* ===================== */}
+          {/* SYSTEM SETTINGS / AUDIT */}
+          {/* ===================== */}
+          <Route element={<ProtectedRoute requiredPermission="settings.view" />}>
+            <Route path="audit-logs" element={<AuditLogTable />} />
 
             {/* CTO SETTINGS (nested like CtoRecords) */}
             <Route path="cto-settings" element={<CtoSettings />}>
@@ -189,6 +197,7 @@ function App() {
             </Route>
 
             <Route path="designations" element={<DesignationSettings />} />
+            <Route path="roles" element={<RolesSettings />} />
             <Route path="projects" element={<ProjectSettings />} />
             <Route path="backups" element={<BackupSettings />} />
             <Route path="general-settings" element={<WorkingDaysSettings />} />

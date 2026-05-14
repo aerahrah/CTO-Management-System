@@ -12,7 +12,7 @@ const {
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware.js");
 
 const router = express.Router();
@@ -21,14 +21,14 @@ const router = express.Router();
 router.get(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   getAllDesignations,
 );
 
 router.get(
   "/options",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   listAll,
 );
 
@@ -36,14 +36,14 @@ router.get(
 router.get(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   getDesignationById,
 );
 
 router.post(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   createDesignation,
 );
 
@@ -51,14 +51,14 @@ router.post(
 router.put(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   updateDesignation,
 );
 
 router.patch(
   "/:id/status",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   updateStatus,
 );
 
@@ -66,7 +66,7 @@ router.patch(
 router.delete(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("settings.edit"),
   deleteDesignation,
 );
 

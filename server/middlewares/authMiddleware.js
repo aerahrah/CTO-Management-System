@@ -51,7 +51,10 @@ const authorizeRoles = (...allowedRoles) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    // Support legacy string roles temporarily if they exist in the token
+    const userRole = typeof req.user.role === 'string' ? req.user.role : req.user.role.name;
+
+    if (!allowedRoles.includes(userRole)) {
       return res
         .status(403)
         .json({ message: "Access denied: insufficient role" });
@@ -61,4 +64,30 @@ const authorizeRoles = (...allowedRoles) => {
   };
 };
 
-module.exports = { authenticateToken, authorizeRoles };
+const authorize = (requiredPermission) => {
+  return (req, res, next) => {
+    if (req.method === "OPTIONS") return next();
+
+    if (!req.user || !req.user.role || !req.user.role.permissions) {
+      // Legacy token fallback - if token has old string role, we can't check permissions.
+      // They need to log in again.
+      return res.status(403).json({ message: "Access denied. Role permissions missing. Please log in again." });
+    }
+
+    const permissions = req.user.role.permissions;
+
+    if (permissions.includes("*")) {
+      return next();
+    }
+
+    if (!permissions.includes(requiredPermission)) {
+      return res.status(403).json({ 
+        message: `Forbidden. Requires permission: ${requiredPermission}` 
+      });
+    }
+
+    next();
+  };
+};
+
+module.exports = { authenticateToken, authorizeRoles, authorize };

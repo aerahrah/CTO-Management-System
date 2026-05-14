@@ -14,6 +14,7 @@ import {
   updateEmployeeById,
   addEmployee,
 } from "../../../api/employee";
+import { getRoles } from "../../../api/role";
 import { fetchProjectOptions } from "../../../api/project";
 import SelectDesignation from "./selectDesignation";
 import SelectProjectOptions from "./selectProject";
@@ -50,7 +51,6 @@ function resolveTheme(prefTheme) {
 ========================= */
 const DIVISIONS = ["AFD", "TOD", "ORD"];
 const STATUSES = ["Active", "Inactive", "Resigned", "Terminated"];
-const ROLES = ["employee", "supervisor", "hr", "admin"];
 
 /* =========================
    HELPERS (sanitize / normalize)
@@ -711,6 +711,20 @@ const AddEmployeeForm = () => {
   }, [projectsQuery.data]);
 
   /* -------------------------
+     Roles fetch
+  ------------------------- */
+  const { data: roles } = useQuery({
+    queryKey: ["roles"],
+    queryFn: getRoles,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const roleOptions = useMemo(() => {
+    if (!roles) return [];
+    return roles.map(r => ({ value: r._id, label: r.name }));
+  }, [roles]);
+
+  /* -------------------------
      Schema
   ------------------------- */
   const schema = useMemo(() => {
@@ -829,7 +843,6 @@ const AddEmployeeForm = () => {
       base.role = yup
         .string()
         .transform((v) => normalizeText(v))
-        .oneOf(ROLES, "Invalid role")
         .required("Role is required");
     } else {
       base.role = yup
@@ -1273,7 +1286,7 @@ const AddEmployeeForm = () => {
                   render={({ field }) => (
                     <SelectInput
                       label="System Role"
-                      options={ROLES}
+                      options={roleOptions}
                       value={field.value}
                       onChange={field.onChange}
                       error={errors.role}
@@ -1300,7 +1313,7 @@ const AddEmployeeForm = () => {
                       color: "var(--app-text)",
                     }}
                   >
-                    {employee?.role || "—"}
+                    {employee?.role?.name || employee?.role || "—"}
                   </div>
                 </div>
               )}

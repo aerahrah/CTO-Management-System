@@ -2,6 +2,7 @@
 const Employee = require("../models/employeeModel");
 const Project = require("../models/projectModel");
 const Designation = require("../models/designationModel");
+const Role = require("../models/roleModel");
 const mongoose = require("mongoose");
 
 const { getSessionSettings } = require("./generalSettings.service");
@@ -17,7 +18,6 @@ const { employeeWelcomeEmail } = require("../utils/emailTemplates");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 
-const validRoles = ["employee", "supervisor", "hr", "admin"];
 const ALLOWED_LIMITS = [10, 20, 50, 100];
 
 // Keep consistent with your settings validation
@@ -158,6 +158,7 @@ const createEmployeeService = async (employeeData) => {
     division,
     project,
     role,
+    contractType,
   } = employeeData || {};
 
   if (
@@ -191,6 +192,12 @@ const createEmployeeService = async (employeeData) => {
   const projectId = await resolveProjectIdOrThrow(project);
   const designationId = await resolveDesignationIdOrThrow(designation);
 
+  let resolvedRoleId = role;
+  if (!role) {
+    const defaultRole = await Role.findOne({ name: "employee" });
+    resolvedRoleId = defaultRole ? defaultRole._id : null;
+  }
+
   const tempPassword = crypto.randomBytes(12).toString("hex");
 
   const employee = new Employee({
@@ -203,8 +210,15 @@ const createEmployeeService = async (employeeData) => {
     project: projectId,
     designation: designationId,
     position,
-    role: role || "employee",
+    role: resolvedRoleId,
+    contractType: contractType || "Permanent",
     password: tempPassword,
+    balances: {
+      wellnessDays: !contractType || contractType === "Permanent" ? 5 : 0,
+      vlHours: 0,
+      slHours: 0,
+      ctoHours: 0,
+    },
   });
 
   await employee.save();
@@ -324,6 +338,7 @@ const getEmployeesService = async ({
         .sort({ lastName: 1, firstName: 1 })
         .populate("designation", "name status")
         .populate("project", "name status")
+        .populate("role", "name permissions isSystem")
         .lean(),
       Employee.countDocuments(query),
     ]);
@@ -343,7 +358,8 @@ const getEmployeesService = async ({
 const getEmployeeByIdService = async (id) => {
   const employee = await Employee.findById(id)
     .populate("designation", "name status")
-    .populate("project", "name status");
+    .populate("project", "name status")
+    .populate("role", "name permissions isSystem");
 
   if (!employee) throw httpError(`Employee with ID ${id} not found`, 404);
   return employee;
@@ -352,7 +368,7 @@ const getEmployeeByIdService = async (id) => {
 const signInEmployeeService = async (username, password) => {
   const employee = await Employee.findOne({
     username: String(username).trim(),
-  });
+  }).populate("role");
   if (!employee) throw httpError("Invalid username or password", 401);
 
   const isMatch = await employee.comparePassword(password);
@@ -439,11 +455,18 @@ const updateEmployeeService = async (id, updateData) => {
   }
 
   Object.keys(updateData).forEach((key) => {
-    if (key !== "employeeId") employee[key] = updateData[key];
+    if (key === "balances" && typeof updateData.balances === "object") {
+      Object.keys(updateData.balances).forEach((balKey) => {
+        if (!employee.balances) employee.balances = {};
+        employee.balances[balKey] = updateData.balances[balKey];
+      });
+    } else if (key !== "employeeId") {
+      employee[key] = updateData[key];
+    }
   });
 
   await employee.save();
-  return employee;
+  return await employee.populate("role", "name permissions isSystem");
 };
 
 const getEmployeeCtoMemos = async (employeeId) => {
@@ -477,22 +500,24 @@ const getEmployeeCtoMemos = async (employeeId) => {
 };
 
 async function changeEmployeeRole(id, newRole) {
-  if (!validRoles.includes(newRole)) {
-    throw httpError(`Invalid role. Valid roles: ${validRoles.join(", ")}`, 400);
+  const roleExists = await Role.findById(newRole);
+  if (!roleExists) {
+    throw httpError(`Invalid role ID`, 400);
   }
   const employee = await Employee.findById(id);
   if (!employee) throw httpError("Employee not found", 404);
 
   employee.role = newRole;
   await employee.save();
-  return employee;
+  return await employee.populate("role", "name permissions isSystem");
 }
 
 const getProfile = async (employeeId) => {
   const employee = await Employee.findById(employeeId)
     .select("-password")
     .populate("designation", "name status")
-    .populate("project", "name status");
+    .populate("project", "name status")
+    .populate("role");
 
   if (!employee) throw httpError("Employee not found", 404);
   return employee;
@@ -539,7 +564,8 @@ const updateProfile = async (employeeId, updateData) => {
   )
     .select("-password")
     .populate("designation", "name status")
-    .populate("project", "name status");
+    .populate("project", "name status")
+    .populate("role");
 
   if (!updatedEmployee) throw httpError("Employee not found", 404);
   return updatedEmployee;
@@ -562,6 +588,20 @@ const resetPassword = async (employeeId, oldPassword, newPassword) => {
   return { message: "Password updated successfully" };
 };
 
+// ✅ NEW: Service to get just the wellness days balance
+const getEmployeeWellnessBalanceService = async (employeeId) => {
+  const employee = await Employee.findById(employeeId).select(
+    "balances.wellnessDays",
+  );
+
+  if (!employee) {
+    throw httpError("Employee not found", 404);
+  }
+
+  // Fallback to 0 if wellnessDays is undefined
+  return employee.balances?.wellnessDays || 0;
+};
+
 module.exports = {
   getProfile,
   updateProfile,
@@ -573,4 +613,5 @@ module.exports = {
   getEmployeeByIdService,
   signInEmployeeService,
   getEmployeeCtoMemos,
+  getEmployeeWellnessBalanceService,
 };

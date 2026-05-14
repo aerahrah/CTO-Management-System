@@ -52,3 +52,17 @@ export const resetMyPassword = async (updateData) => {
   const res = await API.put(`/employee/my-profile/reset-password`, updateData);
   return res.data;
 };
+
+// ==========================================
+// NEW: Wellness Balance Endpoints
+// ==========================================
+
+export const getEmployeeWellnessBalanceById = async (id) => {
+  const res = await API.get(`/employee/${id}/wellness-balance`);
+  return res.data;
+};
+
+export const getMyWellnessBalance = async () => {
+  const res = await API.get(`/employee/my-wellness-balance`);
+  return res.data;
+};

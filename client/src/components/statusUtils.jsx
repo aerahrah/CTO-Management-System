@@ -172,7 +172,7 @@ export const StatusBadge = ({
  * Role styles (theme-aware)
  */
 export const getRoleStyles = (role) => {
-  const r = String(role || "").toUpperCase();
+  const r = String(typeof role === 'object' ? role?.name || "" : role || "").toUpperCase();
 
   const base = {
     bg: "var(--app-surface-2)",
@@ -217,7 +217,7 @@ export const getRoleStyles = (role) => {
  * Returns a corresponding icon based on user role (theme-aware).
  */
 export const RoleIcon = ({ role, className = "h-4 w-4" }) => {
-  const r = String(role || "").toUpperCase();
+  const r = String(typeof role === 'object' ? role?.name || "" : role || "").toUpperCase();
 
   if (r === "ADMIN")
     return <ShieldCheck className={className} style={{ color: "#4f46e5" }} />;
@@ -252,6 +252,7 @@ export const RoleBadge = ({
   };
 
   const style = getRoleStyles(role);
+  const roleName = typeof role === 'object' ? role?.name : role;
 
   return (
     <span
@@ -263,10 +264,10 @@ export const RoleBadge = ({
         transition:
           "background-color 200ms ease, color 200ms ease, border-color 200ms ease",
       }}
-      title={role}
+      title={roleName}
     >
       {showIcon && <RoleIcon role={role} className="h-3.5 w-3.5" />}
-      {role}
+      {roleName}
     </span>
   );
 };

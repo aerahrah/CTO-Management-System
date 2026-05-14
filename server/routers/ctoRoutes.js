@@ -4,7 +4,7 @@ const router = express.Router();
 const uploadCtoMemo = require("../middlewares/uploadCtoMemo.middleware.js");
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware.js");
 
 // --- CONTROLLERS ---
@@ -36,41 +36,42 @@ const {
 } = require("../controllers/ctoApplicationController.js");
 
 // --- AUTH HELPERS ---
-const allow = (...roles) => [authenticateToken, authorizeRoles(...roles)];
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+const authOnly = [authenticateToken];
 
 /* =========================================
    CTO CREDITS
 ========================================= */
 router.post(
   "/credits",
-  ...allow("admin", "hr"),
+  ...requirePerm("settings.edit"),
   uploadCtoMemo,
   addCtoCreditRequest,
 );
 
 router.patch(
   "/credits/:creditId/rollback",
-  ...allow("admin", "hr"),
+  ...requirePerm("settings.edit"),
   rollbackCreditedRequest,
 );
 
-router.get("/credits/all", ...allow("admin", "hr"), getAllCreditRequests);
+router.get("/credits/all", ...requirePerm("cto.view_all"), getAllCreditRequests);
 
 router.get(
   "/credits/:employeeId/history",
-  ...allow("admin", "hr"),
+  ...requirePerm("cto.view_all"),
   getEmployeeCredits,
 );
 
 router.get(
   "/credits/my-credits",
-  ...allow("admin", "hr", "employee", "supervisor"),
+  ...authOnly,
   getEmployeeCredits,
 );
 
 router.get(
   "/employee/:employeeId/details",
-  ...allow("admin", "hr"),
+  ...requirePerm("cto.view_all"),
   getEmployeeDetails,
 );
 
@@ -79,31 +80,31 @@ router.get(
 ========================================= */
 router.post(
   "/applications/apply",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   addCtoApplicationRequest,
 );
 
 router.get(
   "/applications/all",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...requirePerm("cto.view_all"),
   getAllCtoApplicationsRequest,
 );
 
 router.get(
   "/applications/my-application",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   getCtoApplicationsByEmployeeRequest,
 );
 
 router.get(
   "/applications/employee/:employeeId",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...requirePerm("cto.view_all"),
   getCtoApplicationsByEmployeeRequest,
 );
 
 router.patch(
   "/applications/:id/cancel",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   cancelCtoApplicationRequest,
 );
 
@@ -112,37 +113,37 @@ router.patch(
 ========================================= */
 router.get(
   "/applications/pending-count",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   getPendingCountForApproverController,
 );
 
 router.get(
   "/applications/approvers",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   getApproverOptions,
 );
 
 router.get(
   "/applications/approvers/my-approvals",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   getCtoApplicationsForApprover,
 );
 
 router.get(
   "/applications/approvers/my-approvals/:id",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   getCtoApplicationById,
 );
 
 router.post(
   "/applications/approver/:applicationId/approve",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   approveCtoApplication,
 );
 
 router.put(
   "/applications/approver/:applicationId/reject",
-  ...allow("admin", "hr", "supervisor", "employee"),
+  ...authOnly,
   rejectCtoApplication,
 );
 

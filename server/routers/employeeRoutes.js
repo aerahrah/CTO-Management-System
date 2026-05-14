@@ -12,11 +12,13 @@ const {
   getMyProfile,
   updateMyProfile,
   resetMyPassword,
+  getEmployeeWellnessBalanceById,
+  getMyWellnessBalance,
 } = require("../controllers/employeeController");
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware");
 
 /* =======================
@@ -28,12 +30,10 @@ router.get("/my-profile", authenticateToken, getMyProfile);
 router.put("/my-profile", authenticateToken, updateMyProfile);
 router.put("/my-profile/reset-password", authenticateToken, resetMyPassword);
 
-router.get(
-  "/memos/me",
-  authenticateToken,
-  authorizeRoles("admin", "hr", "employee"),
-  getMyCtoMemos,
-);
+router.get("/memos/me", authenticateToken, getMyCtoMemos);
+
+// ✅ NEW: Get own wellness balance
+router.get("/my-wellness-balance", authenticateToken, getMyWellnessBalance);
 
 /* =======================
    ADMIN / HR ROUTES
@@ -41,37 +41,45 @@ router.get(
 router.post(
   "/",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("employees.create"),
   createEmployee,
 );
 
-router.get("/", authenticateToken, authorizeRoles("admin", "hr"), getEmployees);
+router.get("/", authenticateToken, authorize("employees.view"), getEmployees);
 
 router.put(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("employees.edit"),
   updateEmployee,
 );
 
 router.post(
   "/:id/role",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("employees.edit"),
   updateRole,
 );
 
 router.get(
   "/memos/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("cto.view_all"),
   getEmployeeCtoMemosById,
+);
+
+// ✅ NEW: Get a specific employee's wellness balance (requires authorization)
+router.get(
+  "/:id/wellness-balance",
+  authenticateToken,
+  authorize("employees.view"),
+  getEmployeeWellnessBalanceById,
 );
 
 router.get(
   "/:id",
   authenticateToken,
-  authorizeRoles("admin", "hr"),
+  authorize("employees.view"),
   getEmployeeById,
 );
 

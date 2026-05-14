@@ -169,6 +169,7 @@ const ctoDashboardService = {
       rejected: rejectedCount,
       totalRequests: totalCount,
       recentRequests,
+      wellnessBalance: employee.balances?.wellnessDays || 0,
     };
   },
 
@@ -193,12 +194,19 @@ const ctoDashboardService = {
           { path: "approvals", populate: { path: "approver", select: "_id" } },
         ],
       })
+      .populate({
+        path: "wellnessApplication",
+        populate: [
+          { path: "employee", select: "firstName lastName" },
+          { path: "approvals", populate: { path: "approver", select: "_id" } },
+        ],
+      })
       .sort({ createdAt: -1 });
 
     const pendingApplicationsMap = new Map();
 
     for (const step of approvalSteps) {
-      const app = step.ctoApplication;
+      const app = step.ctoApplication || step.wellnessApplication;
       if (!app || !Array.isArray(app.approvals) || app.approvals.length === 0)
         continue;
       if (app.overallStatus === "REJECTED") continue;
@@ -217,17 +225,19 @@ const ctoDashboardService = {
         pendingStep?.approver?._id?.toString() === employeeId.toString();
 
       if (userStep.status === "PENDING" && isTheirTurn) {
-        pendingApplicationsMap.set(app._id.toString(), app);
+        pendingApplicationsMap.set(app._id.toString(), { ...app._doc, type: step.ctoApplication ? "CTO" : "WELLNESS" });
       }
     }
 
     const allPendingRequests = Array.from(pendingApplicationsMap.values()).map(
       (app) => ({
         id: app._id,
+        type: app.type,
         employeeId: app.employee._id,
         employeeName: `${app.employee.firstName} ${app.employee.lastName}`,
-        requestedHours: app.requestedHours,
-        inclusiveDates: app.inclusiveDates,
+        requestedHours: app.type === "CTO" ? app.requestedHours : null,
+        totalDays: app.type === "WELLNESS" ? app.totalDays : null,
+        inclusiveDates: app.inclusiveDates || (app.startDate ? [app.startDate, app.endDate] : []),
         reason: app.reason,
         createdAt: app.createdAt,
       }),

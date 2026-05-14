@@ -624,7 +624,7 @@ const Dashboard = () => {
                     className="text-[10px] font-medium uppercase tracking-wider"
                     style={{ color: "var(--app-muted, #64748b)" }}
                   >
-                    {admin?.role}
+                    {typeof admin?.role === 'object' ? admin?.role?.name : admin?.role}
                   </p>
                 </div>
 
