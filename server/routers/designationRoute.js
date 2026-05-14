@@ -17,7 +17,6 @@ const {
 
 const router = express.Router();
 
-
 router.get(
   "/",
   authenticateToken,
@@ -25,13 +24,7 @@ router.get(
   getAllDesignations,
 );
 
-router.get(
-  "/options",
-  authenticateToken,
-  authorize("settings.edit"),
-  listAll,
-);
-
+router.get("/options", authenticateToken, authorize("settings.edit"), listAll);
 
 router.get(
   "/:id",
@@ -47,7 +40,6 @@ router.post(
   createDesignation,
 );
 
-
 router.put(
   "/:id",
   authenticateToken,
@@ -61,7 +53,6 @@ router.patch(
   authorize("settings.edit"),
   updateStatus,
 );
-
 
 router.delete(
   "/:id",

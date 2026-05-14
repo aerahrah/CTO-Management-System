@@ -1,5 +1,23 @@
 const mongoose = require("mongoose");
 
+// Extracted from your migration script
+const validPermissions = [
+  "*",
+  "employees.view",
+  "employees.view_self",
+  "employees.create",
+  "employees.edit",
+  "employees.delete",
+  "roles.view",
+  "settings.view",
+  "settings.edit",
+  "cto.view_all",
+  "cto.view_self",
+  "cto.create",
+  "cto.approve_hr",
+  "cto.approve_supervisor",
+];
+
 const roleSchema = new mongoose.Schema(
   {
     name: {
@@ -16,6 +34,10 @@ const roleSchema = new mongoose.Schema(
       {
         type: String,
         required: true,
+        enum: {
+          values: validPermissions,
+          message: "{VALUE} is not a valid permission",
+        },
       },
     ],
     // Protect system roles (Admin, HR) from being accidentally deleted
@@ -24,7 +46,7 @@ const roleSchema = new mongoose.Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 module.exports = mongoose.model("Role", roleSchema);

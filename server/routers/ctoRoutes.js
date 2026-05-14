@@ -44,7 +44,7 @@ const authOnly = [authenticateToken];
 ========================================= */
 router.post(
   "/credits",
-  ...requirePerm("settings.edit"),
+  ...requirePerm("settings.edit"), // Kept from your original, though you might consider a dedicated cto.edit_credits later
   uploadCtoMemo,
   addCtoCreditRequest,
 );
@@ -55,7 +55,11 @@ router.patch(
   rollbackCreditedRequest,
 );
 
-router.get("/credits/all", ...requirePerm("cto.view_all"), getAllCreditRequests);
+router.get(
+  "/credits/all",
+  ...requirePerm("cto.view_all"),
+  getAllCreditRequests,
+);
 
 router.get(
   "/credits/:employeeId/history",
@@ -63,9 +67,10 @@ router.get(
   getEmployeeCredits,
 );
 
+// ✅ Updated: Now strictly requires the "cto.view_self" permission
 router.get(
   "/credits/my-credits",
-  ...authOnly,
+  ...requirePerm("cto.view_self"),
   getEmployeeCredits,
 );
 
@@ -78,9 +83,10 @@ router.get(
 /* =========================================
    CTO APPLICATIONS (EMPLOYEE / ADMIN VIEW)
 ========================================= */
+// ✅ Updated: Now requires "cto.create" to submit an application
 router.post(
   "/applications/apply",
-  ...authOnly,
+  ...requirePerm("cto.create"),
   addCtoApplicationRequest,
 );
 
@@ -90,9 +96,10 @@ router.get(
   getAllCtoApplicationsRequest,
 );
 
+// ✅ Updated: Restricts viewing own applications to "cto.view_self"
 router.get(
   "/applications/my-application",
-  ...authOnly,
+  ...requirePerm("cto.view_self"),
   getCtoApplicationsByEmployeeRequest,
 );
 
@@ -102,15 +109,19 @@ router.get(
   getCtoApplicationsByEmployeeRequest,
 );
 
+// ✅ Updated: Assuming if you can view your own, you can cancel it (controller should verify ownership)
 router.patch(
   "/applications/:id/cancel",
-  ...authOnly,
+  ...requirePerm("cto.view_self"),
   cancelCtoApplicationRequest,
 );
 
 /* =========================================
    APPROVER FLOW
 ========================================= */
+// Note: Kept as authOnly because these usually rely on the controller verifying
+// if req.user._id matches the application's supervisorId or if they are HR.
+
 router.get(
   "/applications/pending-count",
   ...authOnly,
@@ -119,7 +130,7 @@ router.get(
 
 router.get(
   "/applications/approvers",
-  ...authOnly,
+  ...authOnly, // Everyone needs to see this to populate the dropdown when applying
   getApproverOptions,
 );
 

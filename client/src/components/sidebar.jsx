@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 
 /* =========================
-   Accent helpers (same as before)
+   Accent helpers 
 ========================= */
 const ACCENT_HEX = {
   blue: "#2563EB",
@@ -73,20 +73,12 @@ const Sidebar = ({
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
-  const { can } = usePermissions();
-  const role = typeof admin?.role === 'string' ? admin?.role : admin?.role?.name;
 
-  // ✅ Reusable scrollbar sync (themes html/body + any .app-scrollbar containers)
-  // (same pattern as UserPreferencesSettings)
-  // NOTE: This component injects the CSS once and updates --scroll-* vars from ThemeSync vars.
-  // It will theme this sidebar nav by adding `app-scrollbar` on the scroll container below.
-  // It also themes the main page scrollbar via html/body classes.
-  // eslint-disable-next-line react/jsx-no-useless-fragment
-  // (keep it rendered once here—sidebar is always mounted)
-  // (returns null)
-  // ✅
-  // ⬇
-  // (see JSX)
+  // ✅ Hook to verify granular permissions based on your backend enum
+  const { can } = usePermissions();
+
+  const role =
+    typeof admin?.role === "string" ? admin?.role : admin?.role?.name;
   const preferences = useAuth((s) => s.preferences);
 
   // Read prefs (accent is still used for active states)
@@ -107,9 +99,6 @@ const Sidebar = ({
 
   const adminId = String(admin?.id || admin?._id || "");
 
-  // Any role can be configured as an approver in the approval chain,
-  // so run the query for everyone. teamPendingApprovals will be 0
-  // for non-approvers, keeping the sidebar item hidden naturally.
   const { data: dashboardData } = useQuery({
     queryKey: ["ctoDashboard"],
     queryFn: fetchDashboard,
@@ -117,15 +106,11 @@ const Sidebar = ({
     staleTime: 1000 * 60,
   });
 
-  // Mirror exactly how ctoDashboard.jsx derives pendingCount:
-  // data.teamPendingApprovals is set by getSupervisorSummary / getAdminSummary
   const pendingCount = Number(dashboardData?.teamPendingApprovals || 0);
-
-
+  const canSeePendingApprovals = pendingCount > 0;
 
   const [hoveredItem, setHoveredItem] = useState(null);
   const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
-  // Default "CTO Service" open so all subitems (including Pending Approvals) are visible immediately
   const [openMenus, setOpenMenus] = useState({ "CTO Service": true });
 
   const safeNavigate = (path) => {
@@ -134,72 +119,74 @@ const Sidebar = ({
     navigate(path);
   };
 
+  // ✅ Updated menu items mapping strictly to the new permission enum
   const menuItems = useMemo(
     () => [
       {
         name: "CTO Service",
         icon: <Timer size={18} />,
-        roles: ["admin", "hr", "supervisor", "employee"],
+        // No permission required for the parent wrapper, sub-items handle logic
         subItems: [
           {
             name: "Dashboard",
             path: "/app",
             icon: <LayoutDashboard size={14} />,
             exact: true,
+            // Everyone gets dashboard
           },
           {
             name: "Credit CTO",
             path: "/app/cto-credit",
             icon: <CirclePlus size={14} />,
-            requiredPermission: "cto.view_all",
-            roles: ["admin", "hr"],
+            requiredPermission: "settings.edit", // Usually editing credits requires high privs
           },
           {
             name: "My CTO Records",
             path: "/app/cto-my-credits",
             icon: <FileClock size={14} />,
+            requiredPermission: "cto.view_self",
           },
           {
             name: "Apply CTO Leave",
             path: "/app/cto-apply",
             icon: <PenLine size={14} />,
+            requiredPermission: "cto.create",
           },
           {
             name: "Apply Wellness Leave",
             path: "/app/wellness-apply",
             icon: <PenLine size={14} />,
+            requiredPermission: "cto.create", // Assuming it uses the same create perm
           },
           {
             name: "Approval Routes",
             path: "/app/approval-routes",
             icon: <Route size={14} />,
-            roles: ["admin", "hr", "supervisor", "employee"],
+            requiredPermission: "settings.view",
           },
           {
             name: "All CTO Applications",
             path: "/app/cto-all-applications",
             icon: <Files size={14} />,
             requiredPermission: "cto.view_all",
-            roles: ["admin", "hr"],
           },
-          // Only show Pending Approvals when pendingCount > 0 (mirrors ctoDashboard.jsx)
-          ...(pendingCount > 0
+          // Only show Pending Approvals when pendingCount > 0
+          ...(canSeePendingApprovals
             ? [
-              {
-                name: "Pending Approvals",
-                path: "/app/cto-approvals",
-                icon: <UserCheck size={14} />,
-                roles: ["admin", "supervisor", "hr", "employee"],
-                badge: pendingCount,
-              },
-            ]
+                {
+                  name: "Pending Approvals",
+                  path: "/app/cto-approvals",
+                  icon: <UserCheck size={14} />,
+                  badge: pendingCount,
+                  // Handled dynamically based on pending count rather than strict perm
+                },
+              ]
             : []),
           {
             name: "All CTO Records",
             path: "/app/cto-records",
             icon: <Archive size={14} />,
             requiredPermission: "cto.view_all",
-            roles: ["admin", "hr"],
           },
         ],
       },
@@ -208,72 +195,76 @@ const Sidebar = ({
         icon: <UserRound size={18} />,
         path: "/app/employees",
         requiredPermission: "employees.view",
-        roles: ["admin", "hr"],
       },
       {
         name: "My Profile",
         icon: <UserCircle size={18} />,
         path: "/app/my-profile",
+        requiredPermission: "employees.view_self",
       },
       {
         name: "Appearance",
         icon: <Palette size={18} />,
         path: "/app/user-preferences",
-        roles: ["admin", "hr", "supervisor", "employee"],
+        // No permission needed for appearance (global)
       },
       {
         name: "Audit Logs",
         icon: <ShieldCheck size={18} />,
         path: "/app/audit-logs",
         requiredPermission: "settings.view",
-        roles: ["admin", "hr"],
       },
       {
         name: "General Settings",
         icon: <Settings size={18} />,
         requiredPermission: "settings.view",
-        roles: ["admin", "hr"],
         subItems: [
           {
             name: "Designations Settings",
             path: "/app/designations",
             icon: <MapPin size={14} />,
+            requiredPermission: "settings.view",
           },
           {
             name: "Roles & Permissions",
             path: "/app/roles",
             icon: <ShieldCheck size={14} />,
-            requiredPermission: "settings.edit",
+            requiredPermission: "roles.view", // Swapped to use the granular roles.view
           },
           {
             name: "Projects Settings",
             path: "/app/projects",
             icon: <FolderKanban size={14} />,
+            requiredPermission: "settings.view",
           },
           {
             name: "Session Settings",
             path: "/app/session-settings",
             icon: <Sliders size={14} />,
+            requiredPermission: "settings.edit",
           },
           {
             name: "Working Day Settings",
             path: "/app/general-settings",
             icon: <CalendarDays size={14} />,
+            requiredPermission: "settings.edit",
           },
           {
             name: "Email Notifications",
             path: "/app/email-notification-settings",
             icon: <Mail size={14} />,
+            requiredPermission: "settings.edit",
           },
           {
             name: "Backup & Restore",
             path: "/app/backups",
             icon: <HardDrive size={14} />,
+            requiredPermission: "settings.edit",
           },
         ],
       },
     ],
-    [pendingCount],
+    [canSeePendingApprovals, pendingCount],
   );
 
   const { mutateAsync } = useMutation({
@@ -312,26 +303,24 @@ const Sidebar = ({
     }
   };
 
+  // ✅ Filtering logic is now significantly cleaner since it just relies on the `can()` hook
   const filteredItems = menuItems
     .filter((item) => {
       if (item.requiredPermission) return can(item.requiredPermission);
-      if (item.roles) return item.roles.includes(role);
+      if (item.roles) return item.roles.includes(role); // Fallback for roles if needed
       return true;
     })
     .map((item) => ({
       ...item,
-      subItems: item.subItems?.filter(
-        (sub) => {
-          if (sub.requiredPermission) return can(sub.requiredPermission);
-          if (sub.roles) return sub.roles.includes(role);
-          return true;
-        },
-      ),
+      subItems: item.subItems?.filter((sub) => {
+        if (sub.requiredPermission) return can(sub.requiredPermission);
+        if (sub.roles) return sub.roles.includes(role); // Fallback for roles if needed
+        return true;
+      }),
     }));
 
   return (
     <>
-      {/* ✅ Inject themed scrollbars + keep vars synced with ThemeSync */}
       <ScrollbarsSync />
 
       {mobileOpen && (
@@ -350,10 +339,11 @@ const Sidebar = ({
         className={`fixed inset-y-0 left-0 z-50 border-r flex flex-col transition-all duration-150 lg:sticky lg:top-0 lg:h-screen flex-shrink-0
         bg-[color:var(--app-surface)] border-[color:var(--app-border)]
         ${collapsed ? "lg:w-20" : "lg:w-72"}
-        ${mobileOpen
+        ${
+          mobileOpen
             ? "translate-x-0 w-72"
             : "-translate-x-full lg:translate-x-0"
-          }`}
+        }`}
       >
         <div className="flex flex-shrink-0 items-center h-14 justify-between px-4 border-b border-[color:var(--app-border)]">
           {(!collapsed || mobileOpen) && (
@@ -368,8 +358,9 @@ const Sidebar = ({
             onClick={() =>
               mobileOpen ? setMobileOpen(false) : setCollapsed(!collapsed)
             }
-            className={`p-2 rounded-lg transition ${collapsed && !mobileOpen ? "mx-auto" : ""
-              }`}
+            className={`p-2 rounded-lg transition ${
+              collapsed && !mobileOpen ? "mx-auto" : ""
+            }`}
             style={{
               color: "var(--app-muted)",
             }}
@@ -391,7 +382,6 @@ const Sidebar = ({
           </button>
         </div>
 
-        {/* ✅ Use ScrollbarsSync styling by using .app-scrollbar on the scroll container */}
         <nav className="flex-1 py-6 px-3 space-y-2 overflow-y-auto no-scrollbar app-scrollbar">
           {filteredItems.map((item) => {
             const hasSubItems = item.subItems?.length > 0;
@@ -402,8 +392,7 @@ const Sidebar = ({
 
             const isMainItemActive = item.path && isActive(item.path);
 
-            const isOpen =
-              openMenus[item.name] || isSubItemActive;
+            const isOpen = openMenus[item.name] || isSubItemActive;
 
             const activeMain =
               isMainItemActive || (isSubItemActive && collapsed);
@@ -423,14 +412,14 @@ const Sidebar = ({
                   style={
                     activeMain
                       ? {
-                        backgroundColor: "var(--accent)",
-                        boxShadow:
-                          "0 18px 45px -28px var(--accent-ring), 0 10px 30px -20px rgba(2,6,23,0.28)",
-                        color: "#fff",
-                      }
+                          backgroundColor: "var(--accent)",
+                          boxShadow:
+                            "0 18px 45px -28px var(--accent-ring), 0 10px 30px -20px rgba(2,6,23,0.28)",
+                          color: "#fff",
+                        }
                       : {
-                        color: "var(--app-muted)",
-                      }
+                          color: "var(--app-muted)",
+                        }
                   }
                   className={`flex items-center py-2.5 px-3 rounded-xl cursor-pointer transition-all duration-200
                     ${collapsed && !mobileOpen ? "justify-center" : "gap-3"}
@@ -466,8 +455,9 @@ const Sidebar = ({
                           style={{
                             color: activeMain ? "#fff" : "var(--app-muted)",
                           }}
-                          className={`transition-transform duration-150 ${isOpen ? "rotate-180" : ""
-                            }`}
+                          className={`transition-transform duration-150 ${
+                            isOpen ? "rotate-180" : ""
+                          }`}
                         />
                       )}
                     </>
@@ -498,9 +488,10 @@ const Sidebar = ({
                               : { color: "var(--app-muted)" }
                           }
                           className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-2 text-[13px] font-medium transition-all
-                            ${subActive
-                              ? "text-[color:var(--accent)]"
-                              : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
+                            ${
+                              subActive
+                                ? "text-[color:var(--accent)]"
+                                : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
                             }`}
                         >
                           <span
@@ -527,10 +518,11 @@ const Sidebar = ({
 
                           {sub.badge !== undefined && sub.badge !== null && (
                             <span
-                              className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${sub.badge === "..."
-                                ? "bg-gray-300 text-gray-800 animate-pulse"
-                                : "bg-red-500 text-white"
-                                }`}
+                              className={`ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                sub.badge === "..."
+                                  ? "bg-gray-300 text-gray-800 animate-pulse"
+                                  : "bg-red-500 text-white"
+                              }`}
                             >
                               {sub.badge}
                             </span>
@@ -588,17 +580,18 @@ const Sidebar = ({
                               style={
                                 subActive
                                   ? {
-                                    backgroundColor: "var(--accent)",
-                                    color: "#fff",
-                                    boxShadow:
-                                      "0 12px 28px -22px var(--accent-ring)",
-                                  }
+                                      backgroundColor: "var(--accent)",
+                                      color: "#fff",
+                                      boxShadow:
+                                        "0 12px 28px -22px var(--accent-ring)",
+                                    }
                                   : { color: "var(--app-muted)" }
                               }
-                              className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${subActive
-                                ? ""
-                                : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
-                                }`}
+                              className={`px-4 py-2.5 text-sm transition-colors cursor-pointer flex items-center gap-3 ${
+                                subActive
+                                  ? ""
+                                  : "hover:bg-[color:var(--accent-soft)] hover:text-[color:var(--accent)]"
+                              }`}
                             >
                               <span
                                 style={{

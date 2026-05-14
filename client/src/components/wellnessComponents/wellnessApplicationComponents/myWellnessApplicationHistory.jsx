@@ -527,7 +527,7 @@ const MyWellnessApplications = () => {
   const queryClient = useQueryClient();
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
-  const user = useAuth((s) => s.user); // Added user to access employeeId
+  const user = useAuth((s) => s.user);
   const resolvedTheme = useResolvedTheme(prefTheme);
 
   const borderColor = useMemo(() => {
@@ -608,6 +608,9 @@ const MyWellnessApplications = () => {
     return () => clearTimeout(searchTimeout.current);
   }, [searchInput]);
 
+  // Resolving the correct user identifier property securely
+  const userId = user?.employeeId || user?.id || user?._id;
+
   const { data, isLoading, refetch } = useQuery({
     queryKey: [
       "myWellnessApplications",
@@ -615,16 +618,16 @@ const MyWellnessApplications = () => {
       limit,
       statusFilter,
       searchFilter,
-      user?.id || user?._id,
+      userId,
     ],
     queryFn: () =>
-      fetchMyWellnessApplications(user?.id || user?._id, {
+      fetchMyWellnessApplications(userId, {
         page,
         limit,
         status: statusFilter || undefined,
         search: searchFilter || undefined,
       }),
-    enabled: !!(user?.id || user?._id),
+
     placeholderData: (prev) => prev,
   });
 
@@ -635,7 +638,7 @@ const MyWellnessApplications = () => {
       toast.success("Application cancelled successfully.");
       closeCancelModal();
       queryClient.invalidateQueries({ queryKey: ["myWellnessApplications"] });
-      queryClient.invalidateQueries({ queryKey: ["ctoDashboard"] }); // Assuming shared dashboards
+      queryClient.invalidateQueries({ queryKey: ["ctoDashboard"] });
       refetch();
     },
     onError: (err) => toast.error(err?.message || "Failed to cancel request."),
