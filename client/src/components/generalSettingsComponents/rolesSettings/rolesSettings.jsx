@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
   Plus,
@@ -8,97 +9,14 @@ import {
   ShieldCheck,
   ShieldAlert,
   RotateCcw,
-  Save,
-  Settings2,
-  Key,
   Search,
-  Info,
+  Eye,
+  ChevronRight,
 } from "lucide-react";
 
-import {
-  getRoles,
-  createRole,
-  updateRole,
-  deleteRole,
-} from "../../../api/role";
+import { getRoles, deleteRole } from "../../../api/role";
 import { useAuth } from "../../../store/authStore";
 import Breadcrumbs from "../../breadCrumbs";
-
-/* =========================
-   Constants
-========================= */
-const AVAILABLE_PERMISSIONS = [
-  {
-    id: "*",
-    label: "Super Admin (All Permissions)",
-    hint: "Grants unrestricted access to all modules and settings.",
-  },
-  {
-    id: "employees.view",
-    label: "View Employees",
-    hint: "Can view the employee directory and profiles.",
-  },
-  {
-    id: "employees.create",
-    label: "Create Employees",
-    hint: "Can onboard new employees into the system.",
-  },
-  {
-    id: "employees.edit",
-    label: "Edit Employees",
-    hint: "Can modify existing employee records.",
-  },
-  {
-    id: "employees.delete",
-    label: "Delete Employees",
-    hint: "Can remove employees from the system.",
-  },
-  {
-    id: "roles.view",
-    label: "View Roles",
-    hint: "Can view system roles and their assigned permissions.",
-  },
-  {
-    id: "settings.view",
-    label: "View Settings & Logs",
-    hint: "Can view system configurations and audit logs.",
-  },
-  {
-    id: "settings.edit",
-    label: "Edit Settings",
-    hint: "Can modify core system settings.",
-  },
-  {
-    id: "cto.view_all",
-    label: "View All CTO Records",
-    hint: "Can view Compensatory Time-off records for everyone.",
-  },
-  {
-    id: "cto.approve_hr",
-    label: "Approve CTO (HR)",
-    hint: "Can perform HR-level approvals for CTO requests.",
-  },
-  {
-    id: "cto.approve_supervisor",
-    label: "Approve CTO (Supervisor)",
-    hint: "Can perform Supervisor-level approvals for CTO requests.",
-  },
-  {
-    id: "cto.create",
-    label: "Apply for CTO",
-    hint: "Can file a new Compensatory Time-off application.",
-  },
-  {
-    id: "cto.view_self",
-    label: "View Own CTO Records",
-    hint: "Can view their personal CTO applications.",
-  },
-  {
-    id: "employees.view_self",
-    label: "View Own Profile",
-    hint: "Can view their personal employee profile.",
-  },
-];
 
 /* =========================
    Helpers & Theme Logic
@@ -142,63 +60,17 @@ function useResolvedTheme(prefTheme) {
   return theme;
 }
 
-const getErrorStyles = (theme) =>
-  theme === "dark"
-    ? {
-        wrapBg: "rgba(244,63,94,0.12)",
-        wrapBorder: "rgba(244,63,94,0.22)",
-        wrapText: "#fda4af",
-      }
-    : {
-        wrapBg: "rgba(244,63,94,0.08)",
-        wrapBorder: "rgba(244,63,94,0.18)",
-        wrapText: "#be123c",
-      };
-
-const getNoticeToneStyles = (theme, tone = "neutral") => {
-  const isDark = theme === "dark";
-  const tones = {
-    amber: isDark
-      ? {
-          wrapBg: "rgba(245,158,11,0.12)",
-          wrapBorder: "rgba(245,158,11,0.20)",
-          title: "#fde68a",
-          text: "#fcd34d",
-          icon: "#fbbf24",
-        }
-      : {
-          wrapBg: "rgba(245,158,11,0.08)",
-          wrapBorder: "rgba(245,158,11,0.16)",
-          title: "#92400e",
-          text: "#b45309",
-          icon: "#d97706",
-        },
-    neutral: isDark
-      ? {
-          wrapBg: "rgba(255,255,255,0.04)",
-          wrapBorder: "rgba(255,255,255,0.08)",
-          title: "var(--app-text)",
-          text: "var(--app-muted)",
-          icon: "var(--app-muted)",
-        }
-      : {
-          wrapBg: "rgba(15,23,42,0.03)",
-          wrapBorder: "rgba(15,23,42,0.08)",
-          title: "#111827",
-          text: "#4b5563",
-          icon: "#6b7280",
-        },
-  };
-  return tones[tone] || tones.neutral;
-};
-
 /* =========================
    UI Primitives
 ========================= */
-const Card = ({ children, className = "", borderColor }) => (
+const Card = ({ children, className = "", borderColor, onClick }) => (
   <div
+    onClick={onClick}
     className={[
-      "rounded-xl shadow-sm overflow-hidden transition-colors duration-300 ease-out",
+      "rounded-xl overflow-hidden transition-all duration-300 ease-out",
+      onClick
+        ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
+        : "shadow-sm",
       className,
     ].join(" ")}
     style={{
@@ -209,56 +81,6 @@ const Card = ({ children, className = "", borderColor }) => (
     {children}
   </div>
 );
-
-const InlineError = ({ message, theme }) => {
-  if (!message) return null;
-  const s = getErrorStyles(theme);
-  return (
-    <div
-      className="mt-3 rounded-lg px-3 py-2 text-xs font-medium transition-colors duration-300 ease-out"
-      style={{
-        backgroundColor: s.wrapBg,
-        border: `1px solid ${s.wrapBorder}`,
-        color: s.wrapText,
-      }}
-    >
-      {message}
-    </div>
-  );
-};
-
-const SoftNotice = ({
-  icon: Icon,
-  tone = "neutral",
-  title,
-  children,
-  theme,
-}) => {
-  const t = getNoticeToneStyles(theme, tone);
-  return (
-    <div
-      className="rounded-xl px-4 py-3 flex gap-3 transition-colors duration-300 ease-out"
-      style={{ backgroundColor: t.wrapBg, border: `1px solid ${t.wrapBorder}` }}
-    >
-      <div className="mt-0.5">
-        <Icon className="w-4 h-4" style={{ color: t.icon }} />
-      </div>
-      <div className="min-w-0">
-        {title && (
-          <div className="text-xs font-semibold" style={{ color: t.title }}>
-            {title}
-          </div>
-        )}
-        <div
-          className="text-xs leading-relaxed mt-0.5"
-          style={{ color: t.text }}
-        >
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const PrimaryButton = ({
   children,
@@ -276,7 +98,7 @@ const PrimaryButton = ({
       onClick={onClick}
       disabled={disabled}
       className={[
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors duration-200 ease-out",
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all duration-200 ease-out active:scale-[0.98]",
         className,
       ].join(" ")}
       style={{
@@ -285,6 +107,7 @@ const PrimaryButton = ({
         border: `1px solid ${disabled ? borderColor : "var(--accent)"}`,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.65 : 1,
+        boxShadow: disabled ? "none" : "0 2px 4px rgba(0,0,0,0.1)",
       }}
     >
       {children}
@@ -309,11 +132,11 @@ const GhostButton = ({
       onClick={onClick}
       disabled={disabled}
       className={[
-        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors duration-200 ease-out",
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all duration-200 ease-out active:scale-[0.98]",
         className,
       ].join(" ")}
       style={{
-        backgroundColor: disabled ? disabledBg : "var(--app-surface)",
+        backgroundColor: disabled ? disabledBg : "transparent",
         color: disabled
           ? "var(--app-muted)"
           : danger
@@ -323,65 +146,17 @@ const GhostButton = ({
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.65 : 1,
       }}
+      onMouseEnter={(e) => {
+        if (!disabled)
+          e.currentTarget.style.backgroundColor =
+            theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(15,23,42,0.03)";
+      }}
+      onMouseLeave={(e) => {
+        if (!disabled) e.currentTarget.style.backgroundColor = "transparent";
+      }}
     >
       {children}
     </button>
-  );
-};
-
-const Toggle = ({
-  checked,
-  disabled,
-  onChange,
-  label,
-  hint,
-  borderColor,
-  theme,
-}) => {
-  const offBg =
-    theme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)";
-  return (
-    <div className="flex items-start gap-3">
-      <div className="min-w-0 flex-1">
-        <div
-          className="text-sm font-semibold break-words transition-colors duration-300 ease-out"
-          style={{ color: "var(--app-text)" }}
-        >
-          {label}
-        </div>
-        {hint && (
-          <div
-            className="text-xs mt-0.5 leading-relaxed break-words transition-colors duration-300 ease-out"
-            style={{ color: "var(--app-muted)" }}
-          >
-            {hint}
-          </div>
-        )}
-      </div>
-      <div className="flex-none shrink-0">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange?.(!checked)}
-          className="relative inline-flex h-7 w-12 items-center rounded-full transition flex-none shrink-0"
-          style={{
-            backgroundColor: checked ? "var(--accent)" : offBg,
-            border: `1px solid ${checked ? "var(--accent)" : borderColor}`,
-            cursor: disabled ? "not-allowed" : "pointer",
-            opacity: disabled ? 0.55 : 1,
-          }}
-          aria-pressed={checked}
-        >
-          <span
-            className={[
-              "inline-block h-5 w-5 transform rounded-full shadow transition",
-              checked ? "translate-x-6" : "translate-x-1",
-            ].join(" ")}
-            style={{ backgroundColor: "#ffffff" }}
-          />
-        </button>
-      </div>
-    </div>
   );
 };
 
@@ -427,7 +202,7 @@ const SkeletonCard = ({ theme, borderColor }) => (
 ========================= */
 export default function RolesSettings() {
   const queryClient = useQueryClient();
-
+  const navigate = useNavigate();
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -435,28 +210,25 @@ export default function RolesSettings() {
     () =>
       resolvedTheme === "dark"
         ? "rgba(255,255,255,0.07)"
-        : "rgba(15,23,42,0.10)",
-    [resolvedTheme],
-  );
-  const inputBg = useMemo(
-    () =>
-      resolvedTheme === "dark"
-        ? "rgba(255,255,255,0.04)"
-        : "rgba(15,23,42,0.03)",
+        : "rgba(15,23,42,0.08)",
     [resolvedTheme],
   );
   const subtleBg = useMemo(
     () =>
       resolvedTheme === "dark"
+        ? "rgba(255,255,255,0.02)"
+        : "rgba(15,23,42,0.01)",
+    [resolvedTheme],
+  );
+  const inputBg = useMemo(
+    () =>
+      resolvedTheme === "dark"
         ? "rgba(255,255,255,0.03)"
-        : "rgba(15,23,42,0.03)",
+        : "rgba(15,23,42,0.02)",
     [resolvedTheme],
   );
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [currentRole, setCurrentRole] = useState(null);
   const [search, setSearch] = useState("");
-  const [inlineError, setInlineError] = useState("");
 
   const {
     data: roles,
@@ -466,34 +238,6 @@ export default function RolesSettings() {
   } = useQuery({
     queryKey: ["roles"],
     queryFn: getRoles,
-  });
-
-  const createMut = useMutation({
-    mutationFn: createRole,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["roles"] });
-      toast.success("Role created successfully");
-      setIsEditing(false);
-      setInlineError("");
-    },
-    onError: (err) => {
-      setInlineError(getErrMsg(err, "Failed to create role"));
-      toast.error("Failed to create role");
-    },
-  });
-
-  const updateMut = useMutation({
-    mutationFn: updateRole,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["roles"] });
-      toast.success("Role updated successfully");
-      setIsEditing(false);
-      setInlineError("");
-    },
-    onError: (err) => {
-      setInlineError(getErrMsg(err, "Failed to update role"));
-      toast.error("Failed to update role");
-    },
   });
 
   const deleteMut = useMutation({
@@ -507,8 +251,6 @@ export default function RolesSettings() {
     },
   });
 
-  const isSaving = createMut.isPending || updateMut.isPending;
-
   const filteredRoles = useMemo(() => {
     if (!roles) return [];
     const q = search.trim().toLowerCase();
@@ -520,16 +262,16 @@ export default function RolesSettings() {
     );
   }, [roles, search]);
 
-  const handleEdit = (role) => {
-    setCurrentRole({ ...role });
-    setInlineError("");
-    setIsEditing(true);
+  const handleCreateNew = () => {
+    navigate("/app/roles/add-role");
   };
 
-  const handleCreateNew = () => {
-    setCurrentRole({ name: "", description: "", permissions: [] });
-    setInlineError("");
-    setIsEditing(true);
+  const handleView = (id) => {
+    navigate(`/app/roles/${id}`);
+  };
+
+  const handleEdit = (id) => {
+    navigate(`/app/roles/${id}/update`);
   };
 
   const handleDelete = (id) => {
@@ -539,38 +281,6 @@ export default function RolesSettings() {
       )
     ) {
       deleteMut.mutate(id);
-    }
-  };
-
-  const togglePermission = (permId) => {
-    setCurrentRole((prev) => {
-      let perms = [...prev.permissions];
-      if (permId === "*") {
-        if (perms.includes("*")) perms = [];
-        else perms = ["*"];
-      } else {
-        if (perms.includes("*")) perms = perms.filter((p) => p !== "*");
-        if (perms.includes(permId)) {
-          perms = perms.filter((p) => p !== permId);
-        } else {
-          perms.push(permId);
-        }
-      }
-      return { ...prev, permissions: perms };
-    });
-  };
-
-  const handleSubmit = (e) => {
-    e?.preventDefault();
-    setInlineError("");
-    if (!currentRole.name.trim()) {
-      setInlineError("Role name is required.");
-      return;
-    }
-    if (currentRole._id) {
-      updateMut.mutate({ id: currentRole._id, ...currentRole });
-    } else {
-      createMut.mutate(currentRole);
     }
   };
 
@@ -587,373 +297,206 @@ export default function RolesSettings() {
         color: "var(--app-text, #0f172a)",
       }}
     >
-      {/* 
-        ==============================
-        FLAT LAYOUT CONTAINER
-        (No nested overflow-y-auto to prevent wheel scroll locks)
-        ============================== 
-      */}
       <div className="px-1 w-full mx-auto py-2 pb-8">
-        {/* Breadcrumbs */}
         <Breadcrumbs
           items={[
             { label: "SETTINGS", to: "/app/settings" },
-            { label: "ROLES & PERMISSIONS", to: "/app/settings/roles" },
+            { label: "ROLES & PERMISSIONS", to: "/app/roles" },
           ]}
         />
 
         {/* Header Area */}
-        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mt-2 mb-5">
+        <div
+          className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-2 mb-8 border-b pb-6"
+          style={{ borderColor }}
+        >
           <div className="min-w-0">
             <h1
-              className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out flex items-center gap-2"
+              className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out flex items-center gap-3"
               style={{ color: "var(--app-text)" }}
             >
-              <ShieldCheck
-                className="w-8 h-8"
-                style={{ color: "var(--accent)" }}
-              />
+              <div
+                className="p-2 rounded-lg"
+                style={{
+                  backgroundColor: "var(--accent-soft)",
+                  color: "var(--accent)",
+                }}
+              >
+                <ShieldCheck className="w-6 h-6" />
+              </div>
               Roles & Permissions
             </h1>
             <p
-              className="text-sm mt-1 transition-colors duration-300 ease-out"
+              className="text-sm mt-2 transition-colors duration-300 ease-out"
               style={{ color: "var(--app-muted)" }}
             >
-              Manage system roles, define access controls, and assign
-              capabilities.
+              Manage system roles, define access controls, and group
+              capabilities across your workspace.
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {!isEditing && (
-              <>
-                <GhostButton
-                  onClick={handleRefetch}
-                  disabled={isLoading || isRefetching}
-                  borderColor={borderColor}
-                  theme={resolvedTheme}
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span className="hidden sm:inline">
-                    {isRefetching ? "Refreshing..." : "Refresh"}
-                  </span>
-                </GhostButton>
-                <PrimaryButton
-                  onClick={handleCreateNew}
-                  borderColor={borderColor}
-                  theme={resolvedTheme}
-                >
-                  <Plus className="w-4 h-4" />
-                  New Role
-                </PrimaryButton>
-              </>
-            )}
+          <div className="flex items-center gap-3 shrink-0">
+            <GhostButton
+              onClick={handleRefetch}
+              disabled={isLoading || isRefetching}
+              borderColor={borderColor}
+              theme={resolvedTheme}
+            >
+              <RotateCcw
+                className={`w-4 h-4 ${isRefetching ? "animate-spin" : ""}`}
+              />
+              <span className="hidden sm:inline">
+                {isRefetching ? "Refreshing..." : "Refresh"}
+              </span>
+            </GhostButton>
+            <PrimaryButton
+              onClick={handleCreateNew}
+              borderColor={borderColor}
+              theme={resolvedTheme}
+            >
+              <Plus className="w-4 h-4" />
+              New Role
+            </PrimaryButton>
           </div>
         </div>
 
         {/* Toolbar for List View */}
-        {!isEditing && (
-          <div className="mb-6 relative max-w-md">
-            <Search
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
-              style={{ color: "var(--app-muted)" }}
-            />
-            <input
-              type="text"
-              placeholder="Search roles..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 h-11 rounded-lg text-sm outline-none transition-colors duration-200 ease-out"
-              style={{
-                backgroundColor: "var(--app-surface)",
-                border: `1px solid ${borderColor}`,
-                color: "var(--app-text)",
-              }}
-            />
-          </div>
-        )}
+        <div className="mb-6 relative max-w-md">
+          <Search
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4"
+            style={{ color: "var(--app-muted)" }}
+          />
+          <input
+            type="text"
+            placeholder="Search roles..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 h-11 rounded-lg text-sm outline-none transition-all duration-200 ease-out focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"
+            style={{
+              backgroundColor: inputBg,
+              border: `1px solid ${borderColor}`,
+              color: "var(--app-text)",
+            }}
+          />
+        </div>
 
         {/* Content Area */}
-        {isEditing ? (
-          <div className="max-w-4xl mx-auto space-y-4">
-            <Card borderColor={borderColor}>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {isLoading ? (
+            <>
+              <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
+              <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
+              <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
+            </>
+          ) : filteredRoles.length === 0 ? (
+            <div
+              className="col-span-full flex flex-col items-center justify-center py-24 px-4 text-center rounded-xl border"
+              style={{ borderColor, backgroundColor: subtleBg }}
+            >
               <div
-                className="px-5 py-4 border-b transition-colors duration-300 ease-out flex items-center gap-2"
-                style={{ backgroundColor: "var(--app-surface)", borderColor }}
+                className="p-5 rounded-full mb-4 shadow-sm"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  border: `1px solid ${borderColor}`,
+                }}
               >
-                <Settings2
-                  className="w-4 h-4"
-                  style={{ color: "var(--app-muted)" }}
+                <Search
+                  className="w-8 h-8"
+                  style={{ color: "var(--app-muted)", opacity: 0.7 }}
                 />
-                <div
-                  className="text-sm font-semibold transition-colors duration-300 ease-out"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {currentRole._id ? "Edit Role Profile" : "Create New Role"}
-                </div>
               </div>
-
-              <div className="p-5 space-y-5">
-                {currentRole.isSystem && (
-                  <SoftNotice
-                    icon={ShieldAlert}
-                    tone="amber"
-                    title="Protected System Role"
-                    theme={resolvedTheme}
-                  >
-                    This is a core system role. Its name cannot be modified, and
-                    it cannot be deleted to ensure system stability. You may
-                    only adjust its permissions.
-                  </SoftNotice>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div>
-                    <label
-                      className="block text-xs font-bold uppercase tracking-wider mb-2"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      Role Name
-                    </label>
-                    <input
-                      required
-                      type="text"
-                      value={currentRole.name}
-                      onChange={(e) =>
-                        setCurrentRole({ ...currentRole, name: e.target.value })
-                      }
-                      disabled={currentRole.isSystem || isSaving}
-                      className="w-full h-11 rounded-lg px-3 text-sm outline-none transition-colors duration-200 ease-out"
-                      style={{
-                        backgroundColor: currentRole.isSystem
-                          ? "transparent"
-                          : inputBg,
-                        border: `1px solid ${borderColor}`,
-                        color: currentRole.isSystem
-                          ? "var(--app-muted)"
-                          : "var(--app-text)",
-                        opacity: currentRole.isSystem ? 0.7 : 1,
-                      }}
-                      placeholder="e.g. IT Administrator"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      className="block text-xs font-bold uppercase tracking-wider mb-2"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      Description
-                    </label>
-                    <input
-                      type="text"
-                      value={currentRole.description}
-                      onChange={(e) =>
-                        setCurrentRole({
-                          ...currentRole,
-                          description: e.target.value,
-                        })
-                      }
-                      disabled={isSaving}
-                      className="w-full h-11 rounded-lg px-3 text-sm outline-none transition-colors duration-200 ease-out"
-                      style={{
-                        backgroundColor: inputBg,
-                        border: `1px solid ${borderColor}`,
-                        color: "var(--app-text)",
-                      }}
-                      placeholder="Brief summary of responsibilities..."
-                    />
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            <Card borderColor={borderColor}>
-              <div
-                className="px-5 py-4 border-b transition-colors duration-300 ease-out flex items-center justify-between"
-                style={{ backgroundColor: "var(--app-surface)", borderColor }}
+              <h3
+                className="text-lg font-bold"
+                style={{ color: "var(--app-text)" }}
               >
-                <div className="flex items-center gap-2">
-                  <Key
-                    className="w-4 h-4"
-                    style={{ color: "var(--app-muted)" }}
-                  />
-                  <div
-                    className="text-sm font-semibold transition-colors duration-300 ease-out"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    Access Permissions
-                  </div>
-                </div>
-                <div
-                  className="text-[11px] font-medium"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  {currentRole.permissions.includes("*")
-                    ? "All permissions granted"
-                    : `${currentRole.permissions.length} selected`}
-                </div>
-              </div>
-
-              <div className="p-5">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {AVAILABLE_PERMISSIONS.map((perm) => (
-                    <Toggle
-                      key={perm.id}
-                      checked={currentRole.permissions.includes(perm.id)}
-                      disabled={isSaving}
-                      onChange={() => togglePermission(perm.id)}
-                      label={perm.label}
-                      hint={perm.hint}
-                      borderColor={borderColor}
-                      theme={resolvedTheme}
-                    />
-                  ))}
-                </div>
-
-                <InlineError message={inlineError} theme={resolvedTheme} />
-              </div>
-
-              <div
-                className="px-5 py-4 border-t flex justify-end gap-3 transition-colors duration-300 ease-out"
-                style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
+                No Roles Found
+              </h3>
+              <p
+                className="text-sm max-w-sm mt-2 leading-relaxed"
+                style={{ color: "var(--app-muted)" }}
               >
-                <GhostButton
-                  onClick={() => {
-                    setIsEditing(false);
-                    setInlineError("");
-                  }}
-                  disabled={isSaving}
-                  borderColor={borderColor}
-                  theme={resolvedTheme}
-                >
-                  Cancel
-                </GhostButton>
-                <PrimaryButton
-                  onClick={handleSubmit}
-                  disabled={isSaving || !currentRole.name.trim()}
-                  borderColor={borderColor}
-                  theme={resolvedTheme}
-                >
-                  <Save className="w-4 h-4" />
-                  {isSaving ? "Saving..." : "Save Role"}
-                </PrimaryButton>
-              </div>
-            </Card>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {isLoading ? (
-              <>
-                <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
-                <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
-                <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
-                <SkeletonCard theme={resolvedTheme} borderColor={borderColor} />
-              </>
-            ) : filteredRoles.length === 0 ? (
-              <div className="col-span-full flex flex-col items-center justify-center py-20 px-4 text-center">
-                <div
-                  className="p-6 rounded-full mb-4 ring-1"
-                  style={{ backgroundColor: "var(--app-surface)", borderColor }}
-                >
-                  <Search
-                    className="w-10 h-10"
-                    style={{ color: "var(--app-muted)", opacity: 0.6 }}
-                  />
-                </div>
-                <h3
-                  className="text-lg font-bold"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  No Roles Found
-                </h3>
-                <p
-                  className="text-sm max-w-xs mt-1"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  Try adjusting your search criteria or create a new role.
-                </p>
-              </div>
-            ) : (
-              filteredRoles.map((role) => (
-                <Card
-                  key={role._id}
-                  borderColor={borderColor}
-                  className="flex flex-col h-full group relative"
-                >
-                  <div className="p-5 flex-1 flex flex-col min-h-0">
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="min-w-0 pr-2">
-                        <h3
-                          className="font-bold text-base transition-colors duration-300 ease-out flex items-center gap-2"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          {role.name}
-                          {role.isSystem && (
-                            <div
-                              className="flex items-center justify-center p-1 rounded-md"
-                              style={{
-                                backgroundColor: "rgba(245,158,11,0.12)",
-                                color: "#d97706",
-                              }}
-                              title="System Protected"
-                            >
-                              <ShieldAlert size={12} />
-                            </div>
-                          )}
-                        </h3>
-                      </div>
-                      <div className="flex flex-none items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => handleEdit(role)}
-                          className="p-1.5 rounded-lg transition-colors duration-200 ease-out"
-                          style={{ color: "var(--accent)" }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.backgroundColor =
-                              "var(--accent-soft)")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.backgroundColor =
-                              "transparent")
-                          }
-                          title="Edit Role"
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        {!role.isSystem && (
-                          <button
-                            onClick={() => handleDelete(role._id)}
-                            className="p-1.5 rounded-lg transition-colors duration-200 ease-out"
-                            style={{ color: "#ef4444" }}
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.backgroundColor =
-                                "rgba(239,68,68,0.1)")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.backgroundColor =
-                                "transparent")
-                            }
-                            title="Delete Role"
+                Try adjusting your search criteria or create a new role to get
+                started.
+              </p>
+            </div>
+          ) : (
+            filteredRoles.map((role) => (
+              <Card
+                key={role._id}
+                borderColor={borderColor}
+                onClick={() => handleView(role._id)}
+                className="flex flex-col h-full group relative"
+              >
+                <div className="p-6 flex-1 flex flex-col min-h-0">
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="min-w-0 pr-2">
+                      <h3
+                        className="font-bold text-base transition-colors duration-300 ease-out flex items-center gap-2 group-hover:text-[var(--accent)]"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {role.name}
+                        {role.isSystem && (
+                          <div
+                            className="flex items-center justify-center p-1 rounded-md"
+                            style={{
+                              backgroundColor: "rgba(245,158,11,0.12)",
+                              color: "#d97706",
+                            }}
+                            title="System Protected Role"
                           >
-                            <Trash2 size={14} />
-                          </button>
+                            <ShieldAlert size={12} />
+                          </div>
                         )}
-                      </div>
+                      </h3>
                     </div>
-
-                    <p
-                      className="text-sm leading-relaxed transition-colors duration-300 ease-out line-clamp-3"
-                      style={{ color: "var(--app-muted)" }}
+                    {/* Actions Menu */}
+                    <div
+                      className="flex flex-none items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity translate-x-2 group-hover:translate-x-0 duration-200"
+                      onClick={(e) => e.stopPropagation()} // Prevent clicking actions from opening the card
                     >
-                      {role.description || "No description provided."}
-                    </p>
+                      <button
+                        onClick={() => handleView(role._id)}
+                        className="p-2 rounded-lg transition-colors duration-200 ease-out hover:bg-black/5 dark:hover:bg-white/10"
+                        style={{ color: "var(--app-muted)" }}
+                        title="View Role"
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button
+                        onClick={() => handleEdit(role._id)}
+                        className="p-2 rounded-lg transition-colors duration-200 ease-out hover:bg-[var(--accent-soft)]"
+                        style={{ color: "var(--accent)" }}
+                        title="Edit Role"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      {!role.isSystem && (
+                        <button
+                          onClick={() => handleDelete(role._id)}
+                          className="p-2 rounded-lg transition-colors duration-200 ease-out hover:bg-red-500/10"
+                          style={{ color: "#ef4444" }}
+                          title="Delete Role"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-
-                  <div
-                    className="px-5 py-3 border-t flex items-center justify-between transition-colors duration-300 ease-out"
-                    style={{ borderColor, backgroundColor: subtleBg }}
+                  <p
+                    className="text-sm leading-relaxed transition-colors duration-300 ease-out line-clamp-3"
+                    style={{ color: "var(--app-muted)" }}
                   >
+                    {role.description || "No description provided."}
+                  </p>
+                </div>
+
+                <div
+                  className="px-6 py-4 border-t flex items-center justify-between transition-colors duration-300 ease-out"
+                  style={{ borderColor, backgroundColor: subtleBg }}
+                >
+                  <div className="flex items-center gap-3">
                     <span
-                      className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide"
+                      className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider"
                       style={{
                         backgroundColor: "var(--app-surface)",
                         border: `1px solid ${borderColor}`,
@@ -968,14 +511,19 @@ export default function RolesSettings() {
                       className="text-xs font-medium"
                       style={{ color: "var(--app-muted)" }}
                     >
-                      {role.isSystem ? "System Role" : "Custom Role"}
+                      {role.isSystem ? "System" : "Custom"}
                     </span>
                   </div>
-                </Card>
-              ))
-            )}
-          </div>
-        )}
+
+                  <ChevronRight
+                    className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300"
+                    style={{ color: "var(--app-muted)" }}
+                  />
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
