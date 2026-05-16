@@ -12,6 +12,7 @@ import Breadcrumbs from "../breadCrumbs";
 import EmployeeRoleChanger from "./employeeChangeRole";
 import Modal from "../modal";
 import { useAuth } from "../../store/authStore";
+import { usePermissions } from "../../hooks/usePermissions";
 
 import {
   Search,
@@ -173,6 +174,8 @@ const ActionMenu = ({
   disabled = false,
   borderColor,
   resolvedTheme,
+  canEditEmployee,
+  canChangeRole,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
@@ -237,57 +240,72 @@ const ActionMenu = ({
             borderColor,
           }}
         >
+          {/* ✅ View Profile with new hover effect */}
           <button
             type="button"
             onClick={() => handle(() => onAction("view"))}
             className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
             style={{ color: "var(--app-text)" }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+              e.currentTarget.style.backgroundColor = "var(--accent-soft)";
+              e.currentTarget.style.color = "var(--accent)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = "var(--app-text)";
             }}
           >
             <User size={14} /> View Profile
           </button>
 
-          <button
-            type="button"
-            onClick={() => handle(() => onAction("update"))}
-            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
-            style={{ color: "var(--app-text)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <Settings size={14} /> Update Profile
-          </button>
+          {/* ✅ Hide Update option if user lacks permission, applies hover effect */}
+          {canEditEmployee && (
+            <button
+              type="button"
+              onClick={() => handle(() => onAction("update"))}
+              className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
+              style={{ color: "var(--app-text)" }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = "var(--accent-soft)";
+                e.currentTarget.style.color = "var(--accent)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "transparent";
+                e.currentTarget.style.color = "var(--app-text)";
+              }}
+            >
+              <Settings size={14} /> Update Profile
+            </button>
+          )}
 
-          <div className="h-px my-1" style={{ backgroundColor: borderColor }} />
+          {canChangeRole && (
+            <>
+              <div
+                className="h-px my-1"
+                style={{ backgroundColor: borderColor }}
+              />
 
-          <button
-            type="button"
-            onClick={() => handle(() => onAction("role"))}
-            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
-            style={{
-              color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor =
-                resolvedTheme === "dark"
-                  ? "rgba(245,158,11,0.14)"
-                  : "rgba(245,158,11,0.10)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <Shield size={14} /> Change Role
-          </button>
+              <button
+                type="button"
+                onClick={() => handle(() => onAction("role"))}
+                className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
+                style={{
+                  color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor =
+                    resolvedTheme === "dark"
+                      ? "rgba(245,158,11,0.14)"
+                      : "rgba(245,158,11,0.10)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <Shield size={14} /> Change Role
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -509,6 +527,8 @@ const EmployeeCard = ({
   variant = "mobile",
   borderColor,
   resolvedTheme,
+  canEditEmployee,
+  canChangeRole,
 }) => {
   const statusPill = getStatusPill(emp?.status, resolvedTheme);
 
@@ -621,6 +641,8 @@ const EmployeeCard = ({
               onAction={(action) => onAction(action, emp)}
               borderColor={borderColor}
               resolvedTheme={resolvedTheme}
+              canEditEmployee={canEditEmployee}
+              canChangeRole={canChangeRole}
             />
           </div>
         </div>
@@ -710,7 +732,7 @@ const EmployeeCard = ({
       </div>
 
       <div
-        className="grid grid-cols-2 border-t transition-colors duration-300 ease-out"
+        className={`grid ${canChangeRole ? "grid-cols-2" : "grid-cols-1"} border-t transition-colors duration-300 ease-out`}
         style={{ borderColor }}
       >
         <button
@@ -722,7 +744,7 @@ const EmployeeCard = ({
           className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
           style={{
             color: "var(--accent)",
-            borderRight: `1px solid ${borderColor}`,
+            borderRight: canChangeRole ? `1px solid ${borderColor}` : "none",
           }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = "var(--accent-soft)";
@@ -734,28 +756,30 @@ const EmployeeCard = ({
           <User size={14} /> View
         </button>
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAction("role", emp);
-          }}
-          className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
-          style={{
-            color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor =
-              resolvedTheme === "dark"
-                ? "rgba(245,158,11,0.14)"
-                : "rgba(245,158,11,0.10)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
-          }}
-        >
-          <Shield size={14} /> Role
-        </button>
+        {canChangeRole && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction("role", emp);
+            }}
+            className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
+            style={{
+              color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor =
+                resolvedTheme === "dark"
+                  ? "rgba(245,158,11,0.14)"
+                  : "rgba(245,158,11,0.10)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+            }}
+          >
+            <Shield size={14} /> Role
+          </button>
+        )}
       </div>
     </div>
   );
@@ -766,6 +790,12 @@ const EmployeeCard = ({
 ========================= */
 const EmployeeDirectory = () => {
   const navigate = useNavigate();
+
+  // ✅ Permissions integration
+  const { can } = usePermissions();
+  const canCreateEmployee = can("employees.create");
+  const canEditEmployee = can("employees.edit");
+  const canChangeRole = can("employees.change_role");
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
@@ -1070,21 +1100,24 @@ const EmployeeDirectory = () => {
                   </p>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleAddEmployee}
-                  className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
-                  style={{ backgroundColor: "var(--accent)" }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.filter = "brightness(0.95)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.filter = "none";
-                  }}
-                >
-                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                  Add Employee
-                </button>
+                {/* ✅ Hide Add Employee button if user lacks permission */}
+                {canCreateEmployee && (
+                  <button
+                    type="button"
+                    onClick={handleAddEmployee}
+                    className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
+                    style={{ backgroundColor: "var(--accent)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.filter = "brightness(0.95)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.filter = "none";
+                    }}
+                  >
+                    <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                    Add Employee
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1501,6 +1534,8 @@ const EmployeeDirectory = () => {
                                     }
                                     borderColor={borderColor}
                                     resolvedTheme={resolvedTheme}
+                                    canEditEmployee={canEditEmployee}
+                                    canChangeRole={canChangeRole}
                                   />
                                 </div>
                               </td>
@@ -1595,6 +1630,8 @@ const EmployeeDirectory = () => {
                           variant="mobile"
                           borderColor={borderColor}
                           resolvedTheme={resolvedTheme}
+                          canEditEmployee={canEditEmployee}
+                          canChangeRole={canChangeRole}
                         />
                       ))
                     ) : (
@@ -1689,6 +1726,8 @@ const EmployeeDirectory = () => {
                             variant="tablet"
                             borderColor={borderColor}
                             resolvedTheme={resolvedTheme}
+                            canEditEmployee={canEditEmployee}
+                            canChangeRole={canChangeRole}
                           />
                         ))}
                       </div>

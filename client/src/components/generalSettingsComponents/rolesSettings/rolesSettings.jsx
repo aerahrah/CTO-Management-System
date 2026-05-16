@@ -306,16 +306,13 @@ export default function RolesSettings() {
         />
 
         {/* Header Area */}
-        <div
-          className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-2 mb-8 border-b pb-6"
-          style={{ borderColor }}
-        >
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-2 mb-4">
           <div className="min-w-0">
             <h1
               className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out flex items-center gap-3"
               style={{ color: "var(--app-text)" }}
             >
-              <div
+              {/* <div
                 className="p-2 rounded-lg"
                 style={{
                   backgroundColor: "var(--accent-soft)",
@@ -323,7 +320,7 @@ export default function RolesSettings() {
                 }}
               >
                 <ShieldCheck className="w-6 h-6" />
-              </div>
+              </div> */}
               Roles & Permissions
             </h1>
             <p

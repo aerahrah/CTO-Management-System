@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { getMyProfile } from "../../api/employee";
 import { useAuth } from "../../store/authStore";
+import { usePermissions } from "../../hooks/usePermissions"; // ✅ Imported permissions hook
 
 /* ------------------ Resolve theme (same basis as CTO Credit History) ------------------ */
 function resolveTheme(prefTheme) {
@@ -550,6 +551,11 @@ const IdentityCard = ({ profile, borderColor }) => {
 const MyProfile = () => {
   const navigate = useNavigate();
 
+  // ✅ Permissions integration
+  const { can } = usePermissions();
+  const canResetPassword = can("employees.reset_password_self");
+  const canEditProfile = can("employees.edit_self");
+
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
 
@@ -631,23 +637,29 @@ const MyProfile = () => {
             </div>
 
             <div className="flex items-center gap-3 flex-wrap">
-              <ActionButton
-                variant="secondary"
-                icon={KeyRound}
-                borderColor={borderColor}
-                onClick={() => navigate("/app/my-profile/reset-password")}
-              >
-                Reset Password
-              </ActionButton>
+              {/* ✅ Hide Reset Password button if user lacks permission */}
+              {canResetPassword && (
+                <ActionButton
+                  variant="secondary"
+                  icon={KeyRound}
+                  borderColor={borderColor}
+                  onClick={() => navigate("/app/my-profile/reset-password")}
+                >
+                  Reset Password
+                </ActionButton>
+              )}
 
-              <ActionButton
-                variant="primary"
-                icon={Edit3}
-                borderColor={borderColor}
-                onClick={() => navigate("/app/my-profile/edit")}
-              >
-                Edit Profile
-              </ActionButton>
+              {/* ✅ Hide Edit Profile button if user lacks permission */}
+              {canEditProfile && (
+                <ActionButton
+                  variant="primary"
+                  icon={Edit3}
+                  borderColor={borderColor}
+                  onClick={() => navigate("/app/my-profile/edit")}
+                >
+                  Edit Profile
+                </ActionButton>
+              )}
             </div>
           </div>
         </div>

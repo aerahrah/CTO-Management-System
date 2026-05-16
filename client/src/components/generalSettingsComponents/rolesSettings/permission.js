@@ -44,6 +44,26 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    name: "Wellness Leave",
+    permissions: [
+      {
+        id: "wellness.create",
+        label: "Apply for Wellness",
+        hint: "File a new wellness leave application.",
+      },
+      {
+        id: "wellness.view_self",
+        label: "View Own Wellness",
+        hint: "View personal wellness leave history.",
+      },
+      {
+        id: "wellness.applications_view",
+        label: "View Global Wellness",
+        hint: "View all wellness applications in the system.",
+      },
+    ],
+  },
+  {
     name: "CTO & Leaves",
     permissions: [
       {
@@ -90,22 +110,22 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
-    name: "Wellness Leave",
+    name: "Role Management",
     permissions: [
       {
-        id: "wellness.create",
-        label: "Apply for Wellness",
-        hint: "File a new wellness leave application.",
+        id: "roles.view",
+        label: "View Roles",
+        hint: "View the list of system roles.",
       },
       {
-        id: "wellness.view_self",
-        label: "View Own Wellness",
-        hint: "View personal wellness leave history.",
+        id: "roles.manage",
+        label: "Manage Roles",
+        hint: "Create, edit, or delete roles and permissions.",
       },
       {
-        id: "wellness.applications_view",
-        label: "View Global Wellness",
-        hint: "View all wellness applications in the system.",
+        id: "employees.change_role",
+        label: "Update Employee Role",
+        hint: "Update employee role from the system.",
       },
     ],
   },
@@ -113,19 +133,25 @@ export const PERMISSION_GROUPS = [
     name: "Settings & Configuration",
     permissions: [
       {
-        id: "settings.view",
-        label: "View Settings Hub",
-        hint: "Access the settings layout and navigation.",
-      },
-      {
-        id: "settings.edit",
-        label: "Edit Settings (Legacy)",
-        hint: "General settings modification access.",
+        id: "audit.view",
+        label: "View Audit Logs",
+        hint: "Access system-wide activity and audit logs.",
       },
       {
         id: "settings.general",
-        label: "Manage Core Settings",
-        hint: "Modify working days and general system behavior.",
+        label: "Manage Working days Settings",
+        hint: "Modify working days system behavior.",
+      },
+      {
+        id: "designations.manage",
+        label: "Manage Designations",
+        hint: "Create, edit, or delete job designations.",
+      },
+
+      {
+        id: "projects.manage",
+        label: "Manage Projects",
+        hint: "Create, edit, or delete company projects.",
       },
       {
         id: "settings.sessions",
@@ -142,41 +168,7 @@ export const PERMISSION_GROUPS = [
         label: "Manage CTO Workflow",
         hint: "Configure CTO approval routes and approvers.",
       },
-    ],
-  },
-  {
-    name: "System & Resources",
-    permissions: [
-      {
-        id: "admin.view",
-        label: "Admin Dashboard",
-        hint: "Access the main administrative dashboard.",
-      },
-      {
-        id: "audit.view",
-        label: "View Audit Logs",
-        hint: "Access system-wide activity and audit logs.",
-      },
-      {
-        id: "designations.manage",
-        label: "Manage Designations",
-        hint: "Create, edit, or delete job designations.",
-      },
-      {
-        id: "roles.view",
-        label: "View Roles",
-        hint: "View the list of system roles.",
-      },
-      {
-        id: "roles.manage",
-        label: "Manage Roles",
-        hint: "Create, edit, or delete roles and permissions.",
-      },
-      {
-        id: "projects.manage",
-        label: "Manage Projects",
-        hint: "Create, edit, or delete company projects.",
-      },
+
       {
         id: "backups.manage",
         label: "Manage Backups",

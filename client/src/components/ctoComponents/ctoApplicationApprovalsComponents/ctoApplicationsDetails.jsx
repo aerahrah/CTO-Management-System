@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
+import { usePermissions } from "../../../hooks/usePermissions";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Modal from "../../modal";
 import {
@@ -961,6 +962,8 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
 
 const CtoApplicationDetails = () => {
   const { admin } = useAuth();
+  const { can } = usePermissions();
+  const canManageApplication = can("cto.manage_application");
   const { id } = useParams();
   const navigate = useNavigate(); // (kept if you use it elsewhere)
   const queryClient = useQueryClient();
@@ -1201,50 +1204,52 @@ const CtoApplicationDetails = () => {
         {/* ACTION BUTTONS */}
         <div className="flex flex-row items-center gap-2 sm:gap-3 pt-1 bg-transparent rounded-xl w-full md:w-auto">
           {canApproveOrReject ? (
-            <>
-              <button
-                onClick={() => {
-                  setModalType("reject");
-                  setIsModalOpen(true);
-                }}
-                className="w-full sm:w-auto flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold"
-                style={{
-                  backgroundColor: "var(--app-surface-2)",
-                  color: "var(--app-text)",
-                  border: `1px solid ${borderColor}`,
-                }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.filter = "brightness(0.98)")
-                }
-                onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
-              >
-                Reject
-              </button>
+            canManageApplication && (
+              <>
+                <button
+                  onClick={() => {
+                    setModalType("reject");
+                    setIsModalOpen(true);
+                  }}
+                  className="w-full sm:w-auto flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold"
+                  style={{
+                    backgroundColor: "var(--app-surface-2)",
+                    color: "var(--app-text)",
+                    border: `1px solid ${borderColor}`,
+                  }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.filter = "brightness(0.98)")
+                  }
+                  onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
+                >
+                  Reject
+                </button>
 
-              <button
-                onClick={() => {
-                  setModalType("approve");
-                  setIsModalOpen(true);
-                }}
-                disabled={approveMutation.isPending}
-                className="w-full sm:w-auto rounded-lg px-4 py-2 transition shadow-sm font-medium flex items-center justify-center gap-2"
-                style={{
-                  backgroundColor: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  color: "#fff",
-                  opacity: approveMutation.isPending ? 0.8 : 1,
-                }}
-                onMouseEnter={(e) => {
-                  if (approveMutation.isPending) return;
-                  e.currentTarget.style.filter = "brightness(0.95)";
-                }}
-                onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
-              >
-                {approveMutation.isPending
-                  ? "Processing..."
-                  : "Approve Request"}
-              </button>
-            </>
+                <button
+                  onClick={() => {
+                    setModalType("approve");
+                    setIsModalOpen(true);
+                  }}
+                  disabled={approveMutation.isPending}
+                  className="w-full sm:w-auto rounded-lg px-4 py-2 transition shadow-sm font-medium flex items-center justify-center gap-2"
+                  style={{
+                    backgroundColor: "var(--accent)",
+                    border: "1px solid var(--accent)",
+                    color: "#fff",
+                    opacity: approveMutation.isPending ? 0.8 : 1,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (approveMutation.isPending) return;
+                    e.currentTarget.style.filter = "brightness(0.95)";
+                  }}
+                  onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
+                >
+                  {approveMutation.isPending
+                    ? "Processing..."
+                    : "Approve Request"}
+                </button>
+              </>
+            )
           ) : (
             <div
               className="px-4 py-2 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border w-full sm:w-auto"
@@ -1287,7 +1292,7 @@ const CtoApplicationDetails = () => {
                   Total Duration
                 </p>
                 <p className="text-xl font-bold">
-                  {application.type === "WELLNESS" 
+                  {application.type === "WELLNESS"
                     ? `${application.totalDays} Days`
                     : `${application.requestedHours} Hours`}
                 </p>

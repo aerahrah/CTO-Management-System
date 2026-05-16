@@ -254,8 +254,7 @@ const getCtoApplicationsForApproverService = async (
 };
 
 const getCtoApplicationByIdService = async (ctoApplicationId) => {
-  if (!ctoApplicationId)
-    throw httpError("Application ID is required.", 400);
+  if (!ctoApplicationId) throw httpError("Application ID is required.", 400);
 
   let application = await CtoApplication.findById(ctoApplicationId)
     .populate({
@@ -281,11 +280,11 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
   }
 
   if (!application) throw httpError("Application not found", 404);
-  
+
   // Tag with type so frontend knows what to render
   const appObj = application.toObject ? application.toObject() : application;
   appObj.type = appObj.totalDays !== undefined ? "WELLNESS" : "CTO";
-  
+
   if (appObj.type === "WELLNESS" && appObj.startDate && appObj.endDate) {
     const dates = [];
     let cur = new Date(appObj.startDate);
@@ -296,7 +295,7 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
     }
     appObj.inclusiveDates = dates;
   }
-  
+
   return appObj;
 };
 
@@ -316,7 +315,7 @@ const approveCtoApplicationService = async ({
       .populate("approvals")
       .populate("employee")
       .session(session);
-      
+
     let isWellness = false;
 
     if (!application) {
@@ -394,7 +393,8 @@ const approveCtoApplicationService = async ({
             );
           }
 
-          empCredit.reservedHours = (empCredit.reservedHours || 0) - appliedHours;
+          empCredit.reservedHours =
+            (empCredit.reservedHours || 0) - appliedHours;
           empCredit.usedHours = (empCredit.usedHours || 0) + appliedHours;
           empCredit.remainingHours =
             (empCredit.creditedHours || 0) -
@@ -582,7 +582,7 @@ const rejectCtoApplicationService = async ({
       .populate("memo.memoId")
       .populate("employee", "username firstName lastName email balances")
       .session(session);
-      
+
     let isWellness = false;
 
     if (!application) {
@@ -625,7 +625,7 @@ const rejectCtoApplicationService = async ({
       await Employee.updateOne(
         { _id: employeeId },
         { $inc: { "balances.wellnessDays": application.totalDays } },
-        { session }
+        { session },
       );
     } else {
       for (const memoItem of application.memo || []) {

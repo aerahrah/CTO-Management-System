@@ -14,6 +14,7 @@ import Modal from "../modal";
 import Breadcrumbs from "../breadCrumbs";
 import { toast } from "react-toastify";
 import { useAuth } from "../../store/authStore";
+import { usePermissions } from "../../hooks/usePermissions"; // ✅ Imported permissions hook
 import {
   User,
   Mail,
@@ -543,6 +544,10 @@ const EmployeeInformation = () => {
   const navigate = useNavigate();
   const { id } = useParams();
 
+  // ✅ Permissions integration
+  const { can } = usePermissions();
+  const canEditEmployee = can("employees.edit");
+
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
 
@@ -710,24 +715,29 @@ const EmployeeInformation = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
-                <button
-                  type="button"
-                  onClick={() => navigate(`/app/employees/${emp?._id}/update`)}
-                  className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition"
-                  style={{
-                    backgroundColor: "var(--accent)",
-                    color: "#fff",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.filter = "brightness(0.95)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.filter = "none";
-                  }}
-                >
-                  <ShieldCheck size={16} />
-                  Update Profile
-                </button>
+                {/* ✅ Wrapped Update Profile button with permission check */}
+                {canEditEmployee && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/app/employees/${emp?._id}/update`)
+                    }
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition"
+                    style={{
+                      backgroundColor: "var(--accent)",
+                      color: "#fff",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.filter = "brightness(0.95)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.filter = "none";
+                    }}
+                  >
+                    <ShieldCheck size={16} />
+                    Update Profile
+                  </button>
+                )}
               </div>
             </div>
 

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../store/authStore";
 import Sidebar from "../components/sidebar";
 import ThemeSync from "../components/themeSync";
+import { usePermissions } from "../hooks/usePermissions";
 import {
   LogOut,
   ChevronDown,
@@ -11,6 +12,8 @@ import {
   Bell,
   ChevronLeft,
   ChevronRight,
+  UserCircle,
+  Palette,
 } from "lucide-react";
 import { RoleBadge } from "../components/statusUtils";
 import {
@@ -19,7 +22,6 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from "../api/notificationSystem";
-// import Breadcrumbs from "../components/breadCrumbs";
 
 const NOTIFICATION_PAGE_SIZE_OPTIONS = [25, 50, 75, 100];
 const DEFAULT_NOTIFICATION_PAGE_SIZE = 25;
@@ -27,6 +29,10 @@ const DEFAULT_NOTIFICATION_PAGE_SIZE = 25;
 const Dashboard = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  // ✅ Granular permission check
+  const { can } = usePermissions();
+  const canViewProfile = can("employees.view_self");
 
   const token = useAuth((s) => s.token);
   const admin = useAuth((s) => s.admin);
@@ -296,10 +302,6 @@ const Dashboard = () => {
             >
               <Menu size={24} />
             </button>
-
-            {/* <div className="hidden lg:flex">
-              <Breadcrumbs />
-            </div> */}
           </div>
 
           <div className="flex items-center gap-2 lg:gap-3">
@@ -624,7 +626,9 @@ const Dashboard = () => {
                     className="text-[10px] font-medium uppercase tracking-wider"
                     style={{ color: "var(--app-muted, #64748b)" }}
                   >
-                    {typeof admin?.role === 'object' ? admin?.role?.name : admin?.role}
+                    {typeof admin?.role === "object"
+                      ? admin?.role?.name
+                      : admin?.role}
                   </p>
                 </div>
 
@@ -667,14 +671,86 @@ const Dashboard = () => {
                     </div>
                   </div>
 
-                  <div className="px-4 py-3">
-                    <p
-                      className="text-xs"
-                      style={{ color: "var(--app-muted, #64748b)" }}
+                  {/* ✅ Navigation Links */}
+                  <div className="py-1">
+                    {canViewProfile && (
+                      <button
+                        onClick={() => {
+                          setDropdownOpen(false);
+                          navigate("/app/my-profile");
+                        }}
+                        type="button"
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition"
+                        style={{ color: "var(--app-text, #0f172a)" }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "var(--accent-soft, rgba(37,99,235,0.10))";
+                          e.currentTarget.style.color =
+                            "var(--accent, #2563EB)";
+                          const icon = e.currentTarget.querySelector("svg");
+                          if (icon) icon.style.color = "var(--accent, #2563EB)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = "transparent";
+                          e.currentTarget.style.color =
+                            "var(--app-text, #0f172a)";
+                          const icon = e.currentTarget.querySelector("svg");
+                          if (icon)
+                            icon.style.color = "var(--app-muted, #64748b)";
+                        }}
+                      >
+                        <UserCircle
+                          size={16}
+                          style={{
+                            color: "var(--app-muted, #64748b)",
+                            transition: "color 0.2s ease",
+                          }}
+                        />
+                        <span className="text-sm font-semibold">
+                          My Profile
+                        </span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        navigate("/app/user-preferences");
+                      }}
+                      type="button"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition"
+                      style={{ color: "var(--app-text, #0f172a)" }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor =
+                          "var(--accent-soft, rgba(37,99,235,0.10))";
+                        e.currentTarget.style.color = "var(--accent, #2563EB)";
+                        const icon = e.currentTarget.querySelector("svg");
+                        if (icon) icon.style.color = "var(--accent, #2563EB)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.color =
+                          "var(--app-text, #0f172a)";
+                        const icon = e.currentTarget.querySelector("svg");
+                        if (icon)
+                          icon.style.color = "var(--app-muted, #64748b)";
+                      }}
                     >
-                      Use the bell icon to view your notifications.
-                    </p>
+                      <Palette
+                        size={16}
+                        style={{
+                          color: "var(--app-muted, #64748b)",
+                          transition: "color 0.2s ease",
+                        }}
+                      />
+                      <span className="text-sm font-semibold">Appearance</span>
+                    </button>
                   </div>
+
+                  <div
+                    className="h-px my-1"
+                    style={{ backgroundColor: "var(--app-border, #e5e7eb)" }}
+                  />
 
                   <button
                     onClick={handleLogout}
@@ -701,7 +777,7 @@ const Dashboard = () => {
         </nav>
 
         <main
-          className="flex-1 overflow-y-auto px-1.5 md:py-3 md:px-3 custom-scrollbar transition-colors"
+          className="flex-1 overflow-y-auto px-1.5 md:py-3 md:px-4 custom-scrollbar transition-colors"
           style={{
             backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
           }}
