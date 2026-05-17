@@ -18,12 +18,12 @@ const safeError = (err, fallback = "Request failed") => {
 };
 
 /* =========================
-   WELLNESS APPLICATIONS
+   WELLNESS APPLICATIONS (Employee / Admin)
 ========================= */
 
 export const addWellnessApplicationRequest = async (payload) => {
   try {
-    const res = await API.post("/wellness/applications", payload, {
+    const res = await API.post("/wellness/applications/apply", payload, {
       withCredentials: true,
     });
     return unwrap(res);
@@ -34,21 +34,17 @@ export const addWellnessApplicationRequest = async (payload) => {
 
 export const fetchAllWellnessApplications = async (params = {}) => {
   try {
-    const res = await API.get("/wellness/applications", withCreds(params));
+    const res = await API.get("/wellness/applications/all", withCreds(params));
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch Wellness Leave applications");
   }
 };
 
-/**
- * Note: Since the backend doesn't have a separate "me" route,
- * this now requires the employeeId to hit the specific employee endpoint.
- */
-export const fetchMyWellnessApplications = async (employeeId, params = {}) => {
+export const fetchMyWellnessApplications = async (params = {}) => {
   try {
     const res = await API.get(
-      `/wellness/applications/my-applications`,
+      "/wellness/applications/my-application",
       withCreds(params),
     );
     return unwrap(res);
@@ -82,5 +78,75 @@ export const cancelWellnessApplicationRequest = async (id) => {
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to cancel Wellness Leave application");
+  }
+};
+
+/* =========================
+   WELLNESS APPROVERS FLOW
+========================= */
+
+export const fetchPendingWellnessCount = async () => {
+  try {
+    const res = await API.get(
+      "/wellness/applications/pending-count",
+      withCreds(),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch pending Wellness Leave count");
+  }
+};
+
+export const fetchMyWellnessApplicationsApprovals = async (params = {}) => {
+  try {
+    const res = await API.get(
+      "/wellness/applications/approvers/my-approvals",
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch your Wellness Leave approvals");
+  }
+};
+
+export const getWellnessApplicationById = async (id) => {
+  try {
+    const res = await API.get(
+      `/wellness/applications/approvers/my-approvals/${id}`,
+      withCreds(),
+    );
+    console.log(res.data);
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch Wellness Leave application details");
+  }
+};
+
+export const approveWellnessApplicationRequest = async (applicationId) => {
+  try {
+    const res = await API.post(
+      `/wellness/applications/approver/${applicationId}/approve`,
+      {},
+      withCreds(),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to approve Wellness Leave application");
+  }
+};
+
+export const rejectWellnessApplicationRequest = async (
+  applicationId,
+  remarks,
+) => {
+  try {
+    const res = await API.put(
+      `/wellness/applications/approver/${applicationId}/reject`,
+      { remarks },
+      withCreds(),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to reject Wellness Leave application");
   }
 };
