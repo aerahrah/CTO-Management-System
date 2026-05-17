@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getEmployees } from "../api/employee";
 import { fetchDashboard } from "../api/cto";
+import { fetchPendingWellnessCount } from "../api/wellnessApplication";
 import { useAuth } from "../store/authStore";
 import { usePermissions } from "../hooks/usePermissions";
 import ScrollbarsSync from "./scrollbarSync";
@@ -26,15 +27,13 @@ import {
   UserCheck,
   Archive,
   ShieldCheck,
-  UserCircle,
   MapPin,
-  SlidersHorizontal,
   FolderKanban,
   HardDrive,
   CalendarDays,
   Mail,
-  Palette,
   Route,
+  Activity,
 } from "lucide-react";
 
 /* =========================
@@ -74,14 +73,12 @@ const Sidebar = ({
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ Hook to verify granular permissions based on your backend enum
   const { can } = usePermissions();
 
   const role =
     typeof admin?.role === "string" ? admin?.role : admin?.role?.name;
   const preferences = useAuth((s) => s.preferences);
 
-  // Read prefs (accent is still used for active states)
   const accentKey = preferences?.accent || "blue";
   const accentHex = ACCENT_HEX[accentKey] || ACCENT_HEX.blue;
 
@@ -99,19 +96,32 @@ const Sidebar = ({
 
   const adminId = String(admin?.id || admin?._id || "");
 
-  const { data: dashboardData } = useQuery({
+  // CTO Dashboard query
+  const { data: ctoDashboardData } = useQuery({
     queryKey: ["ctoDashboard"],
     queryFn: fetchDashboard,
     enabled: !!adminId,
     staleTime: 1000 * 60,
   });
 
-  const pendingCount = Number(dashboardData?.teamPendingApprovals || 0);
-  const canSeePendingApprovals = pendingCount > 0;
+  // ✅ New Wellness Pending Count query
+  const { data: wellnessPendingData } = useQuery({
+    queryKey: ["wellnessPendingCount", adminId],
+    queryFn: fetchPendingWellnessCount,
+    enabled: !!adminId && can("wellness.view_application"),
+    staleTime: 1000 * 60,
+  });
+
+  const ctoPendingCount = Number(ctoDashboardData?.teamPendingApprovals || 0);
+  const wellnessPendingCount = Number(wellnessPendingData?.pending || 0);
 
   const [hoveredItem, setHoveredItem] = useState(null);
   const [popupCoords, setPopupCoords] = useState({ top: 0, left: 0 });
-  const [openMenus, setOpenMenus] = useState({ "CTO Service": true });
+
+  const [openMenus, setOpenMenus] = useState({
+    "CTO Service": true,
+    "Wellness Service": true,
+  });
 
   const safeNavigate = (path) => {
     if (typeof path !== "string") return;
@@ -119,26 +129,23 @@ const Sidebar = ({
     navigate(path);
   };
 
-  // ✅ Updated menu items mapping strictly to the new permission enum
   const menuItems = useMemo(
     () => [
       {
         name: "CTO Service",
         icon: <Timer size={18} />,
-        // No permission required for the parent wrapper, sub-items handle logic
         subItems: [
           {
             name: "Dashboard",
             path: "/app",
             icon: <LayoutDashboard size={14} />,
             exact: true,
-            // Everyone gets dashboard
           },
           {
             name: "Credit CTO",
             path: "/app/cto-credit",
             icon: <CirclePlus size={14} />,
-            requiredPermission: "settings.edit", // Usually editing credits requires high privs
+            requiredPermission: "cto.credits_manage",
           },
           {
             name: "My CTO Records",
@@ -153,40 +160,48 @@ const Sidebar = ({
             requiredPermission: "cto.create",
           },
           {
-            name: "Apply Wellness Leave",
-            path: "/app/wellness-apply",
-            icon: <PenLine size={14} />,
-            requiredPermission: "cto.create", // Assuming it uses the same create perm
-          },
-          {
-            name: "Approval Routes",
-            path: "/app/approval-routes",
-            icon: <Route size={14} />,
-            requiredPermission: "settings.view",
-          },
-          {
             name: "All CTO Applications",
             path: "/app/cto-all-applications",
             icon: <Files size={14} />,
-            requiredPermission: "cto.view_all",
+            requiredPermission: "cto.applications_view",
           },
-          // Only show Pending Approvals when pendingCount > 0
-          ...(canSeePendingApprovals
-            ? [
-                {
-                  name: "Pending Approvals",
-                  path: "/app/cto-approvals",
-                  icon: <UserCheck size={14} />,
-                  badge: pendingCount,
-                  // Handled dynamically based on pending count rather than strict perm
-                },
-              ]
-            : []),
+          {
+            name: "Pending Approvals",
+            path: "/app/cto-approvals",
+            icon: <UserCheck size={14} />,
+            badge: ctoPendingCount > 0 ? ctoPendingCount : null,
+            requiredPermission: "cto.view_application",
+          },
           {
             name: "All CTO Records",
             path: "/app/cto-records",
             icon: <Archive size={14} />,
-            requiredPermission: "cto.view_all",
+            requiredPermission: "cto.records_view",
+          },
+        ],
+      },
+      {
+        name: "Wellness Service",
+        icon: <Activity size={18} />,
+        subItems: [
+          {
+            name: "Apply Wellness Leave",
+            path: "/app/wellness-apply",
+            icon: <PenLine size={14} />,
+            requiredPermission: "wellness.create",
+          },
+          {
+            name: "All Wellness Applications",
+            path: "/app/wellness-all-applications",
+            icon: <Files size={14} />,
+            requiredPermission: "wellness.applications_view",
+          },
+          {
+            name: "Pending Approvals",
+            path: "/app/wellness-approvals",
+            icon: <UserCheck size={14} />,
+            badge: wellnessPendingCount > 0 ? wellnessPendingCount : null,
+            requiredPermission: "wellness.view_application",
           },
         ],
       },
@@ -197,74 +212,67 @@ const Sidebar = ({
         requiredPermission: "employees.view",
       },
       {
-        name: "My Profile",
-        icon: <UserCircle size={18} />,
-        path: "/app/my-profile",
-        requiredPermission: "employees.view_self",
-      },
-      {
-        name: "Appearance",
-        icon: <Palette size={18} />,
-        path: "/app/user-preferences",
-        // No permission needed for appearance (global)
-      },
-      {
         name: "Audit Logs",
         icon: <ShieldCheck size={18} />,
         path: "/app/audit-logs",
-        requiredPermission: "settings.view",
+        requiredPermission: "audit.view",
       },
       {
         name: "General Settings",
         icon: <Settings size={18} />,
-        requiredPermission: "settings.view",
         subItems: [
+          {
+            name: "Approval Routes",
+            path: "/app/approval-routes",
+            icon: <Route size={14} />,
+            requiredPermission: "settings.cto_workflow",
+          },
           {
             name: "Designations Settings",
             path: "/app/designations",
             icon: <MapPin size={14} />,
-            requiredPermission: "settings.view",
+            requiredPermission: "designations.manage",
           },
           {
             name: "Roles & Permissions",
             path: "/app/roles",
             icon: <ShieldCheck size={14} />,
-            requiredPermission: "roles.view", // Swapped to use the granular roles.view
+            requiredPermission: "roles.manage",
           },
           {
             name: "Projects Settings",
             path: "/app/projects",
             icon: <FolderKanban size={14} />,
-            requiredPermission: "settings.view",
+            requiredPermission: "projects.manage",
           },
           {
             name: "Session Settings",
             path: "/app/session-settings",
             icon: <Sliders size={14} />,
-            requiredPermission: "settings.edit",
+            requiredPermission: "settings.sessions",
           },
           {
             name: "Working Day Settings",
             path: "/app/general-settings",
             icon: <CalendarDays size={14} />,
-            requiredPermission: "settings.edit",
+            requiredPermission: "settings.general",
           },
           {
             name: "Email Notifications",
             path: "/app/email-notification-settings",
             icon: <Mail size={14} />,
-            requiredPermission: "settings.edit",
+            requiredPermission: "settings.email",
           },
           {
             name: "Backup & Restore",
             path: "/app/backups",
             icon: <HardDrive size={14} />,
-            requiredPermission: "settings.edit",
+            requiredPermission: "backups.manage",
           },
         ],
       },
     ],
-    [canSeePendingApprovals, pendingCount],
+    [ctoPendingCount, wellnessPendingCount, can],
   );
 
   const { mutateAsync } = useMutation({
@@ -292,9 +300,15 @@ const Sidebar = ({
     } else {
       if (item.name === "Employee Management") await mutateAsync();
 
-      if (item.path === "/app/cto-approvals" && canSeePendingApprovals) {
+      if (item.path === "/app/cto-approvals" && ctoPendingCount > 0) {
         queryClient.invalidateQueries({
           queryKey: ["ctoPendingCount", adminId],
+        });
+      }
+
+      if (item.path === "/app/wellness-approvals" && wellnessPendingCount > 0) {
+        queryClient.invalidateQueries({
+          queryKey: ["wellnessPendingCount", adminId],
         });
       }
 
@@ -303,21 +317,26 @@ const Sidebar = ({
     }
   };
 
-  // ✅ Filtering logic is now significantly cleaner since it just relies on the `can()` hook
   const filteredItems = menuItems
-    .filter((item) => {
-      if (item.requiredPermission) return can(item.requiredPermission);
-      if (item.roles) return item.roles.includes(role); // Fallback for roles if needed
-      return true;
-    })
-    .map((item) => ({
-      ...item,
-      subItems: item.subItems?.filter((sub) => {
+    .map((item) => {
+      const filteredSubItems = item.subItems?.filter((sub) => {
         if (sub.requiredPermission) return can(sub.requiredPermission);
-        if (sub.roles) return sub.roles.includes(role); // Fallback for roles if needed
+        if (sub.roles) return sub.roles.includes(role);
         return true;
-      }),
-    }));
+      });
+
+      return {
+        ...item,
+        subItems: filteredSubItems,
+      };
+    })
+    .filter((item) => {
+      if (item.requiredPermission && !can(item.requiredPermission))
+        return false;
+      if (item.subItems && item.subItems.length === 0) return false;
+
+      return true;
+    });
 
   return (
     <>
@@ -478,6 +497,11 @@ const Sidebar = ({
                                 queryKey: ["ctoDashboard"],
                               });
                             }
+                            if (sub.path === "/app/wellness-approvals") {
+                              queryClient.invalidateQueries({
+                                queryKey: ["wellnessPendingCount"],
+                              });
+                            }
 
                             safeNavigate(sub.path);
                             if (window.innerWidth < 1024) setMobileOpen(false);
@@ -571,6 +595,11 @@ const Sidebar = ({
                                 if (sub.path === "/app/cto-approvals") {
                                   queryClient.invalidateQueries({
                                     queryKey: ["ctoDashboard"],
+                                  });
+                                }
+                                if (sub.path === "/app/wellness-approvals") {
+                                  queryClient.invalidateQueries({
+                                    queryKey: ["wellnessPendingCount"],
                                   });
                                 }
 

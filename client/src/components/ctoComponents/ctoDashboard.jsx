@@ -1,5 +1,5 @@
 // pages/cto/CtoDashboard.jsx
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDashboard } from "../../api/cto";
@@ -12,7 +12,6 @@ import { usePermissions } from "../../hooks/usePermissions";
 import {
   Activity,
   AlertCircle,
-  ArrowUpRight,
   Briefcase,
   Calendar,
   CheckCircle2,
@@ -22,6 +21,10 @@ import {
   ShieldCheck,
   TrendingUp,
   User,
+  Layers,
+  Building2,
+  XCircle,
+  UserCheck,
 } from "lucide-react";
 
 /* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
@@ -54,6 +57,12 @@ const getStatusStyle = (status) => {
         backgroundColor: "rgba(245,158,11,0.14)",
         borderColor: "rgba(245,158,11,0.25)",
         color: "#d97706",
+      };
+    case "CANCELLED":
+      return {
+        backgroundColor: "rgba(100,116,139,0.14)",
+        borderColor: "rgba(100,116,139,0.25)",
+        color: "#64748b",
       };
     default:
       return {
@@ -151,6 +160,11 @@ const Pill = ({ children, tone = "neutral", className = "" }) => {
       borderColor: "var(--app-text)",
       color: "var(--app-surface)",
     },
+    gray: {
+      backgroundColor: "rgba(100,116,139,0.14)",
+      borderColor: "rgba(100,116,139,0.25)",
+      color: "#64748b",
+    },
   };
 
   const s = tones[tone] || tones.neutral;
@@ -222,17 +236,17 @@ const PrimaryButton = ({
     style={
       disabled
         ? {
-          backgroundColor: "var(--app-surface-2)",
-          color: "var(--app-muted)",
-          borderColor: "var(--app-border)",
-          cursor: "not-allowed",
-          opacity: 0.7,
-        }
+            backgroundColor: "var(--app-surface-2)",
+            color: "var(--app-muted)",
+            borderColor: "var(--app-border)",
+            cursor: "not-allowed",
+            opacity: 0.7,
+          }
         : {
-          backgroundColor: "var(--accent)",
-          color: "#fff",
-          borderColor: "var(--accent)",
-        }
+            backgroundColor: "var(--accent)",
+            color: "#fff",
+            borderColor: "var(--accent)",
+          }
     }
     onMouseEnter={(e) => {
       if (disabled) return;
@@ -286,7 +300,7 @@ const MetricTile = ({
 
   return (
     <div
-      className="rounded-xl border p-4 shadow-sm transition-colors duration-300 ease-out"
+      className="rounded-xl border p-4 shadow-sm transition-colors duration-300 ease-out flex flex-col justify-between"
       style={{
         backgroundColor: "var(--app-surface)",
         borderColor: borderColor,
@@ -309,7 +323,7 @@ const MetricTile = ({
         </div>
 
         <div
-          className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors duration-300 ease-out"
+          className="w-10 h-10 rounded-xl border flex items-center justify-center transition-colors duration-300 ease-out shrink-0"
           style={badge}
         >
           <Icon className="w-5 h-5" />
@@ -355,6 +369,35 @@ const Progress = ({ reservedPct = 0, usedPct = 0, borderColor }) => {
   );
 };
 
+const TabButton = ({ active, onClick, label, icon, borderColor }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm border transition"
+    style={
+      active
+        ? {
+            backgroundColor: "var(--accent)",
+            color: "#fff",
+            borderColor: "var(--accent)",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
+          }
+        : {
+            backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
+            borderColor,
+          }
+    }
+  >
+    <span
+      style={{ color: active ? "rgba(255,255,255,0.9)" : "var(--app-muted)" }}
+    >
+      {icon}
+    </span>
+    <span className="font-medium">{label}</span>
+  </button>
+);
+
 /* =========================
    Loading Skeleton (layout-matched) — themed via vars
 ========================= */
@@ -394,7 +437,8 @@ const Skeleton = ({ className = "" }) => (
 
 const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
   const { can } = usePermissions();
-  const showOrg = can("cto.view_all");
+  const showOrg = can("cto.credits_view");
+  const isApprover = can("cto.view_application");
 
   const SkIconBox = ({ sizeClass = "w-10 h-10", inner = "w-5 h-5" }) => (
     <div
@@ -476,291 +520,6 @@ const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
     </div>
   );
 
-  const SkMetricTile = () => (
-    <div
-      className="rounded-xl border p-4 shadow-sm transition-colors duration-300 ease-out"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <Skeleton className="h-3 w-24 rounded-md" />
-          <Skeleton className="mt-2 h-8 w-20 rounded-md" />
-        </div>
-        <SkIconBox sizeClass="w-10 h-10" inner="w-5 h-5" />
-      </div>
-    </div>
-  );
-
-  const SkActionItem = () => (
-    <div
-      className={[
-        "w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2.5",
-        "border transition-colors duration-300 ease-out",
-      ].join(" ")}
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
-      }}
-    >
-      <div className="flex items-center gap-3 min-w-0 flex-1">
-        <div
-          className="w-9 h-9 rounded-lg border flex items-center justify-center transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor: borderColor,
-          }}
-        >
-          <Skeleton className="h-4 w-4 rounded-md" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <Skeleton className="h-5 w-40 max-w-full rounded-md" />
-          <Skeleton className="mt-2 h-4 w-24 rounded-md" />
-        </div>
-      </div>
-      <Skeleton className="h-4 h-4 w-4 rounded-md" />
-    </div>
-  );
-
-  const SkPendingRow = () => (
-    <div
-      className="py-3 border-b last:border-0 transition-colors duration-300 ease-out"
-      style={{ borderColor: borderColor }}
-    >
-      <div className="flex flex-row items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
-          <Skeleton className="h-9 w-9 rounded-full" />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Skeleton className="h-5 w-44 max-w-full rounded-md" />
-              <span
-                className="inline-flex items-center rounded-full px-2.5 py-1 border transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "var(--app-surface)",
-                  borderColor: borderColor,
-                }}
-              >
-                <Skeleton className="h-3 w-8 rounded-md" />
-              </span>
-            </div>
-            <Skeleton className="mt-2 h-4 w-40 max-w-full rounded-md" />
-          </div>
-        </div>
-        <div className="flex-shrink-0">
-          <Skeleton className="h-9 w-20 rounded-lg" />
-        </div>
-      </div>
-    </div>
-  );
-
-  const SkApprovalsHero = () => (
-    <div
-      className="rounded-xl flex flex-col justify-between h-56 border p-4 transition-colors duration-300 ease-out"
-      style={{
-        borderColor: borderColor,
-        backgroundColor: "var(--app-surface-2)",
-      }}
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <Skeleton className="h-3 w-28 rounded-md" />
-          <Skeleton className="mt-2 h-12 w-16 rounded-lg" />
-          <Skeleton className="mt-3 h-5 w-64 max-w-full rounded-md" />
-          <Skeleton className="mt-2 h-5 w-52 max-w-full rounded-md" />
-        </div>
-
-        <div
-          className="flex-shrink-0 w-12 h-12 rounded-xl border flex items-center justify-center transition-colors duration-300 ease-out"
-          style={{
-            borderColor: borderColor,
-            backgroundColor: "var(--app-surface)",
-          }}
-        >
-          <Skeleton className="h-5 w-5 rounded-md" />
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <Skeleton className="h-10 w-full rounded-lg" />
-      </div>
-    </div>
-  );
-
-  const SkTimeCredits = () => (
-    <Card borderColor={borderColor}>
-      <SkCardHeader withAction />
-      <div className="p-4">
-        <div
-          className="rounded-xl border p-4 transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
-          }}
-        >
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <Skeleton className="h-3 w-16 rounded-md" />
-              <Skeleton className="mt-2 h-12 w-32 rounded-lg" />
-            </div>
-
-            <div className="text-right space-y-2">
-              <Skeleton className="h-4 w-44 rounded-md ml-auto" />
-              <Skeleton className="h-4 w-32 rounded-md ml-auto" />
-              <Skeleton className="h-4 w-28 rounded-md ml-auto" />
-              <Skeleton className="h-4 w-24 rounded-md ml-auto" />
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <div
-              className="w-full rounded-full border h-3 overflow-hidden transition-colors duration-300 ease-out"
-              style={{
-                backgroundColor: "var(--app-surface-2)",
-                borderColor: borderColor,
-              }}
-            >
-              <div className="h-full flex">
-                <Skeleton className="h-full w-[28%] rounded-none" />
-                <Skeleton className="h-full w-[22%] rounded-none" />
-                <div className="flex-1 bg-transparent" />
-              </div>
-            </div>
-
-            <div
-              className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] transition-colors duration-300 ease-out"
-              style={{ color: "var(--app-muted)" }}
-            >
-              <div className="inline-flex items-center gap-2">
-                <Skeleton className="w-2.5 h-2.5 rounded-full" />
-                <Skeleton className="h-4 w-12 rounded-md" />
-              </div>
-              <div className="inline-flex items-center gap-2">
-                <Skeleton className="w-2.5 h-2.5 rounded-full" />
-                <Skeleton className="h-4 w-14 rounded-md" />
-              </div>
-              <div className="inline-flex items-center gap-2">
-                <Skeleton className="w-2.5 h-2.5 rounded-full" />
-                <Skeleton className="h-4 w-10 rounded-md" />
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-4 gap-2">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div
-                key={i}
-                className="rounded-lg border p-3 transition-colors duration-300 ease-out"
-                style={{
-                  borderColor: borderColor,
-                  backgroundColor: "var(--app-surface-2)",
-                }}
-              >
-                <Skeleton className="h-3 w-10 rounded-md" />
-                <Skeleton className="mt-2 h-5 w-16 rounded-md" />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-
-  const SkMiniStats = () => (
-    <div className="grid grid-cols-2 gap-3">
-      {Array.from({ length: 4 }).map((_, i) => (
-        <div
-          key={i}
-          className="rounded-xl border p-4 shadow-sm transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
-          }}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <Skeleton className="h-3 w-20 rounded-md" />
-              <Skeleton className="mt-2 h-8 w-16 rounded-md" />
-            </div>
-            <SkIconBox sizeClass="w-10 h-10" inner="w-5 h-5" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-
-  const SkRecentRequestsHeader = () => (
-    <div
-      className="px-4 py-3 border-b transition-colors duration-300 ease-out"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
-      }}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-4 h-4 rounded-md border flex items-center justify-center transition-colors duration-300 ease-out"
-              style={{
-                borderColor: borderColor,
-                backgroundColor: "var(--app-surface-2)",
-              }}
-            >
-              <Skeleton className="h-3 w-3 rounded-sm" />
-            </div>
-            <Skeleton className="h-5 w-44 rounded-md" />
-          </div>
-          <Skeleton className="mt-2 h-4 w-40 rounded-md" />
-        </div>
-        <Skeleton className="h-9 w-32 rounded-lg" />
-      </div>
-    </div>
-  );
-
-  const SkRecentRequestRow = () => (
-    <div className="p-4">
-      <div className="flex flex-row items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
-          <div
-            className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 transition-colors duration-300 ease-out"
-            style={{
-              borderColor: borderColor,
-              backgroundColor: "var(--app-surface-2)",
-            }}
-          >
-            <Skeleton className="h-4 w-4 rounded-md" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Skeleton className="h-5 w-48 max-w-full rounded-md" />
-              <span
-                className="inline-flex items-center rounded-full px-2.5 py-1 border transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "var(--app-surface)",
-                  borderColor: borderColor,
-                }}
-              >
-                <Skeleton className="h-3 w-8 rounded-md" />
-              </span>
-            </div>
-            <Skeleton className="mt-2 h-4 w-44 max-w-full rounded-md" />
-          </div>
-        </div>
-        <span
-          className="inline-flex items-center rounded-full px-2.5 py-1 border transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
-          }}
-        >
-          <Skeleton className="h-3 w-16 rounded-md" />
-        </span>
-      </div>
-    </div>
-  );
-
   const skBase =
     resolvedTheme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)";
   const skHi =
@@ -779,134 +538,73 @@ const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
         ["--sk-highlight"]: skHi,
       }}
     >
-      {/* Theme vars + accent */}
       <ThemeSync />
-      {/* Reusable scrollbar sync (themes html/body + .cto-scrollbar containers) */}
       <ScrollbarsSync />
       <SkeletonStyles />
 
-      <div className="w-full mx-auto py-3 sm:py-4">
-        <div className="mx-auto">
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            <div className="min-w-0 space-y-2">
-              <Skeleton className="h-8 sm:h-9 w-64 sm:w-72 rounded-lg" />
-              <Skeleton className="h-5 w-[32rem] max-w-full rounded-md" />
-            </div>
-            <div className="flex items-center gap-2">
-              <SkPill w="w-28" />
-            </div>
+      <div className="max-w-5xl mx-auto py-3 sm:py-4 w-full px-2 lg:px-0">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="min-w-0 space-y-2">
+            <Skeleton className="h-8 sm:h-9 w-64 sm:w-72 rounded-lg" />
+            <Skeleton className="h-5 w-[32rem] max-w-full rounded-md" />
           </div>
+          <div className="flex items-center gap-2">
+            <SkPill w="w-28" />
+          </div>
+        </div>
 
-          <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
-            <div className="xl:col-span-8 space-y-4">
-              {showOrg ? (
-                <div className="space-y-3">
-                  <SkSectionTitle />
-                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <SkMetricTile key={i} />
-                    ))}
+        {/* Skeleton Tabs */}
+        <div
+          className="mt-6 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            borderColor,
+          }}
+        >
+          <div className="h-9 w-32 rounded-xl bg-[var(--sk-base)]" />
+          {isApprover && (
+            <div className="h-9 w-40 rounded-xl bg-[var(--sk-base)] opacity-80" />
+          )}
+          {showOrg && (
+            <div className="h-9 w-48 rounded-xl bg-[var(--sk-base)] opacity-50" />
+          )}
+        </div>
+
+        <div className="mt-5 space-y-4">
+          <SkSectionTitle />
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="rounded-xl border p-4 shadow-sm transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor: borderColor,
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <Skeleton className="h-3 w-24 rounded-md" />
+                    <Skeleton className="mt-2 h-8 w-20 rounded-md" />
                   </div>
+                  <SkIconBox sizeClass="w-10 h-10" inner="w-5 h-5" />
                 </div>
-              ) : null}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="relative" borderColor={borderColor}>
-                  <SkCardHeader withAction />
-                  <div className="p-4">
-                    <SkApprovalsHero />
-                  </div>
-                </Card>
-
-                <Card borderColor={borderColor}>
-                  <SkCardHeader withAction />
-                  <div className="p-4">
-                    <div className="max-h-56 overflow-y-auto pr-1 cto-scrollbar">
-                      {Array.from({ length: 4 }).map((_, i) => (
-                        <SkPendingRow key={i} />
-                      ))}
-                    </div>
-                  </div>
-                </Card>
               </div>
-
-              <div className="space-y-3">
-                <SkSectionTitle />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <SkTimeCredits />
-                  <SkMiniStats />
-                </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <Card borderColor={borderColor}>
+              <SkCardHeader withAction />
+              <div className="p-4 h-72 flex items-center justify-center">
+                <Skeleton className="h-20 w-3/4 rounded-xl" />
               </div>
-
-              <Card borderColor={borderColor}>
-                <SkRecentRequestsHeader />
-                <div className="p-4">
-                  <div
-                    className="border rounded-xl overflow-hidden transition-colors duration-300 ease-out"
-                    style={{
-                      borderColor: borderColor,
-                      backgroundColor: "var(--app-surface)",
-                    }}
-                  >
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className="transition-colors duration-300 ease-out"
-                        style={{
-                          borderBottom:
-                            i === 2 ? "none" : `1px solid ${borderColor}`,
-                        }}
-                      >
-                        <div
-                          className="transition-colors duration-300 ease-out"
-                          style={{ backgroundColor: "transparent" }}
-                        >
-                          <SkRecentRequestRow />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            <div className="xl:col-span-4 space-y-4">
-              <Card borderColor={borderColor}>
-                <div
-                  className="px-4 py-3 border-b transition-colors duration-300 ease-out"
-                  style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-4 h-4 rounded-md border flex items-center justify-center transition-colors duration-300 ease-out"
-                          style={{
-                            borderColor: borderColor,
-                            backgroundColor: "var(--app-surface-2)",
-                          }}
-                        >
-                          <Skeleton className="h-3 w-3 rounded-sm" />
-                        </div>
-                        <Skeleton className="h-5 w-32 rounded-md" />
-                      </div>
-                      <Skeleton className="mt-2 h-4 w-64 max-w-full rounded-md" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-4 space-y-3">
-                  <div className="space-y-2">
-                    {Array.from({ length: 1 }).map((_, i) => (
-                      <SkActionItem key={i} />
-                    ))}
-                  </div>
-                </div>
-              </Card>
-            </div>
+            </Card>
+            <Card borderColor={borderColor}>
+              <SkCardHeader withAction />
+              <div className="p-4 h-72 flex items-center justify-center">
+                <Skeleton className="h-20 w-3/4 rounded-xl" />
+              </div>
+            </Card>
           </div>
         </div>
       </div>
@@ -914,77 +612,33 @@ const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
   );
 };
 
-/* =========================
-   Sub-components (layout unchanged, themed via CSS vars)
-========================= */
-const ActionItem = ({ label, link, icon: Icon, borderColor }) => (
-  <button
-    type="button"
-    onClick={() => (window.location.href = link)}
-    className={[
-      "w-full flex items-center justify-between gap-3 rounded-lg px-3 py-2.5",
-      "border transition-colors duration-300 ease-out",
-      "text-left",
-    ].join(" ")}
-    style={{
-      borderColor: borderColor,
-      backgroundColor: "var(--app-surface)",
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundColor = "var(--app-surface)";
-    }}
-  >
-    <div className="flex items-center gap-3 min-w-0">
-      <span
-        className="w-9 h-9 rounded-lg border flex items-center justify-center transition-colors duration-300 ease-out"
-        style={{
-          borderColor: borderColor,
-          backgroundColor: "var(--app-surface-2)",
-          color: "var(--app-muted)",
-        }}
-      >
-        <Icon className="w-4 h-4" />
-      </span>
-      <div className="min-w-0">
-        <div
-          className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
-          style={{ color: "var(--app-text)" }}
-        >
-          {label}
-        </div>
-        <div
-          className="text-xs transition-colors duration-300 ease-out"
-          style={{ color: "var(--app-muted)" }}
-        >
-          Quick access
-        </div>
-      </div>
-    </div>
-    <ChevronRight className="w-4 h-4" style={{ color: "var(--app-muted)" }} />
-  </button>
-);
-
-const PendingRequestItem = ({ request, borderColor }) => {
+const PendingRequestItem = ({ request, borderColor, isLast }) => {
   const initial = request.employeeName?.charAt(0).toUpperCase() || "?";
 
   const formattedDate = request.createdAt
     ? new Intl.DateTimeFormat("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    }).format(new Date(request.createdAt))
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "numeric",
+        hour12: true,
+      }).format(new Date(request.createdAt))
     : "Date N/A";
 
   return (
     <div
-      className="py-3 border-b last:border-0 transition-colors duration-300 ease-out"
-      style={{ borderColor: borderColor }}
+      className="py-3 px-4 transition-colors duration-300 ease-out"
+      style={{
+        borderBottom: isLast ? "none" : `1px solid ${borderColor}`,
+        backgroundColor: "transparent",
+      }}
+      onMouseEnter={(e) =>
+        (e.currentTarget.style.backgroundColor = "var(--app-surface-2)")
+      }
+      onMouseLeave={(e) =>
+        (e.currentTarget.style.backgroundColor = "transparent")
+      }
     >
       <div className="flex flex-row items-start justify-between gap-3">
         <div className="flex items-start gap-3 min-w-0">
@@ -1042,7 +696,7 @@ const PendingRequestItem = ({ request, borderColor }) => {
 };
 
 /* =========================
-   Main Page (logic unchanged, design themed)
+   Main Page (Tabbed layout + theme-aware)
 ========================= */
 const CtoDashboard = () => {
   const { data, isLoading, isError } = useQuery({
@@ -1053,7 +707,12 @@ const CtoDashboard = () => {
   const { admin } = useAuth();
   const role = admin?.role;
   const { can } = usePermissions();
-  const showOrg = can("cto.view_all");
+
+  const showOrg = can("cto.credits_view");
+  const isApprover = can("cto.view_application");
+
+  // Track the active tab ("my", "approver", "org")
+  const [activeTab, setActiveTab] = useState("my");
 
   // Theme-aware styling (design only)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
@@ -1065,8 +724,7 @@ const CtoDashboard = () => {
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
 
-  // Keep your existing useEffect import; no removal.
-  useEffect(() => { }, []);
+  useEffect(() => {}, []);
 
   if (isLoading)
     return (
@@ -1096,12 +754,17 @@ const CtoDashboard = () => {
     totalRequests,
     approvedRequests,
     rejectedRequests,
-    quickActions,
-    quickLinks,
     totalCreditedCount,
     totalRolledBackCount,
     totalPendingRequests,
     pendingRequests = [],
+    approverStats = {
+      all: 0,
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      cancelled: 0,
+    },
   } = data;
 
   const totalCreditRaw = Number(myCtoSummary?.totalCredit || 0);
@@ -1142,232 +805,84 @@ const CtoDashboard = () => {
         color: "var(--app-text)",
       }}
     >
-      {/* Theme vars + accent */}
       <ThemeSync />
-      {/* Reusable scrollbar sync (themes html/body + .cto-scrollbar containers) */}
       <ScrollbarsSync />
 
-      <div className="w-full mx-auto py-3 sm:py-4">
-        <div className="mx-auto">
-          {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-            <div className="min-w-0">
-              <Breadcrumbs rootLabel="home" rootTo="/app" />
-              <h1
-                className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
-                style={{ color: "var(--app-text)" }}
-              >
-                CTO <span className="font-bold">Overview</span>
-              </h1>
-              <p
-                className="text-sm mt-1 transition-colors duration-300 ease-out"
-                style={{ color: "var(--app-muted)" }}
-              >
-                Track requests, approvals, balances, and recent activity in one
-                place.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Pill tone="green" className="normal-case">
-                <span className="inline-flex items-center gap-2">
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#22c55e" }}
-                  />
-                  System Live
-                </span>
-              </Pill>
-            </div>
+      <div className="max-w-6xl w-full mx-auto py-3 sm:py-4 px-2 lg:px-0">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="min-w-0">
+            <Breadcrumbs rootLabel="home" rootTo="/app" />
+            <h1
+              className="mt-2 text-2xl sm:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-text)" }}
+            >
+              CTO <span className="font-bold">Overview</span>
+            </h1>
+            <p
+              className="text-sm mt-1 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
+              Track requests, approvals, balances, and recent activity in one
+              place.
+            </p>
           </div>
 
-          {/* Stack main + right rail until XL */}
-          <div className="mt-5 grid grid-cols-1 xl:grid-cols-12 gap-4">
-            {/* MAIN */}
-            <div className="xl:col-span-8 space-y-4">
-              {/* Organization Insights */}
-              {showOrg && (
-                <div className="space-y-3">
-                  <SectionTitle
-                    icon={ShieldCheck}
-                    title="Organization insights"
-                    subtitle="View total, approved, pending, rejected requests across the organization."
-                    borderColor={borderColor}
-                  />
+          <div className="flex items-center gap-2">
+            <Pill tone="green" className="normal-case">
+              <span className="inline-flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: "#22c55e" }}
+                />
+                System Live
+              </span>
+            </Pill>
+          </div>
+        </div>
 
-                  <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                    <MetricTile
-                      label="Total Requests"
-                      value={totalRequests || 0}
-                      icon={Activity}
-                      tone="blue"
-                      borderColor={borderColor}
-                    />
-                    <MetricTile
-                      label="Approved"
-                      value={approvedRequests || 0}
-                      icon={CheckCircle2}
-                      tone="green"
-                      borderColor={borderColor}
-                    />
-                    <MetricTile
-                      label="Pending Review"
-                      value={totalPendingRequests || 0}
-                      icon={Clock}
-                      tone="amber"
-                      borderColor={borderColor}
-                    />
-                    <MetricTile
-                      label="Total Rejected"
-                      value={
-                        (rejectedRequests || 0) + (totalRolledBackCount || 0)
-                      }
-                      icon={AlertCircle}
-                      tone="rose"
-                      borderColor={borderColor}
-                    />
-                  </div>
-                </div>
-              )}
+        {/* Dynamic Tabs */}
+        <div
+          className="mt-6 mb-5 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            borderColor,
+          }}
+        >
+          <TabButton
+            active={activeTab === "my"}
+            onClick={() => setActiveTab("my")}
+            label="My Dashboard"
+            icon={<User size={16} />}
+            borderColor={borderColor}
+          />
+          {isApprover && (
+            <TabButton
+              active={activeTab === "approver"}
+              onClick={() => setActiveTab("approver")}
+              label="Approver"
+              icon={<UserCheck size={16} />}
+              borderColor={borderColor}
+            />
+          )}
+          {showOrg && (
+            <TabButton
+              active={activeTab === "org"}
+              onClick={() => setActiveTab("org")}
+              label="Organization"
+              icon={<Building2 size={16} />}
+              borderColor={borderColor}
+            />
+          )}
+        </div>
 
-              {pendingCount > 0 && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Priority row */}
-
-                  {/* Approvals queue */}
-                  <Card className="relative" borderColor={borderColor}>
-                    <CardHeader
-                      title="Approvals queue"
-                      icon={AlertCircle}
-                      subtitle="Items awaiting your review."
-                      borderColor={borderColor}
-                      action={
-                        pendingCount > 0 ? (
-                          <Pill tone="amber">{pendingCount} pending</Pill>
-                        ) : (
-                          <Pill tone="green">Cleared</Pill>
-                        )
-                      }
-                    />
-
-                    <div className="p-4">
-                      <div
-                        className="rounded-xl flex flex-col justify-between h-56 border p-4 transition-colors duration-300 ease-out"
-                        style={{
-                          borderColor: borderColor,
-                          backgroundColor: "var(--app-surface-2)",
-                        }}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0 ">
-                            <div
-                              className="text-[10px] font-bold uppercase tracking-wider"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Pending approvals
-                            </div>
-
-                            <div
-                              className="mt-1 text-5xl font-extrabold"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {pendingCount}
-                            </div>
-
-                            <div
-                              className="mt-2 text-sm leading-relaxed"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              {pendingCount > 0
-                                ? "Some employees are waiting for approval."
-                                : "All caught up! No approvals currently pending."}
-                            </div>
-                          </div>
-
-                          <div
-                            className="flex-shrink-0 w-12 h-12 rounded-xl border flex items-center justify-center"
-                            style={{
-                              borderColor: borderColor,
-                              backgroundColor: "var(--app-surface)",
-                              color: "var(--app-muted)",
-                            }}
-                          >
-                            <TrendingUp className="w-5 h-5" />
-                          </div>
-                        </div>
-
-                        <div className="mt-4">
-                          <PrimaryButton
-                            disabled={pendingCount === 0}
-                            onClick={() => {
-                              if (pendingCount > 0)
-                                window.location.href = "/app/cto-approvals";
-                            }}
-                            className="w-full"
-                          >
-                            {pendingCount > 0
-                              ? "Process approvals"
-                              : "Complete"}
-                          </PrimaryButton>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Recent Pending */}
-                  <Card borderColor={borderColor}>
-                    <CardHeader
-                      title="Recent pending requests"
-                      icon={History}
-                      subtitle="Latest inbound submissions needing review."
-                      borderColor={borderColor}
-                      action={
-                        <Pill
-                          tone={pendingRequests.length ? "amber" : "neutral"}
-                        >
-                          {pendingRequests.length} new
-                        </Pill>
-                      }
-                    />
-
-                    <div className="p-4">
-                      {pendingRequests.length > 0 ? (
-                        <div className="max-h-56 overflow-y-auto pr-1 cto-scrollbar">
-                          {pendingRequests.map((req) => (
-                            <PendingRequestItem
-                              key={req.id}
-                              request={req}
-                              borderColor={borderColor}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div
-                          className="rounded-xl border border-dashed p-6 text-center"
-                          style={{
-                            borderColor: borderColor,
-                            backgroundColor: "var(--app-surface-2)",
-                          }}
-                        >
-                          <div
-                            className="text-sm font-semibold"
-                            style={{ color: "var(--app-text)" }}
-                          >
-                            No new requests
-                          </div>
-                          <div
-                            className="text-xs mt-1"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            You’re all set—nothing to review right now.
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                </div>
-              )}
-              {/* My CTO Dashboard */}
+        {/* Tab Content Container */}
+        <div className="mt-4 space-y-6">
+          {/* =========================================
+              TAB: MY DASHBOARD 
+          ========================================= */}
+          {activeTab === "my" && (
+            <div className="space-y-6">
               <div className="space-y-3">
                 <SectionTitle
                   icon={History}
@@ -1376,271 +891,279 @@ const CtoDashboard = () => {
                   borderColor={borderColor}
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Time Credits */}
-                  <Card borderColor={borderColor}>
-                    <CardHeader
-                      title="Time credits"
-                      icon={Clock}
-                      subtitle="Total credit, utilization, and available balance."
-                      borderColor={borderColor}
-                      action={
-                        <Pill tone="blue">
-                          {utilizationPct.toFixed(0)}% utilized
-                        </Pill>
-                      }
-                    />
-                    <div className="p-4">
-                      <div
-                        className="rounded-xl border p-4 transition-colors duration-300 ease-out"
-                        style={{
-                          borderColor: borderColor,
-                          backgroundColor: "var(--app-surface)",
-                        }}
-                      >
-                        <div className="flex items-end justify-between gap-3">
-                          <div>
-                            <div
-                              className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Hours left
-                            </div>
-                            <div
-                              className="mt-1 text-5xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {balance.toFixed(1)}
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <div
-                              className="text-xs font-semibold transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Total Credited Hours:{" "}
-                              <span
-                                className="font-bold transition-colors duration-300 ease-out"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {totalCredit.toFixed(1)}h
-                              </span>
-                            </div>
-                            <div
-                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Reserved:{" "}
-                              <span
-                                className="font-bold transition-colors duration-300 ease-out"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {reserved.toFixed(1)}h
-                              </span>
-                            </div>
-                            <div
-                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Used:{" "}
-                              <span
-                                className="font-bold transition-colors duration-300 ease-out"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {used.toFixed(1)}h
-                              </span>
-                            </div>
-                            <div
-                              className="text-xs mt-0.5 transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Balance:{" "}
-                              <span
-                                className="font-semibold transition-colors duration-300 ease-out"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {balance.toFixed(1)}h
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-4 space-y-2">
-                          <Progress
-                            reservedPct={reservedPct}
-                            usedPct={usedPct}
-                            borderColor={borderColor}
-                          />
-
-                          <div
-                            className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            <div className="inline-flex items-center gap-2">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full border"
-                                style={{
-                                  backgroundColor: "rgba(148,163,184,0.45)",
-                                  borderColor: borderColor,
-                                }}
-                              />
-                              <span>Balance</span>
-                            </div>
-
-                            {reserved > 0 ? (
-                              <div className="inline-flex items-center gap-2">
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full"
-                                  style={{ backgroundColor: "#f59e0b" }}
-                                />
-                                <span>Reserved</span>
-                              </div>
-                            ) : null}
-
-                            {used > 0 ? (
-                              <div className="inline-flex items-center gap-2">
-                                <span
-                                  className="w-2.5 h-2.5 rounded-full"
-                                  style={{ backgroundColor: "#f43f5e" }}
-                                />
-                                <span>Used</span>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-4 gap-2">
-                          {[
-                            { k: "Total", v: `${totalCredit.toFixed(1)}h` },
-                            { k: "Balance", v: `${balance.toFixed(1)}h` },
-                            { k: "Reserved", v: `${reserved.toFixed(1)}h` },
-                            { k: "Used", v: `${used.toFixed(1)}h` },
-                          ].map((t) => (
-                            <div
-                              key={t.k}
-                              className="rounded-lg border p-3 transition-colors duration-300 ease-out"
-                              style={{
-                                borderColor: borderColor,
-                                backgroundColor: "var(--app-surface-2)",
-                              }}
-                            >
-                              <div
-                                className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
-                                style={{ color: "var(--app-muted)" }}
-                              >
-                                {t.k}
-                              </div>
-                              <div
-                                className="mt-1 text-sm font-bold transition-colors duration-300 ease-out"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {t.v}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  {/* Mini stats */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <MetricTile
-                      label="My Requests"
-                      value={myCtoSummary?.totalRequests || 0}
-                      icon={Activity}
-                      tone="gray"
-                      borderColor={borderColor}
-                    />
-                    <MetricTile
-                      label="Approved"
-                      value={myCtoSummary?.approved || 0}
-                      icon={CheckCircle2}
-                      tone="green"
-                      borderColor={borderColor}
-                    />
-                    <MetricTile
-                      label="Rejected"
-                      value={myCtoSummary?.rejected || 0}
-                      icon={AlertCircle}
-                      tone="rose"
-                      borderColor={borderColor}
-                    />
-                    <MetricTile
-                      label="Pending"
-                      value={myCtoSummary?.pending || 0}
-                      icon={Clock}
-                      tone="amber"
-                      borderColor={borderColor}
-                    />
-                  </div>
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                  <MetricTile
+                    label="My Requests"
+                    value={myCtoSummary?.totalRequests || 0}
+                    icon={Activity}
+                    tone="blue"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Approved"
+                    value={myCtoSummary?.approved || 0}
+                    icon={CheckCircle2}
+                    tone="green"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Pending"
+                    value={myCtoSummary?.pending || 0}
+                    icon={Clock}
+                    tone="amber"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Rejected"
+                    value={myCtoSummary?.rejected || 0}
+                    icon={AlertCircle}
+                    tone="rose"
+                    borderColor={borderColor}
+                  />
                 </div>
               </div>
 
-              {/* Recent Activity */}
-              <Card borderColor={borderColor}>
-                <CardHeader
-                  title="My recent requests"
-                  icon={Calendar}
-                  subtitle={`Last ${myCtoSummary?.recentRequests?.length || 0} submissions`}
-                  borderColor={borderColor}
-                  action={
-                    <Link
-                      to={`/app/cto-apply/`}
-                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold border transition-colors duration-300 ease-out"
-                      style={{
-                        backgroundColor: "var(--accent)",
-                        borderColor: "var(--accent)",
-                        color: "#fff",
-                      }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.filter = "brightness(0.95)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.filter = "none")
-                      }
-                    >
-                      ({myCtoSummary?.totalRequests || 0}) View all
-                      <ChevronRight className="w-4 h-4" />
-                    </Link>
-                  }
-                />
-                <div className="p-4">
-                  {myCtoSummary?.recentRequests &&
-                    myCtoSummary.recentRequests.length > 0 ? (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {/* Time Credits */}
+                <Card borderColor={borderColor}>
+                  <CardHeader
+                    title="Time credits"
+                    icon={Clock}
+                    subtitle="Total credit, utilization, and available balance."
+                    borderColor={borderColor}
+                    action={
+                      <Pill tone="blue">
+                        {utilizationPct.toFixed(0)}% utilized
+                      </Pill>
+                    }
+                  />
+                  <div className="p-4">
                     <div
-                      className="border rounded-xl overflow-hidden transition-colors duration-300 ease-out"
+                      className="rounded-xl border p-4 transition-colors duration-300 ease-out"
                       style={{
                         borderColor: borderColor,
                         backgroundColor: "var(--app-surface)",
                       }}
                     >
-                      {myCtoSummary.recentRequests.map((request, idx) => {
-                        const isLast =
-                          idx === myCtoSummary.recentRequests.length - 1;
-                        const st = getStatusStyle(request.overallStatus);
-
-                        return (
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
                           <div
-                            key={request._id}
-                            className="transition-colors duration-300 ease-out"
+                            className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Hours left
+                          </div>
+                          <div
+                            className="mt-1 text-5xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {balance.toFixed(1)}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div
+                            className="text-xs font-semibold transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Total Credited Hours:{" "}
+                            <span
+                              className="font-bold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {totalCredit.toFixed(1)}h
+                            </span>
+                          </div>
+                          <div
+                            className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Reserved:{" "}
+                            <span
+                              className="font-bold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {reserved.toFixed(1)}h
+                            </span>
+                          </div>
+                          <div
+                            className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Used:{" "}
+                            <span
+                              className="font-bold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {used.toFixed(1)}h
+                            </span>
+                          </div>
+                          <div
+                            className="text-xs mt-0.5 transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Balance:{" "}
+                            <span
+                              className="font-semibold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {balance.toFixed(1)}h
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 space-y-2">
+                        <Progress
+                          reservedPct={reservedPct}
+                          usedPct={usedPct}
+                          borderColor={borderColor}
+                        />
+
+                        <div
+                          className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          <div className="inline-flex items-center gap-2">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full border"
+                              style={{
+                                backgroundColor: "rgba(148,163,184,0.45)",
+                                borderColor: borderColor,
+                              }}
+                            />
+                            <span>Balance</span>
+                          </div>
+
+                          {reserved > 0 ? (
+                            <div className="inline-flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: "#f59e0b" }}
+                              />
+                              <span>Reserved</span>
+                            </div>
+                          ) : null}
+
+                          {used > 0 ? (
+                            <div className="inline-flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: "#f43f5e" }}
+                              />
+                              <span>Used</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-4 gap-2">
+                        {[
+                          { k: "Total", v: `${totalCredit.toFixed(1)}h` },
+                          { k: "Balance", v: `${balance.toFixed(1)}h` },
+                          { k: "Reserved", v: `${reserved.toFixed(1)}h` },
+                          { k: "Used", v: `${used.toFixed(1)}h` },
+                        ].map((t) => (
+                          <div
+                            key={t.k}
+                            className="rounded-lg border p-3 transition-colors duration-300 ease-out"
                             style={{
-                              borderBottom: isLast
-                                ? "none"
-                                : `1px solid ${borderColor}`,
-                              backgroundColor: "transparent",
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.backgroundColor =
-                                "var(--app-surface-2)";
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.backgroundColor =
-                                "transparent";
+                              borderColor: borderColor,
+                              backgroundColor: "var(--app-surface-2)",
                             }}
                           >
-                            <div className="p-4">
+                            <div
+                              className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              {t.k}
+                            </div>
+                            <div
+                              className="mt-1 text-sm font-bold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {t.v}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+
+                {/* My Recent Activity */}
+                <Card borderColor={borderColor}>
+                  <CardHeader
+                    title="My recent requests"
+                    icon={Calendar}
+                    subtitle={`Last ${myCtoSummary?.recentRequests?.length || 0} submissions`}
+                    borderColor={borderColor}
+                    action={
+                      <div className="flex items-center gap-2">
+                        <Pill
+                          tone={
+                            myCtoSummary?.recentRequests?.length
+                              ? "blue"
+                              : "neutral"
+                          }
+                        >
+                          {myCtoSummary?.recentRequests?.length || 0} recent
+                        </Pill>
+                        <Link
+                          to={`/app/cto-apply/`}
+                          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold border transition-colors duration-300 ease-out"
+                          style={{
+                            backgroundColor: "var(--accent)",
+                            borderColor: "var(--accent)",
+                            color: "#fff",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.filter = "brightness(0.95)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.filter = "none")
+                          }
+                        >
+                          ({myCtoSummary?.totalRequests || 0}) View all
+                          <ChevronRight className="w-4 h-4" />
+                        </Link>
+                      </div>
+                    }
+                  />
+                  <div className="p-4">
+                    {myCtoSummary?.recentRequests &&
+                    myCtoSummary.recentRequests.length > 0 ? (
+                      <div
+                        className="border rounded-xl overflow-y-auto max-h-72 cto-scrollbar transition-colors duration-300 ease-out"
+                        style={{
+                          borderColor: borderColor,
+                          backgroundColor: "var(--app-surface)",
+                        }}
+                      >
+                        {myCtoSummary.recentRequests.map((request, idx) => {
+                          const isLast =
+                            idx === myCtoSummary.recentRequests.length - 1;
+                          const st = getStatusStyle(request.overallStatus);
+
+                          return (
+                            <div
+                              key={request._id}
+                              className="py-3 px-4 transition-colors duration-300 ease-out"
+                              style={{
+                                borderBottom: isLast
+                                  ? "none"
+                                  : `1px solid ${borderColor}`,
+                                backgroundColor: "transparent",
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  "var(--app-surface-2)";
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.backgroundColor =
+                                  "transparent";
+                              }}
+                            >
                               <div className="flex flex-row items-start justify-between gap-3">
                                 <div className="flex items-start gap-3 min-w-0">
                                   <div
@@ -1687,73 +1210,289 @@ const CtoDashboard = () => {
                                 </span>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div
+                        className="rounded-xl border border-dashed p-6 text-center transition-colors duration-300 ease-out"
+                        style={{
+                          borderColor: borderColor,
+                          backgroundColor: "var(--app-surface-2)",
+                        }}
+                      >
+                        <div
+                          className="text-sm font-semibold transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          No recent requests found.
+                        </div>
+                        <div
+                          className="text-xs mt-1 transition-colors duration-300 ease-out"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          Submit a request to start tracking activity here.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* =========================================
+              TAB: APPROVER SECTION
+          ========================================= */}
+          {activeTab === "approver" && isApprover && (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <SectionTitle
+                  icon={UserCheck}
+                  title="Approver Activity"
+                  subtitle="Status of applications routed to you for review."
+                  borderColor={borderColor}
+                />
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+                  <MetricTile
+                    label="Routed to Me"
+                    value={approverStats.all || 0}
+                    icon={Activity}
+                    tone="blue"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Approved"
+                    value={approverStats.approved || 0}
+                    icon={CheckCircle2}
+                    tone="green"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Pending Review"
+                    value={approverStats.pending || 0}
+                    icon={Clock}
+                    tone="amber"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Rejected"
+                    value={approverStats.rejected || 0}
+                    icon={AlertCircle}
+                    tone="rose"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Cancelled"
+                    value={approverStats.cancelled || 0}
+                    icon={XCircle}
+                    tone="gray"
+                    borderColor={borderColor}
+                  />
+                </div>
+              </div>
+
+              {/* Pending Queue & Recent Pending Layout */}
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {/* Approvals queue */}
+                <Card className="relative" borderColor={borderColor}>
+                  <CardHeader
+                    title="Approvals queue"
+                    icon={AlertCircle}
+                    subtitle="Items currently awaiting your review."
+                    borderColor={borderColor}
+                  />
+
+                  <div className="p-4">
                     <div
-                      className="rounded-xl border border-dashed p-6 text-center transition-colors duration-300 ease-out"
+                      className="rounded-xl flex flex-col justify-between h-72 border p-4 transition-colors duration-300 ease-out"
                       style={{
                         borderColor: borderColor,
                         backgroundColor: "var(--app-surface-2)",
                       }}
                     >
-                      <div
-                        className="text-sm font-semibold transition-colors duration-300 ease-out"
-                        style={{ color: "var(--app-text)" }}
-                      >
-                        No recent requests found.
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="min-w-0 ">
+                          <div
+                            className="text-[10px] font-bold uppercase tracking-wider"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Action required
+                          </div>
+
+                          <div
+                            className="mt-1 text-5xl md:text-6xl font-extrabold"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {pendingCount}
+                          </div>
+
+                          <div
+                            className="mt-2 text-sm leading-relaxed"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            {pendingCount > 0
+                              ? "Employees are waiting for your approval."
+                              : "All caught up! No approvals currently pending."}
+                          </div>
+                        </div>
+
+                        <div
+                          className="flex-shrink-0 w-12 h-12 rounded-xl border flex items-center justify-center"
+                          style={{
+                            borderColor: borderColor,
+                            backgroundColor: "var(--app-surface)",
+                            color: "var(--app-muted)",
+                          }}
+                        >
+                          <TrendingUp className="w-5 h-5" />
+                        </div>
                       </div>
-                      <div
-                        className="text-xs mt-1 transition-colors duration-300 ease-out"
-                        style={{ color: "var(--app-muted)" }}
-                      >
-                        Submit a request to start tracking activity here.
+
+                      <div className="mt-4">
+                        <PrimaryButton
+                          disabled={pendingCount === 0}
+                          onClick={() => {
+                            if (pendingCount > 0)
+                              window.location.href = "/app/cto-approvals";
+                          }}
+                          className="w-full"
+                        >
+                          {pendingCount > 0 ? "Process approvals" : "Complete"}
+                        </PrimaryButton>
                       </div>
                     </div>
-                  )}
-                </div>
-              </Card>
-            </div>
+                  </div>
+                </Card>
 
-            {/* RIGHT RAIL */}
-            <div className="xl:col-span-4 space-y-4">
-              <Card borderColor={borderColor}>
-                <CardHeader
-                  title="Action center"
-                  icon={TrendingUp}
-                  subtitle="Shortcuts to common tasks and links."
+                {/* Recent Pending */}
+                <Card borderColor={borderColor}>
+                  <CardHeader
+                    title="Recent pending requests"
+                    icon={History}
+                    subtitle="Latest inbound submissions needing review."
+                    borderColor={borderColor}
+                    action={
+                      <div className="flex items-center gap-2">
+                        <Pill
+                          tone={pendingRequests.length ? "amber" : "neutral"}
+                        >
+                          {pendingRequests.length} new
+                        </Pill>
+                        <Link
+                          to={`/app/cto-approvals/`}
+                          className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold border transition-colors duration-300 ease-out"
+                          style={{
+                            backgroundColor: "var(--accent)",
+                            borderColor: "var(--accent)",
+                            color: "#fff",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.filter = "brightness(0.95)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.filter = "none")
+                          }
+                        >
+                          ({pendingCount}) View all
+                          <ChevronRight className="w-4 h-4" />
+                        </Link>
+                      </div>
+                    }
+                  />
+
+                  <div className="p-4">
+                    {pendingRequests.length > 0 ? (
+                      <div
+                        className="border rounded-xl overflow-y-auto max-h-72 cto-scrollbar transition-colors duration-300 ease-out"
+                        style={{
+                          borderColor: borderColor,
+                          backgroundColor: "var(--app-surface)",
+                        }}
+                      >
+                        {pendingRequests.map((req, idx) => (
+                          <PendingRequestItem
+                            key={req.id || req._id}
+                            request={req}
+                            borderColor={borderColor}
+                            isLast={idx === pendingRequests.length - 1}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        className="rounded-xl border border-dashed p-6 text-center"
+                        style={{
+                          borderColor: borderColor,
+                          backgroundColor: "var(--app-surface-2)",
+                        }}
+                      >
+                        <div
+                          className="text-sm font-semibold"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          No new requests
+                        </div>
+                        <div
+                          className="text-xs mt-1"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          You’re all set—nothing to review right now.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </div>
+            </div>
+          )}
+
+          {/* =========================================
+              TAB: ORGANIZATION SECTION (HR / Admin)
+          ========================================= */}
+          {activeTab === "org" && showOrg && (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <SectionTitle
+                  icon={ShieldCheck}
+                  title="Organization Insights"
+                  subtitle="Global view of all CTO requests and operations."
                   borderColor={borderColor}
                 />
-                <div className="p-4 space-y-3">
-                  <div className="space-y-2">
-                    {quickActions?.slice(0, 4).map((action, idx) => (
-                      <ActionItem
-                        key={`qa-${idx}`}
-                        label={action.name}
-                        link={action.link}
-                        icon={Briefcase}
-                        borderColor={borderColor}
-                      />
-                    ))}
-                    {quickLinks?.slice(0, 4).map((link, idx) => (
-                      <ActionItem
-                        key={`ql-${idx}`}
-                        label={link.name}
-                        link={link.link}
-                        icon={ArrowUpRight}
-                        borderColor={borderColor}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </Card>
-            </div>
-          </div>
 
-          {/* NOTE: totalCreditedCount kept from payload (unused), per original */}
-          {typeof totalCreditedCount !== "undefined" ? null : null}
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                  <MetricTile
+                    label="Total Requests"
+                    value={totalRequests || 0}
+                    icon={Layers}
+                    tone="blue"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Approved"
+                    value={approvedRequests || 0}
+                    icon={CheckCircle2}
+                    tone="green"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Pending Review"
+                    value={totalPendingRequests || 0}
+                    icon={Clock}
+                    tone="amber"
+                    borderColor={borderColor}
+                  />
+                  <MetricTile
+                    label="Rejected"
+                    value={rejectedRequests || 0}
+                    icon={AlertCircle}
+                    tone="rose"
+                    borderColor={borderColor}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

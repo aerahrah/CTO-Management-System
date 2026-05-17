@@ -110,6 +110,7 @@ const ctoDashboardService = {
         pending: 0,
         approved: 0,
         rejected: 0,
+        cancelled: 0,
         totalRequests: 0,
         recentRequests: [],
       };
@@ -119,6 +120,7 @@ const ctoDashboardService = {
       approvedCount,
       pendingCount,
       rejectedCount,
+      cancelledCount,
       totalCount,
       usedHours,
       creditTotals,
@@ -134,6 +136,10 @@ const ctoDashboardService = {
       CtoApplication.countDocuments({
         employee: employeeId,
         overallStatus: "REJECTED",
+      }),
+      CtoApplication.countDocuments({
+        employee: employeeId,
+        overallStatus: "CANCELLED",
       }),
       CtoApplication.countDocuments({ employee: employeeId }),
       sumApprovedHours(employeeId),
@@ -167,6 +173,7 @@ const ctoDashboardService = {
       pending: pendingCount,
       approved: approvedCount,
       rejected: rejectedCount,
+      cancelled: cancelledCount,
       totalRequests: totalCount,
       recentRequests,
       wellnessBalance: employee.balances?.wellnessDays || 0,
@@ -178,7 +185,6 @@ const ctoDashboardService = {
       await ctoDashboardService.getPersonalCtoSummary(employeeId);
     return {
       myCtoSummary,
-      quickActions: [{ name: "Apply for CTO", link: "/app/cto-apply" }],
     };
   },
 
@@ -186,6 +192,7 @@ const ctoDashboardService = {
     const myCtoSummary =
       await ctoDashboardService.getPersonalCtoSummary(employeeId);
 
+    // Fetch only CTO applications routed to this specific approver
     const approvalSteps = await ApprovalStep.find({ approver: employeeId })
       .populate({
         path: "ctoApplication",
@@ -194,50 +201,63 @@ const ctoDashboardService = {
           { path: "approvals", populate: { path: "approver", select: "_id" } },
         ],
       })
-      .populate({
-        path: "wellnessApplication",
-        populate: [
-          { path: "employee", select: "firstName lastName" },
-          { path: "approvals", populate: { path: "approver", select: "_id" } },
-        ],
-      })
       .sort({ createdAt: -1 });
+
+    const uniqueAppsMap = new Map();
+
+    // Ensure we process each unique application only once
+    // and grab the exact step representing this approver's action
+    for (const step of approvalSteps) {
+      const app = step.ctoApplication;
+      if (!app) continue;
+      uniqueAppsMap.set(app._id.toString(), { app, step });
+    }
+
+    let totalApproverRequests = 0;
+    let totalApproved = 0;
+    let totalPending = 0;
+    let totalRejected = 0;
+    let totalCancelled = 0; // ✅ Added Cancelled Tally
 
     const pendingApplicationsMap = new Map();
 
-    for (const step of approvalSteps) {
-      const app = step.ctoApplication || step.wellnessApplication;
-      if (!app || !Array.isArray(app.approvals) || app.approvals.length === 0)
+    for (const { app, step } of uniqueAppsMap.values()) {
+      totalApproverRequests++;
+
+      // Tally stats based on the APPROVER'S personal step status
+      const myStatus = String(step.status || "").toUpperCase();
+      const overallStatus = String(app.overallStatus || "").toUpperCase();
+
+      if (myStatus === "APPROVED") totalApproved++;
+      else if (myStatus === "REJECTED") totalRejected++;
+      else if (myStatus === "PENDING") totalPending++;
+      else if (myStatus === "CANCELLED") totalCancelled++; // ✅ Count Cancelled steps
+
+      // Evaluate logic for actionable queue (Is it currently my turn?)
+      if (!Array.isArray(app.approvals) || app.approvals.length === 0) continue;
+      if (overallStatus === "REJECTED" || overallStatus === "CANCELLED")
         continue;
-      if (app.overallStatus === "REJECTED") continue;
 
       const steps = app.approvals;
-      const userStepIndex = steps.findIndex(
-        (s) => s.approver?._id?.toString() === employeeId.toString(),
-      );
-      if (userStepIndex === -1) continue;
-
-      const userStep = steps[userStepIndex];
-      if (userStep.status === "REJECTED") continue;
-
       const pendingStep = steps.find((s) => s.status === "PENDING");
+
       const isTheirTurn =
         pendingStep?.approver?._id?.toString() === employeeId.toString();
 
-      if (userStep.status === "PENDING" && isTheirTurn) {
-        pendingApplicationsMap.set(app._id.toString(), { ...app._doc, type: step.ctoApplication ? "CTO" : "WELLNESS" });
+      if (myStatus === "PENDING" && isTheirTurn) {
+        pendingApplicationsMap.set(app._id.toString(), app);
       }
     }
 
     const allPendingRequests = Array.from(pendingApplicationsMap.values()).map(
       (app) => ({
         id: app._id,
-        type: app.type,
         employeeId: app.employee._id,
         employeeName: `${app.employee.firstName} ${app.employee.lastName}`,
-        requestedHours: app.type === "CTO" ? app.requestedHours : null,
-        totalDays: app.type === "WELLNESS" ? app.totalDays : null,
-        inclusiveDates: app.inclusiveDates || (app.startDate ? [app.startDate, app.endDate] : []),
+        requestedHours: app.requestedHours,
+        inclusiveDates:
+          app.inclusiveDates ||
+          (app.startDate ? [app.startDate, app.endDate] : []),
         reason: app.reason,
         createdAt: app.createdAt,
       }),
@@ -249,10 +269,13 @@ const ctoDashboardService = {
       myCtoSummary,
       teamPendingApprovals: allPendingRequests.length,
       pendingRequests: recentPendingRequests,
-      quickLinks:
-        allPendingRequests.length > 0
-          ? [{ name: "Approvals", link: "/app/cto-approvals" }]
-          : [],
+      approverStats: {
+        all: totalApproverRequests,
+        pending: totalPending,
+        approved: totalApproved,
+        rejected: totalRejected,
+        cancelled: totalCancelled, // ✅ Return cancelled count
+      },
     };
   },
 
@@ -281,11 +304,6 @@ const ctoDashboardService = {
       totalCreditedCount,
       totalRolledBackCount,
       totalPendingRequests,
-      quickLinks: [
-        { name: "CTO Records", link: "/app/cto-records" },
-        { name: "Manage Credits", link: "/app/cto-credit" },
-        { name: "Reports", link: "/app/cto-records" },
-      ],
     };
   },
 

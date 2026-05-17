@@ -647,13 +647,37 @@ const CtoApplicationsList = () => {
                   app.employee?.lastName?.[0] || ""
                 }`;
 
+                // ✅ Frontend logic matching backend getEffectiveStatusForApprover
                 const myStep = app.approvals?.find(
                   (step) =>
-                    String(step?.approver?._id || "") ===
+                    String(step?.approver?._id || step?.approver || "") ===
                     String(admin?.id || ""),
                 );
 
-                const status = myStep?.status || app.overallStatus;
+                const myStatus = String(myStep?.status || "").toUpperCase();
+                const overallStatus = String(
+                  app?.overallStatus || "",
+                ).toUpperCase();
+
+                let displayStatus = myStatus;
+                let showCancelledTag = false;
+
+                if (myStatus === "APPROVED") {
+                  displayStatus = "APPROVED";
+                  // Flag if the approver approved it, but it was later cancelled
+                  if (overallStatus === "CANCELLED") showCancelledTag = true;
+                } else if (myStatus === "REJECTED") {
+                  displayStatus = "REJECTED";
+                } else if (
+                  myStatus === "CANCELLED" ||
+                  overallStatus === "CANCELLED"
+                ) {
+                  displayStatus = "CANCELLED";
+                } else if (overallStatus === "REJECTED") {
+                  displayStatus = "CANCELLED";
+                } else {
+                  displayStatus = myStatus || overallStatus;
+                }
 
                 return (
                   <li
@@ -706,8 +730,23 @@ const CtoApplicationsList = () => {
                           {app.employee?.firstName} {app.employee?.lastName}
                         </span>
 
-                        <div className="transform scale-[0.85] origin-top-right flex-none">
-                          <StatusBadge status={status} />
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="transform scale-[0.85] origin-top-right flex-none">
+                            <StatusBadge status={displayStatus} />
+                          </div>
+                          {/* ✅ Dual-Status UX: Sub-tag for Approved but Cancelled */}
+                          {showCancelledTag && (
+                            <span
+                              className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                              style={{
+                                backgroundColor: "var(--app-surface-2)",
+                                color: "var(--app-muted)",
+                                border: `1px solid ${borderColor}`,
+                              }}
+                            >
+                              (Cancelled)
+                            </span>
+                          )}
                         </div>
                       </div>
 
