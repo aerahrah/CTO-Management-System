@@ -16,22 +16,38 @@ const {
 
 const router = express.Router();
 
-// ✅ reuse auth middleware for these routes
-const settingsAuth = [authenticateToken, authorize("settings.edit")];
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
 
 /* =========================
    SESSION SETTINGS
    ========================= */
-router.get("/session", ...settingsAuth, getSessionSettingsController);
-router.put("/session", ...settingsAuth, updateSessionSettingsController);
+router.get(
+  "/session",
+  ...requirePerm("settings.sessions"),
+  getSessionSettingsController,
+);
+
+router.put(
+  "/session",
+  ...requirePerm("settings.sessions"),
+  updateSessionSettingsController,
+);
 
 /* =========================
    WORKING DAYS SETTINGS
    ========================= */
-router.get("/working-days", ...settingsAuth, getWorkingDaysSettingsController);
+router.get(
+  "/working-days",
+  ...requirePerm("settings.general"),
+  getWorkingDaysSettingsController,
+);
+
 router.put(
   "/working-days",
-  ...settingsAuth,
+  ...requirePerm("settings.general"),
   updateWorkingDaysSettingsController,
 );
 

@@ -13,11 +13,19 @@ const {
 
 const {
   authenticateToken,
-  authorizeRoles,
+  authorize,
 } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+
+// =============================
+// MULTER SETUP (RESTORE)
+// =============================
 const TMP_DIR =
   process.env.CTO_BACKUP_TMP_DIR ||
   path.join(process.cwd(), "tmp", "cto-restore");
@@ -27,7 +35,7 @@ fs.mkdirSync(TMP_DIR, { recursive: true });
 const upload = multer({
   dest: TMP_DIR,
   limits: {
-    fileSize: 1024 * 1024 * 500, // 500MB (adjust)
+    fileSize: 1024 * 1024 * 500, // 500MB
   },
   fileFilter: (req, file, cb) => {
     // allow .gz / .archive.gz / application/gzip
@@ -39,40 +47,35 @@ const upload = multer({
   },
 });
 
-router.get(
-  "/",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  listBackupsController,
-);
+// =============================
+// SYSTEM BACKUPS & RESTORE
+// =============================
 
-router.post(
-  "/",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
-  createBackupController,
-);
+// List all backups
+router.get("/", ...requirePerm("backups.manage"), listBackupsController);
 
+// Create a new backup
+router.post("/", ...requirePerm("backups.manage"), createBackupController);
+
+// Download a specific backup file
 router.get(
   "/:backupId/download",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...requirePerm("backups.manage"),
   downloadBackupController,
 );
 
+// Upload and restore a backup file
 router.post(
   "/restore",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...requirePerm("backups.manage"),
   upload.single("file"),
   restoreBackupController,
 );
 
-// optional
+// Delete a specific backup file
 router.delete(
   "/:backupId",
-  authenticateToken,
-  authorizeRoles("admin", "hr"),
+  ...requirePerm("backups.manage"),
   deleteBackupController,
 );
 

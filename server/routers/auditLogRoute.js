@@ -1,4 +1,3 @@
-// routes/auditLog.routes.js
 const express = require("express");
 const router = express.Router();
 const auditLogController = require("../controllers/auditLogController");
@@ -7,11 +6,15 @@ const {
   authorize,
 } = require("../middlewares/authMiddleware");
 
-router.get(
-  "/",
-  authenticateToken,
-  authorize("settings.view"),
-  auditLogController.getAuditLogs,
-);
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+
+// =============================
+// AUDIT LOGS
+// =============================
+
+router.get("/", ...requirePerm("audit.view"), auditLogController.getAuditLogs);
 
 module.exports = router;

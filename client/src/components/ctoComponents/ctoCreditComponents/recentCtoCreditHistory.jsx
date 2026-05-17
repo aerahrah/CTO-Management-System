@@ -14,6 +14,7 @@ import AddCtoCreditForm from "./forms/addCtoCreditForm";
 import CtoCreditDetails from "./ctoCreditFullDetails";
 import { buildApiUrl } from "../../../config/env";
 import { useAuth } from "../../../store/authStore";
+import { usePermissions } from "../../../hooks/usePermissions"; // ✅ Imported permissions hook
 
 import {
   Clipboard,
@@ -90,6 +91,7 @@ const ActionMenu = ({
   onRollback,
   isRollbackPending,
   borderColor,
+  canManageCredits, // ✅ Added permission prop
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
@@ -185,28 +187,33 @@ const ActionMenu = ({
             <Clipboard size={14} /> View Details
           </button>
 
-          <div
-            className="h-px my-1"
-            style={{ backgroundColor: "var(--app-border)" }}
-          />
-
-          <button
-            type="button"
-            disabled={credit.status !== "CREDITED" || isRollbackPending}
-            onClick={() => handle(onRollback)}
-            className="w-full px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-            style={{ color: "#ef4444" }}
-            onMouseEnter={(e) => {
-              if (credit.status !== "CREDITED" || isRollbackPending) return;
-              e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <RotateCcw size={14} />{" "}
-            {isRollbackPending ? "Rolling back..." : "Rollback"}
-          </button>
+          {/* ✅ Hide Rollback option if user doesn't have permission */}
+          {canManageCredits && (
+            <>
+              <div
+                className="h-px my-1"
+                style={{ backgroundColor: "var(--app-border)" }}
+              />
+              <button
+                type="button"
+                disabled={credit.status !== "CREDITED" || isRollbackPending}
+                onClick={() => handle(onRollback)}
+                className="w-full px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+                style={{ color: "#ef4444" }}
+                onMouseEnter={(e) => {
+                  if (credit.status !== "CREDITED" || isRollbackPending) return;
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(239,68,68,0.10)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <RotateCcw size={14} />{" "}
+                {isRollbackPending ? "Rolling back..." : "Rollback"}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -224,6 +231,7 @@ const CreditCard = ({
   formatDate,
   leftStripClassName,
   borderColor,
+  canManageCredits, // ✅ Added permission prop
 }) => {
   const employeesLabel = useMemo(() => {
     const names =
@@ -284,6 +292,7 @@ const CreditCard = ({
               onViewMemo={onViewMemo}
               onViewDetails={onViewDetails}
               onRollback={onRollback}
+              canManageCredits={canManageCredits}
             />
           </div>
         </div>
@@ -385,29 +394,32 @@ const CreditCard = ({
             Details
           </button>
 
-          <button
-            type="button"
-            disabled={credit.status !== "CREDITED" || isRollbackPending}
-            onClick={onRollback}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-            style={{
-              borderColor: "rgba(239,68,68,0.25)",
-              backgroundColor: "rgba(239,68,68,0.10)",
-              color: "#ef4444",
-            }}
-            onMouseEnter={(e) => {
-              if (credit.status !== "CREDITED" || isRollbackPending) return;
-              e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.16)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
-            }}
-          >
-            <RotateCcw className="w-4 h-4" />
-            <span className="hidden sm:inline">
-              {isRollbackPending ? "Rolling..." : "Rollback"}
-            </span>
-          </button>
+          {/* ✅ Hide Rollback button if user lacks permission */}
+          {canManageCredits && (
+            <button
+              type="button"
+              disabled={credit.status !== "CREDITED" || isRollbackPending}
+              onClick={onRollback}
+              className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+              style={{
+                borderColor: "rgba(239,68,68,0.25)",
+                backgroundColor: "rgba(239,68,68,0.10)",
+                color: "#ef4444",
+              }}
+              onMouseEnter={(e) => {
+                if (credit.status !== "CREDITED" || isRollbackPending) return;
+                e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.16)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
+              }}
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span className="hidden sm:inline">
+                {isRollbackPending ? "Rolling..." : "Rollback"}
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -554,18 +566,22 @@ const CompactPagination = ({
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
 
-  // ✅ resolve theme just like your reference page
+  // ✅ Permissions integration
+  const { can } = usePermissions();
+  const canManageCredits = can("cto.credits_manage");
+
+  // resolve theme just like your reference page
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
 
-  // ✅ borders less “white” on dark
+  // borders less “white” on dark
   const borderColor = useMemo(() => {
     return resolvedTheme === "dark"
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
 
-  // ✅ skeleton theme (fix white loading on dark)
+  // skeleton theme (fix white loading on dark)
   const skeletonColors = useMemo(() => {
     if (resolvedTheme === "dark") {
       return {
@@ -799,24 +815,27 @@ const CtoCreditHistory = () => {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  queryClient.invalidateQueries({
-                    queryKey: ["ctoCreditEmployees"],
-                  });
-                  setIsAddCtoOpen(true);
-                }}
-                className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
-                style={{ backgroundColor: "var(--accent, #2563EB)" }}
-                onMouseEnter={(e) =>
-                  (e.currentTarget.style.filter = "brightness(0.95)")
-                }
-                onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
-              >
-                <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                Credit CTO
-              </button>
+              {/* ✅ Wrap Credit CTO Button with Authorization Check */}
+              {canManageCredits && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    queryClient.invalidateQueries({
+                      queryKey: ["ctoCreditEmployees"],
+                    });
+                    setIsAddCtoOpen(true);
+                  }}
+                  className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
+                  style={{ backgroundColor: "var(--accent, #2563EB)" }}
+                  onMouseEnter={(e) =>
+                    (e.currentTarget.style.filter = "brightness(0.95)")
+                  }
+                  onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
+                >
+                  <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                  Credit CTO
+                </button>
+              )}
             </div>
           </div>
 
@@ -1092,6 +1111,7 @@ const CtoCreditHistory = () => {
                               credit.status,
                             )}
                             borderColor={borderColor}
+                            canManageCredits={canManageCredits}
                             onViewMemo={() =>
                               setMemoModal({ isOpen: true, memo: credit })
                             }
@@ -1223,6 +1243,7 @@ const CtoCreditHistory = () => {
                                       credit={credit}
                                       borderColor={borderColor}
                                       isRollbackPending={isRollbackPending}
+                                      canManageCredits={canManageCredits}
                                       onViewMemo={() =>
                                         setMemoModal({
                                           isOpen: true,

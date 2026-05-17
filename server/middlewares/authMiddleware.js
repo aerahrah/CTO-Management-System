@@ -52,7 +52,8 @@ const authorizeRoles = (...allowedRoles) => {
     }
 
     // Support legacy string roles temporarily if they exist in the token
-    const userRole = typeof req.user.role === 'string' ? req.user.role : req.user.role.name;
+    const userRole =
+      typeof req.user.role === "string" ? req.user.role : req.user.role.name;
 
     if (!allowedRoles.includes(userRole)) {
       return res
@@ -71,18 +72,22 @@ const authorize = (requiredPermission) => {
     if (!req.user || !req.user.role || !req.user.role.permissions) {
       // Legacy token fallback - if token has old string role, we can't check permissions.
       // They need to log in again.
-      return res.status(403).json({ message: "Access denied. Role permissions missing. Please log in again." });
+
+      return res.status(403).json({
+        message:
+          "Access denied. Role permissions missing. Please log in again.",
+      });
     }
 
     const permissions = req.user.role.permissions;
-
+    console.log(permissions);
     if (permissions.includes("*")) {
       return next();
     }
 
     if (!permissions.includes(requiredPermission)) {
-      return res.status(403).json({ 
-        message: `Forbidden. Requires permission: ${requiredPermission}` 
+      return res.status(403).json({
+        message: `Forbidden. Requires permission: ${requiredPermission}`,
       });
     }
 

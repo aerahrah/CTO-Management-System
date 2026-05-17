@@ -13,15 +13,22 @@ const {
   authorize,
 } = require("../middlewares/authMiddleware");
 
-// All role routes require authentication and settings.edit permissions
-// Alternatively, we could create a roles.manage permission, but settings.edit is fine for now.
-router.use(authenticateToken);
-router.use(authorize("settings.edit"));
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
 
-router.get("/", getRoles);
-router.post("/", createRole);
-router.get("/:id", getRoleById);
-router.put("/:id", updateRole);
-router.delete("/:id", deleteRole);
+// =============================
+// ROLES ROUTES
+// =============================
+
+// View Roles
+router.get("/", ...requirePerm("roles.view"), getRoles);
+router.get("/:id", ...requirePerm("roles.view"), getRoleById);
+
+// Manage Roles (Create, Update, Delete)
+router.post("/", ...requirePerm("roles.manage"), createRole);
+router.put("/:id", ...requirePerm("roles.manage"), updateRole);
+router.delete("/:id", ...requirePerm("roles.manage"), deleteRole);
 
 module.exports = router;

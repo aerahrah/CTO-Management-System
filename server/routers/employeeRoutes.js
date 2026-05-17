@@ -21,66 +21,63 @@ const {
   authorize,
 } = require("../middlewares/authMiddleware");
 
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+
 /* =======================
-   AUTH & SELF ROUTES FIRST
+   PUBLIC ROUTES
    ======================= */
 router.post("/login", signInEmployee);
 
-router.get("/my-profile", authenticateToken, getMyProfile);
-router.put("/my-profile", authenticateToken, updateMyProfile);
-router.put("/my-profile/reset-password", authenticateToken, resetMyPassword);
+/* =======================
+   SELF-SERVICE ROUTES
+   ======================= */
+// Profile Management
+router.get("/my-profile", ...requirePerm("employees.view_self"), getMyProfile);
+router.put(
+  "/my-profile",
+  ...requirePerm("employees.edit_self"),
+  updateMyProfile,
+);
+router.put(
+  "/my-profile/reset-password",
+  ...requirePerm("employees.reset_password_self"),
+  resetMyPassword,
+);
 
-router.get("/memos/me", authenticateToken, getMyCtoMemos);
-
-// ✅ NEW: Get own wellness balance
-router.get("/my-wellness-balance", authenticateToken, getMyWellnessBalance);
+// Leaves & Balances (Self)
+router.get("/memos/me", ...requirePerm("cto.view_self"), getMyCtoMemos);
+router.get(
+  "/my-wellness-balance",
+  ...requirePerm("wellness.view_self"),
+  getMyWellnessBalance,
+);
 
 /* =======================
    ADMIN / HR ROUTES
    ======================= */
-router.post(
-  "/",
-  authenticateToken,
-  authorize("employees.create"),
-  createEmployee,
-);
+// Employee Management (CRUD)
+router.get("/", ...requirePerm("employees.view"), getEmployees);
+router.post("/", ...requirePerm("employees.create"), createEmployee);
+router.get("/:id", ...requirePerm("employees.view"), getEmployeeById);
+router.put("/:id", ...requirePerm("employees.edit"), updateEmployee);
 
-router.get("/", authenticateToken, authorize("employees.view"), getEmployees);
+// Update Employee Role (Requires edit permissions on the employee)
+router.post("/:id/role", ...requirePerm("employees.change_role"), updateRole);
 
-router.put(
-  "/:id",
-  authenticateToken,
-  authorize("employees.edit"),
-  updateEmployee,
-);
-
-router.post(
-  "/:id/role",
-  authenticateToken,
-  authorize("employees.edit"),
-  updateRole,
-);
-
+// View Employee Specific Balances & Memos
+// Note: We updated the memo route to use the new cto.records_view permission instead of the broad cto.view_all
 router.get(
   "/memos/:id",
-  authenticateToken,
-  authorize("cto.view_all"),
+  ...requirePerm("cto.records_view"),
   getEmployeeCtoMemosById,
 );
-
-// ✅ NEW: Get a specific employee's wellness balance (requires authorization)
 router.get(
   "/:id/wellness-balance",
-  authenticateToken,
-  authorize("employees.view"),
+  ...requirePerm("employees.view"),
   getEmployeeWellnessBalanceById,
-);
-
-router.get(
-  "/:id",
-  authenticateToken,
-  authorize("employees.view"),
-  getEmployeeById,
 );
 
 module.exports = router;

@@ -32,28 +32,19 @@ async function migrate() {
           "roles.view",
           "settings.view",
           "settings.edit",
-          "cto.view_all",
-          "cto.approve_hr",
+          "cto.credits_view",
         ],
         isSystem: true,
       },
       {
         name: "supervisor",
         description: "Supervisor",
-        permissions: [
-          "employees.view",
-          "cto.approve_supervisor",
-        ],
         isSystem: true,
       },
       {
         name: "employee",
         description: "Regular Employee",
-        permissions: [
-          "employees.view_self",
-          "cto.create",
-          "cto.view_self",
-        ],
+        permissions: ["employees.view_self", "cto.create", "cto.view_self"],
         isSystem: true,
       },
     ];
@@ -76,19 +67,18 @@ async function migrate() {
 
     console.log("Migrating employees...");
     const collection = mongoose.connection.collection("employees");
-    
+
     // Find all employees where role is a string
-    const employees = await collection.find({ role: { $type: "string" } }).toArray();
+    const employees = await collection
+      .find({ role: { $type: "string" } })
+      .toArray();
     console.log(`Found ${employees.length} employees to migrate.`);
 
     for (const emp of employees) {
       const roleStr = emp.role.toLowerCase();
       const roleId = roleMap[roleStr] || roleMap["employee"];
-      
-      await collection.updateOne(
-        { _id: emp._id },
-        { $set: { role: roleId } }
-      );
+
+      await collection.updateOne({ _id: emp._id }, { $set: { role: roleId } });
     }
 
     console.log("Migration complete!");

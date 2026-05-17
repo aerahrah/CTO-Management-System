@@ -5,43 +5,33 @@ const { authenticateToken } = require("../middlewares/authMiddleware");
 
 const router = express.Router();
 
-// ==========================
-// ALL AUTHENTICATED USERS
-// ==========================
+// =============================
+// HELPERS
+// =============================
+const authOnly = [authenticateToken];
 
-router.get(
-  "/",
-  authenticateToken,
+// =============================
+// NOTIFICATIONS (Self-Service)
+// =============================
+// All logged-in users have access to their own notifications without needing a specific permission role.
 
-  NotificationController.getMyNotifications,
-);
+// Get own notifications
+router.get("/", ...authOnly, NotificationController.getMyNotifications);
 
+// Get unread notification count
 router.get(
   "/unread-count",
-  authenticateToken,
-
+  ...authOnly,
   NotificationController.getMyUnreadCount,
 );
 
-router.patch(
-  "/read-all",
-  authenticateToken,
+// Mark all own notifications as read
+router.patch("/read-all", ...authOnly, NotificationController.markAllAsRead);
 
-  NotificationController.markAllAsRead,
-);
+// Mark a specific notification as read
+router.patch("/:id/read", ...authOnly, NotificationController.markOneAsRead);
 
-router.patch(
-  "/:id/read",
-  authenticateToken,
-
-  NotificationController.markOneAsRead,
-);
-
-router.delete(
-  "/:id",
-  authenticateToken,
-
-  NotificationController.deleteOne,
-);
+// Delete a specific notification
+router.delete("/:id", ...authOnly, NotificationController.deleteOne);
 
 module.exports = router;

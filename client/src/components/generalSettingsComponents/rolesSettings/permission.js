@@ -61,6 +61,16 @@ export const PERMISSION_GROUPS = [
         label: "View Global Wellness",
         hint: "View all wellness applications in the system.",
       },
+      {
+        id: "wellness.view_application",
+        label: "View Assigned Applications",
+        hint: "View specific wellness applications assigned to you for approval.",
+      },
+      {
+        id: "wellness.manage_application",
+        label: "Manage Assigned Applications",
+        hint: "Approve or reject assigned wellness applications.",
+      },
     ],
   },
   {
@@ -96,7 +106,6 @@ export const PERMISSION_GROUPS = [
         label: "View CTO Records",
         hint: "View employee CTO credit balances and application history.",
       },
-      // NEW PERMISSIONS ADDED HERE
       {
         id: "cto.view_application",
         label: "View Assigned Applications",
@@ -106,6 +115,21 @@ export const PERMISSION_GROUPS = [
         id: "cto.manage_application",
         label: "Manage Assigned Applications",
         hint: "Approve or reject assigned CTO applications.",
+      },
+      {
+        id: "cto.dashboard.self_view",
+        label: "View Personal Dashboard",
+        hint: "Access the personal CTO dashboard.",
+      },
+      {
+        id: "cto.dashboard.hr_view",
+        label: "View HR Dashboard",
+        hint: "Access the HR CTO dashboard with credit and record summaries.",
+      },
+      {
+        id: "cto.dashboard.admin_view",
+        label: "View Admin Dashboard",
+        hint: "Access the global Admin CTO dashboard with request summaries.",
       },
     ],
   },
@@ -147,7 +171,6 @@ export const PERMISSION_GROUPS = [
         label: "Manage Designations",
         hint: "Create, edit, or delete job designations.",
       },
-
       {
         id: "projects.manage",
         label: "Manage Projects",
@@ -168,7 +191,6 @@ export const PERMISSION_GROUPS = [
         label: "Manage CTO Workflow",
         hint: "Configure CTO approval routes and approvers.",
       },
-
       {
         id: "backups.manage",
         label: "Manage Backups",

@@ -13,31 +13,38 @@ const {
 
 const router = express.Router();
 
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+const authOnly = [authenticateToken];
+
+// =============================
+// CTO APPROVER SETTINGS
+// =============================
+
+// View all settings (for the main settings table)
 router.get(
   "/",
-  authenticateToken,
-  authorize("settings.edit"),
+  ...requirePerm("settings.cto_workflow"),
   getAllApproverSettings,
 );
-router.get(
-  "/:designationId",
-  authenticateToken,
-  // We can just rely on authenticateToken since anyone can get settings
-  // But strictly, anyone with basic viewing permissions
-  // Let's just remove authorize for reading settings
 
-  getApproversByDesignation,
-);
+// Get approvers for a specific designation
+// (Needed by employees when filing applications to resolve their approval chain)
+router.get("/:designationId", ...authOnly, getApproversByDesignation);
+
+// Create or Update an approver setting
 router.post(
   "/",
-  authenticateToken,
-  authorize("settings.edit"),
+  ...requirePerm("settings.cto_workflow"),
   upsertApproverSetting,
 );
+
+// Delete an approver setting
 router.delete(
   "/:id",
-  authenticateToken,
-  authorize("settings.edit"),
+  ...requirePerm("settings.cto_workflow"),
   deleteApproverSetting,
 );
 

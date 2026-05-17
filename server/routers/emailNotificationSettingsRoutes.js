@@ -1,4 +1,3 @@
-// routers/emailNotificationSettingsRoutes.js
 const express = require("express");
 const {
   getEmailNotificationSettingsController,
@@ -12,11 +11,19 @@ const {
 
 const router = express.Router();
 
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+
+// =============================
+// EMAIL NOTIFICATION SETTINGS
+// =============================
+
 // Admin/HR can view all email notif switches
 router.get(
   "/",
-  authenticateToken,
-  authorize("settings.edit"),
+  ...requirePerm("settings.email"),
   getEmailNotificationSettingsController,
 );
 
@@ -25,8 +32,7 @@ router.get(
 // body: { "enabled": true }
 router.put(
   "/:key",
-  authenticateToken,
-  authorize("settings.edit"),
+  ...requirePerm("settings.email"),
   updateEmailNotificationSettingController,
 );
 

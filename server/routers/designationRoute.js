@@ -1,4 +1,3 @@
-// routes/designation.routes.js
 const express = require("express");
 const {
   getAllDesignations,
@@ -17,48 +16,38 @@ const {
 
 const router = express.Router();
 
-router.get(
-  "/",
-  authenticateToken,
-  authorize("settings.edit"),
-  getAllDesignations,
-);
+// =============================
+// HELPERS
+// =============================
+const requirePerm = (perm) => [authenticateToken, authorize(perm)];
+const authOnly = [authenticateToken];
 
-router.get("/options", authenticateToken, authorize("settings.edit"), listAll);
+// =============================
+// DESIGNATION MANAGEMENT (CRUD)
+// =============================
 
-router.get(
-  "/:id",
-  authenticateToken,
-  authorize("settings.edit"),
-  getDesignationById,
-);
+router.post("/", ...requirePerm("designations.manage"), createDesignation);
 
-router.post(
-  "/",
-  authenticateToken,
-  authorize("settings.edit"),
-  createDesignation,
-);
+router.get("/", ...requirePerm("designations.manage"), getAllDesignations);
 
-router.put(
-  "/:id",
-  authenticateToken,
-  authorize("settings.edit"),
-  updateDesignation,
-);
+router.get("/:id", ...requirePerm("designations.manage"), getDesignationById);
+
+router.put("/:id", ...requirePerm("designations.manage"), updateDesignation);
 
 router.patch(
   "/:id/status",
-  authenticateToken,
-  authorize("settings.edit"),
+  ...requirePerm("designations.manage"),
   updateStatus,
 );
 
-router.delete(
-  "/:id",
-  authenticateToken,
-  authorize("settings.edit"),
-  deleteDesignation,
-);
+router.delete("/:id", ...requirePerm("designations.manage"), deleteDesignation);
+
+// =============================
+// SHARED RESOURCES
+// =============================
+
+// Dropdown Options: Any authenticated user (like HR adding an employee)
+// needs to be able to fetch the list of designations for forms.
+router.get("/options", ...authOnly, listAll);
 
 module.exports = router;

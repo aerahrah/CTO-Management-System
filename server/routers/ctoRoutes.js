@@ -42,74 +42,78 @@ const authOnly = [authenticateToken];
 /* =========================================
    CTO CREDITS
 ========================================= */
+// Manage credits
 router.post(
   "/credits",
-  ...requirePerm("settings.edit"), // Kept from your original, though you might consider a dedicated cto.edit_credits later
+  ...requirePerm("cto.credits_manage"),
   uploadCtoMemo,
   addCtoCreditRequest,
 );
 
 router.patch(
   "/credits/:creditId/rollback",
-  ...requirePerm("settings.edit"),
+  ...requirePerm("cto.credits_manage"),
   rollbackCreditedRequest,
 );
 
+// View global credit records
 router.get(
   "/credits/all",
-  ...requirePerm("cto.view_all"),
+  ...requirePerm("cto.credits_view"),
   getAllCreditRequests,
 );
 
 router.get(
   "/credits/:employeeId/history",
-  ...requirePerm("cto.view_all"),
+  ...requirePerm("cto.credits_view"),
   getEmployeeCredits,
 );
 
-// ✅ Updated: Now strictly requires the "cto.view_self" permission
+router.get(
+  "/employee/:employeeId/details",
+  ...requirePerm("cto.records_view"),
+  getEmployeeDetails,
+);
+
+// Self-service credit views
 router.get(
   "/credits/my-credits",
   ...requirePerm("cto.view_self"),
   getEmployeeCredits,
 );
 
-router.get(
-  "/employee/:employeeId/details",
-  ...requirePerm("cto.view_all"),
-  getEmployeeDetails,
-);
-
 /* =========================================
    CTO APPLICATIONS (EMPLOYEE / ADMIN VIEW)
 ========================================= */
-// ✅ Updated: Now requires "cto.create" to submit an application
+
+// Apply for CTO
 router.post(
   "/applications/apply",
   ...requirePerm("cto.create"),
   addCtoApplicationRequest,
 );
 
+// Admin View All Applications
 router.get(
   "/applications/all",
-  ...requirePerm("cto.view_all"),
+  ...requirePerm("cto.applications_view"),
   getAllCtoApplicationsRequest,
 );
 
-// ✅ Updated: Restricts viewing own applications to "cto.view_self"
+// Admin View Specific Employee Applications
+router.get(
+  "/applications/employee/:employeeId",
+  ...requirePerm("cto.applications_view"),
+  getCtoApplicationsByEmployeeRequest,
+);
+
+// Self-service application views & actions
 router.get(
   "/applications/my-application",
   ...requirePerm("cto.view_self"),
   getCtoApplicationsByEmployeeRequest,
 );
 
-router.get(
-  "/applications/employee/:employeeId",
-  ...requirePerm("cto.view_all"),
-  getCtoApplicationsByEmployeeRequest,
-);
-
-// ✅ Updated: Assuming if you can view your own, you can cancel it (controller should verify ownership)
 router.patch(
   "/applications/:id/cancel",
   ...requirePerm("cto.view_self"),
@@ -119,8 +123,8 @@ router.patch(
 /* =========================================
    APPROVER FLOW
 ========================================= */
-// Note: Kept as authOnly because these usually rely on the controller verifying
-// if req.user._id matches the application's supervisorId or if they are HR.
+// Kept as authOnly because these rely on the controller verifying
+// if req.user._id matches the application's assigned supervisor/HR.
 
 router.get(
   "/applications/pending-count",
@@ -128,33 +132,29 @@ router.get(
   getPendingCountForApproverController,
 );
 
-router.get(
-  "/applications/approvers",
-  ...authOnly, // Everyone needs to see this to populate the dropdown when applying
-  getApproverOptions,
-);
+router.get("/applications/approvers", ...authOnly, getApproverOptions);
 
 router.get(
   "/applications/approvers/my-approvals",
-  ...authOnly,
+  ...requirePerm("cto.view_application"),
   getCtoApplicationsForApprover,
 );
 
 router.get(
   "/applications/approvers/my-approvals/:id",
-  ...authOnly,
+  ...requirePerm("cto.view_application"),
   getCtoApplicationById,
 );
 
 router.post(
   "/applications/approver/:applicationId/approve",
-  ...authOnly,
+  ...requirePerm("cto.manage_application"),
   approveCtoApplication,
 );
 
 router.put(
   "/applications/approver/:applicationId/reject",
-  ...authOnly,
+  ...requirePerm("cto.manage_application"),
   rejectCtoApplication,
 );
 
