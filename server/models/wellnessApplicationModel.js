@@ -7,14 +7,12 @@ const wellnessApplicationSchema = new mongoose.Schema(
       ref: "Employee",
       required: true,
     },
-    startDate: {
-      type: Date,
-      required: true,
-    },
-    endDate: {
-      type: Date,
-      required: true,
-    },
+    inclusiveDates: [
+      {
+        type: Date,
+        required: true,
+      },
+    ],
     totalDays: {
       type: Number,
       required: true,

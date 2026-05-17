@@ -47,7 +47,7 @@ export const PERMISSION_GROUPS = [
     name: "Wellness Leave",
     permissions: [
       {
-        id: "wellness.create",
+        id: "wellness.manage_self",
         label: "Apply for Wellness",
         hint: "File a new wellness leave application.",
       },
@@ -57,7 +57,7 @@ export const PERMISSION_GROUPS = [
         hint: "View personal wellness leave history.",
       },
       {
-        id: "wellness.applications_view",
+        id: "wellness.view_all",
         label: "View Global Wellness",
         hint: "View all wellness applications in the system.",
       },
@@ -121,16 +121,16 @@ export const PERMISSION_GROUPS = [
         label: "View Personal Dashboard",
         hint: "Access the personal CTO dashboard.",
       },
-      {
-        id: "cto.dashboard.hr_view",
-        label: "View HR Dashboard",
-        hint: "Access the HR CTO dashboard with credit and record summaries.",
-      },
-      {
-        id: "cto.dashboard.admin_view",
-        label: "View Admin Dashboard",
-        hint: "Access the global Admin CTO dashboard with request summaries.",
-      },
+      //   {
+      //     id: "cto.dashboard.hr_view",
+      //     label: "View HR Dashboard",
+      //     hint: "Access the HR CTO dashboard with credit and record summaries.",
+      //   },
+      //   {
+      //     id: "cto.dashboard.admin_view",
+      //     label: "View Admin Dashboard",
+      //     hint: "Access the global Admin CTO dashboard with request summaries.",
+      //   },
     ],
   },
   {

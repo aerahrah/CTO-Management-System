@@ -1,4 +1,3 @@
-// pages/cto/CtoDashboard.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -12,17 +11,13 @@ import { usePermissions } from "../../hooks/usePermissions";
 import {
   Activity,
   AlertCircle,
-  Briefcase,
   Calendar,
   CheckCircle2,
   ChevronRight,
   Clock,
   History,
-  ShieldCheck,
   TrendingUp,
   User,
-  Layers,
-  Building2,
   XCircle,
   UserCheck,
 } from "lucide-react";
@@ -435,11 +430,7 @@ const Skeleton = ({ className = "" }) => (
   <div className={["cto-skeleton", className].join(" ")} />
 );
 
-const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
-  const { can } = usePermissions();
-  const showOrg = can("cto.credits_view");
-  const isApprover = can("cto.view_application");
-
+const LoadingSkeleton = ({ resolvedTheme, borderColor, isApprover }) => {
   const SkIconBox = ({ sizeClass = "w-10 h-10", inner = "w-5 h-5" }) => (
     <div
       className={[
@@ -553,22 +544,19 @@ const LoadingSkeleton = ({ role, resolvedTheme, borderColor }) => {
           </div>
         </div>
 
-        {/* Skeleton Tabs */}
-        <div
-          className="mt-6 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
-          style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor,
-          }}
-        >
-          <div className="h-9 w-32 rounded-xl bg-[var(--sk-base)]" />
-          {isApprover && (
+        {/* Skeleton Tabs (Only if they are an approver) */}
+        {isApprover && (
+          <div
+            className="mt-6 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+            }}
+          >
+            <div className="h-9 w-32 rounded-xl bg-[var(--sk-base)]" />
             <div className="h-9 w-40 rounded-xl bg-[var(--sk-base)] opacity-80" />
-          )}
-          {showOrg && (
-            <div className="h-9 w-48 rounded-xl bg-[var(--sk-base)] opacity-50" />
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="mt-5 space-y-4">
           <SkSectionTitle />
@@ -704,14 +692,11 @@ const CtoDashboard = () => {
     queryFn: fetchDashboard,
   });
 
-  const { admin } = useAuth();
-  const role = admin?.role;
   const { can } = usePermissions();
 
-  const showOrg = can("cto.credits_view");
   const isApprover = can("cto.view_application");
 
-  // Track the active tab ("my", "approver", "org")
+  // Track the active tab ("my", "approver")
   const [activeTab, setActiveTab] = useState("my");
 
   // Theme-aware styling (design only)
@@ -729,9 +714,9 @@ const CtoDashboard = () => {
   if (isLoading)
     return (
       <LoadingSkeleton
-        role={role}
         resolvedTheme={resolvedTheme}
         borderColor={borderColor}
+        isApprover={isApprover}
       />
     );
 
@@ -751,12 +736,6 @@ const CtoDashboard = () => {
   const {
     myCtoSummary,
     teamPendingApprovals,
-    totalRequests,
-    approvedRequests,
-    rejectedRequests,
-    totalCreditedCount,
-    totalRolledBackCount,
-    totalPendingRequests,
     pendingRequests = [],
     approverStats = {
       all: 0,
@@ -808,7 +787,7 @@ const CtoDashboard = () => {
       <ThemeSync />
       <ScrollbarsSync />
 
-      <div className="max-w-6xl w-full mx-auto py-3 sm:py-4 px-2 lg:px-0">
+      <div className="max-w-5xl w-full mx-auto py-3 sm:py-4 px-2 lg:px-0">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
@@ -841,22 +820,22 @@ const CtoDashboard = () => {
           </div>
         </div>
 
-        {/* Dynamic Tabs */}
-        <div
-          className="mt-6 mb-5 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
-          style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor,
-          }}
-        >
-          <TabButton
-            active={activeTab === "my"}
-            onClick={() => setActiveTab("my")}
-            label="My Dashboard"
-            icon={<User size={16} />}
-            borderColor={borderColor}
-          />
-          {isApprover && (
+        {/* Dynamic Tabs (Only shown if user has Approver rights) */}
+        {isApprover && (
+          <div
+            className="mt-6 mb-5 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
+            style={{
+              backgroundColor: "var(--app-surface-2)",
+              borderColor,
+            }}
+          >
+            <TabButton
+              active={activeTab === "my"}
+              onClick={() => setActiveTab("my")}
+              label="My Dashboard"
+              icon={<User size={16} />}
+              borderColor={borderColor}
+            />
             <TabButton
               active={activeTab === "approver"}
               onClick={() => setActiveTab("approver")}
@@ -864,20 +843,14 @@ const CtoDashboard = () => {
               icon={<UserCheck size={16} />}
               borderColor={borderColor}
             />
-          )}
-          {showOrg && (
-            <TabButton
-              active={activeTab === "org"}
-              onClick={() => setActiveTab("org")}
-              label="Organization"
-              icon={<Building2 size={16} />}
-              borderColor={borderColor}
-            />
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* Added Margin if Tabs are Hidden */}
+        {!isApprover && <div className="mt-8"></div>}
 
         {/* Tab Content Container */}
-        <div className="mt-4 space-y-6">
+        <div className={isApprover ? "mt-4 space-y-6" : "space-y-6"}>
           {/* =========================================
               TAB: MY DASHBOARD 
           ========================================= */}
@@ -1443,53 +1416,6 @@ const CtoDashboard = () => {
                     )}
                   </div>
                 </Card>
-              </div>
-            </div>
-          )}
-
-          {/* =========================================
-              TAB: ORGANIZATION SECTION (HR / Admin)
-          ========================================= */}
-          {activeTab === "org" && showOrg && (
-            <div className="space-y-6">
-              <div className="space-y-3">
-                <SectionTitle
-                  icon={ShieldCheck}
-                  title="Organization Insights"
-                  subtitle="Global view of all CTO requests and operations."
-                  borderColor={borderColor}
-                />
-
-                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-                  <MetricTile
-                    label="Total Requests"
-                    value={totalRequests || 0}
-                    icon={Layers}
-                    tone="blue"
-                    borderColor={borderColor}
-                  />
-                  <MetricTile
-                    label="Approved"
-                    value={approvedRequests || 0}
-                    icon={CheckCircle2}
-                    tone="green"
-                    borderColor={borderColor}
-                  />
-                  <MetricTile
-                    label="Pending Review"
-                    value={totalPendingRequests || 0}
-                    icon={Clock}
-                    tone="amber"
-                    borderColor={borderColor}
-                  />
-                  <MetricTile
-                    label="Rejected"
-                    value={rejectedRequests || 0}
-                    icon={AlertCircle}
-                    tone="rose"
-                    borderColor={borderColor}
-                  />
-                </div>
               </div>
             </div>
           )}

@@ -36,21 +36,21 @@ const authOnly = [authenticateToken];
 // Apply for Wellness Leave
 router.post(
   "/applications/apply",
-  ...requirePerm("wellness.create"),
+  ...requirePerm("wellness.manage_self"),
   addWellnessApplicationRequest,
 );
 
 // Admin View All Wellness Applications
 router.get(
   "/applications/all",
-  ...requirePerm("wellness.applications_view"),
+  ...requirePerm("wellness.view_all"),
   getAllWellnessApplicationsRequest,
 );
 
 // Admin View Specific Employee Applications
 router.get(
   "/applications/employee/:employeeId",
-  ...requirePerm("wellness.applications_view"),
+  ...requirePerm("wellness.view_all"),
   getWellnessApplicationsByEmployeeRequest,
 );
 
@@ -63,7 +63,7 @@ router.get(
 
 router.patch(
   "/applications/:id/cancel",
-  ...requirePerm("wellness.view_self"),
+  ...requirePerm("wellness.manage"),
   cancelWellnessApplicationRequest,
 );
 

@@ -35,6 +35,7 @@ export const addWellnessApplicationRequest = async (payload) => {
 export const fetchAllWellnessApplications = async (params = {}) => {
   try {
     const res = await API.get("/wellness/applications/all", withCreds(params));
+    console.log(res.data);
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch Wellness Leave applications");
@@ -47,6 +48,7 @@ export const fetchMyWellnessApplications = async (params = {}) => {
       "/wellness/applications/my-application",
       withCreds(params),
     );
+    console.log(res);
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch your Wellness Leave applications");

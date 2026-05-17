@@ -1,53 +1,46 @@
-import React, {
-  useState,
-  useMemo,
-  useEffect,
-  useRef,
-  useCallback,
-} from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { StatusBadge } from "../../statusUtils";
+import { fetchAllWellnessApplications } from "../../../api/wellnessApplication";
+import Modal from "../../modal";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+import Breadcrumbs from "../../breadCrumbs";
 import {
-  CalendarDays,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Ban,
   Search,
   ChevronLeft,
   ChevronRight,
-  Plus,
-  Eye,
-  Filter,
   RotateCcw,
-  Calendar,
+  CalendarDays,
+  Inbox,
   MoreVertical,
   LayoutGrid,
-  Info,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  Eye,
+  User,
   ArrowUp,
   HeartPulse,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
-import { toast } from "react-toastify";
-
-import { StatusBadge } from "../../statusUtils";
-import Modal from "../../modal";
-import Breadcrumbs from "../../breadCrumbs";
 import FilterSelect from "../../filterSelect";
-import AddWellnessApplicationForm from "./forms/addWellnessApplicationForm";
-import { useAuth } from "../../../store/authStore";
-import { usePermissions } from "../../../hooks/usePermissions"; // ✅ Imported permissions hook
-import {
-  fetchMyWellnessApplications,
-  cancelWellnessApplicationRequest,
-} from "../../../api/wellnessApplication";
-
-// ✅ Imported the full details component
 import WellnessApplicationDetails from "./myWellnessApplicationFullDetails";
+
+import { useAuth } from "../../../store/authStore";
 
 const pageSizeOptions = [20, 50, 100];
 
-/* ------------------ Resolve theme ------------------ */
+/* ------------------ Small hook: debounce ------------------ */
+const useDebouncedValue = (value, delay = 500) => {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+};
+
+/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
     const systemDark =
@@ -57,6 +50,7 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
+/* ✅ Reactive resolved theme for system mode (prevents skeleton flashing light) */
 function useResolvedTheme(prefTheme) {
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined")
@@ -74,8 +68,8 @@ function useResolvedTheme(prefTheme) {
 
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const update = () => setTheme(mq.matches ? "dark" : "light");
-
     update();
+
     if (mq.addEventListener) mq.addEventListener("change", update);
     else mq.addListener(update);
 
@@ -88,52 +82,85 @@ function useResolvedTheme(prefTheme) {
   return theme;
 }
 
-/* ------------------ Theme Maps ------------------ */
-const tabTone = {
-  accent: {
-    bg: "var(--accent-soft)",
-    text: "var(--accent)",
-    br: "var(--accent-soft2, rgba(37,99,235,0.18))",
-  },
-  amber: {
-    bg: "rgba(245,158,11,0.16)",
-    text: "#d97706",
-    br: "rgba(245,158,11,0.26)",
-  },
-  green: {
-    bg: "rgba(34,197,94,0.14)",
-    text: "#16a34a",
-    br: "rgba(34,197,94,0.22)",
-  },
-  red: {
-    bg: "rgba(239,68,68,0.14)",
-    text: "#ef4444",
-    br: "rgba(239,68,68,0.22)",
-  },
-  slate: {
-    bg: "rgba(148,163,184,0.18)",
-    text: "var(--app-text)",
-    br: "rgba(148,163,184,0.24)",
-  },
+/* =========================
+   StatCard (dark-mode ready)
+========================= */
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+  hint,
+  tone = "neutral",
+  borderColor,
+}) => {
+  const toneMeta = {
+    blue: { chipBg: "var(--accent-soft)", chipText: "var(--accent)" },
+    green: { chipBg: "rgba(34,197,94,0.14)", chipText: "#16a34a" },
+    red: { chipBg: "rgba(239,68,68,0.14)", chipText: "#ef4444" },
+    amber: { chipBg: "rgba(245,158,11,0.16)", chipText: "#d97706" },
+    neutral: { chipBg: "var(--app-surface-2)", chipText: "var(--app-muted)" },
+  };
+
+  const t = toneMeta[tone] || toneMeta.neutral;
+
+  return (
+    <div
+      className="w-full flex-shrink-0 rounded-xl shadow-sm p-3.5 flex items-start gap-3 h-full transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        border: `1px solid ${borderColor}`,
+      }}
+      role="status"
+    >
+      <div
+        className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: t.chipBg,
+          borderColor,
+          color: t.chipText,
+        }}
+      >
+        <Icon className="w-5 h-5" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div
+          className="text-[10px] uppercase font-bold tracking-wide truncate transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {title}
+        </div>
+        <div
+          className="mt-0.5 text-lg font-black truncate transition-colors duration-300 ease-out"
+          style={{ color: "var(--app-text)" }}
+        >
+          {value}
+        </div>
+        {hint && (
+          <div
+            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {hint}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 /* =========================
-   Per-row Action Menu
+   Per-row action menu (table) - dark-mode ready
 ========================= */
-const ApplicationActionMenu = ({
-  app,
-  onViewDetails,
-  onCancel,
-  cancelling,
-  borderColor,
-}) => {
+const ApplicationActionMenu = ({ app, onViewDetails, borderColor }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target))
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
         setIsOpen(false);
+      }
     };
     const handleEsc = (e) => {
       if (e.key === "Escape") setIsOpen(false);
@@ -151,12 +178,11 @@ const ApplicationActionMenu = ({
     setIsOpen(false);
   };
 
-  const canCancel =
-    String(app?.overallStatus || "").toUpperCase() === "PENDING";
-
   return (
     <div className="relative inline-flex justify-end" ref={menuRef}>
       <button
+        aria-haspopup="true"
+        aria-expanded={isOpen}
         onClick={(e) => {
           e.stopPropagation();
           setIsOpen((o) => !o);
@@ -171,8 +197,6 @@ const ApplicationActionMenu = ({
           e.currentTarget.style.backgroundColor = "transparent";
           e.currentTarget.style.color = "var(--app-muted)";
         }}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
         title="Actions"
         type="button"
       >
@@ -181,14 +205,15 @@ const ApplicationActionMenu = ({
 
       {isOpen && (
         <div
-          className="absolute right-0 top-full mt-1 w-48 rounded-lg z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+          className="absolute right-0 top-full mt-1 w-48 rounded-lg shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
           style={{
             backgroundColor: "var(--app-surface)",
             border: `1px solid ${borderColor}`,
-            boxShadow: "0 12px 32px rgba(0,0,0,0.14)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
           }}
         >
           <button
+            type="button"
             onClick={() => handle(onViewDetails)}
             className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left"
             style={{ color: "var(--app-muted)" }}
@@ -200,29 +225,8 @@ const ApplicationActionMenu = ({
               e.currentTarget.style.backgroundColor = "transparent";
               e.currentTarget.style.color = "var(--app-muted)";
             }}
-            type="button"
           >
             <Eye size={14} /> View Details
-          </button>
-
-          <button
-            disabled={!canCancel || cancelling}
-            onClick={() => handle(onCancel)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left"
-            type="button"
-            title={
-              !canCancel ? "Only PENDING applications can be cancelled" : ""
-            }
-            style={{ color: "#ef4444" }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.12)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
-          >
-            <Ban size={14} /> {cancelling ? "Cancelling..." : "Cancel Request"}
           </button>
         </div>
       )}
@@ -248,21 +252,30 @@ const formatCoveredDates = (dates = []) => {
 };
 
 /* =========================
-   Mobile/Tablet Card View
+   Cards (dark-mode ready)
 ========================= */
 const ApplicationCard = ({
   app,
   leftStripClassName,
   onViewDetails,
-  onCancel,
-  cancelling,
   borderColor,
 }) => {
-  const canCancel =
-    String(app?.overallStatus || "").toUpperCase() === "PENDING";
+  const shortId = app?._id ? app._id.slice(-6).toUpperCase() : "-";
 
+  const submittedLabel = app?.createdAt
+    ? new Date(app.createdAt).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : "-";
+
+  const requestorName = `${app?.employee?.firstName || ""} ${
+    app?.employee?.lastName || ""
+  }`.trim();
+
+  const requestorRole = app?.employee?.position || "-";
   const coveredDatesLabel = formatCoveredDates(app?.inclusiveDates);
-  const actionCols = canCancel ? "grid-cols-2" : "grid-cols-1";
 
   return (
     <div
@@ -275,22 +288,41 @@ const ApplicationCard = ({
       <div className="p-4 transition-colors duration-300 ease-out">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <span
                 className="text-sm font-bold truncate transition-colors duration-300 ease-out flex items-center gap-1.5"
                 style={{ color: "var(--app-text)" }}
               >
                 <HeartPulse size={16} style={{ color: "var(--accent)" }} />
-                Wellness Leave
+                Wellness Request
+              </span>
+              <span
+                className="text-[10px] font-mono flex-none transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-muted)" }}
+              >
+                #{shortId}
               </span>
             </div>
 
-            <div
-              className="mt-2 flex items-center gap-2 text-xs transition-colors duration-300 ease-out"
-              style={{ color: "var(--app-muted)" }}
-            >
-              <Calendar className="w-4 h-4 flex-none" />
-              <span className="truncate">{coveredDatesLabel}</span>
+            <div className="mt-2 flex items-start gap-2">
+              <User
+                className="w-4 h-4 mt-[2px] flex-none"
+                style={{ color: "var(--app-muted)" }}
+              />
+              <div className="min-w-0">
+                <div
+                  className="text-xs font-semibold truncate transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {requestorName || "-"}
+                </div>
+                <div
+                  className="text-[11px] truncate transition-colors duration-300 ease-out"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  {requestorRole}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -311,13 +343,13 @@ const ApplicationCard = ({
               className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors duration-300 ease-out"
               style={{ color: "var(--app-muted)" }}
             >
-              Total Days
+              <CalendarDays className="w-3.5 h-3.5" /> Total Days
             </div>
             <div
               className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out"
               style={{ color: "var(--app-text)" }}
             >
-              {app?.totalDays || 0} Day(s)
+              {Number(app?.totalDays || 0)} Days
             </div>
           </div>
 
@@ -332,14 +364,13 @@ const ApplicationCard = ({
               className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors duration-300 ease-out"
               style={{ color: "var(--app-muted)" }}
             >
-              Reason
+              <CalendarDays className="w-3.5 h-3.5" /> Submitted
             </div>
             <div
-              className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out truncate"
+              className="mt-1 text-sm font-semibold truncate transition-colors duration-300 ease-out"
               style={{ color: "var(--app-text)" }}
-              title={app?.reason || "No reason specified"}
             >
-              {app?.reason || "N/A"}
+              {submittedLabel}
             </div>
           </div>
         </div>
@@ -352,12 +383,11 @@ const ApplicationCard = ({
           backgroundColor: "var(--app-surface)",
         }}
       >
-        <div className={`grid gap-2 ${actionCols}`}>
+        <div className="grid grid-cols-1 gap-2">
           <button
-            onClick={onViewDetails}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out"
             type="button"
-            title="View Details"
+            onClick={onViewDetails}
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border transition-colors duration-200 ease-out"
             style={{
               backgroundColor: "var(--app-surface)",
               borderColor: borderColor,
@@ -371,26 +401,8 @@ const ApplicationCard = ({
             }}
           >
             <Eye className="w-4 h-4" />
-            Details
+            View Details
           </button>
-
-          {canCancel && (
-            <button
-              onClick={onCancel}
-              disabled={cancelling}
-              className="inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-              type="button"
-              title="Cancel"
-              style={{
-                backgroundColor: "rgba(239,68,68,0.12)",
-                borderColor: "rgba(239,68,68,0.20)",
-                color: "#ef4444",
-              }}
-            >
-              <Ban className="w-4 h-4" />
-              {cancelling ? "..." : "Cancel"}
-            </button>
-          )}
         </div>
       </div>
     </div>
@@ -398,7 +410,60 @@ const ApplicationCard = ({
 };
 
 /* =========================
-   Compact Pagination
+   Status tabs factory
+========================= */
+const statusTabs = (statusCounts = {}, totalFallback = 0) => {
+  const total =
+    statusCounts.total ??
+    statusCounts.TOTAL ??
+    totalFallback ??
+    (statusCounts.PENDING || 0) +
+      (statusCounts.APPROVED || 0) +
+      (statusCounts.REJECTED || 0) +
+      (statusCounts.CANCELLED || 0);
+
+  return [
+    {
+      id: "",
+      label: "All Status",
+      icon: LayoutGrid,
+      count: total || 0,
+      activeColor:
+        "bg-[color:var(--accent-soft)] text-[color:var(--accent)] border-[color:var(--accent-soft2)]",
+    },
+    {
+      id: "PENDING",
+      label: "Pending",
+      icon: AlertCircle,
+      count: statusCounts.PENDING || 0,
+      activeColor: "bg-amber-100 text-amber-700 border-amber-200",
+    },
+    {
+      id: "APPROVED",
+      label: "Approved",
+      icon: CheckCircle2,
+      count: statusCounts.APPROVED || 0,
+      activeColor: "bg-emerald-100 text-emerald-700 border-emerald-200",
+    },
+    {
+      id: "REJECTED",
+      label: "Rejected",
+      icon: XCircle,
+      count: statusCounts.REJECTED || 0,
+      activeColor: "bg-rose-100 text-rose-700 border-rose-200",
+    },
+    {
+      id: "CANCELLED",
+      label: "Cancelled",
+      icon: RotateCcw,
+      count: statusCounts.CANCELLED || 0,
+      activeColor: "bg-slate-100 text-slate-700 border-slate-200",
+    },
+  ];
+};
+
+/* =========================
+   Compact Pagination (dark-mode ready)
 ========================= */
 const CompactPagination = ({
   page,
@@ -410,138 +475,120 @@ const CompactPagination = ({
   onNext,
   label = "items",
   borderColor,
-}) => (
-  <div
-    className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
-    style={{
-      backgroundColor: "var(--app-surface)",
-      borderColor: borderColor,
-    }}
-  >
-    <div className="flex md:hidden items-center justify-between gap-3">
-      <button
-        onClick={onPrev}
-        disabled={page === 1 || total === 0}
-        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-        type="button"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          borderColor: borderColor,
-          color: "var(--app-text)",
-        }}
-      >
-        <ChevronLeft className="w-4 h-4" />
-        Prev
-      </button>
+}) => {
+  const safeTotalPages = Math.max(totalPages || 1, 1);
 
-      <div className="text-center min-w-0">
-        <div
-          className="text-xs font-mono font-semibold"
-          style={{ color: "var(--app-text)" }}
-        >
-          {page} / {totalPages}
-        </div>
-        <div
-          className="text-[11px] truncate"
-          style={{ color: "var(--app-muted)" }}
-        >
-          {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
-        </div>
-      </div>
-
-      <button
-        onClick={onNext}
-        disabled={page >= totalPages || total === 0}
-        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-        type="button"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          borderColor: borderColor,
-          color: "var(--app-text)",
-        }}
-      >
-        Next
-        <ChevronRight className="w-4 h-4" />
-      </button>
-    </div>
-
-    <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
-      <div
-        className="text-xs font-medium"
-        style={{ color: "var(--app-muted)" }}
-      >
-        Showing{" "}
-        <span className="font-bold" style={{ color: "var(--app-text)" }}>
-          {total === 0 ? 0 : `${startItem}-${endItem}`}
-        </span>{" "}
-        of{" "}
-        <span className="font-bold" style={{ color: "var(--app-text)" }}>
-          {total}
-        </span>{" "}
-        {label}
-      </div>
-
-      <div
-        className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
-        style={{
-          backgroundColor: "var(--app-surface-2)",
-          borderColor: borderColor,
-        }}
-      >
+  return (
+    <div
+      className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor: borderColor,
+      }}
+    >
+      <div className="flex md:hidden items-center justify-between gap-3">
         <button
+          type="button"
           onClick={onPrev}
           disabled={page === 1 || total === 0}
-          className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
-          type="button"
-          style={{ color: "var(--app-muted)" }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor: borderColor,
+            color: "var(--app-text)",
           }}
         >
           <ChevronLeft className="w-4 h-4" />
+          Prev
         </button>
 
-        <span
-          className="text-xs font-mono font-medium px-3"
-          style={{ color: "var(--app-muted)" }}
-        >
-          {page} / {totalPages}
-        </span>
+        <div className="text-center min-w-0">
+          <div
+            className="text-xs font-mono font-semibold transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-text)" }}
+          >
+            {page} / {safeTotalPages}
+          </div>
+          <div
+            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
+          </div>
+        </div>
 
         <button
-          onClick={onNext}
-          disabled={page >= totalPages || total === 0}
-          className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
           type="button"
-          style={{ color: "var(--app-muted)" }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
+          onClick={onNext}
+          disabled={page >= safeTotalPages || total === 0}
+          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor: borderColor,
+            color: "var(--app-text)",
           }}
         >
+          Next
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
+        <div
+          className="text-xs font-medium"
+          style={{ color: "var(--app-muted)" }}
+        >
+          Showing{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total === 0 ? 0 : `${startItem}-${endItem}`}
+          </span>{" "}
+          of{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total}
+          </span>{" "}
+          {label}
+        </div>
+
+        <div
+          className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            borderColor: borderColor,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={page === 1 || total === 0}
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span
+            className="text-xs font-mono font-medium px-3"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {page} / {safeTotalPages}
+          </span>
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={page >= safeTotalPages || total === 0}
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            style={{ color: "var(--app-muted)" }}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
-/* =========================
-   Main Component
-========================= */
-const MyWellnessApplications = () => {
-  const queryClient = useQueryClient();
-
+const AllWellnessApplicationsHistory = () => {
+  // ✅ Theme vars + skeleton colors
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
-  const user = useAuth((s) => s.user);
-  const { can } = usePermissions(); // ✅ Initialize permissions hook
   const resolvedTheme = useResolvedTheme(prefTheme);
 
   const borderColor = useMemo(() => {
@@ -565,19 +612,18 @@ const MyWellnessApplications = () => {
     };
   }, [resolvedTheme]);
 
+  // ---- Selected app ----
   const [selectedApp, setSelectedApp] = useState(null);
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
 
+  // ---- Filters / pagination ----
   const [statusFilter, setStatusFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
-  const [searchFilter, setSearchFilter] = useState("");
+  const debouncedSearch = useDebouncedValue(searchInput, 500);
+
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  const [cancelModal, setCancelModal] = useState({ isOpen: false, app: null });
-  const openCancelModal = (app) => setCancelModal({ isOpen: true, app });
-  const closeCancelModal = () => setCancelModal({ isOpen: false, app: null });
-
+  // ✅ Scroll container (mobile) + scroll-to-top
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -586,6 +632,7 @@ const MyWellnessApplications = () => {
     if (!el) return;
 
     const onScroll = () => setShowScrollTop(el.scrollTop > 240);
+
     onScroll();
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -597,81 +644,48 @@ const MyWellnessApplications = () => {
     el.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const getStatusColor = useCallback((status) => {
-    switch (String(status || "").toUpperCase()) {
-      case "APPROVED":
-        return "border-l-4 border-l-emerald-500";
-      case "REJECTED":
-        return "border-l-4 border-l-rose-500";
-      case "PENDING":
-        return "border-l-4 border-l-amber-500";
-      case "CANCELLED":
-        return "border-l-4 border-l-slate-400";
-      default:
-        return "border-l-4 border-l-slate-300";
-    }
-  }, []);
+  // reset to page 1 when filters change
+  useEffect(() => setPage(1), [debouncedSearch, statusFilter, limit]);
 
-  const searchTimeout = useRef(null);
-  useEffect(() => {
-    clearTimeout(searchTimeout.current);
-    searchTimeout.current = setTimeout(() => {
-      setSearchFilter(searchInput);
-      setPage(1);
-    }, 500);
-    return () => clearTimeout(searchTimeout.current);
-  }, [searchInput]);
-
-  // Resolving the correct user identifier property securely
-  const userId = user?.employeeId || user?.id || user?._id;
-
-  const { data, isLoading, refetch } = useQuery({
+  // ---- Data fetching ----
+  const { data, isLoading } = useQuery({
     queryKey: [
-      "myWellnessApplications",
+      "wellnessAllApplications",
       page,
       limit,
       statusFilter,
-      searchFilter,
-      userId,
+      debouncedSearch,
     ],
     queryFn: () =>
-      fetchMyWellnessApplications(userId, {
+      fetchAllWellnessApplications({
         page,
         limit,
         status: statusFilter || undefined,
-        search: searchFilter || undefined,
+        search: debouncedSearch || undefined,
       }),
-
-    placeholderData: (prev) => prev,
+    keepPreviousData: true,
   });
 
-  const cancelMutation = useMutation({
-    mutationFn: (applicationId) =>
-      cancelWellnessApplicationRequest(applicationId),
-    onSuccess: () => {
-      toast.success("Application cancelled successfully.");
-      closeCancelModal();
-      queryClient.invalidateQueries({ queryKey: ["myWellnessApplications"] });
-      queryClient.invalidateQueries({ queryKey: ["myWellnessBalance"] });
-      refetch();
-    },
-    onError: (err) => toast.error(err?.message || "Failed to cancel request."),
-  });
-
+  // ✅ Correctly reading `data.applications` based on backend response
   const applications = useMemo(
     () => data?.applications || data?.data || [],
     [data],
   );
 
+  // ✅ Correctly reading pagination details
   const pagination = useMemo(
     () => ({
-      page: data?.pagination?.page || page || 1,
-      totalPages: Math.max(data?.pagination?.totalPages || 1, 1),
-      total: data?.pagination?.total || 0,
+      page: data?.page || data?.pagination?.page || 1,
+      totalPages: Math.max(
+        data?.totalPages || data?.pagination?.totalPages || 1,
+        1,
+      ),
+      total: data?.total || data?.pagination?.total || 0,
     }),
-    [data, page],
+    [data],
   );
 
+  // keep page within range if totalPages changes
   useEffect(() => {
     setPage((p) => {
       if (p > pagination.totalPages) return pagination.totalPages;
@@ -687,61 +701,53 @@ const MyWellnessApplications = () => {
       ? 0
       : Math.min(pagination.page * limit, pagination.total);
 
-  const handleResetFilters = () => {
+  const handleResetFilters = useCallback(() => {
     setSearchInput("");
-    setSearchFilter("");
     setStatusFilter("");
     setPage(1);
-  };
+  }, []);
 
-  const isFiltered = statusFilter !== "" || searchFilter !== "";
+  const isFiltered = statusFilter !== "" || debouncedSearch !== "";
+
+  // ✅ left strip class
+  const getStatusStripClass = useCallback((status) => {
+    switch (String(status || "").toUpperCase()) {
+      case "APPROVED":
+        return "border-l-4 border-l-emerald-500";
+      case "REJECTED":
+        return "border-l-4 border-l-rose-500";
+      case "PENDING":
+        return "border-l-4 border-l-amber-500";
+      case "CANCELLED":
+        return "border-l-4 border-l-slate-400";
+      default:
+        return "border-l-4 border-l-slate-300";
+    }
+  }, []);
 
   const statusCounts = data?.statusCounts || {};
-  const totalCount =
-    typeof statusCounts.total === "number"
-      ? statusCounts.total
-      : (statusCounts.PENDING || 0) +
-        (statusCounts.APPROVED || 0) +
-        (statusCounts.REJECTED || 0) +
-        (statusCounts.CANCELLED || 0);
 
-  const tabs = [
-    {
-      id: "",
-      label: "All Status",
-      icon: LayoutGrid,
-      count: totalCount,
-      tone: "accent",
-    },
-    {
-      id: "PENDING",
-      label: "Pending",
-      icon: AlertCircle,
-      count: statusCounts.PENDING || 0,
-      tone: "amber",
-    },
-    {
-      id: "APPROVED",
-      label: "Approved",
-      icon: CheckCircle2,
-      count: statusCounts.APPROVED || 0,
-      tone: "green",
-    },
-    {
-      id: "REJECTED",
-      label: "Rejected",
-      icon: XCircle,
-      count: statusCounts.REJECTED || 0,
-      tone: "red",
-    },
-    {
-      id: "CANCELLED",
-      label: "Cancelled",
-      icon: Ban,
-      count: statusCounts.CANCELLED || 0,
-      tone: "slate",
-    },
-  ];
+  const totalRequests =
+    statusCounts.total ??
+    statusCounts.TOTAL ??
+    pagination.total ??
+    (statusCounts.PENDING || 0) +
+      (statusCounts.APPROVED || 0) +
+      (statusCounts.REJECTED || 0) +
+      (statusCounts.CANCELLED || 0);
+
+  const statPending = statusCounts.PENDING || 0;
+  const statApproved = statusCounts.APPROVED || 0;
+  const statRejected = statusCounts.REJECTED || 0;
+
+  const formatSubmitted = (iso) =>
+    iso
+      ? new Date(iso).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "-";
 
   return (
     <div
@@ -761,52 +767,101 @@ const MyWellnessApplications = () => {
         >
           {/* HEADER */}
           <div className="pt-2 pb-3 md:pb-6 px-1">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-              <div>
-                <Breadcrumbs rootLabel="home" rootTo="/app" />
-                <h1
-                  className="text-2xl md:text-3xl font-bold tracking-tight font-sans"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  My Wellness Leave
-                </h1>
-                <p
-                  className="block text-sm mt-1 max-w-2xl"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  Manage your day-based wellness leave applications and track
-                  updates.
-                </p>
+            <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+              <div className="flex items-start gap-4 flex-1 min-w-0">
+                <div className="min-w-0">
+                  <Breadcrumbs rootLabel="home" rootTo="/app" />
+                  <h1
+                    className="text-2xl md:text-3xl font-bold tracking-tight font-sans"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    All Wellness Applications
+                  </h1>
+                  <p
+                    className="text-sm mt-1 max-w-2xl"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    View and manage all employee wellness leave applications
+                  </p>
+                </div>
               </div>
 
-              {/* ✅ Dynamically conditionally render the File Leave button based on permission */}
-              {can("wellness.manage_self") && (
-                <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 rounded-xl">
-                  <button
-                    onClick={() => setIsFormModalOpen(true)}
-                    className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-42 md:py-3.5 px-6 py-3 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 w-full"
-                    type="button"
-                    style={{
-                      backgroundColor: "var(--accent)",
-                      color: "#fff",
-                      border: "1px solid var(--accent)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.filter = "brightness(0.95)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.filter = "none";
-                    }}
-                  >
-                    <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                    File Leave
-                  </button>
+              {/* Stat cards */}
+              <div className="w-full md:w-auto flex-1 lg:flex-none flex flex-col gap-3 md:ml-4">
+                <div className="hidden lg:grid lg:grid-cols-2 xl:grid-cols-4 gap-3 items-stretch">
+                  <StatCard
+                    title="Total Requests"
+                    value={String(totalRequests || 0)}
+                    icon={LayoutGrid}
+                    hint="All applications"
+                    tone="blue"
+                    borderColor={borderColor}
+                  />
+                  <StatCard
+                    title="Total Pending"
+                    value={String(statPending || 0)}
+                    icon={AlertCircle}
+                    hint="Awaiting action"
+                    tone="amber"
+                    borderColor={borderColor}
+                  />
+                  <StatCard
+                    title="Total Approved"
+                    value={String(statApproved || 0)}
+                    icon={CheckCircle2}
+                    hint="Approved requests"
+                    tone="green"
+                    borderColor={borderColor}
+                  />
+                  <StatCard
+                    title="Total Rejected"
+                    value={String(statRejected || 0)}
+                    icon={XCircle}
+                    hint="Rejected requests"
+                    tone="red"
+                    borderColor={borderColor}
+                  />
                 </div>
-              )}
+
+                {/* Mobile compact */}
+                <div className="flex lg:hidden flex-col gap-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: "Total", value: totalRequests || 0 },
+                      { label: "Pending", value: statPending || 0 },
+                      { label: "Approved", value: statApproved || 0 },
+                      { label: "Rejected", value: statRejected || 0 },
+                    ].map((it) => (
+                      <div
+                        key={it.label}
+                        className="border rounded-lg p-2 flex justify-between items-center transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          borderColor: borderColor,
+                        }}
+                      >
+                        <div
+                          className="text-[10px] uppercase font-bold"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          {it.label}
+                        </div>
+                        <div
+                          className="text-sm font-bold"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          {it.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              {/* end stats */}
             </div>
           </div>
 
-          {/* MAIN */}
+          {/* MAIN surface */}
           <div
             className="flex flex-col rounded-xl shadow-sm overflow-visible md:flex-1 md:min-h-0 md:overflow-hidden transition-colors duration-300 ease-out"
             style={{
@@ -823,39 +878,27 @@ const MyWellnessApplications = () => {
               }}
             >
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                {/* Tabs */}
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-                  {tabs.map((tab) => {
+                  {statusTabs(statusCounts, pagination.total).map((tab) => {
                     const isActive = statusFilter === tab.id;
                     const Icon = tab.icon;
-                    const t = tabTone[tab.tone] || tabTone.accent;
 
                     return (
                       <button
-                        type="button"
                         key={tab.id || "all-status"}
                         onClick={() => {
                           setStatusFilter(tab.id);
                           setPage(1);
                         }}
-                        className="px-4 py-1.5 text-xs font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2"
+                        className={`px-4 py-1.5 text-xs font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2
+                          ${
+                            isActive
+                              ? tab.activeColor
+                              : "bg-[color:var(--app-surface)] text-[color:var(--app-muted)] border-[color:var(--app-border)] hover:bg-[color:var(--app-surface-2)]"
+                          }`}
                         aria-pressed={isActive}
-                        style={{
-                          backgroundColor: isActive
-                            ? t.bg
-                            : "var(--app-surface)",
-                          color: isActive ? t.text : "var(--app-muted)",
-                          borderColor: isActive ? t.br : borderColor,
-                        }}
-                        onMouseEnter={(e) => {
-                          if (isActive) return;
-                          e.currentTarget.style.backgroundColor =
-                            "var(--app-surface-2)";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (isActive) return;
-                          e.currentTarget.style.backgroundColor =
-                            "var(--app-surface)";
-                        }}
+                        type="button"
                       >
                         <Icon className="w-3.5 h-3.5" />
                         <span>{tab.label}</span>
@@ -863,7 +906,7 @@ const MyWellnessApplications = () => {
                           className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors duration-200 ease-out"
                           style={{
                             backgroundColor: isActive
-                              ? "rgba(255,255,255,0.35)"
+                              ? "var(--app-surface)"
                               : "var(--app-surface-2)",
                             color: isActive
                               ? "var(--app-text)"
@@ -877,15 +920,16 @@ const MyWellnessApplications = () => {
                   })}
                 </div>
 
-                <div className="flex items-center gap-3 w-full lg:w-auto">
-                  <div className="relative flex-1 lg:w-64">
+                {/* Search + limit */}
+                <div className="flex items-center gap-3 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-64">
                     <Search
                       className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
                       style={{ color: "var(--app-muted)" }}
                     />
                     <input
                       type="text"
-                      placeholder="Search reasons..."
+                      placeholder="Search employee..."
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                       className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors duration-200 ease-out border"
@@ -897,12 +941,12 @@ const MyWellnessApplications = () => {
                     />
                     {searchInput && (
                       <button
-                        type="button"
                         onClick={() => setSearchInput("")}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
                         style={{ color: "var(--app-muted)" }}
                         aria-label="Clear search"
                         title="Clear"
+                        type="button"
                       >
                         <RotateCcw size={14} />
                       </button>
@@ -910,7 +954,7 @@ const MyWellnessApplications = () => {
                   </div>
 
                   <div
-                    className="hidden lg:flex items-center gap-2 pl-3 border-l"
+                    className="hidden md:flex items-center gap-2 pl-3 border-l"
                     style={{ borderColor: borderColor }}
                   >
                     <span
@@ -941,7 +985,7 @@ const MyWellnessApplications = () => {
                   </div>
 
                   <div
-                    className="lg:hidden flex items-center gap-1.5 px-2 border-l ml-1"
+                    className="md:hidden flex items-center gap-1.5 px-2 border-l ml-1"
                     style={{ borderColor: borderColor }}
                   >
                     <span
@@ -964,6 +1008,7 @@ const MyWellnessApplications = () => {
                 </div>
               </div>
 
+              {/* Active chips + reset */}
               {isFiltered && (
                 <div className="flex items-center justify-between">
                   <div className="flex flex-wrap items-center gap-2">
@@ -973,7 +1018,7 @@ const MyWellnessApplications = () => {
                     >
                       Active:
                     </span>
-                    {searchFilter && (
+                    {debouncedSearch && (
                       <span
                         className="px-2 py-0.5 rounded border text-[10px] font-medium"
                         style={{
@@ -983,7 +1028,7 @@ const MyWellnessApplications = () => {
                             "var(--accent-soft2, rgba(37,99,235,0.18))",
                         }}
                       >
-                        "{searchFilter}"
+                        "{debouncedSearch}"
                       </span>
                     )}
                     {statusFilter && (
@@ -1000,12 +1045,11 @@ const MyWellnessApplications = () => {
                       </span>
                     )}
                   </div>
-
                   <button
-                    type="button"
                     onClick={handleResetFilters}
                     className="flex items-center gap-1 text-[10px] font-bold uppercase"
                     style={{ color: "var(--accent)" }}
+                    type="button"
                   >
                     <RotateCcw size={10} /> Reset
                   </button>
@@ -1027,9 +1071,9 @@ const MyWellnessApplications = () => {
                       borderColor: borderColor,
                     }}
                   >
-                    <Filter
+                    <Inbox
                       className="w-10 h-10"
-                      style={{ color: "var(--app-muted)", opacity: 0.6 }}
+                      style={{ color: "var(--app-muted)" }}
                     />
                   </div>
                   <h3
@@ -1047,9 +1091,9 @@ const MyWellnessApplications = () => {
                   </p>
                   {isFiltered && (
                     <button
-                      onClick={handleResetFilters}
-                      className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out"
                       type="button"
+                      onClick={handleResetFilters}
+                      className="mt-6 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out"
                       style={{
                         backgroundColor: "var(--app-surface)",
                         borderColor: borderColor,
@@ -1070,13 +1114,13 @@ const MyWellnessApplications = () => {
                 </div>
               ) : (
                 <>
-                  {/* Mobile & Tablet cards */}
-                  <div className="block lg:hidden p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                  {/* Mobile: cards */}
+                  <div className="block md:hidden p-4">
+                    <div className="space-y-3">
                       {isLoading
                         ? [...Array(Math.min(limit, 6))].map((_, i) => (
                             <div
-                              key={i}
+                              key={`sk-m-${i}`}
                               className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
                               style={{
                                 backgroundColor: "var(--app-surface)",
@@ -1096,29 +1140,61 @@ const MyWellnessApplications = () => {
                               </div>
                             </div>
                           ))
-                        : applications.map((app) => {
-                            const cancelling =
-                              cancelMutation.isPending &&
-                              cancelMutation.variables === app._id;
-
-                            return (
-                              <ApplicationCard
-                                key={app._id}
-                                app={app}
-                                borderColor={borderColor}
-                                leftStripClassName={getStatusColor(
-                                  app.overallStatus,
-                                )}
-                                cancelling={cancelling}
-                                onViewDetails={() => setSelectedApp(app)}
-                                onCancel={() => openCancelModal(app)}
-                              />
-                            );
-                          })}
+                        : applications.map((app) => (
+                            <ApplicationCard
+                              key={app._id}
+                              app={app}
+                              borderColor={borderColor}
+                              leftStripClassName={getStatusStripClass(
+                                app.overallStatus,
+                              )}
+                              onViewDetails={() => setSelectedApp(app)}
+                            />
+                          ))}
                     </div>
                   </div>
 
-                  {/* Desktop table */}
+                  {/* Tablet: 2 cards */}
+                  <div className="hidden md:block lg:hidden p-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      {isLoading
+                        ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                            <div
+                              key={`sk-t-${i}`}
+                              className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
+                              style={{
+                                backgroundColor: "var(--app-surface)",
+                                borderColor: borderColor,
+                              }}
+                            >
+                              <Skeleton height={18} />
+                              <div className="mt-3">
+                                <Skeleton height={12} count={2} />
+                              </div>
+                              <div className="mt-4 grid grid-cols-2 gap-2">
+                                <Skeleton height={52} />
+                                <Skeleton height={52} />
+                              </div>
+                              <div className="mt-4">
+                                <Skeleton height={40} />
+                              </div>
+                            </div>
+                          ))
+                        : applications.map((app) => (
+                            <ApplicationCard
+                              key={app._id}
+                              app={app}
+                              borderColor={borderColor}
+                              leftStripClassName={getStatusStripClass(
+                                app.overallStatus,
+                              )}
+                              onViewDetails={() => setSelectedApp(app)}
+                            />
+                          ))}
+                    </div>
+                  </div>
+
+                  {/* Desktop: table */}
                   <div className="hidden lg:block w-full align-middle">
                     <table className="w-full text-left">
                       <thead
@@ -1132,12 +1208,12 @@ const MyWellnessApplications = () => {
                           className="text-[10px] uppercase tracking-[0.12em] font-bold"
                           style={{ color: "var(--app-muted)" }}
                         >
-                          <th className="px-6 py-4 font-bold">
-                            Dates (Inclusive)
-                          </th>
+                          <th className="px-6 py-4 font-bold">Requestor</th>
+                          <th className="px-6 py-4 font-bold">Request ID</th>
                           <th className="px-6 py-4 text-center">Total Days</th>
-                          <th className="px-6 py-4 text-left">Reason</th>
                           <th className="px-6 py-4 text-center">Status</th>
+                          <th className="px-6 py-4 text-center">Submitted</th>
+                          <th className="px-6 py-4">Dates Covered</th>
                           <th className="px-6 py-4 text-right">Actions</th>
                         </tr>
                       </thead>
@@ -1146,7 +1222,7 @@ const MyWellnessApplications = () => {
                         {isLoading
                           ? [...Array(8)].map((_, i) => (
                               <tr key={i}>
-                                {[...Array(5)].map((__, j) => (
+                                {[...Array(7)].map((__, j) => (
                                   <td key={j} className="px-6 py-4">
                                     <Skeleton />
                                   </td>
@@ -1158,10 +1234,6 @@ const MyWellnessApplications = () => {
                                 i % 2 === 0
                                   ? "var(--app-surface)"
                                   : "var(--app-surface-2)";
-
-                              const cancelling =
-                                cancelMutation.isPending &&
-                                cancelMutation.variables === app._id;
 
                               return (
                                 <tr
@@ -1179,21 +1251,25 @@ const MyWellnessApplications = () => {
                                   <td className="px-6 py-4">
                                     <div className="flex flex-col">
                                       <span
-                                        className="font-semibold text-sm flex items-center gap-2"
+                                        className="font-semibold text-sm"
                                         style={{ color: "var(--app-text)" }}
                                       >
-                                        <Calendar
-                                          size={14}
-                                          style={{ color: "var(--app-muted)" }}
-                                        />
-                                        <span className="truncate max-w-[250px]">
-                                          {formatCoveredDates(
-                                            app.inclusiveDates,
-                                          )}
-                                        </span>
+                                        {app?.employee?.firstName || ""}{" "}
+                                        {app?.employee?.lastName || ""}
                                       </span>
                                       <span
-                                        className="text-[10px] font-mono mt-1"
+                                        className="text-[10px] font-mono mt-0.5"
+                                        style={{ color: "var(--app-muted)" }}
+                                      >
+                                        {app?.employee?.position || "-"}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  <td className="px-6 py-4">
+                                    <div className="flex flex-col">
+                                      <span
+                                        className="text-xs font-mono mt-0.5"
                                         style={{ color: "var(--app-muted)" }}
                                       >
                                         ID:{" "}
@@ -1213,22 +1289,34 @@ const MyWellnessApplications = () => {
                                         color: "var(--app-text)",
                                       }}
                                     >
-                                      {app.totalDays || 0} Day(s)
+                                      {Number(app?.totalDays || 0)}
                                     </span>
-                                  </td>
-
-                                  <td className="px-6 py-4 text-left max-w-xs">
-                                    <p
-                                      className="text-sm truncate"
-                                      style={{ color: "var(--app-text)" }}
-                                      title={app.reason}
-                                    >
-                                      {app.reason || "N/A"}
-                                    </p>
                                   </td>
 
                                   <td className="px-6 py-4 text-center">
                                     <StatusBadge status={app.overallStatus} />
+                                  </td>
+
+                                  <td
+                                    className="px-6 py-4 text-center text-sm"
+                                    style={{ color: "var(--app-muted)" }}
+                                  >
+                                    {formatSubmitted(app.createdAt)}
+                                  </td>
+
+                                  <td
+                                    className="px-6 py-4 text-sm"
+                                    style={{ color: "var(--app-muted)" }}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <CalendarDays
+                                        size={14}
+                                        style={{ color: "var(--app-muted)" }}
+                                      />
+                                      <span className="truncate max-w-[250px]">
+                                        {formatCoveredDates(app.inclusiveDates)}
+                                      </span>
+                                    </div>
                                   </td>
 
                                   <td className="px-6 py-4 text-right">
@@ -1236,8 +1324,6 @@ const MyWellnessApplications = () => {
                                       app={app}
                                       borderColor={borderColor}
                                       onViewDetails={() => setSelectedApp(app)}
-                                      onCancel={() => openCancelModal(app)}
-                                      cancelling={cancelling}
                                     />
                                   </td>
                                 </tr>
@@ -1250,6 +1336,7 @@ const MyWellnessApplications = () => {
               )}
             </div>
 
+            {/* Pagination */}
             <CompactPagination
               page={pagination.page}
               totalPages={pagination.totalPages}
@@ -1283,127 +1370,20 @@ const MyWellnessApplications = () => {
           </button>
         )}
 
-        {/* Details Modal */}
+        {/* Details modal */}
         {selectedApp && (
           <Modal
             isOpen={!!selectedApp}
             onClose={() => setSelectedApp(null)}
-            title="Wellness Leave Details"
             maxWidth="max-w-5xl"
+            title="Wellness Application Details"
           >
             <WellnessApplicationDetails app={selectedApp} />
           </Modal>
         )}
-
-        {/* Cancel Confirm Modal */}
-        <Modal
-          isOpen={cancelModal.isOpen}
-          onClose={closeCancelModal}
-          title="Cancel Wellness Leave"
-          maxWidth="max-w-lg"
-          preventCloseWhenBusy={true}
-          isBusy={cancelMutation.isPending}
-          action={{
-            show: true,
-            variant: "cancel",
-            label: cancelMutation.isPending ? "Cancelling..." : "Yes, Cancel",
-            onClick: async () => {
-              const app = cancelModal.app;
-              if (!app?._id) return;
-
-              const status = String(app?.overallStatus || "").toUpperCase();
-              if (status !== "PENDING") {
-                toast.error("Only PENDING applications can be cancelled.");
-                closeCancelModal();
-                return;
-              }
-
-              await cancelMutation.mutateAsync(app._id);
-            },
-            disabled: cancelMutation.isPending,
-          }}
-        >
-          <div className="p-2" style={{ color: "var(--app-text)" }}>
-            <div
-              className="mb-5 flex items-start gap-3 p-3 rounded-xl border"
-              style={{
-                backgroundColor: "var(--app-surface-2)",
-                borderColor: borderColor,
-              }}
-            >
-              <div
-                className="mt-0.5 p-1.5 rounded-lg border shadow-sm"
-                style={{
-                  backgroundColor: "var(--app-surface)",
-                  borderColor: borderColor,
-                  color: "var(--app-muted)",
-                }}
-              >
-                <Info size={16} />
-              </div>
-              <div className="min-w-0">
-                <p
-                  className="text-[10px] font-bold uppercase tracking-wider"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  You are about to cancel this request
-                </p>
-                <p
-                  className="text-sm font-bold break-words"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  Ref:{" "}
-                  {cancelModal.app?._id
-                    ? `#${cancelModal.app._id.slice(-6).toUpperCase()}`
-                    : "-"}
-                </p>
-              </div>
-            </div>
-
-            <div className="text-center py-2">
-              <div
-                className="mx-auto h-20 w-20 rounded-full flex items-center justify-center mb-4 border-4 shadow-inner"
-                style={{
-                  backgroundColor: "rgba(239,68,68,0.12)",
-                  color: "#ef4444",
-                  borderColor: "rgba(239,68,68,0.20)",
-                }}
-              >
-                <Ban size={40} strokeWidth={3} />
-              </div>
-              <h2
-                className="text-lg font-semibold"
-                style={{ color: "var(--app-text)" }}
-              >
-                Are you sure you want to cancel this Wellness Leave?
-              </h2>
-              <p className="text-sm mt-2" style={{ color: "var(--app-muted)" }}>
-                This will stop the approval workflow immediately.
-              </p>
-            </div>
-          </div>
-        </Modal>
-
-        {/* Form Modal */}
-        <Modal
-          isOpen={isFormModalOpen}
-          onClose={() => setIsFormModalOpen(false)}
-          closeLabel={null}
-          maxWidth="max-w-lg"
-        >
-          <div className="w-full">
-            <AddWellnessApplicationForm
-              onClose={() => setIsFormModalOpen(false)}
-              onSuccess={() => {
-                setIsFormModalOpen(false);
-                refetch();
-              }}
-            />
-          </div>
-        </Modal>
       </SkeletonTheme>
     </div>
   );
 };
 
-export default MyWellnessApplications;
+export default AllWellnessApplicationsHistory;

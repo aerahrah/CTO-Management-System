@@ -209,20 +209,10 @@ const getWellnessApplicationsForApproverService = async (
 
   const data = appsAfterStatus.slice(startIndex, startIndex + safeLimit);
 
-  // Format dates and tag with type for the frontend
+  // Tag with type for the frontend
   const formattedData = data.map((app) => {
     const appObj = app.toObject ? app.toObject() : { ...app };
     appObj.type = "WELLNESS";
-    if (appObj.startDate && appObj.endDate) {
-      const dates = [];
-      let cur = new Date(appObj.startDate);
-      const end = new Date(appObj.endDate);
-      while (cur <= end) {
-        dates.push(cur.toISOString());
-        cur.setDate(cur.getDate() + 1);
-      }
-      appObj.inclusiveDates = dates;
-    }
     return appObj;
   });
 
@@ -252,17 +242,6 @@ const getWellnessApplicationByIdService = async (wellnessApplicationId) => {
 
   const appObj = application.toObject ? application.toObject() : application;
   appObj.type = "WELLNESS";
-
-  if (appObj.startDate && appObj.endDate) {
-    const dates = [];
-    let cur = new Date(appObj.startDate);
-    const end = new Date(appObj.endDate);
-    while (cur <= end) {
-      dates.push(cur.toISOString());
-      cur.setDate(cur.getDate() + 1);
-    }
-    appObj.inclusiveDates = dates;
-  }
 
   return appObj;
 };

@@ -93,20 +93,25 @@ const notifyApproversOfCancellation = async ({
 
 const addWellnessApplicationService = async ({
   userId,
-  startDate,
-  endDate,
-  totalDays,
+  inclusiveDates,
   reason,
   routeId,
   approvers,
   req, // ✅ Passed for future Audit Logging
 }) => {
-  if (!startDate || !endDate || !totalDays || !reason) {
+  if (
+    !inclusiveDates ||
+    !Array.isArray(inclusiveDates) ||
+    inclusiveDates.length === 0 ||
+    !reason
+  ) {
     throw Object.assign(
-      new Error("Start date, end date, total days, and reason are required."),
+      new Error("Inclusive dates array and reason are required."),
       { status: 400 },
     );
   }
+
+  const totalDays = inclusiveDates.length;
 
   let finalApprovers = [];
   if (routeId) {
@@ -157,8 +162,7 @@ const addWellnessApplicationService = async ({
 
     const newApplication = new WellnessApplication({
       employee: employee._id,
-      startDate,
-      endDate,
+      inclusiveDates,
       totalDays,
       reason,
       overallStatus: "PENDING",
@@ -222,9 +226,9 @@ const getAllWellnessApplicationsService = async (
   if (status) query.overallStatus = status;
   if (employeeId) query.employee = employeeId;
   if (from || to) {
-    query.startDate = {};
-    if (from) query.startDate.$gte = new Date(from);
-    if (to) query.startDate.$lte = new Date(to);
+    query.inclusiveDates = {};
+    if (from) query.inclusiveDates.$gte = new Date(from);
+    if (to) query.inclusiveDates.$lte = new Date(to);
   }
 
   if (search) {
@@ -245,8 +249,17 @@ const getAllWellnessApplicationsService = async (
   const limitNum = Math.max(1, parseInt(limit));
   const skip = (pageNum - 1) * limitNum;
 
+  // ✅ Fetch applications with deep populated approvals mapping to frontend requirements
   const applications = await WellnessApplication.find(query)
     .populate("employee", "firstName lastName position email employeeId")
+    .populate({
+      path: "approvals",
+      populate: {
+        path: "approver",
+        select: "firstName lastName position email",
+      },
+      options: { sort: { level: 1 } },
+    })
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limitNum)
@@ -254,11 +267,44 @@ const getAllWellnessApplicationsService = async (
 
   const total = await WellnessApplication.countDocuments(query);
 
+  // ✅ Extract base query without status to calculate overall counts for tabs
+  const baseQuery = { ...query };
+  delete baseQuery.overallStatus;
+
+  // Execute Status Counts aggregation
+  const statusCountsAgg = await WellnessApplication.aggregate([
+    { $match: baseQuery },
+    {
+      $group: {
+        _id: "$overallStatus",
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  const totalAll = await WellnessApplication.countDocuments(baseQuery);
+
+  const statusCounts = {
+    PENDING: 0,
+    APPROVED: 0,
+    REJECTED: 0,
+    CANCELLED: 0,
+    total: totalAll,
+  };
+
+  statusCountsAgg.forEach((s) => {
+    if (s._id) statusCounts[s._id] = s.count;
+  });
+
   return {
-    applications,
-    total,
-    page: pageNum,
-    totalPages: Math.ceil(total / limitNum),
+    data: applications,
+    pagination: {
+      page: pageNum,
+      limit: limitNum,
+      total,
+      totalPages: Math.ceil(total / limitNum),
+    },
+    statusCounts,
   };
 };
 

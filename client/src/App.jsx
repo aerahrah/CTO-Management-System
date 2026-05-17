@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { CalendarDays, ShieldCheck } from "lucide-react"; // ✅ Imported for the Wellness Placeholder
 
 import SessionGuard from "./components/sessionExpiredModal";
 
@@ -22,7 +23,6 @@ import AuditLogTable from "./pages/auditPage";
 import CtoDashboard from "./components/ctoComponents/ctoDashboard";
 import CtoCredits from "./components/ctoComponents/ctoCredits";
 import CtoApplication from "./components/ctoComponents/ctoApplication";
-import MyWellnessApplications from "./components/wellnessComponents/wellnessApplicationComponents/myWellnessApplicationHistory";
 import MyCtoCredits from "./components/ctoComponents/myCtoCredits";
 import AllCtoApplications from "./components/ctoComponents/ctoAllApplications";
 import CtoApplicationApprovals from "./components/ctoComponents/ctoApplicationApprovals";
@@ -31,9 +31,12 @@ import CtoRecords from "./components/ctoComponents/ctoRecords";
 import CtoEmployeeInformation from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
 import EmployeePlaceholder from "./components/ctoComponents/ctoApplicationApprovalsComponents/ctoEmployeePlaceholder";
 import EmployeeRecordsPlaceholder from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeRecordPlaceholder";
-import PendingApprovalsGuard from "./components/pendingApprovalsGuard";
 
-/* Employee Components */
+/* Wellness Components */
+import MyWellnessApplications from "./components/wellnessComponents/wellnessApplicationComponents/myWellnessApplicationHistory";
+import WellnessApplicationApprovals from "./components/wellnessComponents/wellnessApplicationApprovals";
+import WellnessApplicationDetails from "./components/wellnessComponents/wellnessApplicationApprovalComponents/wellnessApplicationDetails";
+import AllWellnessApplicationsHistory from "./components/wellnessComponents/wellnessApplicationComponents/allWellnessApplicationHistory";
 import AddEmployeeForm from "./components/employeeDashboard/forms/addEmployeeForm";
 import EmployeeInformation from "./components/employeeDashboard/employeeInformation";
 
@@ -46,7 +49,12 @@ import DesignationSettings from "./components/generalSettingsComponents/designat
 import BackupSettings from "./components/generalSettingsComponents/backupSettings/backupSettings";
 import GeneralSettings from "./components/generalSettingsComponents/generalSettings";
 import WorkingDaysSettings from "./components/generalSettingsComponents/workingDaysSettings";
+
+// ✅ Role Settings Components
 import RolesSettings from "./components/generalSettingsComponents/rolesSettings/rolesSettings";
+import AddRole from "./components/generalSettingsComponents/rolesSettings/addRole";
+import UpdateRole from "./components/generalSettingsComponents/rolesSettings/updateRole";
+import ViewRole from "./components/generalSettingsComponents/rolesSettings/viewRole";
 
 // ✅ Email Notification Settings
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
@@ -73,7 +81,7 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
-/* ✅ Reactive resolved theme for system mode (for ToastContainer + any other global uses) */
+/* ✅ Reactive resolved theme for system mode */
 function useResolvedTheme(prefTheme) {
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined")
@@ -108,16 +116,13 @@ function useResolvedTheme(prefTheme) {
 function App() {
   const location = useLocation();
 
-  // ✅ Don't mount SessionGuard on login ("/")
   const isLoginRoute = location.pathname === "/";
 
-  // ✅ Global theme (single source of truth)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
   return (
     <>
-      {/* ✅ Mount these ONCE so you don't need them in every component */}
       {!isLoginRoute && (
         <>
           <ThemeSync />
@@ -133,27 +138,10 @@ function App() {
         {/* APP LAYOUT */}
         <Route path="/app" element={<Dashboard />}>
           {/* ===================== */}
-          {/* ALL AUTHENTICATED USERS */}
+          {/* BASE AUTHENTICATED (No special permissions needed) */}
           {/* ===================== */}
           <Route element={<ProtectedRoute />}>
             <Route index element={<CtoDashboard />} />
-
-            <Route path="cto-apply" element={<CtoApplication />} />
-            <Route path="wellness-apply" element={<MyWellnessApplications />} />
-            <Route path="cto-my-credits" element={<MyCtoCredits />} />
-            <Route path="approval-routes" element={<ApprovalRoutesPage />} />
-
-            <Route path="my-profile" element={<MyProfile />} />
-            <Route path="my-profile/edit" element={<UpdateProfile />} />
-            <Route
-              path="my-profile/reset-password"
-              element={<ResetPassword />}
-            />
-
-            <Route path="admin" element={<AdminPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-
-            {/* User Preferences */}
             <Route
               path="user-preferences"
               element={<UserPreferencesSettings />}
@@ -161,23 +149,123 @@ function App() {
           </Route>
 
           {/* ===================== */}
-          {/* HR / EMPLOYEES */}
+          {/* SELF-SERVICE / EMPLOYEE LEVEL */}
           {/* ===================== */}
-          <Route element={<ProtectedRoute requiredPermission="employees.view" />}>
+
+          {/* View Own Profile */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="employees.view_self" />
+            }
+          >
+            <Route path="my-profile" element={<MyProfile />} />
+          </Route>
+
+          {/* Edit Own Profile */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="employees.edit_self" />
+            }
+          >
+            <Route path="my-profile/edit" element={<UpdateProfile />} />
+          </Route>
+
+          {/* Reset Own Password */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="employees.reset_password_self" />
+            }
+          >
+            <Route
+              path="my-profile/reset-password"
+              element={<ResetPassword />}
+            />
+          </Route>
+
+          {/* View Own Credits/Records */}
+          <Route
+            element={<ProtectedRoute requiredPermission="cto.view_self" />}
+          >
+            <Route path="cto-my-credits" element={<MyCtoCredits />} />
+          </Route>
+
+          {/* Apply for Leaves */}
+          <Route element={<ProtectedRoute requiredPermission="cto.create" />}>
+            <Route path="cto-apply" element={<CtoApplication />} />
+          </Route>
+          <Route
+            element={<ProtectedRoute requiredPermission="wellness.view_self" />}
+          >
+            <Route path="wellness-apply" element={<MyWellnessApplications />} />
+          </Route>
+
+          {/* ===================== */}
+          {/* RESTRICTED HUBS (Admin & Settings) */}
+          {/* ===================== */}
+
+          {/* Settings Hub & Approval Routes */}
+          <Route
+            element={<ProtectedRoute requiredPermission="settings.view" />}
+          >
+            <Route path="approval-routes" element={<ApprovalRoutesPage />} />
+          </Route>
+
+          {/* ===================== */}
+          {/* HR / EMPLOYEES (Separated CRUD) */}
+          {/* ===================== */}
+
+          {/* View Employees */}
+          <Route
+            element={<ProtectedRoute requiredPermission="employees.view" />}
+          >
             <Route path="employees" element={<EmployeesPage />} />
+            <Route path="employees/:id" element={<EmployeeInformation />} />
+          </Route>
+
+          {/* Create/Add Employee */}
+          <Route
+            element={<ProtectedRoute requiredPermission="employees.create" />}
+          >
             <Route
               path="employees/add-employee"
               element={<AddEmployeeForm />}
             />
-            <Route path="employees/:id" element={<EmployeeInformation />} />
-            <Route path="employees/:id/update" element={<AddEmployeeForm />} />
+          </Route>
 
+          {/* Edit/Update Employee */}
+          <Route
+            element={<ProtectedRoute requiredPermission="employees.edit" />}
+          >
+            <Route path="employees/:id/update" element={<AddEmployeeForm />} />
+          </Route>
+
+          {/* ===================== */}
+          {/* CTO GLOBAL VIEWS (Separated) */}
+          {/* ===================== */}
+
+          {/* Manage CTO Credits */}
+          <Route
+            element={<ProtectedRoute requiredPermission="cto.credits_view" />}
+          >
             <Route path="cto-credit" element={<CtoCredits />} />
+          </Route>
+
+          {/* View All CTO Applications */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="cto.applications_view" />
+            }
+          >
             <Route
               path="cto-all-applications"
               element={<AllCtoApplications />}
             />
+          </Route>
 
+          {/* View All CTO Records */}
+          <Route
+            element={<ProtectedRoute requiredPermission="cto.records_view" />}
+          >
             <Route path="cto-records" element={<CtoRecords />}>
               <Route index element={<EmployeeRecordsPlaceholder />} />
               <Route path=":id" element={<CtoEmployeeInformation />} />
@@ -185,25 +273,90 @@ function App() {
           </Route>
 
           {/* ===================== */}
+          {/* WELLNESS GLOBAL VIEWS */}
+          {/* ===================== */}
+
+          {/* ✅ View All Wellness Applications */}
+          <Route
+            element={<ProtectedRoute requiredPermission="wellness.view_all" />}
+          >
+            <Route
+              path="wellness-all-applications"
+              element={<AllWellnessApplicationsHistory />}
+            />
+          </Route>
+
+          {/* ===================== */}
           {/* SYSTEM SETTINGS / AUDIT */}
           {/* ===================== */}
-          <Route element={<ProtectedRoute requiredPermission="settings.view" />}>
-            <Route path="audit-logs" element={<AuditLogTable />} />
 
-            {/* CTO SETTINGS (nested like CtoRecords) */}
+          {/* Audit Logs */}
+          <Route element={<ProtectedRoute requiredPermission="audit.view" />}>
+            <Route path="audit-logs" element={<AuditLogTable />} />
+          </Route>
+
+          {/* CTO Workflow Settings */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="settings.cto_workflow" />
+            }
+          >
             <Route path="cto-settings" element={<CtoSettings />}>
               <Route index element={<CtoSettingsPlaceholder />} />
               <Route path=":designationId" element={<ApproverSettings />} />
             </Route>
+          </Route>
 
+          {/* Designations */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="designations.manage" />
+            }
+          >
             <Route path="designations" element={<DesignationSettings />} />
-            <Route path="roles" element={<RolesSettings />} />
-            <Route path="projects" element={<ProjectSettings />} />
-            <Route path="backups" element={<BackupSettings />} />
-            <Route path="general-settings" element={<WorkingDaysSettings />} />
-            <Route path="session-settings" element={<GeneralSettings />} />
+          </Route>
 
-            {/* Email notification settings */}
+          {/* Roles (Separated CRUD) */}
+          <Route element={<ProtectedRoute requiredPermission="roles.view" />}>
+            {" "}
+            <Route path="roles" element={<RolesSettings />} />
+          </Route>
+          <Route element={<ProtectedRoute requiredPermission="roles.manage" />}>
+            <Route path="roles/add-role" element={<AddRole />} />
+            <Route path="roles/:id" element={<ViewRole />} />
+            <Route path="roles/:id/update" element={<UpdateRole />} />
+          </Route>
+
+          {/* Projects */}
+          <Route
+            element={<ProtectedRoute requiredPermission="projects.manage" />}
+          >
+            <Route path="projects" element={<ProjectSettings />} />
+          </Route>
+
+          {/* Backups */}
+          <Route
+            element={<ProtectedRoute requiredPermission="backups.manage" />}
+          >
+            <Route path="backups" element={<BackupSettings />} />
+          </Route>
+
+          {/* General Core Settings - Separated */}
+          <Route
+            element={<ProtectedRoute requiredPermission="settings.general" />}
+          >
+            <Route path="general-settings" element={<WorkingDaysSettings />} />
+          </Route>
+
+          <Route
+            element={<ProtectedRoute requiredPermission="settings.sessions" />}
+          >
+            <Route path="session-settings" element={<GeneralSettings />} />
+          </Route>
+
+          <Route
+            element={<ProtectedRoute requiredPermission="settings.email" />}
+          >
             <Route
               path="email-notification-settings"
               element={<EmailNotificationSettings />}
@@ -211,12 +364,51 @@ function App() {
           </Route>
 
           {/* ===================== */}
-          {/* APPROVALS — dynamic guard: accessible only when user has pending count */}
+          {/* CTO APPROVALS (Dynamic Guard) */}
           {/* ===================== */}
-          <Route element={<PendingApprovalsGuard />}>
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="cto.view_application" />
+            }
+          >
             <Route path="cto-approvals" element={<CtoApplicationApprovals />}>
               <Route index element={<EmployeePlaceholder />} />
               <Route path=":id" element={<CtoApplicationDetails />} />
+            </Route>
+          </Route>
+
+          {/* ===================== */}
+          {/* ✅ WELLNESS APPROVALS (Dynamic Guard) */}
+          {/* ===================== */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="wellness.view_application" />
+            }
+          >
+            <Route
+              path="wellness-approvals"
+              element={<WellnessApplicationApprovals />}
+            >
+              <Route
+                index
+                element={
+                  <EmployeePlaceholder
+                    title="No Wellness Request Selected"
+                    description="Pick a Wellness request from the list to review dates and approvals."
+                    bullets={[
+                      {
+                        icon: CalendarDays,
+                        label: "Requested wellness dates & total days",
+                      },
+                      {
+                        icon: ShieldCheck,
+                        label: "Approval progress & remarks",
+                      },
+                    ]}
+                  />
+                }
+              />
+              <Route path=":id" element={<WellnessApplicationDetails />} />
             </Route>
           </Route>
         </Route>
@@ -225,7 +417,7 @@ function App() {
         <Route path="*" element={<div>404 - Page Not Found</div>} />
       </Routes>
 
-      {/* TOASTS (theme matches user/system) */}
+      {/* TOASTS */}
       <ToastContainer
         position="top-right"
         autoClose={3000}

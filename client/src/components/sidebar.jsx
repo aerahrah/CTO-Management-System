@@ -188,13 +188,13 @@ const Sidebar = ({
             name: "Apply Wellness Leave",
             path: "/app/wellness-apply",
             icon: <PenLine size={14} />,
-            requiredPermission: "wellness.create",
+            requiredPermission: "wellness.view_self",
           },
           {
             name: "All Wellness Applications",
             path: "/app/wellness-all-applications",
             icon: <Files size={14} />,
-            requiredPermission: "wellness.applications_view",
+            requiredPermission: "wellness.view_all",
           },
           {
             name: "Pending Approvals",
