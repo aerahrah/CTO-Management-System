@@ -1,19 +1,9 @@
-// services/ctoApproval.service.js
+// services/wellnessApproval.service.js
 const mongoose = require("mongoose");
 const ApprovalStep = require("../models/approvalStepModel");
-const CtoApplication = require("../models/ctoApplicationModel");
+const WellnessApplication = require("../models/wellnessApplicationModel");
 const Employee = require("../models/employeeModel");
-const CtoCredit = require("../models/ctoCreditModel");
 const NotificationService = require("./notificationService");
-
-const sendEmail = require("../utils/sendEmail");
-const EMAIL_KEYS = require("../utils/emailNotificationKeys");
-const { isEmailEnabled } = require("../utils/emailNotificationSettings");
-const {
-  ctoApprovalEmail,
-  ctoRejectionEmail,
-  ctoFinalApprovalEmail,
-} = require("../utils/emailTemplates");
 
 const buildAuditDetails = require("../utils/auditActionBuilder");
 const auditLogService = require("./auditLog.service");
@@ -44,6 +34,7 @@ const sameId = (a, b) => String(a) === String(b);
 const sortByLevel = (steps = []) =>
   [...steps].sort((a, b) => Number(a?.level || 0) - Number(b?.level || 0));
 
+// ✅ The status filter strictly reflects the Approver's personal action
 const getEffectiveStatusForApprover = (app, myStep) => {
   const myStatus = U(myStep?.status);
   const overall = U(app?.overallStatus);
@@ -59,45 +50,23 @@ const getEffectiveStatusForApprover = (app, myStep) => {
 const clampPage = (v) => Math.max(parseInt(v, 10) || 1, 1);
 const clampLimit = (v) => Math.min(Math.max(parseInt(v, 10) || 10, 1), 100);
 
-async function safeSendEmail(to, subject, html) {
-  try {
-    await sendEmail(to, subject, html);
-  } catch (e) {
-    console.error("[EMAIL] failed but continuing:", {
-      to,
-      subject,
-      message: e?.message,
-    });
-  }
-}
-
-async function canSend(key) {
-  return await isEmailEnabled(key);
-}
-
 /* =========================
    Services
 ========================= */
-const getApproverOptionsService = async () => {
-  return Employee.find({}, "_id firstName lastName position email")
-    .sort({ lastName: 1, firstName: 1 })
-    .lean();
-};
-
-const fetchPendingCtoCountService = async (approverId) => {
+const fetchPendingWellnessCountService = async (approverId) => {
   if (!approverId) throw httpError("Approver ID is required", 400);
 
   const approvalSteps = await ApprovalStep.find({
     approver: approverId,
   }).populate({
-    path: "ctoApplication",
+    path: "wellnessApplication",
     populate: [
       { path: "approvals", populate: { path: "approver", select: "_id" } },
     ],
   });
 
   const pendingCount = approvalSteps.reduce((count, step) => {
-    const app = step.ctoApplication;
+    const app = step.wellnessApplication;
     if (!app || !Array.isArray(app.approvals) || app.approvals.length === 0)
       return count;
 
@@ -125,7 +94,7 @@ const fetchPendingCtoCountService = async (approverId) => {
   return pendingCount;
 };
 
-const getCtoApplicationsForApproverService = async (
+const getWellnessApplicationsForApproverService = async (
   approverId,
   search = "",
   status = "",
@@ -139,7 +108,7 @@ const getCtoApplicationsForApproverService = async (
 
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
-      path: "ctoApplication",
+      path: "wellnessApplication",
       populate: [
         { path: "employee", select: "firstName lastName position" },
         {
@@ -155,7 +124,7 @@ const getCtoApplicationsForApproverService = async (
 
   const appMap = new Map();
   for (const step of approvalSteps) {
-    const app = step?.ctoApplication;
+    const app = step?.wellnessApplication;
     if (app?._id) appMap.set(String(app._id), app);
   }
 
@@ -240,18 +209,36 @@ const getCtoApplicationsForApproverService = async (
 
   const data = appsAfterStatus.slice(startIndex, startIndex + safeLimit);
 
+  // Format dates and tag with type for the frontend
+  const formattedData = data.map((app) => {
+    const appObj = app.toObject ? app.toObject() : { ...app };
+    appObj.type = "WELLNESS";
+    if (appObj.startDate && appObj.endDate) {
+      const dates = [];
+      let cur = new Date(appObj.startDate);
+      const end = new Date(appObj.endDate);
+      while (cur <= end) {
+        dates.push(cur.toISOString());
+        cur.setDate(cur.getDate() + 1);
+      }
+      appObj.inclusiveDates = dates;
+    }
+    return appObj;
+  });
+
   return {
-    data,
+    data: formattedData,
     total,
     totalPages,
     statusCounts,
   };
 };
 
-const getCtoApplicationByIdService = async (ctoApplicationId) => {
-  if (!ctoApplicationId) throw httpError("Application ID is required.", 400);
+const getWellnessApplicationByIdService = async (wellnessApplicationId) => {
+  if (!wellnessApplicationId)
+    throw httpError("Application ID is required.", 400);
 
-  const application = await CtoApplication.findById(ctoApplicationId)
+  const application = await WellnessApplication.findById(wellnessApplicationId)
     .populate({
       path: "employee",
       select: "firstName lastName position department",
@@ -259,17 +246,28 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
     .populate({
       path: "approvals",
       populate: { path: "approver", select: "firstName lastName position" },
-    })
-    .populate({ path: "memo.memoId", select: "memoNo" });
+    });
 
-  if (!application) throw httpError("CTO Application not found", 404);
+  if (!application) throw httpError("Wellness Application not found", 404);
 
   const appObj = application.toObject ? application.toObject() : application;
-  appObj.type = "CTO";
+  appObj.type = "WELLNESS";
+
+  if (appObj.startDate && appObj.endDate) {
+    const dates = [];
+    let cur = new Date(appObj.startDate);
+    const end = new Date(appObj.endDate);
+    while (cur <= end) {
+      dates.push(cur.toISOString());
+      cur.setDate(cur.getDate() + 1);
+    }
+    appObj.inclusiveDates = dates;
+  }
+
   return appObj;
 };
 
-const approveCtoApplicationService = async ({
+const approveWellnessApplicationService = async ({
   approverId,
   applicationId,
   req,
@@ -281,12 +279,12 @@ const approveCtoApplicationService = async ({
   session.startTransaction();
 
   try {
-    const application = await CtoApplication.findById(applicationId)
+    const application = await WellnessApplication.findById(applicationId)
       .populate("approvals")
       .populate("employee")
       .session(session);
 
-    if (!application) throw httpError("CTO Application not found.", 404);
+    if (!application) throw httpError("Wellness Application not found.", 404);
     if (application.overallStatus !== "PENDING")
       throw httpError("Application already processed.", 400);
 
@@ -329,56 +327,7 @@ const approveCtoApplicationService = async ({
     if (allApproved) {
       application.overallStatus = "APPROVED";
       await application.save({ session });
-
-      const employeeId = application.employee._id;
-
-      for (const memoItem of application.memo || []) {
-        const memoId = memoItem.memoId;
-        const credit = await CtoCredit.findById(memoId).session(session);
-        if (!credit) continue;
-
-        const empCredit = credit.employees.find(
-          (e) => String(e.employee) === String(employeeId),
-        );
-        if (!empCredit) continue;
-
-        const appliedHours = Number(memoItem.appliedHours || 0);
-        if (appliedHours <= 0) continue;
-
-        if ((empCredit.reservedHours || 0) < appliedHours) {
-          throw httpError(
-            "Reserved hours mismatch. Please contact admin.",
-            400,
-          );
-        }
-
-        empCredit.reservedHours = (empCredit.reservedHours || 0) - appliedHours;
-        empCredit.usedHours = (empCredit.usedHours || 0) + appliedHours;
-        empCredit.remainingHours =
-          (empCredit.creditedHours || 0) -
-          (empCredit.usedHours || 0) -
-          (empCredit.reservedHours || 0);
-
-        if (empCredit.remainingHours <= 0) {
-          empCredit.remainingHours = 0;
-          empCredit.status = "EXHAUSTED";
-        }
-
-        await CtoCredit.updateOne(
-          { _id: credit._id, "employees.employee": employeeId },
-          { $set: { "employees.$": empCredit } },
-          { session },
-        );
-      }
-
-      const newBal =
-        (application.employee.balances?.ctoHours || 0) -
-        (application.requestedHours || 0);
-      if (newBal < 0)
-        throw httpError("Employee CTO balance would go negative.", 400);
-
-      application.employee.balances.ctoHours = newBal;
-      await application.employee.save({ session });
+      // Wellness Days were already deducted on submission, so no balances need adjusting here
     }
 
     await session.commitTransaction();
@@ -398,7 +347,7 @@ const approveCtoApplicationService = async ({
     };
 
     const auditDetails = buildAuditDetails({
-      endpoint: "Approve Application",
+      endpoint: "Approve Wellness Application",
       actor: auditBody.approverName,
       targetUser: auditBody.employeeName,
       body: auditBody,
@@ -410,8 +359,8 @@ const approveCtoApplicationService = async ({
       userId: approverId,
       username: auditBody.approverUsername,
       method: "POST",
-      endpoint: "Approve Application",
-      url: `/cto/applications/approver/${application._id}/approve`,
+      endpoint: "Approve Wellness Application",
+      url: `/wellness/applications/approver/${application._id}/approve`,
       statusCode: 200,
       ip: getClientIp(req),
       summary: auditDetails.summary,
@@ -419,19 +368,22 @@ const approveCtoApplicationService = async ({
     });
 
     try {
-      await NotificationService.notifyEmployeeOnCtoApproval({
-        employeeId: application.employee._id,
-        approver: approver || {
-          _id: approverId,
-          firstName: "Approver",
-          lastName: "",
-        },
-        ctoApplication: application,
-        approvalStep: currentStep,
+      await NotificationService.createNotification({
+        recipient: application.employee._id,
+        actor: approverId,
+        type: "WELLNESS_APPLICATION_APPROVED",
+        title: allApproved
+          ? "Wellness Leave Fully Approved"
+          : "Wellness Leave Step Approved",
+        message: allApproved
+          ? `Your Wellness Leave request has been fully approved.`
+          : `${approver.firstName} ${approver.lastName} approved your Wellness Leave request.`,
+        link: `/app/wellness-approvals/${application._id}`,
+        priority: "HIGH",
       });
     } catch (e) {
       console.error(
-        "Failed creating CTO approval notification:",
+        "Failed creating Wellness approval notification:",
         e?.message || e,
       );
     }
@@ -441,50 +393,26 @@ const approveCtoApplicationService = async ({
         (s) => s.level === currentStep.level + 1,
       );
       if (nextStep) {
-        const nextApprover = await Employee.findById(nextStep.approver)
-          .select("email firstName lastName")
-          .lean();
-
-        const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
-
-        if (nextApprover?.email && enabled) {
-          const tpl = ctoApprovalEmail({
-            approverName: `${nextApprover.firstName} ${nextApprover.lastName}`,
-            employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
-            requestedHours: application.requestedHours,
-            reason: application.reason,
-            level: nextStep.level,
-            link: `${process.env.FRONTEND_URL}/app/cto-approvals/${application._id}`,
-            brandName: "CTO Management System",
+        try {
+          await NotificationService.createNotification({
+            recipient: nextStep.approver,
+            actor: application.employee._id,
+            type: "WELLNESS_APPROVAL_REQUIRED",
+            title: "Wellness Leave Request Needs Approval",
+            message: `${application.employee.firstName} ${application.employee.lastName} submitted a Wellness Leave request that needs your approval.`,
+            link: `/app/wellness-approvals/${application._id}`,
+            priority: "HIGH",
           });
-
-          await safeSendEmail(nextApprover.email, tpl.subject, tpl.html);
+        } catch (e) {
+          console.error(
+            "Failed creating next step Wellness notification:",
+            e?.message || e,
+          );
         }
-      }
-    } else if (application.employee.email) {
-      const enabled = await canSend(EMAIL_KEYS.CTO_FINAL_APPROVAL);
-
-      if (enabled) {
-        const tpl = ctoFinalApprovalEmail({
-          employeeName: application.employee.firstName,
-          requestedHours: application.requestedHours,
-          brandName: "CTO Management System",
-        });
-
-        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
       }
     }
 
-    return CtoApplication.findById(applicationId)
-      .populate({
-        path: "approvals",
-        populate: {
-          path: "approver",
-          select: "firstName lastName position email",
-        },
-      })
-      .populate("employee", "firstName lastName position email")
-      .populate("memo.memoId", "memoNo uploadedMemo");
+    return getWellnessApplicationByIdService(applicationId);
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -492,7 +420,7 @@ const approveCtoApplicationService = async ({
   }
 };
 
-const rejectCtoApplicationService = async ({
+const rejectWellnessApplicationService = async ({
   approverId,
   applicationId,
   remarks,
@@ -505,13 +433,12 @@ const rejectCtoApplicationService = async ({
   session.startTransaction();
 
   try {
-    const application = await CtoApplication.findById(applicationId)
+    const application = await WellnessApplication.findById(applicationId)
       .populate("approvals")
-      .populate("memo.memoId")
       .populate("employee", "username firstName lastName email balances")
       .session(session);
 
-    if (!application) throw httpError("CTO Application not found.", 404);
+    if (!application) throw httpError("Wellness Application not found.", 404);
     if (application.overallStatus !== "PENDING")
       throw httpError("Application already processed.", 400);
 
@@ -538,38 +465,12 @@ const rejectCtoApplicationService = async ({
 
     const employeeId = application.employee._id;
 
-    for (const memoItem of application.memo || []) {
-      const memoId = memoItem.memoId?._id || memoItem.memoId;
-      const appliedHours = Number(memoItem.appliedHours || 0);
-      if (!memoId || appliedHours <= 0) continue;
-
-      const res = await CtoCredit.updateOne(
-        {
-          _id: memoId,
-          employees: {
-            $elemMatch: {
-              employee: employeeId,
-              reservedHours: { $gte: appliedHours },
-            },
-          },
-        },
-        {
-          $inc: {
-            "employees.$.reservedHours": -appliedHours,
-            "employees.$.remainingHours": appliedHours,
-          },
-          $set: { "employees.$.status": "ACTIVE" },
-        },
-        { session },
-      );
-
-      if (res.modifiedCount !== 1) {
-        throw httpError(
-          "Failed to release reserved hours (data mismatch).",
-          400,
-        );
-      }
-    }
+    // Refund Wellness Days
+    await Employee.updateOne(
+      { _id: employeeId },
+      { $inc: { "balances.wellnessDays": application.totalDays } },
+      { session },
+    );
 
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
@@ -620,7 +521,7 @@ const rejectCtoApplicationService = async ({
     };
 
     const auditDetails = buildAuditDetails({
-      endpoint: "Reject Application",
+      endpoint: "Reject Wellness Application",
       actor: auditBody.approverName,
       targetUser: auditBody.employeeName,
       body: auditBody,
@@ -632,8 +533,8 @@ const rejectCtoApplicationService = async ({
       userId: approverId,
       username: auditBody.approverUsername,
       method: "POST",
-      endpoint: "Reject Application",
-      url: `/cto/applications/approver/${application._id}/reject`,
+      endpoint: "Reject Wellness Application",
+      url: `/wellness/applications/approver/${application._id}/reject`,
       statusCode: 200,
       ip: getClientIp(req),
       summary: auditDetails.summary,
@@ -641,44 +542,23 @@ const rejectCtoApplicationService = async ({
     });
 
     try {
-      await NotificationService.notifyEmployeeOnCtoRejection({
-        employeeId: application.employee._id,
-        approver: approver || {
-          _id: approverId,
-          firstName: "Approver",
-          lastName: "",
-        },
-        ctoApplication: application,
-        approvalStep: currentStep,
-        remarks: remarks || "",
+      await NotificationService.createNotification({
+        recipient: application.employee._id,
+        actor: approverId,
+        type: "WELLNESS_APPLICATION_REJECTED",
+        title: "Wellness Leave Rejected",
+        message: `${approver.firstName} ${approver.lastName} rejected your Wellness Leave request.`,
+        link: `/app/wellness-approvals/${application._id}`,
+        priority: "HIGH",
       });
     } catch (e) {
       console.error(
-        "Failed creating CTO rejection notification:",
+        "Failed creating Wellness rejection notification:",
         e?.message || e,
       );
     }
 
-    if (application.employee.email) {
-      const enabled = await canSend(EMAIL_KEYS.CTO_REJECTION);
-
-      if (enabled) {
-        const tpl = ctoRejectionEmail({
-          employeeName: application.employee.firstName,
-          remarks,
-          brandName: "CTO Management System",
-        });
-        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
-      }
-    }
-
-    return CtoApplication.findById(applicationId)
-      .populate({
-        path: "approvals",
-        populate: { path: "approver", select: "firstName lastName position" },
-      })
-      .populate("employee", "firstName lastName position email")
-      .populate("memo.memoId", "memoNo uploadedMemo");
+    return getWellnessApplicationByIdService(applicationId);
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -687,10 +567,9 @@ const rejectCtoApplicationService = async ({
 };
 
 module.exports = {
-  fetchPendingCtoCountService,
-  getApproverOptionsService,
-  getCtoApplicationsForApproverService,
-  getCtoApplicationByIdService,
-  approveCtoApplicationService,
-  rejectCtoApplicationService,
+  fetchPendingWellnessCountService,
+  getWellnessApplicationsForApproverService,
+  getWellnessApplicationByIdService,
+  approveWellnessApplicationService,
+  rejectWellnessApplicationService,
 };

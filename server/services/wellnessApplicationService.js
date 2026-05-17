@@ -9,7 +9,7 @@ const NotificationService = require("./notificationService");
    Helpers
 ========================= */
 
-const populateApplicationById = async (applicationId) => {
+const populateApplicationById = async (applicationId, session = null) => {
   return WellnessApplication.findById(applicationId)
     .populate("employee", "firstName lastName position email employeeId")
     .populate({
@@ -19,15 +19,16 @@ const populateApplicationById = async (applicationId) => {
         select: "firstName lastName position email",
       },
       options: { sort: { level: 1 } },
-    });
+    })
+    .session(session);
 };
 
-const cancelApprovalSteps = async ({
-  applicationId,
-  approvalIds,
-  reason,
-  afterLevel = 0,
-}) => {
+const cancelApprovalSteps = async (
+  { applicationId, approvalIds, reason, afterLevel = 0 },
+  session = null,
+) => {
+  // ✅ Explicitly targets ONLY "PENDING" steps.
+  // This protects any "APPROVED" or "REJECTED" steps so the approver keeps their credit!
   await ApprovalStep.updateMany(
     {
       _id: { $in: approvalIds },
@@ -42,6 +43,7 @@ const cancelApprovalSteps = async ({
         reviewedAt: new Date(),
       },
     },
+    { session },
   );
 };
 
@@ -97,6 +99,7 @@ const addWellnessApplicationService = async ({
   reason,
   routeId,
   approvers,
+  req, // ✅ Passed for future Audit Logging
 }) => {
   if (!startDate || !endDate || !totalDays || !reason) {
     throw Object.assign(
@@ -118,77 +121,95 @@ const addWellnessApplicationService = async ({
     });
   }
 
-  const employee = await Employee.findById(userId);
-  if (!employee) {
-    throw Object.assign(new Error("Employee not found."), { status: 404 });
-  }
+  // ✅ Wrap in transaction to prevent balance desyncs
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  // Deduct from wellnessDays directly
-  if ((employee.balances.wellnessDays || 0) < totalDays) {
-    throw Object.assign(
-      new Error(
-        `Insufficient Wellness Leave balance. Available: ${employee.balances.wellnessDays || 0}`,
-      ),
-      { status: 400 },
+  try {
+    const employee = await Employee.findById(userId).session(session);
+    if (!employee) {
+      throw Object.assign(new Error("Employee not found."), { status: 404 });
+    }
+
+    // Deduct from wellnessDays directly
+    if ((employee.balances.wellnessDays || 0) < totalDays) {
+      throw Object.assign(
+        new Error(
+          `Insufficient Wellness Leave balance. Available: ${employee.balances.wellnessDays || 0}`,
+        ),
+        { status: 400 },
+      );
+    }
+
+    // Atomically deduct
+    const updatedEmployee = await Employee.findOneAndUpdate(
+      { _id: userId, "balances.wellnessDays": { $gte: totalDays } },
+      { $inc: { "balances.wellnessDays": -totalDays } },
+      { new: true, session },
     );
-  }
 
-  // Atomically deduct
-  const updatedEmployee = await Employee.findOneAndUpdate(
-    { _id: userId, "balances.wellnessDays": { $gte: totalDays } },
-    { $inc: { "balances.wellnessDays": -totalDays } },
-    { new: true },
-  );
+    if (!updatedEmployee) {
+      throw Object.assign(
+        new Error("Failed to deduct Wellness Leave balance. Please try again."),
+        { status: 400 },
+      );
+    }
 
-  if (!updatedEmployee) {
-    throw Object.assign(
-      new Error("Failed to deduct Wellness Leave balance. Please try again."),
-      { status: 400 },
-    );
-  }
-
-  const newApplication = new WellnessApplication({
-    employee: employee._id,
-    startDate,
-    endDate,
-    totalDays,
-    reason,
-    overallStatus: "PENDING",
-  });
-
-  await newApplication.save();
-
-  const approvalSteps = await Promise.all(
-    finalApprovers.map((approverId, index) =>
-      ApprovalStep.create({
-        level: index + 1,
-        approver: approverId,
-        status: "PENDING",
-        wellnessApplication: newApplication._id,
-      }),
-    ),
-  );
-
-  newApplication.approvals = approvalSteps.map((step) => step._id);
-  await newApplication.save();
-
-  const populatedApp = await populateApplicationById(newApplication._id);
-
-  // Notify first approver
-  const firstStep = approvalSteps.find((s) => s.level === 1);
-  if (firstStep) {
-    await NotificationService.createNotification({
-      recipient: firstStep.approver,
-      actor: employee._id,
-      type: "WELLNESS_APPROVAL_REQUIRED",
-      title: "New Wellness Leave Request",
-      message: `${employee.firstName} ${employee.lastName} submitted a Wellness Leave request for ${totalDays} day(s).`,
-      link: `/app/wellness-approvals/${populatedApp._id}`,
-      priority: "HIGH",
+    const newApplication = new WellnessApplication({
+      employee: employee._id,
+      startDate,
+      endDate,
+      totalDays,
+      reason,
+      overallStatus: "PENDING",
     });
-  }
 
-  return populatedApp;
+    await newApplication.save({ session });
+
+    const approvalSteps = await Promise.all(
+      finalApprovers.map((approverId, index) =>
+        ApprovalStep.create(
+          [
+            {
+              level: index + 1,
+              approver: approverId,
+              status: "PENDING",
+              wellnessApplication: newApplication._id,
+            },
+          ],
+          { session },
+        ).then((res) => res[0]),
+      ),
+    );
+
+    newApplication.approvals = approvalSteps.map((step) => step._id);
+    await newApplication.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    const populatedApp = await populateApplicationById(newApplication._id);
+
+    // Notify first approver
+    const firstStep = approvalSteps.find((s) => s.level === 1);
+    if (firstStep) {
+      await NotificationService.createNotification({
+        recipient: firstStep.approver,
+        actor: employee._id,
+        type: "WELLNESS_APPROVAL_REQUIRED",
+        title: "New Wellness Leave Request",
+        message: `${employee.firstName} ${employee.lastName} submitted a Wellness Leave request for ${totalDays} day(s).`,
+        link: `/app/wellness-approvals/${populatedApp._id}`,
+        priority: "HIGH",
+      });
+    }
+
+    return populatedApp;
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
+  }
 };
 
 const getAllWellnessApplicationsService = async (
@@ -411,49 +432,71 @@ const getWellnessApplicationsByEmployeeService = async (
   };
 };
 
-const cancelWellnessApplicationService = async ({ userId, applicationId }) => {
-  const application = await WellnessApplication.findOne({
-    _id: applicationId,
-    employee: userId,
-  });
+const cancelWellnessApplicationService = async ({
+  userId,
+  applicationId,
+  req, // ✅ Passed for future Audit Logging
+}) => {
+  // ✅ Wrap in transaction to prevent balance desyncs
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  if (!application) {
-    throw Object.assign(new Error("Application not found or unauthorized."), {
-      status: 404,
-    });
-  }
+  try {
+    const application = await WellnessApplication.findOne({
+      _id: applicationId,
+      employee: userId,
+    }).session(session);
 
-  if (application.overallStatus !== "PENDING") {
-    throw Object.assign(
-      new Error(`Cannot cancel a ${application.overallStatus} application.`),
-      { status: 400 },
+    if (!application) {
+      throw Object.assign(new Error("Application not found or unauthorized."), {
+        status: 404,
+      });
+    }
+
+    if (application.overallStatus !== "PENDING") {
+      throw Object.assign(
+        new Error(`Cannot cancel a ${application.overallStatus} application.`),
+        { status: 400 },
+      );
+    }
+
+    // Restore balance safely within the session
+    await Employee.updateOne(
+      { _id: userId },
+      { $inc: { "balances.wellnessDays": application.totalDays } },
+      { session },
     );
+
+    application.overallStatus = "CANCELLED";
+    await application.save({ session });
+
+    // Ensure only PENDING steps are cancelled
+    await cancelApprovalSteps(
+      {
+        applicationId,
+        approvalIds: application.approvals,
+        reason: "Auto-cancelled: The employee cancelled this request.",
+        afterLevel: 0,
+      },
+      session,
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
+    const employee = await Employee.findById(userId);
+    await notifyApproversOfCancellation({
+      application,
+      employee,
+      approvalIds: application.approvals,
+    });
+
+    return populateApplicationById(applicationId);
+  } catch (err) {
+    await session.abortTransaction();
+    session.endSession();
+    throw err;
   }
-
-  // Restore balance
-  await Employee.updateOne(
-    { _id: userId },
-    { $inc: { "balances.wellnessDays": application.totalDays } },
-  );
-
-  application.overallStatus = "CANCELLED";
-  await application.save();
-
-  await cancelApprovalSteps({
-    applicationId,
-    approvalIds: application.approvals,
-    reason: "Auto-cancelled: The employee cancelled this request.",
-    afterLevel: 0,
-  });
-
-  const employee = await Employee.findById(userId);
-  await notifyApproversOfCancellation({
-    application,
-    employee,
-    approvalIds: application.approvals,
-  });
-
-  return populateApplicationById(applicationId);
 };
 
 module.exports = {
