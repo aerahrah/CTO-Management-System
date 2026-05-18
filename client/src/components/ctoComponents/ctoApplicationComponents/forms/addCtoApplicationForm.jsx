@@ -1,10 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  addApplicationRequest,
-  fetchMyCtoMemos,
-} from "../../../../api/cto";
-import { fetchWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
+import { addApplicationRequest, fetchMyCtoMemos } from "../../../../api/cto";
+import { fetchPublicWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
 import { useAuth } from "../../../../store/authStore";
 import {
@@ -89,7 +86,7 @@ const makeClientRequestId = () => {
   try {
     if (typeof crypto !== "undefined" && crypto.randomUUID)
       return crypto.randomUUID();
-  } catch { }
+  } catch {}
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
@@ -174,24 +171,24 @@ const Banner = ({ tone = "error", message, borderColor }) => {
   const palette =
     tone === "info"
       ? {
-        bg: "rgba(37,99,235,0.10)",
-        br: "rgba(37,99,235,0.18)",
-        fg: "var(--app-text)",
-        icon: "var(--accent)",
-      }
+          bg: "rgba(37,99,235,0.10)",
+          br: "rgba(37,99,235,0.18)",
+          fg: "var(--app-text)",
+          icon: "var(--accent)",
+        }
       : tone === "success"
         ? {
-          bg: "rgba(34,197,94,0.12)",
-          br: "rgba(34,197,94,0.20)",
-          fg: "var(--app-text)",
-          icon: "#16a34a",
-        }
+            bg: "rgba(34,197,94,0.12)",
+            br: "rgba(34,197,94,0.20)",
+            fg: "var(--app-text)",
+            icon: "#16a34a",
+          }
         : {
-          bg: "rgba(239,68,68,0.10)",
-          br: "rgba(239,68,68,0.18)",
-          fg: "var(--app-text)",
-          icon: "#ef4444",
-        };
+            bg: "rgba(239,68,68,0.10)",
+            br: "rgba(239,68,68,0.18)",
+            fg: "var(--app-text)",
+            icon: "#ef4444",
+          };
 
   return (
     <div
@@ -309,7 +306,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
     isError: workingDaysIsError,
   } = useQuery({
     queryKey: ["workingDaysSettings"],
-    queryFn: fetchWorkingDaysGeneralSettings,
+    queryFn: fetchPublicWorkingDaysGeneralSettings,
     staleTime: 1000 * 60 * 5,
   });
 
@@ -589,7 +586,7 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
 
     try {
       dateInputRef.current?.focus?.();
-    } catch { }
+    } catch {}
   };
 
   const handleDateRemove = (date) => {
@@ -1030,8 +1027,8 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                 </div>
 
                 {requiredDays > 0 &&
-                  formData.inclusiveDates.length > 0 &&
-                  formData.inclusiveDates.length !== requiredDays ? (
+                formData.inclusiveDates.length > 0 &&
+                formData.inclusiveDates.length !== requiredDays ? (
                   <div
                     className="text-[11px] font-semibold"
                     style={{ color: "#ef4444" }}
@@ -1233,10 +1230,11 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
               </button>
 
               <div
-                className={`overflow-hidden transition-all duration-300 ${showRouting
+                className={`overflow-hidden transition-all duration-300 ${
+                  showRouting
                     ? "max-h-[420px] opacity-100"
                     : "max-h-0 opacity-0"
-                  }`}
+                }`}
               >
                 <div className="space-y-3 pt-1 px-1">
                   {isRoutesLoading ? (
@@ -1245,59 +1243,75 @@ const AddCtoApplicationForm = ({ onClose, onSuccess }) => {
                     <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-medium flex items-center gap-2">
                       <AlertCircle size={14} />
                       You haven't set up an approval route yet.
-                      <a href="/app/approval-routes" className="underline font-bold">Set it up here</a>
+                      <a
+                        href="/app/approval-routes"
+                        className="underline font-bold"
+                      >
+                        Set it up here
+                      </a>
                     </div>
                   ) : (
                     <div className="px-3 py-2 rounded-lg border bg-[color:var(--app-surface-2)] border-[color:var(--app-border)]">
-                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">Active Workflow</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider opacity-50 mb-1">
+                        Active Workflow
+                      </p>
                       <p className="text-sm font-bold text-[color:var(--app-text)]">
-                        {routesResponse?.find(r => r._id === formData.routeId)?.name || "Personal Workflow"}
+                        {routesResponse?.find((r) => r._id === formData.routeId)
+                          ?.name || "Personal Workflow"}
                       </p>
                     </div>
                   )}
 
                   <div className="space-y-2 mt-2 max-h-[250px] overflow-y-auto pr-1 cto-scrollbar">
-                    {formData.routeId && routesResponse?.find(r => r._id === formData.routeId)?.steps?.filter(s => s.isEnabled !== false)?.map((step, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-3 p-3 rounded-lg shadow-sm border transition-colors duration-300 ease-out"
-                        style={{
-                          backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
-                        }}
-                      >
-                        <div
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 border"
-                          style={{
-                            backgroundColor: "var(--accent-soft)",
-                            color: "var(--accent)",
-                            borderColor:
-                              "var(--accent-soft2, rgba(37,99,235,0.18))",
-                          }}
-                        >
-                          {idx + 1}
-                        </div>
+                    {formData.routeId &&
+                      routesResponse
+                        ?.find((r) => r._id === formData.routeId)
+                        ?.steps?.filter((s) => s.isEnabled !== false)
+                        ?.map((step, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center gap-3 p-3 rounded-lg shadow-sm border transition-colors duration-300 ease-out"
+                            style={{
+                              backgroundColor: "var(--app-surface)",
+                              borderColor: borderColor,
+                            }}
+                          >
+                            <div
+                              className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 border"
+                              style={{
+                                backgroundColor: "var(--accent-soft)",
+                                color: "var(--accent)",
+                                borderColor:
+                                  "var(--accent-soft2, rgba(37,99,235,0.18))",
+                              }}
+                            >
+                              {idx + 1}
+                            </div>
 
-                        <div className="min-w-0">
-                          <p
-                            className="text-xs font-semibold truncate"
-                            style={{ color: "var(--app-text)" }}
-                          >
-                            {step.approver
-                              ? `${step.approver.firstName} ${step.approver.lastName}`
-                              : "Not Assigned"}
-                          </p>
-                          <p
-                            className="text-[10px] uppercase tracking-tight truncate"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            {step.approver?.position || "Position not specified"}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                            <div className="min-w-0">
+                              <p
+                                className="text-xs font-semibold truncate"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {step.approver
+                                  ? `${step.approver.firstName} ${step.approver.lastName}`
+                                  : "Not Assigned"}
+                              </p>
+                              <p
+                                className="text-[10px] uppercase tracking-tight truncate"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                {step.approver?.position ||
+                                  "Position not specified"}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
                     {!formData.routeId && !isRoutesLoading && (
-                      <div className="p-3 text-center text-xs italic" style={{ color: "var(--app-muted)" }}>
+                      <div
+                        className="p-3 text-center text-xs italic"
+                        style={{ color: "var(--app-muted)" }}
+                      >
                         Please select an approval route from the dropdown above.
                       </div>
                     )}

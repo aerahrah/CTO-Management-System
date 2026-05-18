@@ -761,9 +761,10 @@ const AllWellnessApplicationsHistory = () => {
         baseColor={skeletonColors.baseColor}
         highlightColor={skeletonColors.highlightColor}
       >
+        {/* FIX: Removed overscroll-contain, added pb-24 md:pb-0 and touch-pan-y for scroll propagation on mobile */}
         <div
           ref={scrollRef}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents cto-scrollbar"
+          className="flex-1 min-h-0 overflow-y-auto md:contents cto-scrollbar pb-24 md:pb-0 touch-pan-y"
         >
           {/* HEADER */}
           <div className="pt-2 pb-3 md:pb-6 px-1">
@@ -1058,8 +1059,9 @@ const AllWellnessApplicationsHistory = () => {
             </div>
 
             {/* Data region */}
+            {/* FIX: Added w-full overflow-x-hidden lg:overflow-x-auto touch-pan-y to stop horizontal scroll absorption on mobile */}
             <div
-              className="min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto transition-colors duration-300 ease-out cto-scrollbar"
+              className="min-h-[calc(100dvh-26rem)] md:min-h-0 md:flex-1 md:overflow-y-auto w-full overflow-x-hidden lg:overflow-x-auto touch-pan-y transition-colors duration-300 ease-out cto-scrollbar"
               style={{ backgroundColor: "var(--app-bg)" }}
             >
               {!isLoading && applications.length === 0 ? (

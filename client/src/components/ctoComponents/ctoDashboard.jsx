@@ -533,7 +533,7 @@ const LoadingSkeleton = ({ resolvedTheme, borderColor, isApprover }) => {
       <ScrollbarsSync />
       <SkeletonStyles />
 
-      <div className="max-w-5xl mx-auto py-3 sm:py-4 w-full px-2 lg:px-0">
+      <div className="py-3 sm:py-4 w-full px-2 lg:px-0">
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0 space-y-2">
             <Skeleton className="h-8 sm:h-9 w-64 sm:w-72 rounded-lg" />
@@ -787,7 +787,7 @@ const CtoDashboard = () => {
       <ThemeSync />
       <ScrollbarsSync />
 
-      <div className="max-w-5xl w-full mx-auto py-3 sm:py-4 px-2 lg:px-0">
+      <div className="w-full mx-auto py-3 sm:py-4 px-2 lg:px-0">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">

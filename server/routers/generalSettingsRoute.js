@@ -45,6 +45,12 @@ router.get(
   getWorkingDaysSettingsController,
 );
 
+router.get(
+  "/working-days/public",
+  authenticateToken,
+  getWorkingDaysSettingsController,
+);
+
 router.put(
   "/working-days",
   ...requirePerm("settings.general"),

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { CalendarDays, ShieldCheck } from "lucide-react"; // ✅ Imported for the Wellness Placeholder
+import { CalendarDays, ShieldCheck } from "lucide-react";
 
 import SessionGuard from "./components/sessionExpiredModal";
 
@@ -58,7 +58,10 @@ import ViewRole from "./components/generalSettingsComponents/rolesSettings/viewR
 
 // ✅ Email Notification Settings
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
-import ApprovalRoutesPage from "./components/generalSettingsComponents/approvalRoutes/approvalRoutesPage";
+
+// ✅ Approval Routes (Separated into List and Form)
+import ApprovalRoutesList from "./components/generalSettingsComponents/approvalRoutes/approvalRoutesList";
+import ApprovalRouteStepForm from "./components/generalSettingsComponents/approvalRoutes/approvalRouteStepForm";
 
 // ✅ User Preferences Settings (theme + accent)
 import UserPreferencesSettings from "./components/generalSettingsComponents/userPreferencesSetting";
@@ -205,9 +208,19 @@ function App() {
 
           {/* Settings Hub & Approval Routes */}
           <Route
-            element={<ProtectedRoute requiredPermission="settings.view" />}
+            element={
+              <ProtectedRoute requiredPermission="settings.cto_workflow" />
+            }
           >
-            <Route path="approval-routes" element={<ApprovalRoutesPage />} />
+            <Route path="approval-routes" element={<ApprovalRoutesList />} />
+            <Route
+              path="approval-routes/step/new"
+              element={<ApprovalRouteStepForm />}
+            />
+            <Route
+              path="approval-routes/step/:approverId"
+              element={<ApprovalRouteStepForm />}
+            />
           </Route>
 
           {/* ===================== */}

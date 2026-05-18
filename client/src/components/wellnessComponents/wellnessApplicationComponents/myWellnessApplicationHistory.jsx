@@ -1,10 +1,13 @@
 import React, {
   useState,
+  useRef,
   useMemo,
   useEffect,
-  useRef,
   useCallback,
 } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../../../store/authStore";
+import { toast } from "react-toastify";
 import {
   CalendarDays,
   CheckCircle2,
@@ -25,24 +28,20 @@ import {
   ArrowUp,
   HeartPulse,
 } from "lucide-react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import { toast } from "react-toastify";
 
 import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import Breadcrumbs from "../../breadCrumbs";
 import FilterSelect from "../../filterSelect";
 import AddWellnessApplicationForm from "./forms/addWellnessApplicationForm";
-import { useAuth } from "../../../store/authStore";
-import { usePermissions } from "../../../hooks/usePermissions"; // ✅ Imported permissions hook
+import { usePermissions } from "../../../hooks/usePermissions";
 import {
   fetchMyWellnessApplications,
   cancelWellnessApplicationRequest,
 } from "../../../api/wellnessApplication";
 
-// ✅ Imported the full details component
 import WellnessApplicationDetails from "./myWellnessApplicationFullDetails";
 
 const pageSizeOptions = [20, 50, 100];
@@ -757,7 +756,7 @@ const MyWellnessApplications = () => {
       >
         <div
           ref={scrollRef}
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents cto-scrollbar"
+          className="flex-1 min-h-0 overflow-y-auto w-full cto-scrollbar pb-24 md:pb-0 touch-pan-y"
         >
           {/* HEADER */}
           <div className="pt-2 pb-3 md:pb-6 px-1">
@@ -1015,7 +1014,7 @@ const MyWellnessApplications = () => {
 
             {/* Data region */}
             <div
-              className="min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto transition-colors duration-300 ease-out cto-scrollbar"
+              className="min-h-[calc(100dvh-26rem)] md:min-h-0 md:flex-1 md:overflow-y-auto w-full overflow-x-hidden lg:overflow-x-auto touch-pan-y transition-colors duration-300 ease-out cto-scrollbar"
               style={{ backgroundColor: "var(--app-bg)" }}
             >
               {!isLoading && applications.length === 0 ? (
