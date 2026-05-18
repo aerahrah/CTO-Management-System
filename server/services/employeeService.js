@@ -147,6 +147,31 @@ async function canSend(key) {
 const createEmployeeService = async (employeeData) => {
   console.log("[SERVICE] createEmployeeService called:", employeeData);
 
+  function generateSecureTempPassword() {
+    const lower = "abcdefghijklmnopqrstuvwxyz";
+    const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const nums = "0123456789";
+    const specials = "@$!%*?&()-_=+<>";
+    const allChars = lower + upper + nums + specials;
+
+    // Guarantee at least one of each
+    let password = "";
+    password += lower[Math.floor(Math.random() * lower.length)];
+    password += upper[Math.floor(Math.random() * upper.length)];
+    password += nums[Math.floor(Math.random() * nums.length)];
+    password += specials[Math.floor(Math.random() * specials.length)];
+
+    // Fill the remaining length to reach at least 10 characters total
+    for (let i = 0; i < 6; i++) {
+      password += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+
+    // Shuffle the result so it's not predictable
+    return password
+      .split("")
+      .sort(() => 0.5 - Math.random())
+      .join("");
+  }
   const {
     employeeId,
     username,
@@ -198,7 +223,7 @@ const createEmployeeService = async (employeeData) => {
     resolvedRoleId = defaultRole ? defaultRole._id : null;
   }
 
-  const tempPassword = crypto.randomBytes(12).toString("hex");
+  const tempPassword = generateSecureTempPassword();
 
   const employee = new Employee({
     employeeId: String(employeeId).trim(),
@@ -365,10 +390,14 @@ const getEmployeeByIdService = async (id) => {
   return employee;
 };
 
+// ✅ UPDATED: Added .select("+password") to fix bcrypt hash error
 const signInEmployeeService = async (username, password) => {
   const employee = await Employee.findOne({
     username: String(username).trim(),
-  }).populate("role");
+  })
+    .select("+password") // ✅ CRITICAL: Force Mongoose to include the password hash for comparison
+    .populate("role");
+
   if (!employee) throw httpError("Invalid username or password", 401);
 
   const isMatch = await employee.comparePassword(password);
@@ -576,7 +605,8 @@ const resetPassword = async (employeeId, oldPassword, newPassword) => {
     throw httpError("New password must be at least 8 characters long", 400);
   }
 
-  const employee = await Employee.findById(employeeId);
+  // ✅ Also need .select("+password") here to compare old password
+  const employee = await Employee.findById(employeeId).select("+password");
   if (!employee) throw httpError("Employee not found", 404);
 
   const isMatch = await employee.comparePassword(oldPassword);

@@ -26,7 +26,6 @@ const createEmployee = async (req, res) => {
   try {
     const result = await createEmployeeService(req.body);
 
-    // service may or may not return tempPassword (production should NOT)
     const employee = result.employee;
     const tempPassword = result.tempPassword;
 
@@ -94,15 +93,42 @@ const getEmployeeById = async (req, res) => {
   }
 };
 
+// ✅ UPDATED: Added path: "/" to fix the login loop
 const signInEmployee = async (req, res) => {
   try {
     const { token, payload } = await signInEmployeeService(
       req.body.username,
       req.body.password,
     );
-    return res.json({ message: "Login successful", token, admin: payload });
+
+    // Set the HttpOnly cookie
+    res.cookie("token", token, {
+      httpOnly: true, // Prevents JavaScript from accessing the cookie
+      secure: process.env.NODE_ENV === "production", // Requires HTTPS in prod
+      sameSite: "lax", // Prevents CSRF attacks
+      maxAge: 24 * 60 * 60 * 1000, // 1 day in milliseconds (adjust as needed)
+      path: "/", // ✅ CRITICAL: Tells the browser to use this cookie for the entire app
+    });
+
+    // Send only the admin payload back to the frontend
+    return res.json({ message: "Login successful", admin: payload });
   } catch (err) {
     return res.status(err.statusCode || 401).json({ message: err.message });
+  }
+};
+
+// ✅ UPDATED: Added path: "/" so the browser knows exactly which cookie to delete
+const logoutEmployee = async (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/", // ✅ CRITICAL: Must match the path used when setting the cookie
+    });
+    return res.status(200).json({ message: "Logged out successfully" });
+  } catch (err) {
+    return sendError(res, err);
   }
 };
 
@@ -207,7 +233,6 @@ const resetMyPassword = async (req, res) => {
   }
 };
 
-// ✅ NEW: Get an employee's wellness balance by ID
 const getEmployeeWellnessBalanceById = async (req, res) => {
   try {
     const employeeId = req.params.id;
@@ -218,7 +243,6 @@ const getEmployeeWellnessBalanceById = async (req, res) => {
   }
 };
 
-// ✅ NEW: Get the logged-in user's wellness balance
 const getMyWellnessBalance = async (req, res) => {
   try {
     const employeeId = req.user?.id;
@@ -238,6 +262,7 @@ module.exports = {
   getEmployees,
   getEmployeeById,
   signInEmployee,
+  logoutEmployee,
   getEmployeeCtoMemosById,
   getMyCtoMemos,
   getMyProfile,

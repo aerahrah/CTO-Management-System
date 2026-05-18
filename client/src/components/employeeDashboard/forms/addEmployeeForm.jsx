@@ -721,7 +721,7 @@ const AddEmployeeForm = () => {
 
   const roleOptions = useMemo(() => {
     if (!roles) return [];
-    return roles.map(r => ({ value: r._id, label: r.name }));
+    return roles.map((r) => ({ value: r._id, label: r.name }));
   }, [roles]);
 
   /* -------------------------
@@ -972,7 +972,17 @@ const AddEmployeeForm = () => {
         },
       };
 
-      if (!isEditMode) payload.role = safeEnum(normalizeText(raw.role), ROLES);
+      const validRoleIds = (roles || []).map((r) => String(r._id));
+
+      if (!isEditMode) {
+        const roleValue = normalizeText(raw.role);
+
+        if (!validRoleIds.includes(roleValue)) {
+          throw new Error("Invalid role selected.");
+        }
+
+        payload.role = roleValue;
+      }
 
       if (!payload.division) throw new Error("Invalid division selected.");
       if (!payload.project) throw new Error("Project is required.");
@@ -981,9 +991,6 @@ const AddEmployeeForm = () => {
       }
       if (!payload.status) throw new Error("Invalid status selected.");
       if (!payload.designation) throw new Error("Designation is required.");
-      if (!isEditMode && !payload.role) {
-        throw new Error("Invalid role selected.");
-      }
 
       return isEditMode
         ? updateEmployeeById(id, payload)

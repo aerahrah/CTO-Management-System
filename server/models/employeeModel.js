@@ -3,13 +3,46 @@ const bcrypt = require("bcrypt");
 
 const employeeSchema = new mongoose.Schema(
   {
-    employeeId: { type: String, unique: true },
+    employeeId: {
+      type: String,
+      unique: true,
+      trim: true,
+    },
 
-    username: { type: String, required: true, unique: true },
+    username: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+    },
+
     password: {
       type: String,
+
       required: function () {
         return this.isNew;
+      },
+
+      // ✅ Prevent password from being returned in queries
+      select: false,
+
+      // ✅ Minimum password length
+      minlength: 8,
+
+      validate: {
+        validator: function (value) {
+          // Must contain:
+          // 1 uppercase
+          // 1 lowercase
+          // 1 number
+          // 1 special character
+          return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&()[\]{}\-_=+<>]).+$/.test(
+            value,
+          );
+        },
+
+        message:
+          "Password must contain at least 1 uppercase letter, 1 lowercase letter, 1 number, and 1 special character.",
       },
     },
 
@@ -25,13 +58,42 @@ const employeeSchema = new mongoose.Schema(
       required: false,
     },
 
-    firstName: { type: String, required: true, trim: true },
-    lastName: { type: String, required: true, trim: true },
-    email: { type: String, required: true, lowercase: true },
-    phone: { type: String },
+    firstName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
-    position: { type: String, required: true },
-    division: { type: String, required: true },
+    lastName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      required: true,
+      lowercase: true,
+      trim: true,
+      unique: true,
+    },
+
+    phone: {
+      type: String,
+      trim: true,
+    },
+
+    position: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    division: {
+      type: String,
+      required: true,
+      trim: true,
+    },
 
     project: {
       type: mongoose.Schema.Types.ObjectId,
@@ -39,7 +101,11 @@ const employeeSchema = new mongoose.Schema(
       required: true,
     },
 
-    dateHired: { type: Date, default: Date.now },
+    dateHired: {
+      type: Date,
+      default: Date.now,
+    },
+
     status: {
       type: String,
       enum: ["Active", "Inactive", "Resigned", "Terminated"],
@@ -47,25 +113,61 @@ const employeeSchema = new mongoose.Schema(
     },
 
     balances: {
-      vlHours: { type: Number, default: 0 },
-      slHours: { type: Number, default: 0 },
-      ctoHours: { type: Number, default: 0 },
-      wellnessDays: { type: Number, default: 0 },
+      vlHours: {
+        type: Number,
+        default: 0,
+      },
+
+      slHours: {
+        type: Number,
+        default: 0,
+      },
+
+      ctoHours: {
+        type: Number,
+        default: 0,
+      },
+
+      wellnessDays: {
+        type: Number,
+        default: 0,
+      },
     },
 
     address: {
-      street: { type: String, trim: true },
-      city: { type: String, trim: true },
-      province: { type: String, trim: true },
+      street: {
+        type: String,
+        trim: true,
+      },
+
+      city: {
+        type: String,
+        trim: true,
+      },
+
+      province: {
+        type: String,
+        trim: true,
+      },
     },
 
     emergencyContact: {
-      name: { type: String, trim: true },
-      phone: { type: String },
-      relation: { type: String, trim: true },
+      name: {
+        type: String,
+        trim: true,
+      },
+
+      phone: {
+        type: String,
+        trim: true,
+      },
+
+      relation: {
+        type: String,
+        trim: true,
+      },
     },
 
-    // ✅ NEW: user preferences (theme + accent)
     preferences: {
       theme: {
         type: String,
@@ -73,7 +175,6 @@ const employeeSchema = new mongoose.Schema(
         default: "system",
       },
 
-      // Accent color tokens (your UI maps these to real Tailwind classes)
       accent: {
         type: String,
         enum: [
@@ -93,17 +194,31 @@ const employeeSchema = new mongoose.Schema(
       },
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 );
 
+// ✅ Hash password before saving
 employeeSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
-  this.password = await bcrypt.hash(this.password, 10);
+
+  this.password = await bcrypt.hash(this.password, 12);
+
   next();
 });
 
-employeeSchema.methods.comparePassword = function (candidatePassword) {
-  return bcrypt.compare(candidatePassword, this.password);
+// ✅ Compare password method
+employeeSchema.methods.comparePassword = async function (candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
 };
+
+// ✅ Hide sensitive fields from API responses
+employeeSchema.set("toJSON", {
+  transform: function (doc, ret) {
+    delete ret.password;
+    return ret;
+  },
+});
 
 module.exports = mongoose.model("Employee", employeeSchema);

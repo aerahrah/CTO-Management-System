@@ -8,22 +8,21 @@ export const useAuth = create(
   persist(
     (set, get) => ({
       admin: null,
-      token: null,
       preferences: DEFAULT_PREFS,
 
-      // ✅ NEW: hydration flag
       hasHydrated: false,
       setHasHydrated: (v) => set({ hasHydrated: v }),
 
       login: (data) => {
-        const token = data?.token ?? null;
+        // The browser automatically handles the HttpOnly cookie now.
+        // We only need to store the user profile/admin data.
         const admin = data?.admin ?? data?.payload ?? null;
 
         const prefs = admin?.preferences
           ? { ...DEFAULT_PREFS, ...admin.preferences }
           : DEFAULT_PREFS;
 
-        set({ token, admin, preferences: prefs });
+        set({ admin, preferences: prefs });
       },
 
       setPreferences: (prefs) => {
@@ -39,20 +38,28 @@ export const useAuth = create(
       },
 
       logout: () => {
+        // Clear the state
         set({
           admin: null,
-          token: null,
           preferences: DEFAULT_PREFS,
         });
-        // optional: also clear persisted storage
+
         localStorage.removeItem("auth");
+
+        // ⚠️ IMPORTANT: Your UI component must now also make an API call
+        // to your new backend /logout endpoint to clear the cookie!
       },
     }),
     {
       name: "auth",
       storage: createJSONStorage(() => localStorage),
 
-      // ✅ This runs when persist rehydrates from localStorage
+      // ✅ NEW: Partialize ensures ONLY preferences are saved to localStorage.
+      // The admin object will clear on refresh, requiring a fresh fetch from the server.
+      partialize: (state) => ({
+        preferences: state.preferences,
+      }),
+
       onRehydrateStorage: () => (state, error) => {
         if (error) console.error("Auth rehydrate error:", error);
         state?.setHasHydrated(true);

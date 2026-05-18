@@ -1,9 +1,10 @@
-// server.js (or app.js)  ✅ add email notif routes
+// server.js (or app.js)
 
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const path = require("path");
+const cookieParser = require("cookie-parser"); // ✅ ADDED: Import cookie-parser
 
 const connectDB = require("./db/connect");
 
@@ -19,16 +20,16 @@ const generalSettingRoutes = require("./routers/generalSettingsRoute");
 const userPreferenceRoutes = require("./routers/userPreferencesRoutes");
 const notificationRoutes = require("./routers/notificationRoutes");
 
-// ✅ ADD THIS: email notification settings routes
+// email notification settings routes
 const emailNotificationSettingRoutes = require("./routers/emailNotificationSettingsRoutes");
 
-// ✅ ADD THIS: approval routes
+// approval routes
 const approvalRouteRoutes = require("./routers/approvalRouteRoute");
 
-// ✅ ADD THIS: role routes
+// role routes
 const roleRoutes = require("./routers/roleRoutes");
 
-// ✅ ADD THIS: wellness routes
+// wellness routes
 const wellnessRoutes = require("./routers/wellnessRoutes");
 
 const auditLogger = require("./middlewares/auditLogMiddleware");
@@ -45,6 +46,7 @@ app.set("trust proxy", 1);
 // Parsers
 app.use(express.json({ limit: process.env.JSON_LIMIT || "1mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser()); // ✅ ADDED: Initialize cookie-parser so req.cookies works in middleware
 
 // Static uploads
 app.use(
@@ -80,7 +82,7 @@ const corsOptions =
       };
 
 app.use(cors(corsOptions));
-// ✅ Express 5 safe: RegExp catch-all, NOT "*"
+// Express 5 safe: RegExp catch-all, NOT "*"
 app.options(/.*/, cors(corsOptions));
 
 // Request logger
@@ -109,12 +111,11 @@ app.use("/api/settings/general", generalSettingRoutes);
 app.use("/api/settings/preferences", userPreferenceRoutes);
 app.use("/api/notifications", notificationRoutes);
 
-// ✅ ADD THIS ROUTE MOUNT
 // GET  /api/email-notification-settings
 // PUT  /api/email-notification-settings/:key
 app.use("/api/email-notification-settings", emailNotificationSettingRoutes);
 
-// ✅ Flexible Approval Routes
+// Flexible Approval Routes
 app.use("/api/approval-routes", approvalRouteRoutes);
 
 app.use("/api/roles", roleRoutes);

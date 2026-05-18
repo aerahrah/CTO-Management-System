@@ -4,11 +4,12 @@ import { usePermissions } from "../hooks/usePermissions";
 import ForbiddenPage from "../pages/forbiddenPage";
 
 const ProtectedRoute = ({ allowedRoles, requiredPermission }) => {
-  const { admin, token } = useAuth();
+  // ✅ Removed 'token' - we only need to check for the admin profile now
+  const { admin } = useAuth();
   const { can } = usePermissions();
 
-  // Not logged in → redirect to login
-  if (!token || !admin) {
+  // ✅ Not logged in (no profile in memory) → redirect to login
+  if (!admin) {
     return <Navigate to="/" replace />;
   }
 
@@ -22,7 +23,8 @@ const ProtectedRoute = ({ allowedRoles, requiredPermission }) => {
 
   // Logged in but not allowed (legacy fallback)
   if (allowedRoles) {
-    const userRole = typeof admin.role === 'string' ? admin.role : admin.role?.name;
+    const userRole =
+      typeof admin.role === "string" ? admin.role : admin.role?.name;
     if (!allowedRoles.includes(userRole)) {
       return <ForbiddenPage />;
     }

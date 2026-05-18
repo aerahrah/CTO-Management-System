@@ -13,21 +13,30 @@ import PhilippinesDotWaveLogo from "./PhilippinesDotWaveLogo";
 import { loginEmployee } from "../api/employee";
 import { useAuth } from "../store/authStore";
 
-// Validation Schema
+// ✅ Validation Schema
 const schema = Yup.object({
   username: Yup.string()
     .trim()
     .required("Username is required")
     .min(3, "Username must be at least 3 characters"),
+
   password: Yup.string()
     .trim()
     .required("Password is required")
-    .min(4, "Password must be at least 4 characters"),
+    .min(8, "Password must be at least 8 characters")
+    .matches(/[a-z]/, "Password must contain at least 1 lowercase letter")
+    .matches(/[A-Z]/, "Password must contain at least 1 uppercase letter")
+    .matches(/\d/, "Password must contain at least 1 number")
+    .matches(
+      /[@$!%*?&()[\]{}\-_=+<>]/,
+      "Password must contain at least 1 special character",
+    ),
 });
 
 const Login = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
+
   const [showPassword, setShowPassword] = useState(false);
 
   const year = useMemo(() => new Date().getFullYear(), []);
@@ -43,11 +52,15 @@ const Login = () => {
 
   const { mutate, isPending } = useMutation({
     mutationFn: loginEmployee,
+
     onSuccess: (data) => {
       login(data);
+
       toast.dismiss("login-error");
+
       navigate("/app");
     },
+
     onError: (err) => {
       toast.error(
         err?.response?.data?.message || "Invalid username or password.",
@@ -62,18 +75,20 @@ const Login = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden flex items-center justify-center bg-slate-50 px-4">
-      {/* Background: soft blobs + subtle grid */}
+      {/* Background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-40 -left-40 h-[520px] w-[520px] rounded-full bg-blue-700/15 blur-3xl" />
+
         <div className="absolute -bottom-44 -right-44 h-[620px] w-[620px] rounded-full bg-indigo-700/15 blur-3xl" />
+
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_15%,rgba(37,99,235,0.12),transparent_45%),radial-gradient(circle_at_85%_55%,rgba(29,78,216,0.14),transparent_45%)]" />
+
         <div className="absolute inset-0 opacity-[0.22] [background-image:linear-gradient(to_right,rgba(15,23,42,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.06)_1px,transparent_1px)] [background-size:48px_48px]" />
       </div>
 
-      {/* Animated Philippines dotted SVG (right side) */}
+      {/* Animated Background */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
         <div className="absolute inset-y-0 right-0 w-[120%] md:w-[68%] lg:w-[52%] translate-x-[22%] md:translate-x-[12%] lg:translate-x-[14%]">
-          {/* mask layer so it blends nicely */}
           <div className="h-full w-full scale-[1.15] blur-[0.2px]">
             <PhilippinesDotWaveLogo
               className="h-full w-full"
@@ -83,14 +98,13 @@ const Login = () => {
             />
           </div>
 
-          {/* subtle fade so dots don’t look “cut off” */}
           <div className="absolute inset-0 bg-gradient-to-l from-slate-50 via-slate-50/40 to-transparent" />
         </div>
       </div>
 
       {/* Card */}
       <div className="z-10 relative w-full max-w-md overflow-hidden rounded-2xl border border-slate-100 bg-white/85 backdrop-blur-xl shadow-[0_22px_70px_-25px_rgba(2,6,23,0.30)] ring-1 ring-slate-900/5">
-        {/* Top shine */}
+        {/* Top Glow */}
         <div className="pointer-events-none absolute inset-x-0 -top-24 h-40 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.70),transparent_60%)]" />
 
         {/* Header */}
@@ -110,6 +124,7 @@ const Login = () => {
             <h1 className="text-white text-xl font-bold tracking-tight">
               Employee CTO Portal
             </h1>
+
             <p className="text-blue-100/90 text-xs font-light mt-0.5 leading-snug">
               Department of Information and Communications Technology
             </p>
@@ -133,7 +148,11 @@ const Login = () => {
             <div className="relative group">
               <User
                 className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors duration-200
-                ${errors.username ? "text-red-500" : "text-slate-400 group-focus-within:text-blue-600"}`}
+                ${
+                  errors.username
+                    ? "text-red-500"
+                    : "text-slate-400 group-focus-within:text-blue-600"
+                }`}
               />
 
               <input
@@ -181,7 +200,11 @@ const Login = () => {
             <div className="relative group">
               <Lock
                 className={`absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 transition-colors duration-200
-                ${errors.password ? "text-red-500" : "text-slate-400 group-focus-within:text-blue-600"}`}
+                ${
+                  errors.password
+                    ? "text-red-500"
+                    : "text-slate-400 group-focus-within:text-blue-600"
+                }`}
               />
 
               <input

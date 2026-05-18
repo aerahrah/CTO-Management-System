@@ -23,6 +23,9 @@ import {
   markAllNotificationsAsRead,
 } from "../api/notificationSystem";
 
+// ✅ ADDED: Import your Axios instance
+import API from "../api/api"; // Adjust this path if your Axios setup file is located elsewhere
+
 const NOTIFICATION_PAGE_SIZE_OPTIONS = [25, 50, 75, 100];
 const DEFAULT_NOTIFICATION_PAGE_SIZE = 25;
 
@@ -30,7 +33,7 @@ const Dashboard = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // ✅ Granular permission check
+  // Granular permission check
   const { can } = usePermissions();
   const canViewProfile = can("employees.view_self");
 
@@ -63,10 +66,12 @@ const Dashboard = () => {
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
 
+  // Note: Depending on how your new App.jsx session recovery handles the 'token' check,
+  // you might eventually remove this token dependency, but keeping it for now is safe.
   useEffect(() => {
     if (!hasHydrated) return;
-    if (!token) navigate("/");
-  }, [hasHydrated, token, navigate]);
+    if (!admin) navigate("/"); // Fallback to checking admin profile instead of token
+  }, [hasHydrated, admin, navigate]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -86,10 +91,19 @@ const Dashboard = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
-    logout();
-    queryClient.clear();
-    navigate("/");
+  // ✅ UPDATED: Async logout function to clear the HttpOnly cookie
+  const handleLogout = async () => {
+    try {
+      // 1. Tell the backend to clear the HttpOnly cookie
+      await API.post("/employee/logout");
+    } catch (error) {
+      console.error("Failed to logout on the server:", error);
+    } finally {
+      // 2. Always clear local state and redirect, even if the network fails
+      logout();
+      queryClient.clear();
+      navigate("/");
+    }
   };
 
   const initials =
@@ -143,7 +157,8 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    if (!hasHydrated || !token) return;
+    // Only fetch notifications if the user is fully loaded
+    if (!hasHydrated || !admin) return;
 
     loadUnreadCount();
 
@@ -152,7 +167,7 @@ const Dashboard = () => {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [hasHydrated, token]);
+  }, [hasHydrated, admin]);
 
   const handleToggleNotifications = async () => {
     const next = !notificationOpen;

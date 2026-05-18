@@ -12,8 +12,13 @@ const authenticateToken = (req, res, next) => {
   // ✅ Allow CORS preflight requests through
   if (req.method === "OPTIONS") return next();
 
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+  // ✅ NEW: Look for the token in the cookies first, then fallback to the header
+  let token = null;
+  if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  } else if (req.headers.authorization?.startsWith("Bearer ")) {
+    token = req.headers.authorization.slice(7);
+  }
 
   if (!token) {
     return res

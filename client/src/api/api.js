@@ -1,15 +1,12 @@
 import axios from "axios";
 import { emitSessionExpired } from "./sessionEvents";
-import { useAuth } from "../store/authStore";
-const API = axios.create({
-  baseURL: "https://cto.dictr2.cloud/api",
-});
 
-API.interceptors.request.use((config) => {
-  // ✅ pull token directly from zustand store (no hooks here)
-  const token = useAuth.getState().token;
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
+// ❌ Removed: import { useAuth } from "../store/authStore";
+
+const API = axios.create({
+  baseURL: "http://localhost:3000/api",
+
+  withCredentials: true,
 });
 
 API.interceptors.response.use(

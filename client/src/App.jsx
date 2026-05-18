@@ -2,7 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Routes, Route, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { CalendarDays, ShieldCheck } from "lucide-react";
+import { CalendarDays, ShieldCheck, Loader2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import SessionGuard from "./components/sessionExpiredModal";
 
@@ -10,6 +11,9 @@ import SessionGuard from "./components/sessionExpiredModal";
 import ThemeSync from "./components/themeSync";
 import ScrollbarsSync from "./components/scrollbarSync";
 import { useAuth } from "./store/authStore";
+
+/* API Instance - IMPORTANT: Update this path to point to your Axios setup file */
+import API from "./api/api";
 
 /* Pages */
 import Login from "./pages/loginPage";
@@ -118,11 +122,41 @@ function useResolvedTheme(prefTheme) {
 
 function App() {
   const location = useLocation();
-
   const isLoginRoute = location.pathname === "/";
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
+
+  // ✅ SESSION RECOVERY LOGIC
+  const login = useAuth((s) => s.login);
+  const admin = useAuth((s) => s.admin);
+
+  const { isLoading: isSessionLoading } = useQuery({
+    queryKey: ["session"],
+    queryFn: async () => {
+      // Adjust this endpoint if your getMyProfile route is named differently
+      const res = await API.get("/employee/my-profile");
+      login({ admin: res.data });
+      return res.data;
+    },
+    retry: false, // Do not retry if unauthorized
+    enabled: !admin, // Only run on refresh when Zustand state is empty
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // Show a loading state to prevent flickering out of protected routes while verifying cookie
+  if (isSessionLoading) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="flex flex-col items-center gap-2">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Verifying session...
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
