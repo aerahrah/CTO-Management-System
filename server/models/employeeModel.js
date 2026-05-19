@@ -167,7 +167,15 @@ const employeeSchema = new mongoose.Schema(
         trim: true,
       },
     },
+    loginAttempts: {
+      type: Number,
+      default: 0,
+    },
 
+    lockUntil: {
+      type: Date,
+      default: null,
+    },
     preferences: {
       theme: {
         type: String,

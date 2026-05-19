@@ -400,8 +400,35 @@ const signInEmployeeService = async (username, password) => {
 
   if (!employee) throw httpError("Invalid username or password", 401);
 
+  if (
+    employee.lockUntil &&
+    new Date(employee.lockUntil).getTime() > Date.now()
+  ) {
+    const remainingMs = employee.lockUntil - Date.now();
+    const minutes = Math.ceil(remainingMs / 60000);
+
+    throw httpError(`Account locked. Try again in ${minutes} minute(s).`, 403);
+  }
+
   const isMatch = await employee.comparePassword(password);
-  if (!isMatch) throw httpError("Invalid username or password", 401);
+
+  if (!isMatch) {
+    employee.loginAttempts = (employee.loginAttempts || 0) + 1;
+
+    if (employee.loginAttempts >= 10) {
+      employee.lockUntil = Date.now() + 10 * 60 * 1000; // 15 minutes
+      employee.loginAttempts = 0; // reset counter after lock
+    }
+
+    await employee.save();
+
+    throw httpError("Invalid username or password", 401);
+  }
+
+  employee.loginAttempts = 0;
+  employee.lockUntil = null;
+
+  await employee.save();
 
   if (!process.env.JWT_SECRET) {
     throw httpError("Server misconfigured: JWT_SECRET is missing", 500);
