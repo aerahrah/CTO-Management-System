@@ -143,7 +143,7 @@ function App() {
     },
     retry: false, // Do not retry if unauthorized
     enabled: !admin, // Only run on refresh when Zustand state is empty
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   // Show a loading state to prevent flickering out of protected routes while verifying cookie

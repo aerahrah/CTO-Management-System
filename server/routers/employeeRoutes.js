@@ -30,22 +30,26 @@ const {
 // =============================
 const loginLimiter = rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 10,
+  max: 10, // IMPORTANT: keep low for login security
+
   standardHeaders: true,
   legacyHeaders: false,
+
+  keyGenerator: (req) => {
+    // normalize username so "Admin" and "admin" are same bucket
+    return (req.body.username || "unknown").toLowerCase().trim();
+  },
 
   skipSuccessfulRequests: true,
 
   handler: (req, res) => {
-    const retryAfter = Math.ceil(
-      req.rateLimit.resetTime / 1000 - Date.now() / 1000,
-    );
+    const retryAfter = Math.ceil((req.rateLimit.resetTime - Date.now()) / 1000);
 
     const minutes = Math.floor(retryAfter / 60);
     const seconds = retryAfter % 60;
 
     res.status(429).json({
-      message: `Too many login attempts. Try again in ${minutes}m ${seconds}s.`,
+      message: `Too many login attempts for this account. Try again in ${minutes}m ${seconds}s.`,
       retryAfterSeconds: retryAfter,
     });
   },

@@ -415,7 +415,7 @@ const signInEmployeeService = async (username, password) => {
   if (!isMatch) {
     employee.loginAttempts = (employee.loginAttempts || 0) + 1;
 
-    if (employee.loginAttempts >= 10) {
+    if (employee.loginAttempts >= 15) {
       employee.lockUntil = Date.now() + 10 * 60 * 1000; // 15 minutes
       employee.loginAttempts = 0; // reset counter after lock
     }

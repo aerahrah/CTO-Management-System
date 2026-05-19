@@ -581,7 +581,7 @@ const MyProfile = () => {
   const { data, isLoading, error } = useQuery({
     queryKey: ["myProfile"],
     queryFn: getMyProfile,
-    staleTime: 1000 * 60 * 5,
+    staleTime: Infinity,
   });
 
   if (isLoading) {

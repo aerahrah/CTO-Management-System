@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useNavigate, Outlet } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+// ✅ IMPORT useQuery and useMutation
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "../store/authStore";
 import Sidebar from "../components/sidebar";
 import ThemeSync from "../components/themeSync";
@@ -23,8 +24,7 @@ import {
   markAllNotificationsAsRead,
 } from "../api/notificationSystem";
 
-// ✅ ADDED: Import your Axios instance
-import API from "../api/api"; // Adjust this path if your Axios setup file is located elsewhere
+import API from "../api/api";
 
 const NOTIFICATION_PAGE_SIZE_OPTIONS = [25, 50, 75, 100];
 const DEFAULT_NOTIFICATION_PAGE_SIZE = 25;
@@ -33,44 +33,28 @@ const Dashboard = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  // Granular permission check
   const { can } = usePermissions();
   const canViewProfile = can("employees.view_self");
 
-  const token = useAuth((s) => s.token);
   const admin = useAuth((s) => s.admin);
   const logout = useAuth((s) => s.logout);
   const hasHydrated = useAuth((s) => s.hasHydrated);
 
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
 
-  const [notifications, setNotifications] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-
-  const [notificationPagination, setNotificationPagination] = useState({
-    total: 0,
-    page: 1,
-    limit: DEFAULT_NOTIFICATION_PAGE_SIZE,
-    totalPages: 1,
-    hasPrevPage: false,
-    hasNextPage: false,
-    allowedPageSizes: NOTIFICATION_PAGE_SIZE_OPTIONS,
-    defaultPageSize: DEFAULT_NOTIFICATION_PAGE_SIZE,
-  });
+  // ✅ React Query Pagination State
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_NOTIFICATION_PAGE_SIZE);
 
   const dropdownRef = useRef(null);
   const notificationRef = useRef(null);
 
-  // Note: Depending on how your new App.jsx session recovery handles the 'token' check,
-  // you might eventually remove this token dependency, but keeping it for now is safe.
   useEffect(() => {
     if (!hasHydrated) return;
-    if (!admin) navigate("/"); // Fallback to checking admin profile instead of token
+    if (!admin) navigate("/");
   }, [hasHydrated, admin, navigate]);
 
   useEffect(() => {
@@ -78,7 +62,6 @@ const Dashboard = () => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
         setDropdownOpen(false);
       }
-
       if (
         notificationRef.current &&
         !notificationRef.current.contains(e.target)
@@ -86,20 +69,16 @@ const Dashboard = () => {
         setNotificationOpen(false);
       }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // ✅ UPDATED: Async logout function to clear the HttpOnly cookie
   const handleLogout = async () => {
     try {
-      // 1. Tell the backend to clear the HttpOnly cookie
       await API.post("/employee/logout");
     } catch (error) {
       console.error("Failed to logout on the server:", error);
     } finally {
-      // 2. Always clear local state and redirect, even if the network fails
       logout();
       queryClient.clear();
       navigate("/");
@@ -113,124 +92,114 @@ const Dashboard = () => {
       .join("")
       .toUpperCase() || "A";
 
-  const loadNotifications = async ({
-    page = notificationPagination.page || 1,
-    limit = notificationPagination.limit || DEFAULT_NOTIFICATION_PAGE_SIZE,
-  } = {}) => {
-    try {
-      setNotificationsLoading(true);
+  // ==========================================
+  // ✅ 1. UNREAD COUNT QUERY (Smart Polling)
+  // ==========================================
+  const { data: unreadData } = useQuery({
+    queryKey: ["unreadNotificationCount"],
+    queryFn: fetchMyUnreadNotificationCount,
+    refetchInterval: 60000, // Smart poll every 60 seconds
+    refetchOnWindowFocus: true, // Fetch instantly when user returns to tab
+    enabled: !!hasHydrated && !!admin,
+  });
 
-      const res = await fetchMyNotifications({
-        page,
-        limit,
-      });
+  const unreadCount = unreadData?.unreadCount || 0;
 
-      setNotifications(res?.data || []);
-      setUnreadCount(res?.unreadCount || 0);
+  // ==========================================
+  // ✅ 2. NOTIFICATIONS QUERY (Paginated & Cached)
+  // ==========================================
+  const { data: notificationsData, isFetching: notificationsLoading } =
+    useQuery({
+      queryKey: ["notifications", page, limit],
+      queryFn: () => fetchMyNotifications({ page, limit }),
+      enabled: !!hasHydrated && !!admin && notificationOpen, // Only fetch when dropdown is open
+      placeholderData: (prev) => prev, // Keeps previous data visible while fetching next page
+    });
 
-      setNotificationPagination({
-        total: res?.pagination?.total || 0,
-        page: res?.pagination?.page || page,
-        limit: res?.pagination?.limit || limit,
-        totalPages: res?.pagination?.totalPages || 1,
-        hasPrevPage: res?.pagination?.hasPrevPage || false,
-        hasNextPage: res?.pagination?.hasNextPage || false,
-        allowedPageSizes:
-          res?.pagination?.allowedPageSizes || NOTIFICATION_PAGE_SIZE_OPTIONS,
-        defaultPageSize:
-          res?.pagination?.defaultPageSize || DEFAULT_NOTIFICATION_PAGE_SIZE,
-      });
-    } catch (error) {
-      console.error("Failed to load notifications:", error);
-    } finally {
-      setNotificationsLoading(false);
-    }
+  const notifications = notificationsData?.data || [];
+  const notificationPagination = notificationsData?.pagination || {
+    total: 0,
+    page: 1,
+    limit: DEFAULT_NOTIFICATION_PAGE_SIZE,
+    totalPages: 1,
+    hasPrevPage: false,
+    hasNextPage: false,
+    allowedPageSizes: NOTIFICATION_PAGE_SIZE_OPTIONS,
   };
 
-  const loadUnreadCount = async () => {
-    try {
-      const res = await fetchMyUnreadNotificationCount();
-      setUnreadCount(res?.unreadCount || 0);
-    } catch (error) {
-      console.error("Failed to load unread count:", error);
-    }
-  };
+  // ==========================================
+  // ✅ 3. OPTIMISTIC MUTATIONS (Instant UI Updates)
+  // ==========================================
+  const markAsReadMutation = useMutation({
+    mutationFn: markNotificationAsRead,
+    onSuccess: () => {
+      // Refresh count and lists in background to ensure sync
+      queryClient.invalidateQueries({ queryKey: ["unreadNotificationCount"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
 
-  useEffect(() => {
-    // Only fetch notifications if the user is fully loaded
-    if (!hasHydrated || !admin) return;
+  const markAllAsReadMutation = useMutation({
+    mutationFn: markAllNotificationsAsRead,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["unreadNotificationCount"] });
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+    },
+  });
 
-    loadUnreadCount();
-
-    const interval = setInterval(() => {
-      loadUnreadCount();
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [hasHydrated, admin]);
-
-  const handleToggleNotifications = async () => {
-    const next = !notificationOpen;
-    setNotificationOpen(next);
+  // ==========================================
+  // EVENT HANDLERS
+  // ==========================================
+  const handleToggleNotifications = () => {
+    setNotificationOpen(!notificationOpen);
     setDropdownOpen(false);
-
-    if (next) {
-      await loadNotifications({
-        page: 1,
-        limit: notificationPagination.limit || DEFAULT_NOTIFICATION_PAGE_SIZE,
-      });
-    }
   };
 
   const handleNotificationClick = async (notification) => {
-    try {
-      if (!notification?.isRead) {
-        await markNotificationAsRead(notification._id);
+    if (!notification?.isRead) {
+      // 1. Optimistically update UI instantly for snappy UX
+      queryClient.setQueryData(["unreadNotificationCount"], (old) => ({
+        ...old,
+        unreadCount: Math.max((old?.unreadCount || 0) - 1, 0),
+      }));
 
-        setNotifications((prev) =>
-          prev.map((item) =>
-            item._id === notification._id
-              ? {
-                  ...item,
-                  isRead: true,
-                  readAt: item.readAt || new Date().toISOString(),
-                }
-              : item,
+      queryClient.setQueryData(["notifications", page, limit], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          data: old.data.map((n) =>
+            n._id === notification._id ? { ...n, isRead: true } : n,
           ),
-        );
+        };
+      });
 
-        setUnreadCount((prev) => Math.max(prev - 1, 0));
-      }
+      // 2. Fire actual API request in background
+      markAsReadMutation.mutate(notification._id);
+    }
 
-      setNotificationOpen(false);
-
-      if (notification?.link) {
-        navigate(notification.link);
-      }
-    } catch (error) {
-      console.error("Failed to mark notification as read:", error);
+    setNotificationOpen(false);
+    if (notification?.link) {
+      navigate(notification.link);
     }
   };
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      await markAllNotificationsAsRead();
+  const handleMarkAllAsRead = () => {
+    // Optimistically zero out the count
+    queryClient.setQueryData(["unreadNotificationCount"], { unreadCount: 0 });
 
-      setNotifications((prev) =>
-        prev.map((item) => ({
-          ...item,
-          isRead: true,
-          readAt: item.readAt || new Date().toISOString(),
-        })),
-      );
+    queryClient.setQueryData(["notifications", page, limit], (old) => {
+      if (!old) return old;
+      return {
+        ...old,
+        data: old.data.map((n) => ({ ...n, isRead: true })),
+      };
+    });
 
-      setUnreadCount(0);
-    } catch (error) {
-      console.error("Failed to mark all notifications as read:", error);
-    }
+    // Fire actual API request
+    markAllAsReadMutation.mutate();
   };
 
-  const handleNotificationPageChange = async (nextPage) => {
+  const handleNotificationPageChange = (nextPage) => {
     if (notificationsLoading) return;
     if (
       nextPage < 1 ||
@@ -239,20 +208,12 @@ const Dashboard = () => {
     ) {
       return;
     }
-
-    await loadNotifications({
-      page: nextPage,
-      limit: notificationPagination.limit,
-    });
+    setPage(nextPage);
   };
 
-  const handleNotificationLimitChange = async (e) => {
-    const nextLimit = Number(e.target.value);
-
-    await loadNotifications({
-      page: 1,
-      limit: nextLimit,
-    });
+  const handleNotificationLimitChange = (e) => {
+    setLimit(Number(e.target.value));
+    setPage(1); // Reset to page 1 when changing page size
   };
 
   const formatNotificationTime = (value) => {
@@ -303,9 +264,7 @@ const Dashboard = () => {
             <button
               onClick={() => setMobileOpen(true)}
               className="p-2 mr-4 rounded-lg lg:hidden transition"
-              style={{
-                color: "var(--app-muted, #475569)",
-              }}
+              style={{ color: "var(--app-muted, #475569)" }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.backgroundColor =
                   "var(--accent-soft, rgba(37,99,235,0.10))";
@@ -348,9 +307,7 @@ const Dashboard = () => {
                 {unreadCount > 0 && (
                   <span
                     className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center text-white"
-                    style={{
-                      backgroundColor: "#ef4444",
-                    }}
+                    style={{ backgroundColor: "#ef4444" }}
                   >
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
@@ -389,7 +346,8 @@ const Dashboard = () => {
                     <button
                       onClick={handleMarkAllAsRead}
                       type="button"
-                      className="text-xs font-semibold transition"
+                      disabled={markAllAsReadMutation.isPending}
+                      className="text-xs font-semibold transition disabled:opacity-50"
                       style={{ color: "var(--accent, #2563EB)" }}
                     >
                       Mark all as read
@@ -419,7 +377,7 @@ const Dashboard = () => {
                     </div>
 
                     <select
-                      value={notificationPagination.limit}
+                      value={limit}
                       onChange={handleNotificationLimitChange}
                       className="text-xs rounded-lg px-2 py-1 border outline-none"
                       style={{
@@ -487,25 +445,19 @@ const Dashboard = () => {
                             <div className="min-w-0">
                               <p
                                 className="text-sm font-semibold truncate"
-                                style={{
-                                  color: "var(--app-text, #0f172a)",
-                                }}
+                                style={{ color: "var(--app-text, #0f172a)" }}
                               >
                                 {notification.title}
                               </p>
                               <p
                                 className="text-xs mt-1 leading-relaxed"
-                                style={{
-                                  color: "var(--app-muted, #64748b)",
-                                }}
+                                style={{ color: "var(--app-muted, #64748b)" }}
                               >
                                 {notification.message}
                               </p>
                               <p
                                 className="text-[10px] mt-2"
-                                style={{
-                                  color: "var(--app-muted, #94a3b8)",
-                                }}
+                                style={{ color: "var(--app-muted, #94a3b8)" }}
                               >
                                 {formatNotificationTime(notification.createdAt)}
                               </p>
@@ -533,11 +485,7 @@ const Dashboard = () => {
                   >
                     <button
                       type="button"
-                      onClick={() =>
-                        handleNotificationPageChange(
-                          notificationPagination.page - 1,
-                        )
-                      }
+                      onClick={() => handleNotificationPageChange(page - 1)}
                       disabled={
                         notificationsLoading ||
                         !notificationPagination.hasPrevPage
@@ -571,11 +519,7 @@ const Dashboard = () => {
 
                     <button
                       type="button"
-                      onClick={() =>
-                        handleNotificationPageChange(
-                          notificationPagination.page + 1,
-                        )
-                      }
+                      onClick={() => handleNotificationPageChange(page + 1)}
                       disabled={
                         notificationsLoading ||
                         !notificationPagination.hasNextPage
@@ -603,9 +547,7 @@ const Dashboard = () => {
                   setNotificationOpen(false);
                 }}
                 className="flex items-center gap-2 lg:gap-3 pl-2 pr-4 lg:px-6 py-1.5 rounded-full transition-all border"
-                style={{
-                  borderColor: "transparent",
-                }}
+                style={{ borderColor: "transparent" }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.backgroundColor =
                     "var(--accent-soft, rgba(37,99,235,0.10))";
@@ -771,9 +713,7 @@ const Dashboard = () => {
                     onClick={handleLogout}
                     type="button"
                     className="w-full flex items-center gap-3 px-4 py-3 text-left transition"
-                    style={{
-                      color: "var(--danger, #dc2626)",
-                    }}
+                    style={{ color: "var(--danger, #dc2626)" }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.backgroundColor =
                         "rgba(220,38,38,0.06)";
@@ -793,9 +733,7 @@ const Dashboard = () => {
 
         <main
           className="flex-1 overflow-y-auto px-1.5 md:py-3 md:px-4 custom-scrollbar transition-colors"
-          style={{
-            backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
-          }}
+          style={{ backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))" }}
         >
           <div className="max-w-full mx-auto">
             <Outlet />

@@ -149,23 +149,72 @@ if (NODE_ENV !== "production") {
 }
 
 /* ======================================================
-   RATE LIMITER
+   RATE LIMITERS (DYNAMIC)
 ====================================================== */
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300,
 
+// Pull from environment variables, or use your defaults
+const RATE_LIMIT_WINDOW_MINS = Number(process.env.RATE_LIMIT_WINDOW_MINS) || 10;
+const RATE_LIMIT_WINDOW_MS = RATE_LIMIT_WINDOW_MINS * 60 * 1000;
+const GLOBAL_RATE_LIMIT_MAX =
+  Number(process.env.GLOBAL_RATE_LIMIT_MAX) || 30000;
+const ACCOUNT_RATE_LIMIT_MAX =
+  Number(process.env.ACCOUNT_RATE_LIMIT_MAX) || 750;
+
+// ✅ Helper function to calculate exact time remaining
+const dynamicRateLimitHandler = (messagePrefix) => (req, res) => {
+  // express-rate-limit injects req.rateLimit which contains the resetTime
+  const resetTime = req.rateLimit?.resetTime;
+
+  if (!resetTime) {
+    return res
+      .status(429)
+      .json({ message: `${messagePrefix}. Please try again later.` });
+  }
+
+  const retryAfter = Math.ceil((resetTime - Date.now()) / 1000);
+  const minutes = Math.floor(retryAfter / 60);
+  const seconds = retryAfter % 60;
+
+  res.status(429).json({
+    message: `${messagePrefix}. Try again in ${minutes}m ${seconds}s.`,
+    retryAfterSeconds: retryAfter,
+  });
+};
+
+// 1. GLOBAL IP LIMITER
+const globalIpLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: GLOBAL_RATE_LIMIT_MAX,
   standardHeaders: true,
   legacyHeaders: false,
-
-  message: {
-    message:
-      "Too many requests from this IP, please try again after 15 minutes",
-  },
+  keyGenerator: (req) => `ip_${req.ip}`,
+  skip: (req) => req.path === "/employee/login",
+  // ✅ Use the dynamic handler
+  handler: dynamicRateLimitHandler("Too many requests from this network"),
 });
 
-// Apply only to API routes
-app.use("/api/", apiLimiter);
+// 2. INDIVIDUAL ACCOUNT LIMITER
+const accountLimiter = rateLimit({
+  windowMs: RATE_LIMIT_WINDOW_MS,
+  max: ACCOUNT_RATE_LIMIT_MAX,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    if (req.path === "/employee/login") return true;
+    if (!req.user?.id && !req.cookies?.token) return true;
+    return false;
+  },
+  keyGenerator: (req) => {
+    if (req.user && req.user.id) return `user_${req.user.id}`;
+    if (req.cookies && req.cookies.token) return `token_${req.cookies.token}`;
+  },
+  // ✅ Use the dynamic handler
+  handler: dynamicRateLimitHandler("Too many requests from this account"),
+});
+
+// ✅ Apply both limiters to API routes
+app.use("/api/", globalIpLimiter);
+app.use("/api/", accountLimiter);
 
 /* ======================================================
    HEALTH CHECK
@@ -186,36 +235,19 @@ app.use(auditLogger);
    API ROUTES
 ====================================================== */
 app.use("/api/employee", employeeRoutes);
-
 app.use("/api/cto", ctoRoutes);
-
 app.use("/api/wellness", wellnessRoutes);
-
 app.use("/api/cto", ctoDashboardRoutes);
-
 app.use("/api/cto/settings", ctoSettingRoutes);
-
 app.use("/api/settings/designation", designationRoutes);
-
 app.use("/api/audit-logs", auditLogRoutes);
-
 app.use("/api/settings/projects", projectRoutes);
-
 app.use("/api/settings/mongodb", ctoBackupRoutes);
-
 app.use("/api/settings/general", generalSettingRoutes);
-
 app.use("/api/settings/preferences", userPreferenceRoutes);
-
 app.use("/api/notifications", notificationRoutes);
-
-// Email Notification Settings
 app.use("/api/email-notification-settings", emailNotificationSettingRoutes);
-
-// Flexible Approval Routes
 app.use("/api/approval-routes", approvalRouteRoutes);
-
-// Roles
 app.use("/api/roles", roleRoutes);
 
 /* ======================================================
@@ -249,7 +281,6 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await connectDB();
-
     initWellnessCron();
 
     app.listen(PORT, () => {
@@ -257,7 +288,6 @@ async function start() {
     });
   } catch (err) {
     console.error("❌ Failed to start server:", err);
-
     process.exit(1);
   }
 }
