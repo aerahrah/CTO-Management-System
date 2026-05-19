@@ -277,6 +277,7 @@ const OfficeLocationList = () => {
                   type="text"
                   placeholder="Search designations..."
                   value={searchTerm}
+                  maxLength={100}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-9 pr-8 py-2 w-full border rounded-lg text-sm outline-none transition-all duration-200 ease-out"
                   style={{

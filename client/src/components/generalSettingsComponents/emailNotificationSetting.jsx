@@ -679,6 +679,7 @@ export default function EmailNotificationSettings() {
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
+                      maxLength={100}
                       placeholder="Search notifications..."
                       className="mt-3 w-full h-11 rounded-lg px-3 text-sm outline-none transition-colors duration-200 ease-out"
                       style={{

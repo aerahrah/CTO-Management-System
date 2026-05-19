@@ -788,6 +788,7 @@ const ApplicationCtoTable = ({
                   type="text"
                   placeholder="Search memo..."
                   value={search}
+                  maxLength={100}
                   onChange={(e) => onSearchChange?.(e.target.value)}
                   className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none border transition-colors duration-200 ease-out"
                   style={{

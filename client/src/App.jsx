@@ -35,6 +35,8 @@ import CtoRecords from "./components/ctoComponents/ctoRecords";
 import CtoEmployeeInformation from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeInformation";
 import EmployeePlaceholder from "./components/ctoComponents/ctoApplicationApprovalsComponents/ctoEmployeePlaceholder";
 import EmployeeRecordsPlaceholder from "./components/ctoComponents/ctoCreditHistory/ctoEmployeeRecordPlaceholder";
+// ✅ IMPORT THE NEW CTO APPLICATION FORM
+import AddCtoApplicationForm from "./components/ctoComponents/ctoApplicationComponents/forms/addCtoApplicationForm";
 
 /* Wellness Components */
 import MyWellnessApplications from "./components/wellnessComponents/wellnessApplicationComponents/myWellnessApplicationHistory";
@@ -229,7 +231,9 @@ function App() {
           {/* Apply for Leaves */}
           <Route element={<ProtectedRoute requiredPermission="cto.create" />}>
             <Route path="cto-apply" element={<CtoApplication />} />
+            <Route path="cto-apply/add" element={<AddCtoApplicationForm />} />
           </Route>
+
           <Route
             element={<ProtectedRoute requiredPermission="wellness.view_self" />}
           >

@@ -621,6 +621,7 @@ const CreditCtoTable = ({
                   type="text"
                   placeholder="Search memo..."
                   value={search}
+                  maxLength={100}
                   onChange={(e) => onSearchChange?.(e.target.value)}
                   className="w-full py-2 pl-9 pr-9 rounded-lg text-sm outline-none border transition-colors duration-200 ease-out"
                   style={{

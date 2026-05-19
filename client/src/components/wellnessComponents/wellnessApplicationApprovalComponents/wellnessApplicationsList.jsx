@@ -429,6 +429,7 @@ const WellnessApplicationsList = () => {
               <input
                 type="text"
                 placeholder="Search applicant..."
+                maxLength={100}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 pr-8 py-2 w-full rounded-lg text-sm outline-none border transition-colors duration-200 ease-out"

@@ -309,7 +309,6 @@ export const fetchProvincialOffices = async () => {
 export const fetchDashboard = async () => {
   try {
     const res = await API.get("/cto/dashboard", { withCredentials: true });
-    console.log(res.data);
     return unwrap(res)?.data ?? unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch dashboard");

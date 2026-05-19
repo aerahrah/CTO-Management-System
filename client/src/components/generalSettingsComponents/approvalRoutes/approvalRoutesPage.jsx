@@ -615,6 +615,7 @@ const ApprovalRoutesPage = () => {
                   <input
                     type="text"
                     placeholder="Search workflow..."
+                    maxLength={100}
                     className="w-full pl-9 pr-4 py-1.5 rounded-lg text-xs outline-none border transition-colors focus:ring-2 focus:ring-[color:var(--accent-soft)]"
                     value={searchInput}
                     onChange={(e) => setSearchInput(e.target.value)}

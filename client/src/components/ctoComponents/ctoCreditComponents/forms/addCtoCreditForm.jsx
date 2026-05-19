@@ -311,6 +311,7 @@ const AddCtoCreditForm = ({ onClose, onPendingChange }) => {
               }
               onMenuOpen={() => setMenuOpen(true)}
               placeholder="Search employees"
+              maxLength={100}
               classNames={{
                 control: ({ isFocused }) =>
                   `min-h-[42px] rounded-lg border ${

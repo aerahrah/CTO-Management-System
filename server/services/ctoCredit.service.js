@@ -29,8 +29,11 @@ function assertObjectId(id, label = "id") {
   }
 }
 
-function escapeRegExp(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// ✅ REPLACED: Basic escapeRegExp with length-limited sanitizeSearch
+function sanitizeSearch(str, limit = 100) {
+  return String(str || "")
+    .slice(0, limit)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function toHours(duration) {
@@ -347,7 +350,8 @@ async function getAllCredits({
 
   const q = String(search || "").trim();
   if (q) {
-    const safe = escapeRegExp(q);
+    // ✅ Applied Search Sanitization here
+    const safe = sanitizeSearch(q, 100);
 
     const employees = await Employee.find({
       $or: [
@@ -452,7 +456,7 @@ async function getEmployeeCredits(
     totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0,
   };
 
-  const safeSearch = String(search || "").trim();
+  const safeSearch = sanitizeSearch(search, 100); // ✅ Applied Search Sanitization here
   const listMatch = {
     employees: {
       $elemMatch: {
@@ -460,9 +464,7 @@ async function getEmployeeCredits(
         ...(filters.status ? { status: filters.status } : {}),
       },
     },
-    ...(safeSearch
-      ? { memoNo: { $regex: escapeRegExp(safeSearch), $options: "i" } }
-      : {}),
+    ...(safeSearch ? { memoNo: { $regex: safeSearch, $options: "i" } } : {}),
   };
 
   const totalCount = await CtoCredit.countDocuments(listMatch);

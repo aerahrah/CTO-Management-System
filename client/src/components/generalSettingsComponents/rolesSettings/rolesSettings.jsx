@@ -366,6 +366,7 @@ export default function RolesSettings() {
           <input
             type="text"
             placeholder="Search roles..."
+            maxLength={100}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 h-11 rounded-lg text-sm outline-none transition-all duration-200 ease-out focus:ring-2 focus:ring-[var(--accent)] focus:border-transparent"

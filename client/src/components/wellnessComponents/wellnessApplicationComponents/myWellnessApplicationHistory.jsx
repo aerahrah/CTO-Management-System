@@ -540,7 +540,7 @@ const MyWellnessApplications = () => {
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const user = useAuth((s) => s.user);
-  const { can } = usePermissions(); // ✅ Initialize permissions hook
+  const { can } = usePermissions();
   const resolvedTheme = useResolvedTheme(prefTheme);
 
   const borderColor = useMemo(() => {
@@ -621,7 +621,6 @@ const MyWellnessApplications = () => {
     return () => clearTimeout(searchTimeout.current);
   }, [searchInput]);
 
-  // Resolving the correct user identifier property securely
   const userId = user?.employeeId || user?.id || user?._id;
 
   const { data, isLoading, refetch } = useQuery({
@@ -778,7 +777,6 @@ const MyWellnessApplications = () => {
                 </p>
               </div>
 
-              {/* ✅ Dynamically conditionally render the File Leave button based on permission */}
               {can("wellness.manage_self") && (
                 <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 rounded-xl">
                   <button
@@ -882,10 +880,12 @@ const MyWellnessApplications = () => {
                       className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
                       style={{ color: "var(--app-muted)" }}
                     />
+                    {/* ✅ Search input with maxLength strictly applied */}
                     <input
                       type="text"
                       placeholder="Search reasons..."
                       value={searchInput}
+                      maxLength={100}
                       onChange={(e) => setSearchInput(e.target.value)}
                       className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors duration-200 ease-out border"
                       style={{

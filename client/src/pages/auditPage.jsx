@@ -633,6 +633,7 @@ const AuditLogTable = () => {
                 <input
                   type="text"
                   placeholder="Search username…"
+                  maxLength={100}
                   value={usernameInput}
                   onChange={(e) => setUsernameInput(e.target.value)}
                   className="w-full h-10 pl-9 pr-9 text-sm rounded-lg outline-none border transition-colors duration-200 ease-out"

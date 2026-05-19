@@ -11,7 +11,8 @@ import { fetchApprovers } from "../../../api/cto";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { FileSignature, Route as RouteIcon, ArrowLeft } from "lucide-react";
-import Select from "react-select";
+// ✅ IMPORT `components` from react-select
+import Select, { components } from "react-select";
 
 import Breadcrumbs from "../../breadCrumbs";
 
@@ -98,6 +99,11 @@ const APPROVER_ROLES = [
     desc: "Custom assignment for ad-hoc signatures.",
   },
 ];
+
+// ✅ Custom Input component to enforce maxLength on the react-select search bar
+const CustomInput = (props) => {
+  return <components.Input {...props} maxLength={100} />;
+};
 
 const ApprovalRouteStepForm = () => {
   const queryClient = useQueryClient();
@@ -456,6 +462,7 @@ const ApprovalRouteStepForm = () => {
                     Approver <span className="text-red-500">*</span>
                   </label>
                   <Select
+                    components={{ Input: CustomInput }} // ✅ ADDED CUSTOM INPUT HERE
                     options={approverOptions}
                     value={
                       approverOptions.find(

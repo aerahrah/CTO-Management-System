@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { StatusBadge } from "../../statusUtils";
 import {
   fetchMyCtoApplications,
@@ -33,7 +34,6 @@ import {
   ArrowUp,
 } from "lucide-react";
 import FilterSelect from "../../filterSelect";
-import AddCtoApplicationForm from "./forms/addCtoApplicationForm";
 import CtoApplicationDetails from "./myCtoApplicationFullDetails";
 import MemoList from "../ctoMemoModal";
 import { toast } from "react-toastify";
@@ -52,7 +52,6 @@ const fmtHours = (h) => {
     : "0";
 };
 
-/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
     const systemDark =
@@ -62,7 +61,6 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
-/* ✅ Reactive resolved theme for system mode (prevents skeleton flashes) */
 function useResolvedTheme(prefTheme) {
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined")
@@ -94,7 +92,6 @@ function useResolvedTheme(prefTheme) {
   return theme;
 }
 
-/* ------------------ Small helper: icon chip styles ------------------ */
 function getIconChip(kind, borderColor) {
   const map = {
     accent: {
@@ -131,9 +128,6 @@ function getIconChip(kind, borderColor) {
   return map[kind] || map.neutral;
 }
 
-/* =========================
-   Balance Card (theme-aware)
-========================= */
 const BalanceHoursCard = ({ hours, loading, borderColor }) => {
   const showValue =
     hours === null || hours === undefined ? "0h" : `${fmtHours(hours)}h`;
@@ -180,9 +174,6 @@ const BalanceHoursCard = ({ hours, loading, borderColor }) => {
   );
 };
 
-/* =========================
-   Per-row action menu (theme-aware)
-========================= */
 const ApplicationActionMenu = ({
   app,
   onViewDetails,
@@ -333,9 +324,6 @@ const ApplicationActionMenu = ({
   );
 };
 
-/* =========================
-   Card view (theme-aware)
-========================= */
 const ApplicationCard = ({
   app,
   leftStripClassName,
@@ -544,9 +532,6 @@ const ApplicationCard = ({
   );
 };
 
-/* =========================
-   Compact Pagination (theme-aware)
-========================= */
 const CompactPagination = ({
   page,
   totalPages,
@@ -680,9 +665,6 @@ const CompactPagination = ({
   </div>
 );
 
-/* =========================
-   Tabs styles (theme-aware)
-========================= */
 const tabTone = {
   accent: {
     bg: "var(--accent-soft)",
@@ -713,10 +695,8 @@ const tabTone = {
 
 const MyCtoApplications = () => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate(); // ✅ Initialize useNavigate hook
 
-  // ✅ ThemeSync + ScrollbarsSync are now mounted globally in App.jsx,
-  // so you do NOT need to import/mount them here.
-  // Keep this local resolved theme only for borderColor + skeleton fallbacks.
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -742,7 +722,6 @@ const MyCtoApplications = () => {
   }, [resolvedTheme]);
 
   const [selectedApp, setSelectedApp] = useState(null);
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
   const [pdfApp, setPdfApp] = useState(null);
 
@@ -1003,7 +982,7 @@ const MyCtoApplications = () => {
                 />
 
                 <button
-                  onClick={() => setIsFormModalOpen(true)}
+                  onClick={() => navigate("/app/cto-apply/add")}
                   className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-42 md:py-3.5 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 w-full"
                   type="button"
                   style={{
@@ -1106,6 +1085,7 @@ const MyCtoApplications = () => {
                       type="text"
                       placeholder="Search memo..."
                       value={searchInput}
+                      maxLength={100}
                       onChange={(e) => setSearchInput(e.target.value)}
                       className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors duration-200 ease-out border"
                       style={{
@@ -1677,25 +1657,6 @@ const MyCtoApplications = () => {
                 accordingly.
               </p>
             </div>
-          </div>
-        </Modal>
-
-        {/* Form Modal */}
-        <Modal
-          isOpen={isFormModalOpen}
-          onClose={() => setIsFormModalOpen(false)}
-          closeLabel={null}
-          maxWidth=" max-w-lg"
-        >
-          <div className="w-full">
-            <AddCtoApplicationForm
-              onClose={() => setIsFormModalOpen(false)}
-              onSuccess={() => {
-                setIsFormModalOpen(false);
-                refetch();
-                refetchBalance();
-              }}
-            />
           </div>
         </Modal>
 

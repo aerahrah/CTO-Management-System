@@ -61,6 +61,7 @@ const EmployeeList = ({ selectedId, setSelectedId, setIsEmployeeLoading }) => {
             type="text"
             placeholder="Search employee..."
             value={search}
+            maxLength={100}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9 pr-3 py-2 w-full border border-gray-300 rounded-lg 
                        bg-gray-50 focus:bg-white focus:ring-1 focus:ring-neutral-400 

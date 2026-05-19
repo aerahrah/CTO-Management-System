@@ -771,6 +771,7 @@ const MyCtoCreditHistory = () => {
                     <input
                       type="text"
                       placeholder="Search memo..."
+                      maxLength={100}
                       value={searchInput}
                       onChange={(e) => setSearchInput(e.target.value)}
                       className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors duration-200 ease-out border"

@@ -38,6 +38,13 @@ async function canSend(key) {
   return await isEmailEnabled(key);
 }
 
+// Limits search string length and escapes special characters to prevent ReDoS
+const sanitizeSearch = (str, limit = 100) => {
+  return String(str || "")
+    .slice(0, limit)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
 const populateApplicationById = async (applicationId) => {
   const app = await CtoApplication.findById(applicationId)
     .populate("employee", "firstName lastName position email employeeId")
@@ -62,11 +69,13 @@ const populateApplicationById = async (applicationId) => {
   return app;
 };
 
+// Added session support for transactions
 const cancelApprovalSteps = async ({
   applicationId,
   approvalIds,
   reason,
   afterLevel = 0,
+  session,
 }) => {
   await ApprovalStep.updateMany(
     {
@@ -82,10 +91,12 @@ const cancelApprovalSteps = async ({
         reviewedAt: new Date(),
       },
     },
+    { session },
   );
 };
 
-const restoreMemoHours = async ({ employeeId, memoItems }) => {
+// Added session support and made atomic
+const restoreMemoHours = async ({ employeeId, memoItems, session }) => {
   if (!memoItems?.length) return;
 
   for (const m of memoItems) {
@@ -99,6 +110,7 @@ const restoreMemoHours = async ({ employeeId, memoItems }) => {
           "employees.$.remainingHours": Number(m.appliedHours),
         },
       },
+      { session },
     );
   }
 };
@@ -160,6 +172,7 @@ const addCtoApplicationService = async ({
   inclusiveDates,
   memos,
 }) => {
+  // Input Validation & Sanitization
   if (!requestedHours || !reason || !inclusiveDates?.length) {
     throw Object.assign(
       new Error("Requested hours, reason, and inclusive dates are required."),
@@ -176,7 +189,9 @@ const addCtoApplicationService = async ({
 
   if (!finalApprovers || finalApprovers.length === 0) {
     throw Object.assign(
-      new Error("At least one approver is required (via route template or custom selection)."),
+      new Error(
+        "At least one approver is required (via route template or custom selection).",
+      ),
       { status: 400 },
     );
   }
@@ -188,12 +203,24 @@ const addCtoApplicationService = async ({
     );
   }
 
+  // Sanitize memo inputs to prevent type hijacking
+  const sanitizedMemos = memos.map((m) => {
+    const hours = Number(m.appliedHours);
+    if (isNaN(hours) || hours <= 0) {
+      throw Object.assign(
+        new Error("Applied hours must be a positive number."),
+        { status: 400 },
+      );
+    }
+    return { ...m, appliedHours: hours };
+  });
+
   const employee = await Employee.findById(userId);
   if (!employee) {
     throw Object.assign(new Error("Employee not found."), { status: 404 });
   }
 
-  const memoIds = memos.map((m) => m.memoId);
+  const memoIds = sanitizedMemos.map((m) => m.memoId);
   const credits = await CtoCredit.find({
     _id: { $in: memoIds },
     "employees.employee": employee._id,
@@ -208,154 +235,147 @@ const addCtoApplicationService = async ({
 
   let totalAppliedHours = 0;
   const memoUsage = [];
+  let populatedApp = null;
+  let newApplicationId = null;
 
-  for (const input of memos) {
-    const credit = credits.find(
-      (c) => c._id.toString() === input.memoId.toString(),
-    );
+  // Start Transaction
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    if (!credit) {
-      throw Object.assign(
-        new Error(`Credit not found for memoId ${input.memoId}`),
-        { status: 400 },
+  try {
+    for (const input of sanitizedMemos) {
+      const credit = credits.find(
+        (c) => c._id.toString() === input.memoId.toString(),
       );
+
+      // Atomic Update: Only decrement if they have enough hours at this exact microsecond
+      const result = await CtoCredit.updateOne(
+        {
+          _id: credit._id,
+          "employees.employee": employee._id,
+          "employees.remainingHours": { $gte: input.appliedHours }, // Prevents race condition
+        },
+        {
+          $inc: {
+            "employees.$.reservedHours": input.appliedHours,
+            "employees.$.remainingHours": -input.appliedHours,
+          },
+        },
+        { session },
+      );
+
+      if (result.modifiedCount === 0) {
+        throw Object.assign(
+          new Error(
+            `Insufficient remaining hours or concurrent update detected for memo ${credit.memoNo}.`,
+          ),
+          { status: 400 },
+        );
+      }
+
+      memoUsage.push({
+        memoId: credit._id,
+        uploadedMemo: (credit.uploadedMemo || "").replace(/\\/g, "/"),
+        appliedHours: input.appliedHours,
+      });
+
+      totalAppliedHours += input.appliedHours;
     }
 
-    const empCredit = credit.employees.find(
-      (e) => e.employee.toString() === employee._id.toString(),
-    );
-
-    if (!empCredit) {
-      throw Object.assign(
-        new Error(`Employee credit record not found for memo ${credit.memoNo}`),
-        { status: 400 },
-      );
-    }
-
-    const availableHours = empCredit.remainingHours || 0;
-
-    if (input.appliedHours <= 0 || input.appliedHours > availableHours) {
+    if (totalAppliedHours !== requestedHours) {
       throw Object.assign(
         new Error(
-          `Invalid applied hours for memo ${credit.memoNo}. Available: ${availableHours}`,
+          `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${requestedHours})`,
         ),
         { status: 400 },
       );
     }
 
-    empCredit.reservedHours =
-      (empCredit.reservedHours || 0) + input.appliedHours;
-    empCredit.remainingHours = empCredit.remainingHours - input.appliedHours;
-    empCredit.status = empCredit.status || "ACTIVE";
-
-    await CtoCredit.updateOne(
-      { _id: credit._id, "employees.employee": employee._id },
-      { $set: { "employees.$": empCredit } },
+    // Create Application via transaction
+    const [newApplication] = await CtoApplication.create(
+      [
+        {
+          employee: employee._id,
+          requestedHours,
+          reason,
+          inclusiveDates,
+          memo: memoUsage,
+          overallStatus: "PENDING",
+        },
+      ],
+      { session },
     );
 
-    memoUsage.push({
-      memoId: credit._id,
-      uploadedMemo: (credit.uploadedMemo || "").replace(/\\/g, "/"),
-      appliedHours: input.appliedHours,
+    newApplicationId = newApplication._id;
+
+    // Create Approval Steps via transaction
+    const approvalStepsData = finalApprovers.map((approverId, index) => ({
+      level: index + 1,
+      approver: approverId,
+      status: "PENDING",
+      ctoApplication: newApplication._id,
+    }));
+
+    const approvalSteps = await ApprovalStep.create(approvalStepsData, {
+      session,
     });
 
-    totalAppliedHours += input.appliedHours;
+    newApplication.approvals = approvalSteps.map((step) => step._id);
+    await newApplication.save({ session });
+
+    // Commit Transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    // Fetch populated data outside transaction
+    populatedApp = await populateApplicationById(newApplicationId);
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw error;
   }
 
-  if (totalAppliedHours !== requestedHours) {
-    throw Object.assign(
-      new Error(
-        `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${requestedHours})`,
-      ),
-      { status: 400 },
-    );
-  }
-
-  const newApplication = new CtoApplication({
-    employee: employee._id,
-    requestedHours,
-    reason,
-    inclusiveDates,
-    memo: memoUsage,
-    overallStatus: "PENDING",
-  });
-
-  await newApplication.save();
-
-  const approvalSteps = await Promise.all(
-    finalApprovers.map((approverId, index) =>
-      ApprovalStep.create({
-        level: index + 1,
-        approver: approverId,
-        status: "PENDING",
-        ctoApplication: newApplication._id,
-      }),
-    ),
-  );
-
-  newApplication.approvals = approvalSteps.map((step) => step._id);
-  await newApplication.save();
-
-  const populatedApp = await populateApplicationById(newApplication._id);
-
-  // Notify approvers
+  // Notifications and Emails (After successful commit)
   try {
     await NotificationService.notifyApproversOnCtoSubmission({
       approverIds: finalApprovers,
       employee,
-      ctoApplication: newApplication,
+      ctoApplication: populatedApp,
     });
-  } catch (err) {
-    console.error(
-      "Failed to create CTO submission notifications:",
-      err?.message || err,
-    );
-  }
 
-  // Optional: notify the employee too so they see a bell item after applying
-  try {
     await NotificationService.notifyEmployeeOnCtoSubmissionCreated({
       employee,
-      ctoApplication: newApplication,
+      ctoApplication: populatedApp,
     });
-  } catch (err) {
-    console.error(
-      "Failed to create employee submission notification:",
-      err?.message || err,
-    );
-  }
 
-  // Email to first approver
-  try {
-    const firstApproval = approvalSteps.find((a) => a.level === 1);
-    const approverUser = await Employee.findById(firstApproval.approver)
-      .select("firstName lastName email")
-      .lean();
+    const firstApprovalId = populatedApp.approvals.find((a) => a.level === 1)
+      ?.approver?._id;
+    if (firstApprovalId) {
+      const approverUser = await Employee.findById(firstApprovalId)
+        .select("firstName lastName email")
+        .lean();
 
-    const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
+      const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
 
-    if (approverUser?.email && enabled) {
-      const tpl = ctoApprovalEmail({
-        approverName: `${approverUser.firstName} ${approverUser.lastName}`,
-        employeeName: `${employee.firstName} ${employee.lastName}`,
-        requestedHours,
-        reason,
-        level: 1,
-        link: `${process.env.FRONTEND_URL}/app/cto-approvals/${newApplication._id}`,
-        brandName: "CTO Management System",
-      });
+      if (approverUser?.email && enabled) {
+        const tpl = ctoApprovalEmail({
+          approverName: `${approverUser.firstName} ${approverUser.lastName}`,
+          employeeName: `${employee.firstName} ${employee.lastName}`,
+          requestedHours,
+          reason,
+          level: 1,
+          link: `${process.env.FRONTEND_URL}/app/cto-approvals/${newApplicationId}`,
+          brandName: "CTO Management System",
+        });
 
-      await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
-    } else if (approverUser?.email && !enabled) {
-      console.log(
-        "[EMAIL] skipped (disabled):",
-        EMAIL_KEYS.CTO_APPROVAL,
-        "to:",
-        approverUser.email,
-      );
+        await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+      }
     }
   } catch (err) {
-    console.error("Failed to send CTO approval email:", err?.message || err);
+    console.error(
+      "Side effect (email/notification) failed:",
+      err?.message || err,
+    );
   }
 
   return populatedApp;
@@ -389,21 +409,36 @@ const cancelCtoApplicationService = async ({ userId, applicationId }) => {
     "firstName lastName email",
   );
 
-  app.overallStatus = "CANCELLED";
-  await app.save();
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-  await cancelApprovalSteps({
-    applicationId: app._id,
-    approvalIds: app.approvals || [],
-    reason: AUTO_CANCEL_REMARK_EMPLOYEE,
-    afterLevel: 0,
-  });
+  try {
+    app.overallStatus = "CANCELLED";
+    await app.save({ session });
 
-  await restoreMemoHours({
-    employeeId: app.employee,
-    memoItems: app.memo || [],
-  });
+    await cancelApprovalSteps({
+      applicationId: app._id,
+      approvalIds: app.approvals || [],
+      reason: AUTO_CANCEL_REMARK_EMPLOYEE,
+      afterLevel: 0,
+      session,
+    });
 
+    await restoreMemoHours({
+      employeeId: app.employee,
+      memoItems: app.memo || [],
+      session,
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    throw error;
+  }
+
+  // Side effects outside transaction block
   try {
     if (employee) {
       await notifyApproversOfCancellation({
@@ -443,8 +478,9 @@ const getAllCtoApplicationsService = async (
   }
 
   if (filters.search) {
+    const safeSearch = sanitizeSearch(filters.search, 100);
     query["memo.memoId.memoNo"] = {
-      $regex: filters.search,
+      $regex: safeSearch,
       $options: "i",
     };
   }
@@ -590,9 +626,10 @@ const getCtoApplicationsByEmployeeService = async (
   });
 
   if (filters.search) {
+    const safeSearch = sanitizeSearch(filters.search, 100);
     pipeline.push({
       $match: {
-        "memoDetails.memoNo": { $regex: filters.search, $options: "i" },
+        "memoDetails.memoNo": { $regex: safeSearch, $options: "i" },
       },
     });
   }

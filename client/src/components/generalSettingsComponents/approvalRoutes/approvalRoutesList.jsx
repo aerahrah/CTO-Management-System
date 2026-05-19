@@ -21,6 +21,7 @@ import {
   Zap,
   Search,
   Filter,
+  RotateCcw,
   Trash2,
   Edit2,
   FileSignature,
@@ -828,6 +829,7 @@ export default function ApprovalRoutesList() {
                     type="text"
                     placeholder="Search steps..."
                     value={searchInput}
+                    maxLength={100}
                     onChange={(e) => setSearchInput(e.target.value)}
                     className="w-full pl-8 pr-8 h-9 rounded-md text-xs outline-none transition-colors duration-200 ease-out"
                     style={{

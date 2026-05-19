@@ -424,6 +424,7 @@ const EmployeeList = ({ setIsEmployeeLoading, borderColor }) => {
               type="text"
               placeholder="Search by name, email, role…"
               value={searchTerm}
+              maxLength={100}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9 pr-8 py-2 w-full border rounded-lg text-sm outline-none transition-all
                          placeholder:text-[color:var(--app-muted)]"
