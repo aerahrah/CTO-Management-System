@@ -1,55 +1,112 @@
+// services/backup.service.js
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
+
+// --- CONSTANTS & CONFIGURATION ---
 
 const BACKUP_DIR = path.resolve(
   process.cwd(),
   process.env.CTO_BACKUP_DIR || path.join("backups", "cto"),
 );
 
-const mongoUri = process.env.MONGO_URI;
-const forcedDbName = process.env.CTO_BACKUP_DB_NAME || "";
+const MONGO_URI = process.env.MONGO_URI || "";
+const FORCED_DB_NAME = process.env.CTO_BACKUP_DB_NAME || "";
 
-const allowRestore =
+const ALLOW_RESTORE =
   String(process.env.CTO_ALLOW_RESTORE || "true").toLowerCase() === "true";
-
-const preRestoreSafetyBackup =
+const PRE_RESTORE_SAFETY_BACKUP =
   String(process.env.CTO_PRERESTORE_BACKUP || "true").toLowerCase() === "true";
 
-/* =========================
-   Helpers
-========================= */
-function ensureDirs() {
-  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+// --- HELPER FUNCTIONS ---
+
+/**
+ * Standardizes service-level errors.
+ */
+function createServiceError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
 }
 
+/**
+ * Scrubs sensitive connection strings from child process logs before throwing.
+ */
+function redactLog(text) {
+  if (!text || !MONGO_URI) return text || "";
+  // Split and join is a fast way to replace all occurrences without regex escaping issues
+  return String(text).split(MONGO_URI).join("[REDACTED_URI]");
+}
+
+/**
+ * Ensures backup directory exists with strict OS permissions (700 = owner rwx only).
+ */
+function ensureDirs() {
+  if (!fs.existsSync(BACKUP_DIR)) {
+    fs.mkdirSync(BACKUP_DIR, { recursive: true, mode: 0o700 });
+  }
+}
+
+/**
+ * Strictly sanitizes the backup ID to prevent Path Traversal (e.g., "../../etc/passwd").
+ * Rejects any character that isn't alphanumeric, an underscore, or a hyphen.
+ */
 function sanitizeId(id) {
   const clean = String(id || "").trim();
-  if (!clean) throw new Error("Backup not found");
-  if (!/^[a-zA-Z0-9._-]+$/.test(clean)) throw new Error("Invalid backup id");
+  if (!clean) throw createServiceError("Backup ID is required.", 400);
+
+  // Stripped out '.' to guarantee path traversal is impossible
+  if (!/^[a-zA-Z0-9_-]+$/.test(clean)) {
+    throw createServiceError("Invalid backup ID format.", 400);
+  }
   return clean;
 }
 
+/**
+ * Generates a collision-resistant, URL-safe backup ID.
+ */
 function makeBackupId(prefix = "cto") {
+  // Replaces colons and dots with hyphens to satisfy the strict sanitizeId regex
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const rand = crypto.randomBytes(3).toString("hex");
   return `${prefix}_${stamp}_${rand}`;
 }
 
+/**
+ * Executes OS commands safely, bypassing the shell.
+ */
 function runCmd(cmd, args) {
   return new Promise((resolve, reject) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // shell: false is CRITICAL to prevent shell injection attacks
+    const p = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+    });
 
     let out = "";
     let err = "";
     p.stdout.on("data", (d) => (out += d.toString()));
     p.stderr.on("data", (d) => (err += d.toString()));
 
-    p.on("error", reject);
+    p.on("error", (spawnError) =>
+      reject(new Error(`Failed to start process: ${spawnError.message}`)),
+    );
+
     p.on("close", (code) => {
-      if (code === 0) resolve({ out, err });
-      else reject(new Error(`${cmd} failed (code ${code}): ${err || out}`));
+      if (code === 0) {
+        resolve({ out, err });
+      } else {
+        // Redact URI from output to prevent credential leakage in logs
+        const safeOut = redactLog(out);
+        const safeErr = redactLog(err);
+        reject(
+          createServiceError(
+            `${cmd} failed (code ${code}): ${safeErr || safeOut}`,
+            500,
+          ),
+        );
+      }
     });
   });
 }
@@ -83,35 +140,32 @@ function readMeta(backupId) {
 }
 
 function writeMeta(backupId, meta) {
-  fs.writeFileSync(
-    metaFilePath(backupId),
-    JSON.stringify(meta, null, 2),
-    "utf-8",
-  );
+  const p = metaFilePath(backupId);
+  fs.writeFileSync(p, JSON.stringify(meta, null, 2), "utf-8");
+  // Restrict read/write to the owner to protect metadata
+  fs.chmodSync(p, 0o600);
 }
 
 function buildDumpArgs(outPath) {
-  if (!mongoUri) throw new Error("Server missing MONGO_URI");
+  if (!MONGO_URI)
+    throw createServiceError("Server missing MONGO_URI configuration.", 500);
 
-  const args = [`--uri=${mongoUri}`, `--archive=${outPath}`, "--gzip"];
-  if (forcedDbName) args.push(`--db=${forcedDbName}`);
+  const args = [`--uri=${MONGO_URI}`, `--archive=${outPath}`, "--gzip"];
+  if (FORCED_DB_NAME) args.push(`--db=${FORCED_DB_NAME}`);
   return args;
 }
 
 function buildRestoreArgs(inPath, mode) {
-  if (!mongoUri) throw new Error("Server missing MONGO_URI");
+  if (!MONGO_URI)
+    throw createServiceError("Server missing MONGO_URI configuration.", 500);
 
-  const args = [`--uri=${mongoUri}`, `--archive=${inPath}`, "--gzip"];
-
-  // Note: nsFrom/nsTo is typically for rename; safe to omit unless you really need it.
+  const args = [`--uri=${MONGO_URI}`, `--archive=${inPath}`, "--gzip"];
   if (mode === "replace") args.push("--drop");
-
   return args;
 }
 
-/* =========================
-   Public
-========================= */
+// --- SERVICE METHODS ---
+
 async function listBackups() {
   ensureDirs();
 
@@ -119,8 +173,8 @@ async function listBackups() {
     .readdirSync(BACKUP_DIR)
     .filter((f) => f.endsWith(".archive.gz"))
     .map((f) => {
-      const full = path.join(BACKUP_DIR, f);
-      const stat = fs.statSync(full);
+      const fullPath = path.join(BACKUP_DIR, f);
+      const stat = fs.statSync(fullPath);
 
       const backupId = f.replace(/\.archive\.gz$/, "");
       const meta = readMeta(backupId);
@@ -150,6 +204,9 @@ async function createBackup({ note = "", userId = null } = {}) {
 
   await runCmd("mongodump", buildDumpArgs(outPath));
 
+  // Lock down the database dump permissions (Read/Write for owner only)
+  fs.chmodSync(outPath, 0o600);
+
   const stat = fs.statSync(outPath);
   const checksum = await sha256File(outPath);
 
@@ -159,9 +216,9 @@ async function createBackup({ note = "", userId = null } = {}) {
     size: stat.size,
     checksum,
     createdAt: new Date().toISOString(),
-    createdBy: userId,
-    note: String(note || "").slice(0, 200),
-    dbName: forcedDbName || null,
+    createdBy: userId ? String(userId) : null,
+    note: String(note || "").slice(0, 200), // Limit note length to prevent bloat
+    dbName: FORCED_DB_NAME || null,
     downloadsCount: 0,
     lastDownloadedAt: null,
     lastDownloadedBy: null,
@@ -176,16 +233,21 @@ async function getBackupFilePath(backupIdRaw) {
   const backupId = sanitizeId(backupIdRaw);
   const filePath = backupFilePath(backupId);
 
-  if (!fs.existsSync(filePath)) throw new Error("Backup not found");
+  if (!fs.existsSync(filePath)) {
+    throw createServiceError("Backup not found.", 404);
+  }
+
   return filePath;
 }
 
 async function markBackupDownloaded(backupIdRaw, userId = null) {
   ensureDirs();
   const backupId = sanitizeId(backupIdRaw);
-
   const filePath = backupFilePath(backupId);
-  if (!fs.existsSync(filePath)) throw new Error("Backup not found");
+
+  if (!fs.existsSync(filePath)) {
+    throw createServiceError("Backup not found.", 404);
+  }
 
   const meta = readMeta(backupId) || {
     backupId,
@@ -196,7 +258,7 @@ async function markBackupDownloaded(backupIdRaw, userId = null) {
 
   meta.downloadsCount = Number(meta.downloadsCount || 0) + 1;
   meta.lastDownloadedAt = new Date().toISOString();
-  meta.lastDownloadedBy = userId;
+  meta.lastDownloadedBy = userId ? String(userId) : null;
 
   writeMeta(backupId, meta);
   return meta;
@@ -207,25 +269,33 @@ async function restoreBackupFromFile({
   mode = "replace",
   userId = null,
 } = {}) {
-  if (!allowRestore) {
-    throw new Error("Restore is disabled by server configuration.");
+  if (!ALLOW_RESTORE) {
+    throw createServiceError(
+      "Restore capabilities are disabled by server configuration.",
+      403,
+    );
   }
 
   ensureDirs();
 
   if (!filePath || !fs.existsSync(filePath)) {
-    throw new Error("Uploaded file not found on server.");
+    throw createServiceError("Uploaded restore file not found on server.", 404);
+  }
+
+  // Double check that it's actually a file, not a directory bypass
+  if (!fs.statSync(filePath).isFile()) {
+    throw createServiceError("Invalid file provided for restore.", 400);
   }
 
   const normalizedMode = mode === "merge" ? "merge" : "replace";
-
   let preRestoreBackupId = null;
 
-  if (preRestoreSafetyBackup) {
+  if (PRE_RESTORE_SAFETY_BACKUP) {
     preRestoreBackupId = makeBackupId("cto_prerestore");
     const prePath = backupFilePath(preRestoreBackupId);
 
     await runCmd("mongodump", buildDumpArgs(prePath));
+    fs.chmodSync(prePath, 0o600);
 
     const stat = fs.statSync(prePath);
     const checksum = await sha256File(prePath);
@@ -236,9 +306,9 @@ async function restoreBackupFromFile({
       size: stat.size,
       checksum,
       createdAt: new Date().toISOString(),
-      createdBy: userId,
-      note: "Auto backup before restore",
-      dbName: forcedDbName || null,
+      createdBy: userId ? String(userId) : null,
+      note: "Auto backup before restore execution",
+      dbName: FORCED_DB_NAME || null,
       downloadsCount: 0,
       lastDownloadedAt: null,
       lastDownloadedBy: null,
@@ -247,18 +317,26 @@ async function restoreBackupFromFile({
     writeMeta(preRestoreBackupId, meta);
   }
 
+  // Execute restore
   await runCmd("mongorestore", buildRestoreArgs(filePath, normalizedMode));
 
-  // cleanup uploaded restore file only
+  // Secure cleanup of the temporary uploaded file
   try {
-    fs.unlinkSync(filePath);
-  } catch {}
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (cleanupError) {
+    console.error(
+      `[WARN] Failed to delete temporary restore file at ${filePath}:`,
+      cleanupError,
+    );
+  }
 
   return {
     message:
       normalizedMode === "replace"
-        ? "Restore completed (replace mode)."
-        : "Restore completed (merge mode).",
+        ? "Restore completed successfully (replace mode)."
+        : "Restore completed successfully (merge mode).",
     mode: normalizedMode,
     preRestoreBackupId,
   };
@@ -272,28 +350,37 @@ async function deleteBackup({ backupId: backupIdRaw, userId = null } = {}) {
   const metaPath = metaFilePath(backupId);
 
   if (!fs.existsSync(filePath) && !fs.existsSync(metaPath)) {
-    throw new Error("Backup not found");
+    throw createServiceError("Backup not found.", 404);
   }
 
   let deletedArchive = false;
   let deletedMeta = false;
 
+  // Use try/catch blocks for discrete file deletions to avoid partial failure stalls
   if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-    deletedArchive = true;
+    try {
+      fs.unlinkSync(filePath);
+      deletedArchive = true;
+    } catch (e) {
+      console.error(`Failed to delete archive ${filePath}:`, e);
+    }
   }
 
   if (fs.existsSync(metaPath)) {
-    fs.unlinkSync(metaPath);
-    deletedMeta = true;
+    try {
+      fs.unlinkSync(metaPath);
+      deletedMeta = true;
+    } catch (e) {
+      console.error(`Failed to delete metadata ${metaPath}:`, e);
+    }
   }
 
   return {
-    message: "Backup deleted",
+    message: "Backup processing completed.",
     backupId,
     deletedArchive,
     deletedMeta,
-    deletedBy: userId,
+    deletedBy: userId ? String(userId) : null,
   };
 }
 

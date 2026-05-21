@@ -1,11 +1,31 @@
+// services/notification.service.js
 const mongoose = require("mongoose");
 const Notification = require("../models/notificationsModel");
 
-const ALLOWED_PAGE_SIZES = [25, 50, 75, 100];
+// Freeze arrays to prevent accidental mutation or prototype pollution
+const ALLOWED_PAGE_SIZES = Object.freeze([25, 50, 75, 100]);
 const DEFAULT_PAGE_SIZE = 25;
+
+// --- HELPER FUNCTIONS ---
+
+function createServiceError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function assertObjectId(id, fieldName = "ID") {
+  if (!mongoose.isValidObjectId(id)) {
+    throw createServiceError(`Invalid ${fieldName} format.`, 400);
+  }
+}
+
+// --- SERVICE CLASS ---
 
 class NotificationService {
   static async createNotification(payload) {
+    // Note: Ensure the calling controller sanitizes the payload
+    // to prevent mass-assignment vulnerabilities.
     return Notification.create(payload);
   }
 
@@ -13,7 +33,6 @@ class NotificationService {
     if (!Array.isArray(notifications) || notifications.length === 0) {
       return [];
     }
-
     return Notification.insertMany(notifications);
   }
 
@@ -31,13 +50,10 @@ class NotificationService {
   }
 
   static async getUserNotifications(recipientId, options = {}) {
+    assertObjectId(recipientId, "Recipient ID");
+
     const { page, limit, skip } = this.normalizePagination(options);
-
-    const recipientObjectId = new mongoose.Types.ObjectId(recipientId);
-
-    const filter = {
-      recipient: recipientObjectId,
-    };
+    const filter = { recipient: recipientId };
 
     if (typeof options.isRead !== "undefined") {
       filter.isRead = options.isRead === "true" || options.isRead === true;
@@ -50,13 +66,14 @@ class NotificationService {
     const [notifications, total, unreadCount] = await Promise.all([
       Notification.find(filter)
         .populate("actor", "firstName lastName username role")
+        .select("-__v") // Exclude internal version key
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean(),
       Notification.countDocuments(filter),
       Notification.countDocuments({
-        recipient: recipientObjectId,
+        recipient: recipientId,
         isRead: false,
       }),
     ]);
@@ -80,13 +97,18 @@ class NotificationService {
   }
 
   static async getUnreadCount(recipientId) {
+    assertObjectId(recipientId, "Recipient ID");
+
     return Notification.countDocuments({
-      recipient: new mongoose.Types.ObjectId(recipientId),
+      recipient: recipientId,
       isRead: false,
     });
   }
 
   static async markAsRead(notificationId, recipientId) {
+    assertObjectId(notificationId, "Notification ID");
+    assertObjectId(recipientId, "Recipient ID");
+
     const notification = await Notification.findOneAndUpdate(
       {
         _id: notificationId,
@@ -98,17 +120,21 @@ class NotificationService {
           readAt: new Date(),
         },
       },
-      { new: true },
-    );
+      { new: true, runValidators: true }, // Added runValidators
+    )
+      .select("-__v")
+      .lean();
 
     if (!notification) {
-      throw new Error("Notification not found.");
+      throw createServiceError("Notification not found.", 404);
     }
 
     return notification;
   }
 
   static async markAllAsRead(recipientId) {
+    assertObjectId(recipientId, "Recipient ID");
+
     return Notification.updateMany(
       {
         recipient: recipientId,
@@ -120,17 +146,23 @@ class NotificationService {
           readAt: new Date(),
         },
       },
+      { runValidators: true }, // Added runValidators
     );
   }
 
   static async deleteNotification(notificationId, recipientId) {
+    assertObjectId(notificationId, "Notification ID");
+    assertObjectId(recipientId, "Recipient ID");
+
     const deleted = await Notification.findOneAndDelete({
       _id: notificationId,
       recipient: recipientId,
-    });
+    })
+      .select("_id")
+      .lean(); // Only return ID to save memory
 
     if (!deleted) {
-      throw new Error("Notification not found.");
+      throw createServiceError("Notification not found.", 404);
     }
 
     return deleted;
@@ -148,7 +180,11 @@ class NotificationService {
     if (!approverIds.length) return [];
 
     const fullName = `${employee.firstName} ${employee.lastName}`;
-    const uniqueApproverIds = [...new Set(approverIds.map(String))];
+
+    // Filter for valid ObjectIds and remove duplicates
+    const uniqueApproverIds = [...new Set(approverIds.map(String))].filter(
+      (id) => mongoose.isValidObjectId(id),
+    );
 
     const notifications = uniqueApproverIds.map((approverId) => ({
       recipient: approverId,

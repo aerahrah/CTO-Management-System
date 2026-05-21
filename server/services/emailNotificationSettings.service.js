@@ -1,14 +1,35 @@
 // services/emailNotificationSettings.service.js
+const mongoose = require("mongoose");
 const EmailNotificationSetting = require("../models/emailNotificationSettingsModel");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 
+// --- CONSTANTS & IMMUTABILITY ---
+
+// Freeze allowed keys to prevent accidental mutation or prototype pollution
+const ALL_KEYS = Object.freeze(Object.values(EMAIL_KEYS));
+const VALID_KEYS = Object.freeze(new Set(ALL_KEYS));
+
+// --- HELPER FUNCTIONS ---
+
+/**
+ * Standardizes service-level errors with HTTP status codes.
+ */
+function createServiceError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+/**
+ * Safely parses various input types into a strict boolean.
+ */
 function toBool(v, fallback = undefined) {
   if (typeof v === "boolean") return v;
 
   if (typeof v === "string") {
     const s = v.trim().toLowerCase();
-    if (s === "true") return true;
-    if (s === "false") return false;
+    if (s === "true" || s === "1") return true;
+    if (s === "false" || s === "0") return false;
   }
 
   if (typeof v === "number") {
@@ -19,49 +40,69 @@ function toBool(v, fallback = undefined) {
   return fallback;
 }
 
-const ALL_KEYS = Object.values(EMAIL_KEYS);
-const VALID_KEYS = new Set(ALL_KEYS);
-
+/**
+ * Generates the default flags object (all notifications enabled by default).
+ */
 function defaultFlags() {
   return Object.fromEntries(ALL_KEYS.map((k) => [k, true]));
 }
 
-async function getOrCreateEmailNotifDoc() {
-  return await EmailNotificationSetting.findOneAndUpdate(
-    {},
-    { $setOnInsert: { flags: defaultFlags() } },
-    { new: true, upsert: true },
-  );
-}
-
-function setUpdatedBy(doc, userId) {
-  try {
-    if (doc?.schema?.path?.("updatedBy")) {
-      doc.updatedBy = userId || null;
-    } else if (userId != null) {
-      doc.updatedBy = userId;
-    }
-  } catch (_) {
-    // ignore
-  }
-}
-
+/**
+ * Normalizes Mongoose Maps/Objects into a standard, prototype-safe JS object.
+ */
 function flagsToObject(flags) {
   if (!flags) return {};
   if (flags instanceof Map) return Object.fromEntries(flags.entries());
-  if (typeof flags === "object") return { ...flags };
+
+  // Strict typeof check excluding arrays and nulls
+  if (typeof flags === "object" && !Array.isArray(flags)) {
+    return flags;
+  }
+
   return {};
 }
 
+/**
+ * Merges saved database flags with the default schema.
+ * Strictly enforces that only known, valid keys are returned to the application.
+ */
 function normalize(doc) {
   const defaults = defaultFlags();
   const saved = flagsToObject(doc?.flags);
-  return { ...defaults, ...saved };
+
+  // Use Object.create(null) to prevent prototype pollution
+  const result = Object.create(null);
+
+  for (const key of ALL_KEYS) {
+    // If the key exists in DB, strictly parse it to boolean. Otherwise use default.
+    if (saved[key] !== undefined) {
+      result[key] = toBool(saved[key], defaults[key]);
+    } else {
+      result[key] = defaults[key];
+    }
+  }
+
+  return result;
 }
 
-/* =========================
-   EMAIL NOTIF SETTINGS
-   ========================= */
+/**
+ * Ensures a singleton settings document exists in the database.
+ * Uses .lean() for faster execution and sort() for singleton consistency.
+ */
+async function getOrCreateEmailNotifDoc() {
+  return EmailNotificationSetting.findOneAndUpdate(
+    {},
+    { $setOnInsert: { flags: defaultFlags() } },
+    {
+      new: true,
+      upsert: true,
+      lean: true,
+      sort: { _id: 1 }, // Consistency lock: always target the oldest document if >1 exists
+    },
+  );
+}
+
+// --- SERVICE METHODS ---
 
 async function getEmailNotificationSettings() {
   const doc = await getOrCreateEmailNotifDoc();
@@ -73,34 +114,56 @@ async function updateEmailNotificationSetting(
   payload = {},
   userId = null,
 ) {
-  if (!VALID_KEYS.has(key)) {
-    throw new Error("Invalid email notification key");
+  // 1. Strict Input Validation
+  if (!key || typeof key !== "string" || !VALID_KEYS.has(key)) {
+    throw createServiceError("Invalid email notification key.", 400);
   }
-
-  const doc = await getOrCreateEmailNotifDoc();
-  const before = normalize(doc);
 
   if (payload.enabled === undefined) {
-    throw new Error("enabled is required");
+    throw createServiceError("The 'enabled' field is required.", 400);
   }
 
-  const enabled = toBool(payload.enabled, undefined);
+  const enabled = toBool(payload.enabled);
   if (enabled === undefined) {
-    throw new Error("enabled must be a boolean");
+    throw createServiceError(
+      "The 'enabled' field must be a valid boolean.",
+      400,
+    );
   }
 
-  if (!doc.flags) doc.flags = defaultFlags();
+  // 2. Fetch 'before' state safely
+  const currentDoc = await getOrCreateEmailNotifDoc();
+  const before = normalize(currentDoc);
 
-  if (doc.flags instanceof Map) {
-    doc.flags.set(key, enabled);
-  } else {
-    doc.flags = { ...flagsToObject(doc.flags), [key]: enabled };
+  // 3. Build Atomic Update Query
+  const updatePayload = {
+    $set: {
+      [`flags.${key}`]: enabled,
+    },
+  };
+
+  // 4. Safely validate and append userId if provided
+  if (userId) {
+    if (!mongoose.isValidObjectId(userId)) {
+      throw createServiceError("Invalid User ID format.", 400);
+    }
+    updatePayload.$set.updatedBy = userId;
   }
 
-  setUpdatedBy(doc, userId);
-  await doc.save();
+  // 5. Execute Atomic Update
+  const updatedDoc = await EmailNotificationSetting.findOneAndUpdate(
+    {},
+    updatePayload,
+    {
+      new: true,
+      runValidators: true,
+      lean: true,
+      sort: { _id: 1 },
+    },
+  );
 
-  const after = normalize(doc);
+  const after = normalize(updatedDoc);
+
   return { before, after };
 }
 

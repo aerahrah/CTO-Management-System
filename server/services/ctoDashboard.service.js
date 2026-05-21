@@ -5,18 +5,46 @@ const CtoApplication = require("../models/ctoApplicationModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const ApprovalStep = require("../models/approvalStepModel");
 
+// --- CONSTANTS ---
+const CTO_STATUS = Object.freeze({
+  APPROVED: "APPROVED",
+  PENDING: "PENDING",
+  REJECTED: "REJECTED",
+  CANCELLED: "CANCELLED",
+  CREDITED: "CREDITED",
+  ROLLEDBACK: "ROLLEDBACK",
+});
+
+// --- HELPER FUNCTIONS ---
+
+function createServiceError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+function assertObjectId(id, fieldName = "ID") {
+  if (!id || !mongoose.isValidObjectId(id)) {
+    throw createServiceError(`Invalid ${fieldName} format.`, 400);
+  }
+}
+
+// --- INTERNAL AGGREGATIONS ---
+
 async function sumApprovedHours(employeeId) {
+  const employeeObjId = new mongoose.Types.ObjectId(employeeId);
+
   const [agg] = await CtoApplication.aggregate([
-    { $match: { employee: employeeId, overallStatus: "APPROVED" } },
+    { $match: { employee: employeeObjId, overallStatus: CTO_STATUS.APPROVED } },
     { $group: { _id: null, usedHours: { $sum: "$requestedHours" } } },
   ]);
+
   return agg?.usedHours || 0;
 }
 
 async function getEmployeeCreditTotals(employeeId) {
   try {
-    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId))
-      return null;
+    if (!employeeId || !mongoose.isValidObjectId(employeeId)) return null;
 
     const employeeObjId = new mongoose.Types.ObjectId(employeeId);
 
@@ -36,12 +64,10 @@ async function getEmployeeCreditTotals(employeeId) {
       {
         $group: {
           _id: null,
-
-          // ✅ exclude rolled back from these totals (safe + consistent)
           totalUsedHours: {
             $sum: {
               $cond: [
-                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                { $ne: ["$_creditStatus", CTO_STATUS.ROLLEDBACK] },
                 "$_usedHours",
                 0,
               ],
@@ -50,29 +76,25 @@ async function getEmployeeCreditTotals(employeeId) {
           totalReservedHours: {
             $sum: {
               $cond: [
-                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                { $ne: ["$_creditStatus", CTO_STATUS.ROLLEDBACK] },
                 "$_reservedHours",
                 0,
               ],
             },
           },
-
-          // ✅ already excluded rolled back (kept same behavior)
           totalRemainingHours: {
             $sum: {
               $cond: [
-                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                { $ne: ["$_creditStatus", CTO_STATUS.ROLLEDBACK] },
                 "$_remainingHours",
                 0,
               ],
             },
           },
-
-          // ✅ FIX: exclude rolled back from credited total
           totalCreditedHours: {
             $sum: {
               $cond: [
-                { $ne: ["$_creditStatus", "ROLLEDBACK"] },
+                { $ne: ["$_creditStatus", CTO_STATUS.ROLLEDBACK] },
                 "$_creditedHours",
                 0,
               ],
@@ -91,268 +113,280 @@ async function getEmployeeCreditTotals(employeeId) {
       totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0,
     };
   } catch (e) {
+    // Fail gracefully on aggregation errors to preserve the dashboard load
+    console.error("[Dashboard] Error fetching credit totals:", e);
     return null;
   }
 }
 
-const ctoDashboardService = {
-  getPersonalCtoSummary: async (employeeId) => {
-    const employee = await Employee.findById(employeeId)
-      .select("balances")
-      .lean();
+// --- SERVICE METHODS ---
 
-    if (!employee) {
-      return {
-        totalCredit: 0,
-        balance: 0,
-        used: 0,
-        reserved: 0,
-        pending: 0,
-        approved: 0,
-        rejected: 0,
-        cancelled: 0,
-        totalRequests: 0,
-        recentRequests: [],
-      };
-    }
+async function getPersonalCtoSummary(employeeId) {
+  assertObjectId(employeeId, "Employee ID");
 
-    const [
-      approvedCount,
-      pendingCount,
-      rejectedCount,
-      cancelledCount,
-      totalCount,
-      usedHours,
-      creditTotals,
-    ] = await Promise.all([
-      CtoApplication.countDocuments({
-        employee: employeeId,
-        overallStatus: "APPROVED",
-      }),
-      CtoApplication.countDocuments({
-        employee: employeeId,
-        overallStatus: "PENDING",
-      }),
-      CtoApplication.countDocuments({
-        employee: employeeId,
-        overallStatus: "REJECTED",
-      }),
-      CtoApplication.countDocuments({
-        employee: employeeId,
-        overallStatus: "CANCELLED",
-      }),
-      CtoApplication.countDocuments({ employee: employeeId }),
-      sumApprovedHours(employeeId),
-      getEmployeeCreditTotals(employeeId),
-    ]);
+  const employee = await Employee.findById(employeeId)
+    .select("balances")
+    .lean();
 
-    const recentRequests = await CtoApplication.find({ employee: employeeId })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select("requestedHours overallStatus inclusiveDates reason createdAt")
-      .lean();
-
-    const totals = creditTotals || {
-      totalUsedHours: 0,
-      totalReservedHours: 0,
-      totalRemainingHours: 0,
-      totalCreditedHours: 0,
-    };
-
+  if (!employee) {
     return {
-      // ✅ now excludes rolled back credits
-      totalCredit: totals.totalCreditedHours,
-
-      balance: creditTotals
-        ? totals.totalRemainingHours
-        : employee.balances?.ctoHours || 0,
-
-      used: creditTotals ? totals.totalUsedHours : usedHours,
-      reserved: totals.totalReservedHours,
-
-      pending: pendingCount,
-      approved: approvedCount,
-      rejected: rejectedCount,
-      cancelled: cancelledCount,
-      totalRequests: totalCount,
-      recentRequests,
-      wellnessBalance: employee.balances?.wellnessDays || 0,
+      totalCredit: 0,
+      balance: 0,
+      used: 0,
+      reserved: 0,
+      pending: 0,
+      approved: 0,
+      rejected: 0,
+      cancelled: 0,
+      totalRequests: 0,
+      recentRequests: [],
+      wellnessBalance: 0,
     };
-  },
+  }
 
-  getEmployeeSummary: async (employeeId) => {
-    const myCtoSummary =
-      await ctoDashboardService.getPersonalCtoSummary(employeeId);
-    return {
-      myCtoSummary,
-    };
-  },
+  const [
+    approvedCount,
+    pendingCount,
+    rejectedCount,
+    cancelledCount,
+    totalCount,
+    usedHours,
+    creditTotals,
+  ] = await Promise.all([
+    CtoApplication.countDocuments({
+      employee: employeeId,
+      overallStatus: CTO_STATUS.APPROVED,
+    }),
+    CtoApplication.countDocuments({
+      employee: employeeId,
+      overallStatus: CTO_STATUS.PENDING,
+    }),
+    CtoApplication.countDocuments({
+      employee: employeeId,
+      overallStatus: CTO_STATUS.REJECTED,
+    }),
+    CtoApplication.countDocuments({
+      employee: employeeId,
+      overallStatus: CTO_STATUS.CANCELLED,
+    }),
+    CtoApplication.countDocuments({ employee: employeeId }),
+    sumApprovedHours(employeeId),
+    getEmployeeCreditTotals(employeeId),
+  ]);
 
-  getSupervisorSummary: async (employeeId) => {
-    const myCtoSummary =
-      await ctoDashboardService.getPersonalCtoSummary(employeeId);
+  const recentRequests = await CtoApplication.find({ employee: employeeId })
+    .sort({ createdAt: -1 })
+    .limit(5)
+    .select("requestedHours overallStatus inclusiveDates reason createdAt")
+    .lean();
 
-    // Fetch only CTO applications routed to this specific approver
-    const approvalSteps = await ApprovalStep.find({ approver: employeeId })
-      .populate({
-        path: "ctoApplication",
-        populate: [
-          { path: "employee", select: "firstName lastName" },
-          { path: "approvals", populate: { path: "approver", select: "_id" } },
-        ],
-      })
-      .sort({ createdAt: -1 });
+  const totals = creditTotals || {
+    totalUsedHours: 0,
+    totalReservedHours: 0,
+    totalRemainingHours: 0,
+    totalCreditedHours: 0,
+  };
 
-    const uniqueAppsMap = new Map();
+  return {
+    totalCredit: totals.totalCreditedHours,
+    balance: creditTotals
+      ? totals.totalRemainingHours
+      : employee.balances?.ctoHours || 0,
+    used: creditTotals ? totals.totalUsedHours : usedHours,
+    reserved: totals.totalReservedHours,
+    pending: pendingCount,
+    approved: approvedCount,
+    rejected: rejectedCount,
+    cancelled: cancelledCount,
+    totalRequests: totalCount,
+    recentRequests,
+    wellnessBalance: employee.balances?.wellnessDays || 0,
+  };
+}
 
-    // Ensure we process each unique application only once
-    // and grab the exact step representing this approver's action
-    for (const step of approvalSteps) {
-      const app = step.ctoApplication;
-      if (!app) continue;
-      uniqueAppsMap.set(app._id.toString(), { app, step });
+async function getEmployeeSummary(employeeId) {
+  assertObjectId(employeeId, "Employee ID");
+  const myCtoSummary = await getPersonalCtoSummary(employeeId);
+  return { myCtoSummary };
+}
+
+async function getSupervisorSummary(employeeId) {
+  assertObjectId(employeeId, "Employee ID");
+  const myCtoSummary = await getPersonalCtoSummary(employeeId);
+
+  // Fetch only CTO applications routed to this specific approver
+  // Added .lean() to prevent memory bloat since we iterate over this data
+  const approvalSteps = await ApprovalStep.find({ approver: employeeId })
+    .populate({
+      path: "ctoApplication",
+      select: "-__v",
+      populate: [
+        { path: "employee", select: "firstName lastName" },
+        { path: "approvals", populate: { path: "approver", select: "_id" } },
+      ],
+    })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const uniqueAppsMap = new Map();
+
+  for (const step of approvalSteps) {
+    const app = step.ctoApplication;
+    if (!app) continue;
+    uniqueAppsMap.set(String(app._id), { app, step });
+  }
+
+  let totalApproverRequests = 0;
+  let totalApproved = 0;
+  let totalPending = 0;
+  let totalRejected = 0;
+  let totalCancelled = 0;
+
+  const pendingApplicationsMap = new Map();
+
+  for (const { app, step } of uniqueAppsMap.values()) {
+    totalApproverRequests++;
+
+    const myStatus = String(step.status || "").toUpperCase();
+    const overallStatus = String(app.overallStatus || "").toUpperCase();
+
+    if (myStatus === CTO_STATUS.APPROVED) totalApproved++;
+    else if (myStatus === CTO_STATUS.REJECTED) totalRejected++;
+    else if (myStatus === CTO_STATUS.PENDING) totalPending++;
+    else if (myStatus === CTO_STATUS.CANCELLED) totalCancelled++;
+
+    if (!Array.isArray(app.approvals) || app.approvals.length === 0) continue;
+    if (
+      overallStatus === CTO_STATUS.REJECTED ||
+      overallStatus === CTO_STATUS.CANCELLED
+    )
+      continue;
+
+    const steps = app.approvals;
+    const pendingStep = steps.find((s) => s.status === CTO_STATUS.PENDING);
+
+    const isTheirTurn =
+      pendingStep?.approver?._id &&
+      String(pendingStep.approver._id) === String(employeeId);
+
+    if (myStatus === CTO_STATUS.PENDING && isTheirTurn) {
+      pendingApplicationsMap.set(String(app._id), app);
     }
+  }
 
-    let totalApproverRequests = 0;
-    let totalApproved = 0;
-    let totalPending = 0;
-    let totalRejected = 0;
-    let totalCancelled = 0; // ✅ Added Cancelled Tally
+  const allPendingRequests = Array.from(pendingApplicationsMap.values()).map(
+    (app) => ({
+      id: app._id,
+      employeeId: app.employee._id,
+      employeeName: `${app.employee.firstName} ${app.employee.lastName}`,
+      requestedHours: app.requestedHours,
+      inclusiveDates:
+        app.inclusiveDates ||
+        (app.startDate ? [app.startDate, app.endDate] : []),
+      reason: app.reason,
+      createdAt: app.createdAt,
+    }),
+  );
 
-    const pendingApplicationsMap = new Map();
+  const recentPendingRequests = allPendingRequests.slice(0, 5);
 
-    for (const { app, step } of uniqueAppsMap.values()) {
-      totalApproverRequests++;
+  return {
+    myCtoSummary,
+    teamPendingApprovals: allPendingRequests.length,
+    pendingRequests: recentPendingRequests,
+    approverStats: {
+      all: totalApproverRequests,
+      pending: totalPending,
+      approved: totalApproved,
+      rejected: totalRejected,
+      cancelled: totalCancelled,
+    },
+  };
+}
 
-      // Tally stats based on the APPROVER'S personal step status
-      const myStatus = String(step.status || "").toUpperCase();
-      const overallStatus = String(app.overallStatus || "").toUpperCase();
+async function getHrSummary(hrId) {
+  assertObjectId(hrId, "HR ID");
+  const myCtoSummary = await getPersonalCtoSummary(hrId);
 
-      if (myStatus === "APPROVED") totalApproved++;
-      else if (myStatus === "REJECTED") totalRejected++;
-      else if (myStatus === "PENDING") totalPending++;
-      else if (myStatus === "CANCELLED") totalCancelled++; // ✅ Count Cancelled steps
-
-      // Evaluate logic for actionable queue (Is it currently my turn?)
-      if (!Array.isArray(app.approvals) || app.approvals.length === 0) continue;
-      if (overallStatus === "REJECTED" || overallStatus === "CANCELLED")
-        continue;
-
-      const steps = app.approvals;
-      const pendingStep = steps.find((s) => s.status === "PENDING");
-
-      const isTheirTurn =
-        pendingStep?.approver?._id?.toString() === employeeId.toString();
-
-      if (myStatus === "PENDING" && isTheirTurn) {
-        pendingApplicationsMap.set(app._id.toString(), app);
-      }
-    }
-
-    const allPendingRequests = Array.from(pendingApplicationsMap.values()).map(
-      (app) => ({
-        id: app._id,
-        employeeId: app.employee._id,
-        employeeName: `${app.employee.firstName} ${app.employee.lastName}`,
-        requestedHours: app.requestedHours,
-        inclusiveDates:
-          app.inclusiveDates ||
-          (app.startDate ? [app.startDate, app.endDate] : []),
-        reason: app.reason,
-        createdAt: app.createdAt,
-      }),
-    );
-
-    const recentPendingRequests = allPendingRequests.slice(0, 5);
-
-    return {
-      myCtoSummary,
-      teamPendingApprovals: allPendingRequests.length,
-      pendingRequests: recentPendingRequests,
-      approverStats: {
-        all: totalApproverRequests,
-        pending: totalPending,
-        approved: totalApproved,
-        rejected: totalRejected,
-        cancelled: totalCancelled, // ✅ Return cancelled count
-      },
-    };
-  },
-
-  getHrSummary: async (hrId) => {
-    const myCtoSummary = await ctoDashboardService.getPersonalCtoSummary(hrId);
-
-    const recentCredits = await CtoCredit.find()
+  const [
+    recentCredits,
+    totalCreditedCount,
+    totalRolledBackCount,
+    totalPendingRequests,
+  ] = await Promise.all([
+    CtoCredit.find()
       .sort({ createdAt: -1 })
       .limit(5)
       .select(
         "memoNo dateApproved status duration employees creditedBy createdAt",
       )
       .populate("employees.employee", "firstName lastName position")
-      .lean();
+      .lean(),
+    CtoCredit.countDocuments({ status: CTO_STATUS.CREDITED }),
+    CtoCredit.countDocuments({ status: CTO_STATUS.ROLLEDBACK }),
+    CtoApplication.countDocuments({ overallStatus: CTO_STATUS.PENDING }),
+  ]);
 
-    const [totalCreditedCount, totalRolledBackCount, totalPendingRequests] =
-      await Promise.all([
-        CtoCredit.countDocuments({ status: "CREDITED" }),
-        CtoCredit.countDocuments({ status: "ROLLEDBACK" }),
-        CtoApplication.countDocuments({ overallStatus: "PENDING" }),
-      ]);
+  return {
+    myCtoSummary,
+    recentCredits,
+    totalCreditedCount,
+    totalRolledBackCount,
+    totalPendingRequests,
+  };
+}
 
-    return {
-      myCtoSummary,
-      recentCredits,
-      totalCreditedCount,
-      totalRolledBackCount,
-      totalPendingRequests,
-    };
-  },
+async function getAdminSummary(adminId) {
+  assertObjectId(adminId, "Admin ID");
+  const hrData = await getHrSummary(adminId);
 
-  getAdminSummary: async (adminId) => {
-    const hrData = await ctoDashboardService.getHrSummary(adminId);
-
-    const [totalRequests, approvedRequests, rejectedRequests] =
-      await Promise.all([
-        CtoApplication.countDocuments(),
-        CtoApplication.countDocuments({ overallStatus: "APPROVED" }),
-        CtoApplication.countDocuments({ overallStatus: "REJECTED" }),
-      ]);
-
-    const [creditAgg] = await CtoCredit.aggregate([
-      { $unwind: "$employees" },
-      {
-        $group: {
-          _id: null,
-          totalCredited: {
-            $sum: {
-              $cond: [
-                { $eq: ["$status", "CREDITED"] },
-                "$employees.creditedHours",
-                0,
-              ],
+  const [totalRequests, approvedRequests, rejectedRequests, creditAgg] =
+    await Promise.all([
+      CtoApplication.countDocuments(),
+      CtoApplication.countDocuments({ overallStatus: CTO_STATUS.APPROVED }),
+      CtoApplication.countDocuments({ overallStatus: CTO_STATUS.REJECTED }),
+      CtoCredit.aggregate([
+        { $unwind: "$employees" },
+        {
+          $group: {
+            _id: null,
+            totalCredited: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", CTO_STATUS.CREDITED] },
+                  "$employees.creditedHours",
+                  0,
+                ],
+              },
             },
-          },
-          totalRolledBack: {
-            $sum: {
-              $cond: [
-                { $eq: ["$status", "ROLLEDBACK"] },
-                "$employees.creditedHours",
-                0,
-              ],
+            totalRolledBack: {
+              $sum: {
+                $cond: [
+                  { $eq: ["$status", CTO_STATUS.ROLLEDBACK] },
+                  "$employees.creditedHours",
+                  0,
+                ],
+              },
             },
           },
         },
-      },
+      ]),
     ]);
 
-    return {
-      ...hrData,
-      totalRequests,
-      approvedRequests,
-      rejectedRequests,
-      totalCredited: creditAgg?.totalCredited || 0,
-      rolledBack: creditAgg?.totalRolledBack || 0,
-    };
-  },
-};
+  return {
+    ...hrData,
+    totalRequests,
+    approvedRequests,
+    rejectedRequests,
+    totalCredited: creditAgg[0]?.totalCredited || 0,
+    rolledBack: creditAgg[0]?.totalRolledBack || 0,
+  };
+}
 
-module.exports = ctoDashboardService;
+module.exports = {
+  getPersonalCtoSummary,
+  getEmployeeSummary,
+  getSupervisorSummary,
+  getHrSummary,
+  getAdminSummary,
+};

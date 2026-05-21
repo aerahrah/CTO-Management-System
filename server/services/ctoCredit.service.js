@@ -1,51 +1,76 @@
+// services/ctoCredit.service.js
 const mongoose = require("mongoose");
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
 const NotificationService = require("./notificationService");
 
-// ✅ NEW: email sender + templates
 const sendEmail = require("../utils/sendEmail");
 const {
   ctoCreditAddedEmail,
   ctoCreditRolledBackEmail,
 } = require("../utils/emailTemplates");
 
-// ✅ NEW: email notification toggles (flags Map doc)
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 
-/* =========================
-   Helpers
-========================= */
-function httpError(message, statusCode = 400) {
+// --- CONSTANTS & IMMUTABILITY ---
+const CTO_STATUS = Object.freeze({
+  ACTIVE: "ACTIVE",
+  CREDITED: "CREDITED",
+  ROLLEDBACK: "ROLLEDBACK",
+  EXHAUSTED: "EXHAUSTED",
+});
+
+const BRAND_NAME = "CTO Management System";
+
+// --- HELPER FUNCTIONS ---
+
+function createServiceError(message, statusCode = 400) {
   const err = new Error(message);
   err.statusCode = statusCode;
   return err;
 }
 
-function assertObjectId(id, label = "id") {
-  if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-    throw httpError(`Invalid ${label}`, 400);
+function assertObjectId(id, label = "ID") {
+  if (!mongoose.isValidObjectId(id)) {
+    throw createServiceError(`Invalid ${label} format.`, 400);
   }
 }
 
-// ✅ REPLACED: Basic escapeRegExp with length-limited sanitizeSearch
+/**
+ * Sanitizes input strings by removing null bytes and escaping regex characters.
+ * Limits length to prevent ReDoS (Regular Expression Denial of Service).
+ */
 function sanitizeSearch(str, limit = 100) {
   return String(str || "")
+    .replace(/\0/g, "") // Prevent Null Byte Injection
     .slice(0, limit)
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function toHours(duration) {
-  const h = Number(duration?.hours || 0);
-  const m = Number(duration?.minutes || 0);
+/**
+ * Safely strips out null bytes from standard string inputs like file paths or memos.
+ */
+function sanitizeString(str) {
+  return String(str || "")
+    .replace(/\0/g, "")
+    .trim();
+}
+
+/**
+ * Strictly parses duration to prevent NoSQL injection via objects.
+ */
+function toHours(duration = {}) {
+  // Explicitly cast to numbers, rejecting injected MongoDB operator objects
+  const h = Number(duration.hours || 0);
+  const m = Number(duration.minutes || 0);
+
   if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) {
-    throw httpError("Invalid duration", 400);
+    throw createServiceError("Invalid duration provided.", 400);
   }
   return h + m / 60;
 }
 
-// ✅ Optional: fail-safe wrapper so credit ops won't fail if email fails
 async function safeSendEmail(to, subject, html) {
   try {
     await sendEmail(to, subject, html);
@@ -54,8 +79,6 @@ async function safeSendEmail(to, subject, html) {
       to,
       subject,
       message: e?.message,
-      code: e?.code,
-      response: e?.response,
     });
   }
 }
@@ -64,9 +87,8 @@ async function canSend(key) {
   return await isEmailEnabled(key);
 }
 
-/* =========================
-   Services
-========================= */
+// --- SERVICE METHODS ---
+
 async function addCredit({
   employees,
   duration,
@@ -76,22 +98,31 @@ async function addCredit({
   filePath,
 }) {
   if (!Array.isArray(employees) || employees.length === 0) {
-    throw httpError("Employees array is required", 400);
+    throw createServiceError(
+      "Employees array is required and must not be empty.",
+      400,
+    );
   }
-  if (!memoNo || typeof memoNo !== "string" || !memoNo.trim()) {
-    throw httpError("memoNo is required", 400);
+
+  const safeMemoNo = sanitizeString(memoNo);
+  if (!safeMemoNo) {
+    throw createServiceError("memoNo is required.", 400);
   }
+
+  const safeFilePath = sanitizeString(filePath);
   assertObjectId(userId, "userId");
 
-  const employeeIds = employees.map(String);
+  const employeeIds = [...new Set(employees.map(String))]; // Remove duplicates
   employeeIds.forEach((id) => assertObjectId(id, "employeeId"));
 
   const totalHours = toHours(duration);
-  if (totalHours <= 0) throw httpError("Credited hours must be > 0", 400);
+  if (totalHours <= 0)
+    throw createServiceError("Credited hours must be > 0.", 400);
 
   const approvedDate = dateApproved ? new Date(dateApproved) : new Date();
-  if (Number.isNaN(approvedDate.getTime()))
-    throw httpError("Invalid dateApproved", 400);
+  if (Number.isNaN(approvedDate.getTime())) {
+    throw createServiceError("Invalid dateApproved format.", 400);
+  }
 
   const session = await mongoose.startSession();
   try {
@@ -102,8 +133,12 @@ async function addCredit({
         { _id: { $in: employeeIds } },
         { session },
       );
+
       if (existingCount !== employeeIds.length) {
-        throw httpError("Some employee IDs are invalid or not found", 400);
+        throw createServiceError(
+          "One or more employee IDs are invalid or not found.",
+          400,
+        );
       }
 
       const employeeObjs = employeeIds.map((id) => ({
@@ -112,24 +147,28 @@ async function addCredit({
         usedHours: 0,
         reservedHours: 0,
         remainingHours: totalHours,
-        status: "ACTIVE",
+        status: CTO_STATUS.ACTIVE,
         dateCredited: approvedDate,
       }));
 
       const docs = await CtoCredit.create(
         [
           {
-            memoNo: memoNo.trim(),
+            memoNo: safeMemoNo,
             dateApproved: approvedDate,
-            uploadedMemo: filePath,
-            duration,
+            uploadedMemo: safeFilePath,
+            duration: {
+              hours: Number(duration.hours || 0),
+              minutes: Number(duration.minutes || 0),
+            }, // Strict structure
             employees: employeeObjs,
             creditedBy: userId,
-            status: "CREDITED",
+            status: CTO_STATUS.CREDITED,
           },
         ],
         { session },
       );
+
       created = docs[0];
 
       await Employee.updateMany(
@@ -139,41 +178,33 @@ async function addCredit({
       );
     });
 
-    // ✅ IN-APP NOTIFICATIONS AFTER SUCCESSFUL TRANSACTION
+    // In-App Notifications
     try {
       const hrEmployee = await Employee.findById(userId)
         .select("firstName lastName")
         .lean();
 
       await Promise.all(
-        employeeIds.map(async (employeeId) => {
-          await NotificationService.notifyEmployeeOnCtoCredit({
+        employeeIds.map((employeeId) =>
+          NotificationService.notifyEmployeeOnCtoCredit({
             employeeId,
             hrEmployee,
             ctoCredit: created,
             creditedHours: totalHours,
-          });
-        }),
+          }),
+        ),
       );
     } catch (e) {
-      console.error(
-        "Failed creating CTO credit notifications:",
-        e?.message || e,
-      );
+      console.error("Failed creating CTO credit notifications:", e?.message);
     }
 
-    // ✅ Send emails AFTER successful transaction (gated by toggle)
+    // Email Notifications
     try {
       const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ADDED);
-
-      if (!enabled) {
-        console.log("[EMAIL] skipped (disabled):", EMAIL_KEYS.CTO_CREDIT_ADDED);
-      } else {
+      if (enabled) {
         const recipients = await Employee.find({ _id: { $in: employeeIds } })
           .select("firstName lastName email")
           .lean();
-
-        const brandName = "CTO Management System";
 
         await Promise.all(
           recipients.map(async (emp) => {
@@ -182,10 +213,10 @@ async function addCredit({
             const tpl = ctoCreditAddedEmail({
               employeeName:
                 `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
-              memoNo: memoNo.trim(),
+              memoNo: safeMemoNo,
               creditedHours: totalHours,
               dateApproved: approvedDate,
-              brandName,
+              brandName: BRAND_NAME,
             });
 
             await safeSendEmail(emp.email, tpl.subject, tpl.html);
@@ -193,15 +224,12 @@ async function addCredit({
         );
       }
     } catch (e) {
-      console.error(
-        "Failed preparing CTO credit added emails:",
-        e?.message || e,
-      );
+      console.error("Failed preparing CTO credit added emails:", e?.message);
     }
 
     return created;
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 }
 
@@ -215,11 +243,11 @@ async function rollbackCredit({ creditId, userId }) {
 
     await session.withTransaction(async () => {
       const credit = await CtoCredit.findById(creditId).session(session);
-      if (!credit) throw httpError("Credit request not found", 404);
+      if (!credit) throw createServiceError("Credit request not found.", 404);
 
-      if (credit.status !== "CREDITED") {
-        throw httpError(
-          "This credit is not active or already rolled back",
+      if (credit.status !== CTO_STATUS.CREDITED) {
+        throw createServiceError(
+          "This credit is not active or has already been rolled back.",
           400,
         );
       }
@@ -227,14 +255,15 @@ async function rollbackCredit({ creditId, userId }) {
       const hasUsedOrReserved = credit.employees.some(
         (e) => (e.usedHours || 0) > 0 || (e.reservedHours || 0) > 0,
       );
+
       if (hasUsedOrReserved) {
-        throw httpError(
-          "Cannot rollback: Some employees have used or reserved hours",
+        throw createServiceError(
+          "Cannot rollback: Some employees have already used or reserved hours from this credit.",
           400,
         );
       }
 
-      // 1) Deduct balances from employees (remove the credited amount)
+      // Deduct balances from employees
       const ops = credit.employees.map((e) => ({
         updateOne: {
           filter: { _id: e.employee },
@@ -242,64 +271,54 @@ async function rollbackCredit({ creditId, userId }) {
         },
       }));
 
-      if (ops.length) {
+      if (ops.length > 0) {
         await Employee.bulkWrite(ops, { session });
       }
 
-      // 2) Mark each employee record rolled back
+      // Mark each employee record as rolled back
       credit.employees = credit.employees.map((e) => ({
         ...e.toObject(),
-        status: "ROLLEDBACK",
+        status: CTO_STATUS.ROLLEDBACK,
         remainingHours: 0,
         reservedHours: 0,
       }));
 
-      // 3) Mark credit document rolled back
-      credit.status = "ROLLEDBACK";
+      // Mark credit document as rolled back
+      credit.status = CTO_STATUS.ROLLEDBACK;
       credit.dateRolledBack = new Date();
       credit.rolledBackBy = userId;
 
-      updated = await credit.save({ session });
+      updated = await credit.save({ session, runValidators: true });
     });
 
-    // ✅ IN-APP NOTIFICATIONS AFTER SUCCESSFUL TRANSACTION
+    // In-App Notifications
     try {
       const hrEmployee = await Employee.findById(userId)
         .select("firstName lastName")
         .lean();
 
       await Promise.all(
-        (updated.employees || []).map(async (row) => {
-          await NotificationService.notifyEmployeeOnCtoRollback({
+        (updated.employees || []).map((row) =>
+          NotificationService.notifyEmployeeOnCtoRollback({
             employeeId: row.employee,
             hrEmployee,
             ctoCredit: updated,
             rolledBackHours: row.creditedHours || 0,
-          });
-        }),
+          }),
+        ),
       );
     } catch (e) {
-      console.error(
-        "Failed creating CTO rollback notifications:",
-        e?.message || e,
-      );
+      console.error("Failed creating CTO rollback notifications:", e?.message);
     }
 
-    // ✅ Send emails AFTER successful transaction (gated by toggle)
+    // Email Notifications
     try {
       const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK);
-
-      if (!enabled) {
-        console.log(
-          "[EMAIL] skipped (disabled):",
-          EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK,
-        );
-      } else {
+      if (enabled) {
         const creditPopulated = await CtoCredit.findById(updated._id)
           .populate("employees.employee", "firstName lastName email")
           .lean();
 
-        const brandName = "CTO Management System";
         const memoNo = creditPopulated?.memoNo || "";
         const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
 
@@ -315,7 +334,7 @@ async function rollbackCredit({ creditId, userId }) {
               rolledBackHours: row?.creditedHours || 0,
               dateRolledBack,
               reason: "Credit memo rolled back by admin.",
-              brandName,
+              brandName: BRAND_NAME,
             });
 
             await safeSendEmail(emp.email, tpl.subject, tpl.html);
@@ -323,15 +342,12 @@ async function rollbackCredit({ creditId, userId }) {
         );
       }
     } catch (e) {
-      console.error(
-        "Failed preparing CTO credit rollback emails:",
-        e?.message || e,
-      );
+      console.error("Failed preparing CTO credit rollback emails:", e?.message);
     }
 
     return updated;
   } finally {
-    session.endSession();
+    await session.endSession();
   }
 }
 
@@ -341,16 +357,15 @@ async function getAllCredits({
   search = "",
   filters = {},
 }) {
-  page = Math.max(parseInt(page, 10) || 1, 1);
-  limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
-  const skip = (page - 1) * limit;
+  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
+  const skip = (parsedPage - 1) * parsedLimit;
 
   const query = {};
-  if (filters.status) query.status = filters.status;
+  if (filters.status) query.status = sanitizeString(filters.status);
 
-  const q = String(search || "").trim();
+  const q = sanitizeString(search);
   if (q) {
-    // ✅ Applied Search Sanitization here
     const safe = sanitizeSearch(q, 100);
 
     const employees = await Employee.find({
@@ -358,7 +373,9 @@ async function getAllCredits({
         { firstName: { $regex: safe, $options: "i" } },
         { lastName: { $regex: safe, $options: "i" } },
       ],
-    }).select("_id");
+    })
+      .select("_id")
+      .lean();
 
     const employeeIds = employees.map((e) => e._id);
 
@@ -368,22 +385,20 @@ async function getAllCredits({
     ];
   }
 
-  const [totalCount, items] = await Promise.all([
-    CtoCredit.countDocuments(query),
-    CtoCredit.find(query)
-      .populate("employees.employee", "firstName lastName position")
-      .populate("rolledBackBy", "firstName lastName position role")
-      .populate("creditedBy", "firstName lastName position role")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
-  ]);
-
-  const [totalCreditedCount, totalRolledBackCount] = await Promise.all([
-    CtoCredit.countDocuments({ status: "CREDITED" }),
-    CtoCredit.countDocuments({ status: "ROLLEDBACK" }),
-  ]);
+  const [totalCount, items, totalCreditedCount, totalRolledBackCount] =
+    await Promise.all([
+      CtoCredit.countDocuments(query),
+      CtoCredit.find(query)
+        .populate("employees.employee", "firstName lastName position")
+        .populate("rolledBackBy", "firstName lastName position role")
+        .populate("creditedBy", "firstName lastName position role")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
+      CtoCredit.countDocuments({ status: CTO_STATUS.CREDITED }),
+      CtoCredit.countDocuments({ status: CTO_STATUS.ROLLEDBACK }),
+    ]);
 
   return {
     totalCount,
@@ -397,37 +412,39 @@ async function getAllCredits({
 
 async function getEmployeeDetails(employeeId) {
   assertObjectId(employeeId, "employeeId");
-  return Employee.findById(employeeId)
+
+  const employee = await Employee.findById(employeeId)
     .select("firstName lastName position department email")
     .lean();
+
+  if (!employee) throw createServiceError("Employee not found.", 404);
+
+  return employee;
 }
 
 async function getEmployeeCredits(
   employeeId,
   { search = "", filters = {}, page = 1, limit = 20 } = {},
 ) {
-  if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
-    throw httpError("Invalid employee ID", 400);
-  }
-
+  assertObjectId(employeeId, "employeeId");
   const employeeObjId = new mongoose.Types.ObjectId(employeeId);
 
-  page = Math.max(parseInt(page, 10) || 1, 1);
-  limit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
-  const skip = (page - 1) * limit;
+  const parsedPage = Math.max(parseInt(page, 10) || 1, 1);
+  const parsedLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 20), 100);
+  const skip = (parsedPage - 1) * parsedLimit;
 
   const [totalsAgg] = await CtoCredit.aggregate([
     {
       $match: {
         "employees.employee": employeeObjId,
-        status: { $ne: "ROLLEDBACK" },
+        status: { $ne: CTO_STATUS.ROLLEDBACK },
       },
     },
     { $unwind: "$employees" },
     {
       $match: {
         "employees.employee": employeeObjId,
-        "employees.status": { $ne: "ROLLEDBACK" },
+        "employees.status": { $ne: CTO_STATUS.ROLLEDBACK },
       },
     },
     {
@@ -456,27 +473,34 @@ async function getEmployeeCredits(
     totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0,
   };
 
-  const safeSearch = sanitizeSearch(search, 100); // ✅ Applied Search Sanitization here
+  const safeSearch = sanitizeSearch(search, 100);
   const listMatch = {
     employees: {
       $elemMatch: {
         employee: employeeObjId,
-        ...(filters.status ? { status: filters.status } : {}),
+        ...(filters.status ? { status: sanitizeString(filters.status) } : {}),
       },
     },
     ...(safeSearch ? { memoNo: { $regex: safeSearch, $options: "i" } } : {}),
   };
 
-  const totalCount = await CtoCredit.countDocuments(listMatch);
-
-  const credits = await CtoCredit.find(listMatch)
-    .populate("employees.employee", "firstName lastName position")
-    .populate("rolledBackBy", "firstName lastName position role")
-    .populate("creditedBy", "firstName lastName position role")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+  const [totalCount, credits, statusAggregation] = await Promise.all([
+    CtoCredit.countDocuments(listMatch),
+    CtoCredit.find(listMatch)
+      .populate("employees.employee", "firstName lastName position")
+      .populate("rolledBackBy", "firstName lastName position role")
+      .populate("creditedBy", "firstName lastName position role")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .lean(),
+    CtoCredit.aggregate([
+      { $match: { "employees.employee": employeeObjId } },
+      { $unwind: "$employees" },
+      { $match: { "employees.employee": employeeObjId } },
+      { $group: { _id: "$employees.status", count: { $sum: 1 } } },
+    ]),
+  ]);
 
   const formattedCredits = credits.map((credit) => {
     const empData = credit.employees.find(
@@ -486,46 +510,38 @@ async function getEmployeeCredits(
     const creditStatus = String(credit?.status || "").toUpperCase();
     const empStatus = String(empData?.status || "").toUpperCase();
     const isRolledBack =
-      creditStatus === "ROLLEDBACK" || empStatus === "ROLLEDBACK";
+      creditStatus === CTO_STATUS.ROLLEDBACK ||
+      empStatus === CTO_STATUS.ROLLEDBACK;
 
     return {
       _id: credit._id,
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
       uploadedMemo: credit.uploadedMemo,
-
       creditedHours: empData?.creditedHours ?? 0,
       duration: credit.duration,
-
       usedHours: empData?.usedHours || 0,
       reservedHours: isRolledBack ? 0 : empData?.reservedHours || 0,
       remainingHours: isRolledBack ? 0 : (empData?.remainingHours ?? 0),
-
       status: credit.status,
-      employeeStatus: empData?.status || "ACTIVE",
-
+      employeeStatus: empData?.status || CTO_STATUS.ACTIVE,
       creditedBy: credit.creditedBy,
       rolledBackBy: credit.rolledBackBy,
     };
   });
 
-  const statusAggregation = await CtoCredit.aggregate([
-    { $match: { "employees.employee": employeeObjId } },
-    { $unwind: "$employees" },
-    { $match: { "employees.employee": employeeObjId } },
-    { $group: { _id: "$employees.status", count: { $sum: 1 } } },
-  ]);
-
   const statusCounts = { ACTIVE: 0, EXHAUSTED: 0, ROLLEDBACK: 0 };
   statusAggregation.forEach((s) => {
-    statusCounts[s._id] = s.count;
+    if (statusCounts[s._id] !== undefined) {
+      statusCounts[s._id] = s.count;
+    }
   });
 
   return {
     total: totalCount,
     credits: formattedCredits,
-    page,
-    limit,
+    page: parsedPage,
+    limit: parsedLimit,
     statusCounts,
     totals,
   };

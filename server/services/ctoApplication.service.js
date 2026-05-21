@@ -1,8 +1,9 @@
+// services/ctoApplication.service.js
+const mongoose = require("mongoose");
 const CtoApplication = require("../models/ctoApplicationModel");
 const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
-const mongoose = require("mongoose");
 const { resolveApproversFromRoute } = require("./approvalRoute.service");
 const sendEmail = require("../utils/sendEmail");
 const NotificationService = require("./notificationService");
@@ -19,6 +20,49 @@ const AUTO_CANCEL_REMARK_REJECT =
 
 const AUTO_CANCEL_REMARK_EMPLOYEE =
   "Auto-cancelled: The employee cancelled this request.";
+
+function createServiceError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.status = statusCode;
+  err.statusCode = statusCode;
+  return err;
+}
+
+function assertObjectId(id, label = "ID") {
+  if (!mongoose.isValidObjectId(id)) {
+    throw createServiceError(`Invalid ${label} format.`, 400);
+  }
+}
+
+/**
+ * Strips null bytes, limits length, and escapes regex characters
+ * to prevent ReDoS (Regular Expression Denial of Service).
+ */
+function sanitizeSearch(str, limit = 100) {
+  return String(str || "")
+    .replace(/\0/g, "")
+    .trim()
+    .slice(0, limit)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // Escape Regex chars
+}
+
+/**
+ * Strips null bytes and strictly caps text inputs to prevent DB bloat.
+ */
+function sanitizeText(str, limit = 1000) {
+  return String(str || "")
+    .replace(/\0/g, "")
+    .trim()
+    .slice(0, limit);
+}
+
+/**
+ * Strictly parses numbers to prevent NoSQL object injection (e.g., passing { $gte: 0 }).
+ */
+function strictNumber(val, fallback = 0) {
+  const parsed = Number(val);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 
 async function safeSendEmail(to, subject, html) {
   try {
@@ -38,14 +82,9 @@ async function canSend(key) {
   return await isEmailEnabled(key);
 }
 
-// Limits search string length and escapes special characters to prevent ReDoS
-const sanitizeSearch = (str, limit = 100) => {
-  return String(str || "")
-    .slice(0, limit)
-    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-};
-
 const populateApplicationById = async (applicationId) => {
+  assertObjectId(applicationId, "Application ID");
+
   const app = await CtoApplication.findById(applicationId)
     .populate("employee", "firstName lastName position email employeeId")
     .populate({
@@ -69,13 +108,11 @@ const populateApplicationById = async (applicationId) => {
   return app;
 };
 
-// Added session support for transactions
 const cancelApprovalSteps = async ({
   applicationId,
   approvalIds,
   reason,
   afterLevel = 0,
-  session,
 }) => {
   await ApprovalStep.updateMany(
     {
@@ -91,26 +128,26 @@ const cancelApprovalSteps = async ({
         reviewedAt: new Date(),
       },
     },
-    { session },
   );
 };
 
-// Added session support and made atomic
-const restoreMemoHours = async ({ employeeId, memoItems, session }) => {
+const restoreMemoHours = async ({ employeeId, memoItems }) => {
   if (!memoItems?.length) return;
 
   for (const m of memoItems) {
     if (!m?.memoId || !m?.appliedHours) continue;
 
+    const appliedHours = strictNumber(m.appliedHours);
+    if (appliedHours <= 0) continue;
+
     await CtoCredit.updateOne(
       { _id: m.memoId, "employees.employee": employeeId },
       {
         $inc: {
-          "employees.$.reservedHours": -Number(m.appliedHours),
-          "employees.$.remainingHours": Number(m.appliedHours),
+          "employees.$.reservedHours": -appliedHours,
+          "employees.$.remainingHours": appliedHours,
         },
       },
-      { session },
     );
   }
 };
@@ -132,7 +169,7 @@ async function notifyApproversOfCancellation({
         .filter((step) => step?.approver)
         .map((step) => String(step.approver)),
     ),
-  ];
+  ].filter((id) => mongoose.isValidObjectId(id));
 
   if (!approverIds.length) return;
 
@@ -172,52 +209,52 @@ const addCtoApplicationService = async ({
   inclusiveDates,
   memos,
 }) => {
-  // Input Validation & Sanitization
-  if (!requestedHours || !reason || !inclusiveDates?.length) {
-    throw Object.assign(
-      new Error("Requested hours, reason, and inclusive dates are required."),
-      { status: 400 },
+  assertObjectId(userId, "User ID");
+
+  const strictReqHours = strictNumber(requestedHours);
+  const safeReason = sanitizeText(reason, 1000);
+
+  if (strictReqHours <= 0 || !safeReason || !inclusiveDates?.length) {
+    throw createServiceError(
+      "Requested hours (>0), reason, and inclusive dates are required.",
+      400,
     );
   }
 
   let finalApprovers = [];
   if (routeId) {
+    assertObjectId(routeId, "Route ID");
     finalApprovers = await resolveApproversFromRoute(routeId);
   } else if (approvers && Array.isArray(approvers)) {
-    finalApprovers = approvers.filter(Boolean);
+    finalApprovers = approvers.filter((id) => mongoose.isValidObjectId(id));
   }
 
   if (!finalApprovers || finalApprovers.length === 0) {
-    throw Object.assign(
-      new Error(
-        "At least one approver is required (via route template or custom selection).",
-      ),
-      { status: 400 },
+    throw createServiceError(
+      "At least one valid approver is required (via route template or custom selection).",
+      400,
     );
   }
 
   if (!memos || !Array.isArray(memos) || !memos.length) {
-    throw Object.assign(
-      new Error("At least one memo with applied hours must be provided."),
-      { status: 400 },
+    throw createServiceError(
+      "At least one memo with applied hours must be provided.",
+      400,
     );
   }
 
-  // Sanitize memo inputs to prevent type hijacking
   const sanitizedMemos = memos.map((m) => {
-    const hours = Number(m.appliedHours);
-    if (isNaN(hours) || hours <= 0) {
-      throw Object.assign(
-        new Error("Applied hours must be a positive number."),
-        { status: 400 },
-      );
+    const hours = strictNumber(m.appliedHours);
+    if (hours <= 0) {
+      throw createServiceError("Applied hours must be a positive number.", 400);
     }
+    assertObjectId(m.memoId, "Memo ID");
     return { ...m, appliedHours: hours };
   });
 
-  const employee = await Employee.findById(userId);
+  const employee = await Employee.findById(userId).lean();
   if (!employee) {
-    throw Object.assign(new Error("Employee not found."), { status: 404 });
+    throw createServiceError("Employee not found.", 404);
   }
 
   const memoIds = sanitizedMemos.map((m) => m.memoId);
@@ -228,180 +265,188 @@ const addCtoApplicationService = async ({
   });
 
   if (credits.length !== memoIds.length) {
-    throw Object.assign(new Error("Some memos are invalid or not credited."), {
-      status: 400,
-    });
+    throw createServiceError("Some memos are invalid or not credited.", 400);
   }
 
   let totalAppliedHours = 0;
   const memoUsage = [];
-  let populatedApp = null;
-  let newApplicationId = null;
 
-  // Start Transaction
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  for (const input of sanitizedMemos) {
+    const credit = credits.find((c) => String(c._id) === String(input.memoId));
 
-  try {
-    for (const input of sanitizedMemos) {
-      const credit = credits.find(
-        (c) => c._id.toString() === input.memoId.toString(),
-      );
-
-      // Atomic Update: Only decrement if they have enough hours at this exact microsecond
-      const result = await CtoCredit.updateOne(
-        {
-          _id: credit._id,
-          "employees.employee": employee._id,
-          "employees.remainingHours": { $gte: input.appliedHours }, // Prevents race condition
-        },
-        {
-          $inc: {
-            "employees.$.reservedHours": input.appliedHours,
-            "employees.$.remainingHours": -input.appliedHours,
-          },
-        },
-        { session },
-      );
-
-      if (result.modifiedCount === 0) {
-        throw Object.assign(
-          new Error(
-            `Insufficient remaining hours or concurrent update detected for memo ${credit.memoNo}.`,
-          ),
-          { status: 400 },
-        );
-      }
-
-      memoUsage.push({
-        memoId: credit._id,
-        uploadedMemo: (credit.uploadedMemo || "").replace(/\\/g, "/"),
-        appliedHours: input.appliedHours,
-      });
-
-      totalAppliedHours += input.appliedHours;
-    }
-
-    if (totalAppliedHours !== requestedHours) {
-      throw Object.assign(
-        new Error(
-          `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${requestedHours})`,
-        ),
-        { status: 400 },
+    if (!credit) {
+      throw createServiceError(
+        `Credit not found for memoId ${input.memoId}`,
+        400,
       );
     }
 
-    // Create Application via transaction
-    const [newApplication] = await CtoApplication.create(
-      [
-        {
-          employee: employee._id,
-          requestedHours,
-          reason,
-          inclusiveDates,
-          memo: memoUsage,
-          overallStatus: "PENDING",
-        },
-      ],
-      { session },
+    const empCredit = credit.employees.find(
+      (e) => String(e.employee) === String(employee._id),
     );
 
-    newApplicationId = newApplication._id;
+    if (!empCredit) {
+      throw createServiceError(
+        `Employee credit record not found for memo ${credit.memoNo}`,
+        400,
+      );
+    }
 
-    // Create Approval Steps via transaction
-    const approvalStepsData = finalApprovers.map((approverId, index) => ({
-      level: index + 1,
-      approver: approverId,
-      status: "PENDING",
-      ctoApplication: newApplication._id,
-    }));
+    const availableHours = strictNumber(empCredit.remainingHours);
 
-    const approvalSteps = await ApprovalStep.create(approvalStepsData, {
-      session,
+    if (input.appliedHours <= 0 || input.appliedHours > availableHours) {
+      throw createServiceError(
+        `Invalid applied hours for memo ${credit.memoNo}. Available: ${availableHours}`,
+        400,
+      );
+    }
+
+    // Update locally for the array payload
+    empCredit.reservedHours =
+      (empCredit.reservedHours || 0) + input.appliedHours;
+    empCredit.remainingHours = empCredit.remainingHours - input.appliedHours;
+    empCredit.status = empCredit.status || "ACTIVE";
+
+    // Atomic update in the database to prevent race conditions
+    const updateResult = await CtoCredit.updateOne(
+      {
+        _id: credit._id,
+        "employees.employee": employee._id,
+        "employees.remainingHours": { $gte: input.appliedHours }, // Security: Concurrency check
+      },
+      { $set: { "employees.$": empCredit } },
+    );
+
+    if (updateResult.modifiedCount === 0) {
+      throw createServiceError(
+        `Failed to reserve hours for memo ${credit.memoNo}. Concurrency mismatch.`,
+        400,
+      );
+    }
+
+    memoUsage.push({
+      memoId: credit._id,
+      uploadedMemo: (credit.uploadedMemo || "").replace(/\\/g, "/"),
+      appliedHours: input.appliedHours,
     });
 
-    newApplication.approvals = approvalSteps.map((step) => step._id);
-    await newApplication.save({ session });
-
-    // Commit Transaction
-    await session.commitTransaction();
-    session.endSession();
-
-    // Fetch populated data outside transaction
-    populatedApp = await populateApplicationById(newApplicationId);
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    throw error;
+    totalAppliedHours += input.appliedHours;
   }
 
-  // Notifications and Emails (After successful commit)
+  if (totalAppliedHours !== strictReqHours) {
+    throw createServiceError(
+      `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${strictReqHours})`,
+      400,
+    );
+  }
+
+  const newApplication = new CtoApplication({
+    employee: employee._id,
+    requestedHours: strictReqHours,
+    reason: safeReason, // Sanitized to 1000 chars
+    inclusiveDates,
+    memo: memoUsage,
+    overallStatus: "PENDING",
+  });
+
+  await newApplication.save();
+
+  const approvalSteps = await Promise.all(
+    finalApprovers.map((approverId, index) =>
+      ApprovalStep.create({
+        level: index + 1,
+        approver: approverId,
+        status: "PENDING",
+        ctoApplication: newApplication._id,
+      }),
+    ),
+  );
+
+  newApplication.approvals = approvalSteps.map((step) => step._id);
+  await newApplication.save();
+
+  const populatedApp = await populateApplicationById(newApplication._id);
+
+  // Notify approvers
   try {
     await NotificationService.notifyApproversOnCtoSubmission({
       approverIds: finalApprovers,
       employee,
-      ctoApplication: populatedApp,
+      ctoApplication: newApplication,
     });
-
-    await NotificationService.notifyEmployeeOnCtoSubmissionCreated({
-      employee,
-      ctoApplication: populatedApp,
-    });
-
-    const firstApprovalId = populatedApp.approvals.find((a) => a.level === 1)
-      ?.approver?._id;
-    if (firstApprovalId) {
-      const approverUser = await Employee.findById(firstApprovalId)
-        .select("firstName lastName email")
-        .lean();
-
-      const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
-
-      if (approverUser?.email && enabled) {
-        const tpl = ctoApprovalEmail({
-          approverName: `${approverUser.firstName} ${approverUser.lastName}`,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          requestedHours,
-          reason,
-          level: 1,
-          link: `${process.env.FRONTEND_URL}/app/cto-approvals/${newApplicationId}`,
-          brandName: "CTO Management System",
-        });
-
-        await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
-      }
-    }
   } catch (err) {
     console.error(
-      "Side effect (email/notification) failed:",
+      "Failed to create CTO submission notifications:",
       err?.message || err,
     );
+  }
+
+  // Optional: notify the employee too so they see a bell item after applying
+  try {
+    await NotificationService.notifyEmployeeOnCtoSubmissionCreated({
+      employee,
+      ctoApplication: newApplication,
+    });
+  } catch (err) {
+    console.error(
+      "Failed to create employee submission notification:",
+      err?.message || err,
+    );
+  }
+
+  // Email to first approver
+  try {
+    const firstApproval = approvalSteps.find((a) => a.level === 1);
+    const approverUser = await Employee.findById(firstApproval.approver)
+      .select("firstName lastName email")
+      .lean();
+
+    const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
+
+    if (approverUser?.email && enabled) {
+      const tpl = ctoApprovalEmail({
+        approverName: `${approverUser.firstName} ${approverUser.lastName}`,
+        employeeName: `${employee.firstName} ${employee.lastName}`,
+        requestedHours: strictReqHours,
+        reason: safeReason,
+        level: 1,
+        link: `${process.env.FRONTEND_URL}/app/cto-approvals/${newApplication._id}`,
+        brandName: "CTO Management System",
+      });
+
+      await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+    } else if (approverUser?.email && !enabled) {
+      console.log(
+        "[EMAIL] skipped (disabled):",
+        EMAIL_KEYS.CTO_APPROVAL,
+        "to:",
+        approverUser.email,
+      );
+    }
+  } catch (err) {
+    console.error("Failed to send CTO approval email:", err?.message || err);
   }
 
   return populatedApp;
 };
 
 const cancelCtoApplicationService = async ({ userId, applicationId }) => {
-  if (!applicationId || !mongoose.Types.ObjectId.isValid(applicationId)) {
-    throw Object.assign(new Error("Invalid application ID."), { status: 400 });
-  }
+  assertObjectId(userId, "User ID");
+  assertObjectId(applicationId, "Application ID");
 
   const app = await CtoApplication.findById(applicationId);
   if (!app) {
-    throw Object.assign(new Error("Application not found."), { status: 404 });
+    throw createServiceError("Application not found.", 404);
   }
 
   if (String(app.employee) !== String(userId)) {
-    throw Object.assign(
-      new Error("Not authorized to cancel this application."),
-      { status: 403 },
-    );
+    throw createServiceError("Not authorized to cancel this application.", 403);
   }
 
   if (app.overallStatus !== "PENDING") {
-    throw Object.assign(
-      new Error("Only PENDING applications can be cancelled."),
-      { status: 400 },
+    throw createServiceError(
+      "Only PENDING applications can be cancelled.",
+      400,
     );
   }
 
@@ -409,36 +454,21 @@ const cancelCtoApplicationService = async ({ userId, applicationId }) => {
     "firstName lastName email",
   );
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  app.overallStatus = "CANCELLED";
+  await app.save();
 
-  try {
-    app.overallStatus = "CANCELLED";
-    await app.save({ session });
+  await cancelApprovalSteps({
+    applicationId: app._id,
+    approvalIds: app.approvals || [],
+    reason: AUTO_CANCEL_REMARK_EMPLOYEE,
+    afterLevel: 0,
+  });
 
-    await cancelApprovalSteps({
-      applicationId: app._id,
-      approvalIds: app.approvals || [],
-      reason: AUTO_CANCEL_REMARK_EMPLOYEE,
-      afterLevel: 0,
-      session,
-    });
+  await restoreMemoHours({
+    employeeId: app.employee,
+    memoItems: app.memo || [],
+  });
 
-    await restoreMemoHours({
-      employeeId: app.employee,
-      memoItems: app.memo || [],
-      session,
-    });
-
-    await session.commitTransaction();
-    session.endSession();
-  } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    throw error;
-  }
-
-  // Side effects outside transaction block
   try {
     if (employee) {
       await notifyApproversOfCancellation({
@@ -468,8 +498,14 @@ const getAllCtoApplicationsService = async (
 
   const query = {};
 
-  if (filters.employeeId) query.employee = filters.employeeId;
-  if (filters.status) query.overallStatus = filters.status;
+  if (filters.employeeId) {
+    assertObjectId(filters.employeeId, "Employee ID");
+    query.employee = filters.employeeId;
+  }
+
+  if (filters.status)
+    query.overallStatus = String(filters.status).toUpperCase();
+
   if (filters.from && filters.to) {
     query.createdAt = {
       $gte: new Date(filters.from),
@@ -558,13 +594,9 @@ const getCtoApplicationsByEmployeeService = async (
   limit = 20,
   filters = {},
 ) => {
-  if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
-    const err = new Error("Invalid Employee ID");
-    err.status = 400;
-    throw err;
-  }
-
+  assertObjectId(employeeId, "Employee ID");
   const employeeObjectId = new mongoose.Types.ObjectId(employeeId);
+
   page = Math.max(parseInt(page) || 1, 1);
   limit = Math.min(parseInt(limit) || 20, 100);
   const skip = (page - 1) * limit;

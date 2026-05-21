@@ -1,8 +1,35 @@
 // services/auditLog.service.js
+const mongoose = require("mongoose");
 const AuditLog = require("../models/auditLogModel");
 
-function escapeRegExp(str) {
-  return String(str).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// --- CONSTANTS & IMMUTABILITY ---
+const ALLOWED_LIMITS = Object.freeze([10, 20, 50, 100]);
+const ALLOWED_METHODS = Object.freeze([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+]);
+
+// --- HELPER FUNCTIONS ---
+
+function createServiceError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+/**
+ * Sanitizes input strings by removing null bytes and escaping regex characters.
+ * Limits length to prevent ReDoS (Regular Expression Denial of Service).
+ */
+function sanitizeSearch(str, limit = 100) {
+  return String(str || "")
+    .replace(/\0/g, "") // Prevent Null Byte Injection
+    .slice(0, limit)
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseIntSafe(v, def) {
@@ -17,8 +44,33 @@ function parseDateSafe(v) {
   return d;
 }
 
-const createAuditLog = async (data) => {
-  return AuditLog.create(data);
+// --- SERVICE METHODS ---
+
+const createAuditLog = async (data = {}) => {
+  // Prevent mass assignment vulnerabilities by explicitly selecting allowed fields
+  const {
+    userId,
+    username,
+    method,
+    endpoint,
+    url,
+    statusCode,
+    ip,
+    summary,
+    timestamp,
+  } = data;
+
+  return AuditLog.create({
+    userId,
+    username,
+    method: method ? String(method).toUpperCase() : undefined,
+    endpoint,
+    url,
+    statusCode: parseIntSafe(statusCode, undefined),
+    ip,
+    summary,
+    timestamp: parseDateSafe(timestamp) || new Date(),
+  });
 };
 
 const getAuditLogs = async ({
@@ -31,31 +83,37 @@ const getAuditLogs = async ({
   statusCode,
   startDate,
   endDate,
-}) => {
-  const allowedLimits = [10, 20, 50, 100];
-  limit = parseIntSafe(limit, 10);
-  if (!allowedLimits.includes(limit)) limit = 10;
+} = {}) => {
+  let parsedLimit = parseIntSafe(limit, 10);
+  if (!ALLOWED_LIMITS.includes(parsedLimit)) parsedLimit = 10;
 
-  page = Math.max(parseIntSafe(page, 1), 1);
-  const skip = (page - 1) * limit;
+  const parsedPage = Math.max(parseIntSafe(page, 1), 1);
+  const skip = (parsedPage - 1) * parsedLimit;
 
   const filter = {};
 
-  if (userId) filter.userId = userId;
+  if (userId) {
+    if (!mongoose.isValidObjectId(userId)) {
+      throw createServiceError("Invalid User ID format", 400);
+    }
+    filter.userId = userId;
+  }
 
   if (username) {
-    const safe = escapeRegExp(username);
-    filter.username = { $regex: safe, $options: "i" };
+    const safeUsername = sanitizeSearch(username, 100);
+    if (safeUsername) filter.username = { $regex: safeUsername, $options: "i" };
   }
 
   if (method) {
     const m = String(method).toUpperCase();
-    filter.method = m;
+    if (ALLOWED_METHODS.includes(m)) {
+      filter.method = m;
+    }
   }
 
   if (endpoint) {
-    const safe = escapeRegExp(endpoint);
-    filter.endpoint = { $regex: safe, $options: "i" };
+    const safeEndpoint = sanitizeSearch(endpoint, 150);
+    if (safeEndpoint) filter.endpoint = { $regex: safeEndpoint, $options: "i" };
   }
 
   if (statusCode !== undefined && statusCode !== null && statusCode !== "") {
@@ -74,19 +132,20 @@ const getAuditLogs = async ({
 
   const [logs, total] = await Promise.all([
     AuditLog.find(filter)
+      .select("-__v") // Prevent leaking internal Mongoose versioning keys
       .sort({ timestamp: -1 })
       .skip(skip)
-      .limit(limit)
-      .lean(),
+      .limit(parsedLimit)
+      .lean(), // Use lean() for performance, returning plain JS objects
     AuditLog.countDocuments(filter),
   ]);
 
   return {
     data: logs,
     total,
-    page,
-    limit,
-    totalPages: Math.ceil(total / limit),
+    page: parsedPage,
+    limit: parsedLimit,
+    totalPages: Math.ceil(total / parsedLimit) || 1, // Fallback to 1 if total is 0
   };
 };
 

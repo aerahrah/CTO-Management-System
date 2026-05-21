@@ -105,7 +105,7 @@ app.use(
 /* ======================================================
    CORS
 ====================================================== */
-const allowedOrigins = "http://localhost:5173"
+const allowedOrigins = "http://localhost:3000"
   .split(",")
   .map((o) => o.trim().replace(/^"(.+)"$/, "$1"))
   .filter(Boolean);
