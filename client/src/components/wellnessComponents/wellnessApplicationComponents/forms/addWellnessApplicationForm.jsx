@@ -1,29 +1,71 @@
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useMemo,
-  useCallback,
-} from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { addWellnessApplicationRequest } from "../../../../api/wellnessApplication";
+import { fetchWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
-import { getMyWellnessBalance } from "../../../../api/employee"; // Adjust path to where your frontend API functions are exported
+import { getMyWellnessBalance } from "../../../../api/employee";
 import { useAuth } from "../../../../store/authStore";
-import { toast } from "react-toastify";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
-import "react-loading-skeleton/dist/skeleton.css";
 import {
   Calendar,
-  AlertCircle,
   FileText,
-  Layers,
   UserCheck,
   ChevronDown,
   ChevronUp,
+  AlertCircle,
+  X,
+  HeartPulse,
+  Layers,
+  Info,
 } from "lucide-react";
+import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
+import "react-loading-skeleton/dist/skeleton.css";
+import { toast } from "react-toastify";
 
 const MAX_REASON_LEN = 500;
+const MAX_WELLNESS_DAYS = 3;
+
+/* ------------------ Helpers ------------------ */
+const clampInt = (v, min, max, fallback) => {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return fallback;
+  const t = Math.trunc(n);
+  return Math.min(Math.max(t, min), max);
+};
+
+const isWeekendISO = (iso) => {
+  const d = new Date(`${iso}T00:00:00`);
+  const day = d.getDay();
+  return day === 0 || day === 6;
+};
+
+const isFullISODate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+
+/**
+ * Lead-time rule: Must have N working days between today (exclusive) and selected date (exclusive).
+ */
+const getMinSelectableDateISO = (leadTimeDays = 5) => {
+  const lead = Number(leadTimeDays);
+  const date = new Date();
+
+  if (!Number.isFinite(lead) || lead <= 0) {
+    date.setDate(date.getDate() + 1);
+    return date.toISOString().split("T")[0];
+  }
+
+  let count = 0;
+  while (count < lead) {
+    date.setDate(date.getDate() + 1);
+    const day = date.getDay();
+    if (day !== 0 && day !== 6) count++;
+  }
+
+  date.setDate(date.getDate() + 1);
+  while (date.getDay() === 0 || date.getDay() === 6) {
+    date.setDate(date.getDate() + 1);
+  }
+
+  return date.toISOString().split("T")[0];
+};
 
 /* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
@@ -44,19 +86,15 @@ function useResolvedTheme(prefTheme) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     if (prefTheme !== "system") {
       setTheme(prefTheme === "dark" ? "dark" : "light");
       return;
     }
-
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const update = () => setTheme(mq.matches ? "dark" : "light");
-
     update();
     if (mq.addEventListener) mq.addEventListener("change", update);
     else mq.addListener(update);
-
     return () => {
       if (mq.removeEventListener) mq.removeEventListener("change", update);
       else mq.removeListener(update);
@@ -66,6 +104,38 @@ function useResolvedTheme(prefTheme) {
   return theme;
 }
 
+/* =========================
+   Validation Logic
+========================= */
+const validateDate = ({
+  value,
+  inclusiveDates,
+  minDate,
+  leadTimeMsg,
+  maxWellnessDays,
+}) => {
+  if (!value) return "";
+  if (!isFullISODate(value)) return "";
+
+  if (value < minDate) return leadTimeMsg;
+  if (isWeekendISO(value)) return "Please select a working day (Mon–Fri).";
+  if (inclusiveDates.includes(value)) return "That date is already selected.";
+
+  const tempDates = [...inclusiveDates, value];
+
+  // We explicitly removed the 3-day max check here so it doesn't instantly block selection,
+  // relying instead on the submit-time validation to show the toast as requested.
+
+  if (tempDates.length > maxWellnessDays) {
+    return `You only have ${maxWellnessDays} Wellness Day(s) left.`;
+  }
+
+  return "";
+};
+
+/* =========================
+   Banner Component
+========================= */
 const Banner = ({ tone = "error", message, borderColor }) => {
   if (!message) return null;
 
@@ -110,13 +180,13 @@ const Banner = ({ tone = "error", message, borderColor }) => {
   );
 };
 
+/* =========================
+   Main Form Component
+========================= */
 const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
   const queryClient = useQueryClient();
+  const { admin, user } = useAuth();
 
-  // Grab BOTH user (for fallback balances) and admin (for matching the route)
-  const { user, admin } = useAuth();
-
-  // Theme resolution
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -141,20 +211,13 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
     };
   }, [resolvedTheme]);
 
-  // Form State
-  const initialState = useMemo(
-    () => ({
-      startDate: "",
-      endDate: "",
-      reason: "",
-      routeId: "",
-    }),
-    [],
-  );
-  const [formData, setFormData] = useState(initialState);
   const [showRouting, setShowRouting] = useState(false);
+  const dateInputRef = useRef(null);
 
-  // Error/Banner State
+  // Date input states
+  const [dateValue, setDateValue] = useState("");
+  const [dateError, setDateError] = useState("");
+
   const [banner, setBanner] = useState({ tone: "error", message: "" });
   const clearBanner = () => setBanner({ tone: "error", message: "" });
   const showBanner = (tone, message) => setBanner({ tone, message });
@@ -164,9 +227,22 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
   const [successLatchUI, setSuccessLatchUI] = useState(false);
   const submitInFlightRef = useRef(false);
 
+  const initialState = useMemo(
+    () => ({
+      reason: "",
+      inclusiveDates: [],
+      routeId: "",
+    }),
+    [],
+  );
+
+  const [formData, setFormData] = useState(initialState);
+
   const resetForm = useCallback(() => {
     setFormData(initialState);
     setShowRouting(false);
+    setDateValue("");
+    setDateError("");
     clearBanner();
     successLatchRef.current = false;
     setSuccessLatchUI(false);
@@ -180,13 +256,53 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
     };
   }, []);
 
-  // Fetch Live Wellness Balance
+  // Fetch Working Days for Lead Time
+  const {
+    data: workingDaysRes,
+    isLoading: workingDaysLoading,
+    isError: workingDaysIsError,
+  } = useQuery({
+    queryKey: ["workingDaysSettings"],
+    queryFn: fetchWorkingDaysGeneralSettings,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const workingDoc = workingDaysRes?.data;
+  const leadTimeDays = useMemo(() => {
+    const enabled =
+      typeof workingDoc?.workingDaysEnable === "boolean"
+        ? workingDoc.workingDaysEnable
+        : true;
+    if (!enabled) return 0;
+    return clampInt(workingDoc?.workingDaysValue, 1, 7, 5);
+  }, [workingDoc]);
+
+  const minDate = useMemo(
+    () => getMinSelectableDateISO(leadTimeDays),
+    [leadTimeDays],
+  );
+
+  const leadTimeMsg = useMemo(() => {
+    if (leadTimeDays <= 0)
+      return "Requests require at least 1 day advance notice.";
+    return `Requests require at least ${leadTimeDays} working day(s) advance notice.`;
+  }, [leadTimeDays]);
+
+  useEffect(() => {
+    if (workingDaysIsError) {
+      showBanner(
+        "info",
+        "Could not load Working Days settings. Using default lead time.",
+      );
+    }
+  }, [workingDaysIsError]);
+
+  // Fetch Balances
   const { data: balanceData, isLoading: isBalanceLoading } = useQuery({
     queryKey: ["myWellnessBalance"],
     queryFn: getMyWellnessBalance,
   });
 
-  // Calculate live max days (fallback to user state if query is still loading/failing)
   const maxWellnessDays =
     balanceData?.data?.wellnessDays ?? user?.balances?.wellnessDays ?? 0;
 
@@ -196,7 +312,7 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
     queryFn: fetchAllApprovalRoutes,
   });
 
-  // Auto-select the user's personal route
+  // Auto-select route
   useEffect(() => {
     if (routesResponse && Array.isArray(routesResponse) && !formData.routeId) {
       const myRoute = routesResponse.find(
@@ -217,68 +333,124 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
 
   const isBusy = mutation.isPending || successLatchUI;
 
-  // Computed total days
-  const totalDays = useMemo(() => {
-    if (!formData.startDate || !formData.endDate) return 0;
-    const start = new Date(formData.startDate);
-    const end = new Date(formData.endDate);
-    if (end < start) return 0;
-    const diffTime = Math.abs(end - start);
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  }, [formData.startDate, formData.endDate]);
+  // Validate typed dates instantly
+  useEffect(() => {
+    const err = validateDate({
+      value: dateValue,
+      inclusiveDates: formData.inclusiveDates,
+      minDate,
+      leadTimeMsg,
+      maxWellnessDays,
+    });
+    setDateError(err);
+  }, [
+    dateValue,
+    formData.inclusiveDates,
+    minDate,
+    leadTimeMsg,
+    maxWellnessDays,
+  ]);
+
+  // Strip invalid dates if lead time config shifts
+  useEffect(() => {
+    if (!formData.inclusiveDates?.length) return;
+    const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
+    if (filtered.length !== formData.inclusiveDates.length) {
+      setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
+      showBanner("info", "Some selected dates were removed (lead-time rule).");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minDate]);
+
+  const handleDateInput = (e) => {
+    clearBanner();
+    setDateValue(e.target.value);
+  };
+
+  const handleDateCommit = (e) => {
+    clearBanner();
+    const v = e.target.value;
+    setDateValue(v);
+
+    const err = validateDate({
+      value: v,
+      inclusiveDates: formData.inclusiveDates,
+      minDate,
+      leadTimeMsg,
+      maxWellnessDays,
+    });
+    setDateError(err);
+
+    if (!isFullISODate(v) || err) return;
+
+    if (workingDaysLoading) {
+      showBanner("info", "Working-days settings are still loading.");
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      inclusiveDates: [...prev.inclusiveDates, v].sort(),
+    }));
+
+    setDateValue("");
+    setDateError("");
+    try {
+      dateInputRef.current?.focus?.();
+    } catch {}
+  };
+
+  const handleDateRemove = (date) => {
+    clearBanner();
+    setFormData((prev) => ({
+      ...prev,
+      inclusiveDates: prev.inclusiveDates.filter((d) => d !== date),
+    }));
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     clearBanner();
-
     if (name === "reason") {
       setFormData((prev) => ({
         ...prev,
         reason: value.slice(0, MAX_REASON_LEN),
       }));
-      return;
     }
-
-    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const sanitizeAndValidatePayload = () => {
-    if (!formData.startDate || !formData.endDate) {
-      return { ok: false, message: "Please select both start and end dates." };
+    if (formData.inclusiveDates.length === 0) {
+      return { ok: false, message: "Please select at least 1 date." };
     }
 
-    if (totalDays <= 0) {
-      return { ok: false, message: "Invalid date range selected." };
-    }
-
-    if (totalDays > maxWellnessDays) {
+    // 🚨 Triggers the toast error if they try to submit more than 3 days
+    if (formData.inclusiveDates.length > MAX_WELLNESS_DAYS) {
       return {
         ok: false,
-        message: `Requested days (${totalDays}) exceed your available balance (${maxWellnessDays}).`,
+        message: `Maximum of ${MAX_WELLNESS_DAYS} days allowed per request.`,
+        isToastOnly: true, // We can catch this flag to throw a toast
       };
     }
 
     if (!formData.routeId) {
-      return {
-        ok: false,
-        message: "Please select an approval route.",
-      };
+      return { ok: false, message: "Please select an approval route." };
     }
 
     const reason = String(formData.reason || "")
       .trim()
       .slice(0, MAX_REASON_LEN);
     if (!reason) {
-      return { ok: false, message: "Please provide a reason for the leave." };
+      return {
+        ok: false,
+        message: "Please provide a reason or justification.",
+      };
     }
 
     return {
       ok: true,
       payload: {
-        employeeId: user?._id || user?.id,
-        startDate: formData.startDate,
-        endDate: formData.endDate,
-        totalDays,
+        inclusiveDates: formData.inclusiveDates,
         reason,
         routeId: formData.routeId,
       },
@@ -295,7 +467,11 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
 
     const result = sanitizeAndValidatePayload();
     if (!result.ok) {
-      showBanner("error", result.message || "Please review the form.");
+      if (result.isToastOnly) {
+        toast.error(result.message);
+      } else {
+        showBanner("error", result.message);
+      }
       submitInFlightRef.current = false;
       return;
     }
@@ -305,25 +481,34 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
 
       successLatchRef.current = true;
       setSuccessLatchUI(true);
-
       toast.success("Wellness Leave submitted successfully!");
 
-      // Invalidate relevant queries so balances and histories update everywhere
       queryClient.invalidateQueries({ queryKey: ["myWellnessApplications"] });
-      queryClient.invalidateQueries({ queryKey: ["employeeDashboard"] });
-      queryClient.invalidateQueries({ queryKey: ["myWellnessBalance"] }); // Add this
+      queryClient.invalidateQueries({ queryKey: ["myWellnessBalance"] });
 
       onSuccess?.();
-      onClose?.();
+      if (!onSuccess) onClose?.();
     } catch (err) {
       const msg =
-        err?.response?.data?.error || err?.message || "Failed to submit";
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to submit request.";
       showBanner("error", msg);
       submitInFlightRef.current = false;
       successLatchRef.current = false;
       setSuccessLatchUI(false);
     }
   };
+
+  const leadTimeLabel = useMemo(() => {
+    if (workingDaysLoading) return "Min. Lead Time: Loading…";
+    if (leadTimeDays <= 0) return "Min. Lead Time: 1 day";
+    return `Min. Lead Time: ${leadTimeDays} Work Day${
+      leadTimeDays === 1 ? "" : "s"
+    }`;
+  }, [leadTimeDays, workingDaysLoading]);
+
+  const dateDisabled = isBusy || workingDaysLoading;
 
   return (
     <div
@@ -350,12 +535,12 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors duration-300 ease-out"
               style={{
-                backgroundColor: "rgba(34,197,94,0.1)", // Green tint
-                borderColor: "rgba(34,197,94,0.18)",
-                color: "#16a34a",
+                backgroundColor: "var(--accent-soft)",
+                borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+                color: "var(--accent)",
               }}
             >
-              <Layers className="w-6 h-6" />
+              <HeartPulse className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <h2 className="text-lg font-semibold truncate">Wellness Leave</h2>
@@ -363,12 +548,12 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                 className="text-xs truncate"
                 style={{ color: "var(--app-muted)" }}
               >
-                Day-based leave request
+                Day-based wellness request
               </p>
             </div>
           </div>
 
-          <div className="text-right shrink-0 min-w-[70px]">
+          <div className="text-right shrink-0">
             <p
               className="text-[10px] font-bold uppercase tracking-wider mb-0.5"
               style={{ color: "var(--app-muted)" }}
@@ -376,11 +561,11 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
               Available
             </p>
             {isBalanceLoading ? (
-              <Skeleton width={50} height={20} />
+              <Skeleton width={40} />
             ) : (
               <p
                 className="text-sm font-extrabold"
-                style={{ color: "#16a34a" }}
+                style={{ color: "var(--accent)" }}
               >
                 {maxWellnessDays} Day(s)
               </p>
@@ -396,15 +581,14 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
           className="flex flex-col h-[calc(100dvh-16rem)] sm:h-[calc(100vh-16rem)]"
         >
           {/* Scroll Area */}
-          <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6">
-            {/* Banner */}
+          <div className="flex-1 overflow-y-auto px-4 py-5 space-y-6 cto-scrollbar">
             <Banner
               tone={banner.tone}
               message={banner.message}
               borderColor={borderColor}
             />
 
-            {/* Dates Row */}
+            {/* Total Days & Inclusive Dates Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
               <div className="space-y-2">
                 <div
@@ -419,30 +603,39 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                       color: "var(--app-muted)",
                     }}
                   >
-                    <Calendar className="w-4 h-4" />
+                    <Layers className="w-4 h-4" />
                   </div>
-                  Start Date
+                  Total Days Selected
                 </div>
-
-                <input
-                  type="date"
-                  name="startDate"
-                  value={formData.startDate}
-                  onChange={handleChange}
-                  disabled={isBusy || isBalanceLoading}
-                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out"
+                <div
+                  className="w-full h-11 sm:h-10 px-3 rounded-lg border flex items-center transition-colors duration-200 ease-out"
                   style={{
-                    backgroundColor:
-                      isBusy || isBalanceLoading
-                        ? "var(--app-surface-2)"
-                        : "var(--app-surface)",
+                    backgroundColor: "var(--app-surface-2)",
                     borderColor: borderColor,
-                    color:
-                      isBusy || isBalanceLoading
-                        ? "var(--app-muted)"
-                        : "var(--app-text)",
                   }}
-                />
+                >
+                  <span
+                    className="font-bold text-sm"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    {formData.inclusiveDates.length} Day(s)
+                  </span>
+                </div>
+                {formData.inclusiveDates.length > 0 && (
+                  <div
+                    className="text-[10px] leading-relaxed"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Remaining allowance:{" "}
+                    <span style={{ color: "var(--app-text)", fontWeight: 700 }}>
+                      {Math.max(
+                        0,
+                        maxWellnessDays - formData.inclusiveDates.length,
+                      )}
+                    </span>{" "}
+                    day(s)
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -460,52 +653,122 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                   >
                     <Calendar className="w-4 h-4" />
                   </div>
-                  End Date (Inclusive)
+                  Add Inclusive Date
                 </div>
 
-                <input
-                  type="date"
-                  name="endDate"
-                  min={formData.startDate}
-                  value={formData.endDate}
-                  onChange={handleChange}
-                  disabled={isBusy || isBalanceLoading}
-                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out"
-                  style={{
-                    backgroundColor:
-                      isBusy || isBalanceLoading
+                <div className="relative">
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    min={minDate}
+                    value={dateValue}
+                    onInput={handleDateInput}
+                    onChange={handleDateCommit}
+                    disabled={dateDisabled}
+                    aria-invalid={!!dateError}
+                    className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
+                    style={{
+                      backgroundColor: dateDisabled
                         ? "var(--app-surface-2)"
-                        : "var(--app-surface)",
-                    borderColor: borderColor,
-                    color:
-                      isBusy || isBalanceLoading
+                        : dateError
+                          ? "rgba(239,68,68,0.08)"
+                          : "var(--app-surface)",
+                      borderColor: dateError
+                        ? "rgba(239,68,68,0.22)"
+                        : borderColor,
+                      color: dateDisabled
                         ? "var(--app-muted)"
                         : "var(--app-text)",
-                  }}
-                />
+                    }}
+                  />
+                </div>
+
+                {dateError ? (
+                  <div
+                    className="text-[11px] font-semibold"
+                    style={{ color: "#ef4444" }}
+                  >
+                    {dateError}
+                  </div>
+                ) : (
+                  <div
+                    className="text-[10px] leading-relaxed"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    Earliest selectable date:{" "}
+                    <span style={{ color: "var(--app-text)", fontWeight: 700 }}>
+                      {minDate}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Total Days Computed */}
-            <div
-              className="flex items-center justify-between p-4 rounded-xl border transition-colors duration-300 ease-out"
-              style={{
-                backgroundColor: "rgba(34,197,94,0.05)",
-                borderColor: "rgba(34,197,94,0.15)",
-              }}
-            >
-              <span
-                className="text-sm font-bold uppercase tracking-wide"
-                style={{ color: "var(--app-text)" }}
+            {/* Selected Dates Display */}
+            <div className="space-y-3 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-1">
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  Selected Dates
+                </span>
+                <span
+                  className="text-[10px] italic"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  {leadTimeLabel}
+                </span>
+              </div>
+
+              <div
+                className="flex flex-wrap gap-2 p-3 rounded-xl border min-h-[50px] transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "rgba(37,99,235,0.06)",
+                  borderColor: "rgba(37,99,235,0.14)",
+                }}
               >
-                Total Days Computed
-              </span>
-              <span
-                className="text-xl font-extrabold"
-                style={{ color: "#16a34a" }}
-              >
-                {totalDays} Day(s)
-              </span>
+                {formData.inclusiveDates.length === 0 ? (
+                  <p
+                    className="text-xs italic flex items-center gap-2"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    <Info size={14} style={{ color: "var(--app-muted)" }} /> No
+                    dates selected yet
+                  </p>
+                ) : (
+                  formData.inclusiveDates.map((date) => (
+                    <div
+                      key={date}
+                      className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-sm border transition-colors duration-300 ease-out"
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        borderColor:
+                          "var(--accent-soft2, rgba(37,99,235,0.18))",
+                        color: "var(--accent)",
+                      }}
+                    >
+                      <span className="truncate max-w-[150px]">{date}</span>
+                      <button
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => handleDateRemove(date)}
+                        className="transition-colors disabled:opacity-50"
+                        style={{ color: "var(--app-muted)" }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.color = "#ef4444")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.color = "var(--app-muted)")
+                        }
+                        aria-label={`Remove ${date}`}
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             {/* Reason */}
@@ -524,7 +787,7 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                 >
                   <FileText className="w-4 h-4" />
                 </div>
-                Reason / Purpose
+                Reason / Justification
               </div>
 
               <textarea
@@ -533,19 +796,15 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                 onChange={handleChange}
                 rows="4"
                 maxLength={MAX_REASON_LEN}
-                placeholder="Provide a valid reason for your wellness leave..."
-                disabled={isBusy || isBalanceLoading}
+                placeholder="Provide details for your wellness leave..."
+                disabled={isBusy}
                 className="w-full p-3 rounded-lg outline-none resize-none text-sm border transition-colors duration-200 ease-out"
                 style={{
-                  backgroundColor:
-                    isBusy || isBalanceLoading
-                      ? "var(--app-surface-2)"
-                      : "var(--app-surface)",
+                  backgroundColor: isBusy
+                    ? "var(--app-surface-2)"
+                    : "var(--app-surface)",
                   borderColor: borderColor,
-                  color:
-                    isBusy || isBalanceLoading
-                      ? "var(--app-muted)"
-                      : "var(--app-text)",
+                  color: isBusy ? "var(--app-muted)" : "var(--app-text)",
                 }}
               />
 
@@ -561,7 +820,7 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
             <div className="space-y-3 pt-2">
               <button
                 type="button"
-                disabled={isBusy || isBalanceLoading}
+                disabled={isBusy}
                 onClick={() => setShowRouting((s) => !s)}
                 className="w-full flex items-center justify-between p-3 rounded-lg border transition-colors duration-200 ease-out disabled:opacity-60"
                 style={{
@@ -617,7 +876,7 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                     </div>
                   )}
 
-                  <div className="space-y-2 mt-2 max-h-[250px] overflow-y-auto pr-1">
+                  <div className="space-y-2 mt-2 max-h-[250px] overflow-y-auto pr-1 cto-scrollbar">
                     {formData.routeId &&
                       routesResponse
                         ?.find((r) => r._id === formData.routeId)
@@ -634,9 +893,10 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
                             <div
                               className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 border"
                               style={{
-                                backgroundColor: "rgba(34,197,94,0.1)",
-                                color: "#16a34a",
-                                borderColor: "rgba(34,197,94,0.18)",
+                                backgroundColor: "var(--accent-soft)",
+                                color: "var(--accent)",
+                                borderColor:
+                                  "var(--accent-soft2, rgba(37,99,235,0.18))",
                               }}
                             >
                               {idx + 1}
@@ -710,14 +970,14 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
               type="submit"
               disabled={
                 isBusy ||
-                isBalanceLoading ||
-                totalDays <= 0 ||
-                totalDays > maxWellnessDays
+                (workingDaysLoading && !workingDaysIsError) ||
+                formData.inclusiveDates.length === 0 ||
+                !!dateError
               }
               className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 rounded-lg font-bold disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 ease-out shadow-sm"
               style={{
-                backgroundColor: "#16a34a",
-                border: "1px solid #16a34a",
+                backgroundColor: "var(--accent)",
+                border: "1px solid var(--accent)",
                 color: "#fff",
               }}
               onMouseEnter={(e) => {
@@ -726,11 +986,13 @@ const AddWellnessApplicationForm = ({ onClose, onSuccess }) => {
               }}
               onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
             >
-              {mutation.isPending
-                ? "Submitting..."
-                : successLatchUI
-                  ? "Submitted"
-                  : "Submit Request"}
+              {workingDaysLoading
+                ? "Loading..."
+                : mutation.isPending
+                  ? "Submitting..."
+                  : successLatchUI
+                    ? "Submitted"
+                    : "Submit Request"}
             </button>
           </div>
         </form>

@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom"; // ✅ Added useNavigate
+import { useNavigate } from "react-router-dom";
 import { addApplicationRequest, fetchMyCtoMemos } from "../../../../api/cto";
 import { fetchPublicWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
-import Breadcrumbs from "../../../breadCrumbs"; // ✅ Added Breadcrumbs
+import Breadcrumbs from "../../../breadCrumbs";
 import "react-loading-skeleton/dist/skeleton.css";
 import SelectCtoMemoModal from "./selectCtoMemoModal";
 import { toast } from "react-toastify";
@@ -192,7 +192,7 @@ const Banner = ({ tone = "error", message, borderColor }) => {
 
 const AddCtoApplicationForm = () => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate(); // ✅ Setup navigation
+  const navigate = useNavigate();
   const { admin } = useAuth();
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
@@ -341,18 +341,31 @@ const AddCtoApplicationForm = () => {
     setMaxRequestedHours(totalRemaining);
   }, [validMemos]);
 
+  // ✅ Extract user's specific route
+  const myRoute = useMemo(() => {
+    if (!routesResponse || !Array.isArray(routesResponse)) return null;
+    return routesResponse.find(
+      (r) =>
+        String(r.createdBy?._id || r.createdBy) ===
+        String(admin?.id || admin?._id),
+    );
+  }, [routesResponse, admin]);
+
+  // ✅ Determine if the route is valid and has at least one active approver
+  const hasValidApprovalRoute = useMemo(() => {
+    if (!myRoute) return false;
+    if (!myRoute.steps || myRoute.steps.length === 0) return false;
+    // Must have at least one step that isn't explicitly disabled AND has an approver
+    return myRoute.steps.some(
+      (step) => step.isEnabled !== false && step.approver,
+    );
+  }, [myRoute]);
+
   useEffect(() => {
-    if (routesResponse && Array.isArray(routesResponse) && !formData.routeId) {
-      const myRoute = routesResponse.find(
-        (r) =>
-          String(r.createdBy?._id || r.createdBy) ===
-          String(admin?.id || admin?._id),
-      );
-      if (myRoute) {
-        setFormData((prev) => ({ ...prev, routeId: myRoute._id }));
-      }
+    if (myRoute && !formData.routeId) {
+      setFormData((prev) => ({ ...prev, routeId: myRoute._id }));
     }
-  }, [routesResponse, admin, formData.routeId]);
+  }, [myRoute, formData.routeId]);
 
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
@@ -583,7 +596,15 @@ const AddCtoApplicationForm = () => {
           MAX_REASON_LEN,
           `Reason cannot exceed ${MAX_REASON_LEN} characters.`,
         ),
-      routeId: yup.string().required("Please select an approval route."),
+      routeId: yup
+        .string()
+        .required("Please select an approval route.")
+        // ✅ Added validation test to block form if no active approvers exist
+        .test(
+          "has-active-steps",
+          "Your approval workflow has no active approvers. Please enable them in your settings.",
+          () => hasValidApprovalRoute,
+        ),
       inclusiveDates: yup
         .array()
         .of(yup.string())
@@ -635,6 +656,7 @@ const AddCtoApplicationForm = () => {
     workingDaysLoading,
     minDate,
     leadTimeMsg,
+    hasValidApprovalRoute, // ✅ Dependency added
   ]);
 
   const startSubmit = async () => {
@@ -678,7 +700,6 @@ const AddCtoApplicationForm = () => {
       queryClient.invalidateQueries({ queryKey: ["ctoApplications"] });
       queryClient.invalidateQueries({ queryKey: ["myCtoMemos"] });
 
-      // ✅ Redirect back to list page upon success
       setTimeout(() => {
         navigate(-1);
       }, 1500);
@@ -723,7 +744,6 @@ const AddCtoApplicationForm = () => {
         baseColor={skeletonColors.baseColor}
         highlightColor={skeletonColors.highlightColor}
       >
-        {/* ✅ PAGE HEADER WITH BREADCRUMBS */}
         <div className="pt-2 pb-6 px-4 md:px-0">
           <Breadcrumbs rootLabel="home" rootTo="/app" />
           <h1
@@ -741,7 +761,6 @@ const AddCtoApplicationForm = () => {
           </p>
         </div>
 
-        {/* ✅ FORM CARD (Removed fixed heights) */}
         <div
           className="w-full rounded-xl overflow-hidden border shadow-sm transition-colors duration-300 ease-out"
           style={{
@@ -1187,7 +1206,6 @@ const AddCtoApplicationForm = () => {
                 </div>
               </div>
 
-              {/* ✅ CLEANED UP APPROVAL ROUTING (No collapse, no name, just steps) */}
               <div
                 className="space-y-3 pt-6 mt-6 border-t transition-colors duration-300 ease-out"
                 style={{ borderColor: borderColor }}
@@ -1212,16 +1230,30 @@ const AddCtoApplicationForm = () => {
                 <div className="space-y-2 mt-2">
                   {isRoutesLoading ? (
                     <Skeleton height={40} borderRadius={8} count={2} />
-                  ) : !formData.routeId ? (
-                    <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-medium flex items-center gap-2">
-                      <AlertCircle size={14} />
-                      You haven't set up an approval route yet.
+                  ) : !hasValidApprovalRoute ? (
+                    // ✅ UI warning if no valid route or all approvers are disabled
+                    <div
+                      className="p-3 rounded-lg border flex items-start sm:items-center gap-2 text-xs font-medium transition-colors duration-300 ease-out"
+                      style={{
+                        backgroundColor: "rgba(245,158,11,0.10)",
+                        borderColor: "rgba(245,158,11,0.30)",
+                        color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+                      }}
+                    >
+                      <AlertCircle
+                        size={14}
+                        className="shrink-0 mt-0.5 sm:mt-0"
+                      />
+                      <span>
+                        You need an active approval route to submit an
+                        application. Please configure your approval route
+                        settings and ensure at least one approver is enabled.
+                      </span>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {routesResponse
-                        ?.find((r) => r._id === formData.routeId)
-                        ?.steps?.filter((s) => s.isEnabled !== false)
+                      {myRoute?.steps
+                        ?.filter((s) => s.isEnabled !== false)
                         ?.map((step, idx) => (
                           <div
                             key={idx}
@@ -1280,7 +1312,7 @@ const AddCtoApplicationForm = () => {
                 disabled={mutation.isPending}
                 onClick={() => {
                   if (mutation.isPending) return;
-                  navigate(-1); // ✅ Navigate back on cancel
+                  navigate(-1);
                 }}
                 className="px-6 py-2.5 sm:py-2 rounded-lg border font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
                 style={{
@@ -1299,7 +1331,12 @@ const AddCtoApplicationForm = () => {
 
               <button
                 type="submit"
-                disabled={isBusy || (workingDaysLoading && !workingDaysIsError)}
+                // ✅ Disabled submit if the route is invalid
+                disabled={
+                  isBusy ||
+                  (workingDaysLoading && !workingDaysIsError) ||
+                  !hasValidApprovalRoute
+                }
                 className="w-full sm:w-auto px-8 py-2.5 sm:py-2 rounded-lg font-bold disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
                 style={{
                   backgroundColor: "var(--accent)",

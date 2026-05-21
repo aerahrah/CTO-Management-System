@@ -10,19 +10,28 @@ export const useAuth = create(
       admin: null,
       preferences: DEFAULT_PREFS,
 
+      // ✅ 1. Initialize the timer state
+      sessionExpiresAt: null,
+
       hasHydrated: false,
       setHasHydrated: (v) => set({ hasHydrated: v }),
 
       login: (data) => {
-        // The browser automatically handles the HttpOnly cookie now.
-        // We only need to store the user profile/admin data.
-        const admin = data?.admin ?? data?.payload ?? null;
+        const admin = data?.admin ?? data?.payload ?? data ?? null;
+
+        // ✅ 2. Extract the expiration time from the payload
+        const sessionExpiresAt =
+          data?.sessionExpiresAt ??
+          data?.payload?.sessionExpiresAt ??
+          admin?.sessionExpiresAt ??
+          null;
 
         const prefs = admin?.preferences
           ? { ...DEFAULT_PREFS, ...admin.preferences }
           : DEFAULT_PREFS;
 
-        set({ admin, preferences: prefs });
+        // ✅ 3. Save it to state
+        set({ admin, preferences: prefs, sessionExpiresAt });
       },
 
       setPreferences: (prefs) => {
@@ -38,26 +47,25 @@ export const useAuth = create(
       },
 
       logout: () => {
-        // Clear the state
         set({
           admin: null,
           preferences: DEFAULT_PREFS,
+          // ✅ 4. Clear the timer on logout
+          sessionExpiresAt: null,
         });
 
         localStorage.removeItem("auth");
-
-        // ⚠️ IMPORTANT: Your UI component must now also make an API call
-        // to your new backend /logout endpoint to clear the cookie!
       },
     }),
     {
       name: "auth",
       storage: createJSONStorage(() => localStorage),
 
-      // ✅ NEW: Partialize ensures ONLY preferences are saved to localStorage.
-      // The admin object will clear on refresh, requiring a fresh fetch from the server.
       partialize: (state) => ({
         preferences: state.preferences,
+        // ✅ 5. Persist the timer! If you don't add it here, the timer
+        // will break if the user hits the "refresh" button on their browser.
+        sessionExpiresAt: state.sessionExpiresAt,
       }),
 
       onRehydrateStorage: () => (state, error) => {

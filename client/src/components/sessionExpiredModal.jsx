@@ -1,23 +1,23 @@
 // src/components/session/SessionGuard.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Clock, LogIn } from "lucide-react";
 import Modal from "./modal";
-import { getJwtExpMs } from "../utils/jwt";
 import { useAuth } from "../store/authStore";
 
 export default function SessionGuard() {
   const navigate = useNavigate();
-  const token = useAuth((s) => s.token);
   const logout = useAuth((s) => s.logout);
+  const sessionExpiresAt = useAuth((s) => s.sessionExpiresAt);
 
   const [open, setOpen] = useState(false);
-  const timerRef = useRef(null);
 
-  const expMs = useMemo(() => {
-    if (!token) return null;
-    return getJwtExpMs(token); // null if token has no exp
-  }, [token]);
+  // ✅ 1. Add state to hold the dynamic expiration message
+  const [expireMessage, setExpireMessage] = useState(
+    "Your session has ended for security reasons. Please sign in again to continue.",
+  );
+
+  const timerRef = useRef(null);
 
   const clearTimer = () => {
     if (timerRef.current) {
@@ -32,14 +32,14 @@ export default function SessionGuard() {
     navigate("/", { replace: true });
   };
 
+  // 1. Proactive Timer
   useEffect(() => {
     clearTimer();
     setOpen(false);
 
-    if (!token) return;
-    if (!expMs) return; // non-expiring token → do nothing
+    if (!sessionExpiresAt) return;
 
-    const msLeft = expMs - Date.now();
+    const msLeft = sessionExpiresAt - Date.now();
     if (msLeft <= 0) {
       setOpen(true);
       return;
@@ -47,12 +47,32 @@ export default function SessionGuard() {
 
     timerRef.current = setTimeout(() => setOpen(true), msLeft);
     return clearTimer;
-  }, [token, expMs]);
+  }, [sessionExpiresAt]);
 
+  // ✅ 2. Update to listen for your custom event and grab the message
+  useEffect(() => {
+    const handleSessionExpired = (event) => {
+      // If emitSessionExpired passed a custom message, update the state
+      if (event.detail?.message) {
+        setExpireMessage(event.detail.message);
+      }
+      setOpen(true);
+    };
+
+    // IMPORTANT: Make sure "onSessionExpired" matches exactly what is
+    // being dispatched in your src/api/sessionEvents.js file
+    window.addEventListener("onSessionExpired", handleSessionExpired);
+
+    return () =>
+      window.removeEventListener("onSessionExpired", handleSessionExpired);
+  }, []);
+
+  // 3. Check Expiration on Window Focus / Visibility Change
   useEffect(() => {
     const recheck = () => {
-      if (!token || !expMs) return;
-      if (Date.now() >= expMs) setOpen(true);
+      if (sessionExpiresAt && Date.now() >= sessionExpiresAt) {
+        setOpen(true);
+      }
     };
 
     window.addEventListener("focus", recheck);
@@ -62,47 +82,40 @@ export default function SessionGuard() {
       window.removeEventListener("focus", recheck);
       document.removeEventListener("visibilitychange", recheck);
     };
-  }, [token, expMs]);
+  }, [sessionExpiresAt]);
 
   return (
     <Modal
       isOpen={open}
       onClose={() => {}}
-      title={null} // ✅ we'll render a custom minimalist header
+      title={null}
       maxWidth="max-w-md"
-      showFooter={false} // ✅ custom footer
+      showFooter={false}
       closeLabel={null}
       canClose={false}
       preventCloseWhenBusy={true}
     >
-      {/* Minimal, premium-style content */}
       <div className="flex flex-col items-center text-center">
-        {/* icon */}
-        <div className="h-11 w-11 rounded-2xl border border-gray-200 bg-gray-50 flex items-center justify-center">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-gray-50">
           <Clock className="h-5 w-5 text-gray-500" />
         </div>
 
-        {/* title */}
         <div className="mt-4 text-lg font-semibold text-gray-900">
           Session expired
         </div>
 
-        {/* description */}
-        <p className="mt-1 text-sm text-gray-500 leading-relaxed max-w-sm">
-          Your session has ended for security reasons. Please sign in again to
-          continue.
+        {/* ✅ 3. Render the dynamic message here */}
+        <p className="mt-1 max-w-sm text-sm leading-relaxed text-gray-500">
+          {expireMessage}
         </p>
 
-        {/* subtle divider */}
-        <div className="my-5 w-full h-px bg-gray-100" />
+        <div className="my-5 h-px w-full bg-gray-100" />
 
-        {/* actions */}
-        <div className="w-full flex flex-col sm:flex-row gap-2">
+        <div className="flex w-full flex-col gap-2 sm:flex-row">
           <button
             type="button"
             onClick={relogin}
-            className="inline-flex w-full items-center justify-center gap-2 rounded px-4 py-2.5 text-sm font-semibold
-                       bg-blue-600 text-white hover:bg-blue-700 transition"
+            className="inline-flex w-full items-center justify-center gap-2 rounded bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
           >
             <LogIn className="h-4 w-4" />
             Login again
