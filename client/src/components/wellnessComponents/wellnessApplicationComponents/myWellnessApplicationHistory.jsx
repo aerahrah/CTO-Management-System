@@ -43,6 +43,7 @@ import {
   ChevronDown,
   Bell,
   Undo,
+  Clock4, // ✅ Imported Clock4 for Late Filing icon
 } from "lucide-react";
 import { useAuth } from "../../../store/authStore";
 import { usePermissions } from "../../../hooks/usePermissions";
@@ -391,7 +392,6 @@ const ApplicationCard = ({
   const isApproved = status === "APPROVED";
   const isRevocationRequested = status === "REVOCATION_REQUESTED";
 
-  // ✅ Added missing declaration
   const coveredDatesLabel = formatCoveredDates(app?.inclusiveDates);
 
   let colCount = 2; // Details + Gen PDF
@@ -449,11 +449,28 @@ const ApplicationCard = ({
             >
               Total Days
             </div>
-            <div
-              className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out"
-              style={{ color: "var(--app-text)" }}
-            >
-              {app?.totalDays || 0} Day(s)
+            <div className="flex items-center gap-2 mt-1">
+              <span
+                className="text-sm font-semibold transition-colors duration-300 ease-out"
+                style={{ color: "var(--app-text)" }}
+              >
+                {app?.totalDays || 0} Day(s)
+              </span>
+              {/* ✅ LATE FILING INDICATOR ON CARD */}
+              {/* {app.lateFiling?.isLateFiling && (
+                <div
+                  className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md border"
+                  style={{
+                    backgroundColor: "rgba(245,158,11,0.1)",
+                    borderColor: "rgba(245,158,11,0.25)",
+                    color: "#d97706",
+                  }}
+                  title="Filed with short notice."
+                >
+                  <Clock4 className="h-3 w-3" />
+                  Late
+                </div>
+              )} */}
             </div>
           </div>
           <div
@@ -1147,7 +1164,35 @@ const MyWellnessApplications = () => {
                 </div>
 
                 {canManageSelf && (
-                  <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-3 rounded-xl">
+                  <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-2 md:gap-3 rounded-xl shrink-0">
+                    <button
+                      onClick={() =>
+                        navigate(
+                          isUserOrganic
+                            ? "/app/wellness-apply/organic?late=true"
+                            : "/app/wellness-apply/add?late=true",
+                        )
+                      }
+                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-32 md:py-3.5 px-4 py-3 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 flex-1"
+                      type="button"
+                      style={{
+                        backgroundColor: "rgba(245,158,11,0.12)",
+                        color: "#d97706",
+                        border: "1px solid rgba(245,158,11,0.25)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor =
+                          "rgba(245,158,11,0.20)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor =
+                          "rgba(245,158,11,0.12)";
+                      }}
+                    >
+                      <Clock4 className="w-4 h-4 shrink-0" />
+                      Late Filing
+                    </button>
+
                     <button
                       onClick={() =>
                         navigate(
@@ -1156,7 +1201,7 @@ const MyWellnessApplications = () => {
                             : "/app/wellness-apply/add",
                         )
                       }
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-42 md:py-3.5 px-6 py-3 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 w-full"
+                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-32 md:py-3.5 px-4 py-3 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 flex-1"
                       type="button"
                       style={{
                         backgroundColor: "var(--accent)",
@@ -1170,7 +1215,7 @@ const MyWellnessApplications = () => {
                         e.currentTarget.style.filter = "none";
                       }}
                     >
-                      <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                      <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 shrink-0" />
                       File Leave
                     </button>
                   </div>
@@ -1595,16 +1640,36 @@ const MyWellnessApplications = () => {
                                     </td>
 
                                     <td className="px-6 py-4 text-center">
-                                      <span
-                                        className="inline-flex items-center px-2.5 py-0.5 rounded-md border text-xs font-bold"
-                                        style={{
-                                          backgroundColor: "var(--app-surface)",
-                                          borderColor: borderColor,
-                                          color: "var(--app-text)",
-                                        }}
-                                      >
-                                        {app.totalDays || 0} Day(s)
-                                      </span>
+                                      <div className="flex flex-col items-center gap-1.5">
+                                        <span
+                                          className="inline-flex items-center px-2.5 py-0.5 rounded-md border text-xs font-bold"
+                                          style={{
+                                            backgroundColor:
+                                              "var(--app-surface)",
+                                            borderColor: borderColor,
+                                            color: "var(--app-text)",
+                                          }}
+                                        >
+                                          {app.totalDays || 0} Day(s)
+                                        </span>
+                                        {/* ✅ LATE FILING INDICATOR ON TABLE */}
+                                        {/* {app.lateFiling?.isLateFiling && (
+                                          <div
+                                            className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md border"
+                                            style={{
+                                              backgroundColor:
+                                                "rgba(245,158,11,0.1)",
+                                              borderColor:
+                                                "rgba(245,158,11,0.25)",
+                                              color: "#d97706",
+                                            }}
+                                            title="Filed with short notice."
+                                          >
+                                            <Clock4 className="h-3 w-3" />
+                                            Late
+                                          </div>
+                                        )} */}
+                                      </div>
                                     </td>
 
                                     <td className="px-6 py-4 text-left max-w-xs">

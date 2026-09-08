@@ -2,14 +2,53 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
+const path = require("path");
+const fs = require("fs");
+
+// Helper function to ensure the upload directories exist
+const ensureDir = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
 
 // Set up temporary storage for uploaded memos before the controller moves them
 const upload = multer({ dest: "uploads/temp/" });
 
-// ✅ FIXED: Changed 'upload/' to 'uploads/' for folder consistency
-const uploadRevocation = multer({
-  dest: "uploads/wellness/revocation/attachments/",
+// ✅ Custom Storage for Wellness Revocation Attachments (preserves file extensions)
+const revocationStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = "uploads/wellness/revocation/attachments/";
+    ensureDir(dir);
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    // Generates a safe, unique filename: file-1683921345.pdf
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(
+      null,
+      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
+    );
+  },
 });
+const uploadWellnessRevocation = multer({ storage: revocationStorage });
+
+// ✅ Custom Storage for Wellness Application Attachments (Late Filing)
+const applicationStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    const dir = "uploads/wellness/applications/attachments/";
+    ensureDir(dir);
+    cb(null, dir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(
+      null,
+      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
+    );
+  },
+});
+const uploadWellnessApplication = multer({ storage: applicationStorage });
 
 const {
   authenticateToken,
@@ -113,7 +152,6 @@ router.get(
 );
 
 // Admin View Specific Application By ID
-// ✅ FIXED: Added the missing leading slash '/'
 router.get(
   "/revocation/applications/:id",
   ...requirePerm("revocation.manage_application"),
@@ -129,6 +167,7 @@ router.get(
 router.post(
   "/applications/apply",
   ...requirePerm("wellness.manage_self"),
+  uploadWellnessApplication.single("file"), // ✅ Uses updated storage for Late Filing
   addWellnessApplicationRequest,
 );
 
@@ -150,11 +189,11 @@ router.post(
 router.post(
   "/revocation/applications/:id/revoke-request",
   ...requirePerm("revocation.manage_self"),
-  uploadRevocation.single("file"),
+  uploadWellnessRevocation.single("file"), // ✅ Uses updated storage for Revocation
   requestRevocationWellnessController,
 );
 
-// ✅ NEW: Employee cancels their pending revocation request
+// Employee cancels their pending revocation request
 router.patch(
   "/revocation/applications/:id/cancel-request",
   ...requirePerm("revocation.manage_self"),
@@ -216,7 +255,6 @@ router.get(
 );
 
 // Get personal credit history (Self-service view)
-// ✅ FIXED: Moved UP above the dynamic /:employeeId route so "my-credits" doesn't get treated as an ID
 router.get(
   "/credits/my-credits",
   ...requirePerm("wellness.view_self"),

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   addWellnessApplicationRequest,
   fetchMyWellnessApplications,
@@ -19,6 +19,7 @@ import {
   HeartPulse,
   Layers,
   ArrowLeft,
+  UploadCloud,
 } from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -119,12 +120,13 @@ function useResolvedTheme(prefTheme) {
 /* =========================
    Validation Logic
 ========================= */
-// ✅ UPDATED: Added blockedDates parameter to prevent overlaps
 const validateDate = ({
   value,
   inclusiveDates,
   blockedDates,
   minDate,
+  isLateMode,
+  todayISO,
   leadTimeMsg,
   maxWellnessDays,
   activeWorkingDays,
@@ -132,7 +134,10 @@ const validateDate = ({
   if (!value) return "";
   if (!isFullISODate(value)) return "";
 
-  if (value < minDate) return leadTimeMsg;
+  // Late Filing rules vs Normal rules
+  if (isLateMode && value < todayISO) return "Cannot select past dates.";
+  if (!isLateMode && value < minDate) return leadTimeMsg;
+
   if (isNonWorkingDay(value, activeWorkingDays))
     return "Please select a valid scheduled working day.";
   if (inclusiveDates.includes(value)) return "That date is already selected.";
@@ -176,12 +181,19 @@ const Banner = ({ tone = "error", message, borderColor }) => {
             fg: "var(--app-text)",
             icon: "#16a34a",
           }
-        : {
-            bg: "rgba(239,68,68,0.10)",
-            br: "rgba(239,68,68,0.18)",
-            fg: "var(--app-text)",
-            icon: "#ef4444",
-          };
+        : tone === "amber"
+          ? {
+              bg: "rgba(245,158,11,0.10)",
+              br: "rgba(245,158,11,0.25)",
+              fg: "var(--app-text)",
+              icon: "#f59e0b",
+            }
+          : {
+              bg: "rgba(239,68,68,0.10)",
+              br: "rgba(239,68,68,0.18)",
+              fg: "var(--app-text)",
+              icon: "#ef4444",
+            };
 
   return (
     <div
@@ -210,6 +222,9 @@ const AddWellnessApplicationForm = () => {
   const navigate = useNavigate();
   const { admin, user } = useAuth();
 
+  const [searchParams] = useSearchParams();
+  const isLateMode = searchParams.get("late") === "true";
+
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -235,6 +250,10 @@ const AddWellnessApplicationForm = () => {
   }, [resolvedTheme]);
 
   const dateInputRef = useRef(null);
+
+  // Late Filing States
+  const [lateJustification, setLateJustification] = useState("");
+  const [lateAttachment, setLateAttachment] = useState(null);
 
   // Date input states
   const [dateValue, setDateValue] = useState("");
@@ -281,6 +300,9 @@ const AddWellnessApplicationForm = () => {
   const workingDoc = workingDaysRes?.data;
 
   const activeWorkingDays = workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+  const isAttachmentRequired = Boolean(
+    workingDoc?.lateFilingAttachmentRequired,
+  );
 
   const leadTimeDays = useMemo(() => {
     const enabled =
@@ -295,6 +317,11 @@ const AddWellnessApplicationForm = () => {
     () => getMinSelectableDateISO(leadTimeDays, activeWorkingDays),
     [leadTimeDays, activeWorkingDays],
   );
+
+  const todayISO = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  // Date Picker minimum changes depending on explicit mode
+  const pickerMinDate = isLateMode ? todayISO : minDate;
 
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
@@ -392,8 +419,10 @@ const AddWellnessApplicationForm = () => {
     const err = validateDate({
       value: dateValue,
       inclusiveDates: formData.inclusiveDates,
-      blockedDates, // ✅ Pass blocked dates
+      blockedDates,
       minDate,
+      isLateMode,
+      todayISO,
       leadTimeMsg,
       maxWellnessDays,
       activeWorkingDays,
@@ -404,21 +433,28 @@ const AddWellnessApplicationForm = () => {
     formData.inclusiveDates,
     blockedDates,
     minDate,
+    isLateMode,
+    todayISO,
     leadTimeMsg,
     maxWellnessDays,
     activeWorkingDays,
   ]);
 
-  // Strip invalid dates if lead time config shifts
+  // Strip invalid dates if lead time config shifts (only if NOT late mode)
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
-    const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
-    if (filtered.length !== formData.inclusiveDates.length) {
-      setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
-      showBanner("info", "Some selected dates were removed (lead-time rule).");
+    if (!isLateMode) {
+      const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
+      if (filtered.length !== formData.inclusiveDates.length) {
+        setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
+        showBanner(
+          "info",
+          "Some selected dates were removed (lead-time rule). Use 'Late Filing' to bypass.",
+        );
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minDate]);
+  }, [minDate, isLateMode]);
 
   const handleDateInput = (e) => {
     clearBanner();
@@ -427,8 +463,10 @@ const AddWellnessApplicationForm = () => {
     const err = validateDate({
       value: e.target.value,
       inclusiveDates: formData.inclusiveDates,
-      blockedDates, // ✅ Pass blocked dates
+      blockedDates,
       minDate,
+      isLateMode,
+      todayISO,
       leadTimeMsg,
       maxWellnessDays,
       activeWorkingDays,
@@ -444,8 +482,10 @@ const AddWellnessApplicationForm = () => {
     const err = validateDate({
       value: v,
       inclusiveDates: formData.inclusiveDates,
-      blockedDates, // ✅ Pass blocked dates
+      blockedDates,
       minDate,
+      isLateMode,
+      todayISO,
       leadTimeMsg,
       maxWellnessDays,
       activeWorkingDays,
@@ -511,7 +551,6 @@ const AddWellnessApplicationForm = () => {
       };
     }
 
-    // ✅ NEW VALIDATION: Final check before submitting just in case
     const overlaps = formData.inclusiveDates.filter((d) =>
       blockedDates.includes(d),
     );
@@ -576,8 +615,49 @@ const AddWellnessApplicationForm = () => {
       return;
     }
 
+    // ✅ Strict Check: If late mode, require justification
+    if (isLateMode && !lateJustification.trim()) {
+      showBanner("error", "Late filing justification is required to proceed.");
+      submitInFlightRef.current = false;
+      return;
+    }
+
+    // ✅ Strict Check: If late mode & attachment required, block if missing
+    if (isLateMode && isAttachmentRequired && !lateAttachment) {
+      showBanner(
+        "error",
+        "A supporting document is required for late filings. Please attach a file.",
+      );
+      submitInFlightRef.current = false;
+      return;
+    }
+
     try {
-      await mutation.mutateAsync(result.payload);
+      // ✅ Switch to FormData for multipart submission
+      const formPayload = new FormData();
+      formPayload.append("reason", result.payload.reason);
+      formPayload.append("routeId", result.payload.routeId);
+      formPayload.append("employeeType", result.payload.employeeType);
+      formPayload.append(
+        "inclusiveDates",
+        JSON.stringify(result.payload.inclusiveDates),
+      );
+      formPayload.append("clientRequestId", result.payload.clientRequestId);
+
+      if (isLateMode) {
+        formPayload.append(
+          "lateFiling",
+          JSON.stringify({
+            isLateFiling: true,
+            justification: lateJustification.trim(),
+          }),
+        );
+        if (lateAttachment) {
+          formPayload.append("file", lateAttachment);
+        }
+      }
+
+      await mutation.mutateAsync(formPayload);
 
       successLatchRef.current = true;
       setSuccessLatchUI(true);
@@ -604,14 +684,15 @@ const AddWellnessApplicationForm = () => {
   };
 
   const leadTimeLabel = useMemo(() => {
+    if (isLateMode) return "Late Filing Allowed";
     if (workingDaysLoading) return "Min. Lead Time: Loading…";
     if (leadTimeDays <= 0) return "Min. Lead Time: 1 day";
     return `Min. Lead Time: ${leadTimeDays} Work Day${
       leadTimeDays === 1 ? "" : "s"
     }`;
-  }, [leadTimeDays, workingDaysLoading]);
+  }, [leadTimeDays, workingDaysLoading, isLateMode]);
 
-  // ✅ Also disabled while fetching applications
+  // ✅ Disabled while fetching applications
   const dateDisabled = isBusy || workingDaysLoading || appsLoading;
 
   return (
@@ -631,6 +712,11 @@ const AddWellnessApplicationForm = () => {
             style={{ color: "var(--app-text)" }}
           >
             New Wellness Leave
+            {isLateMode && (
+              <span className="ml-3 text-sm font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 align-middle">
+                Late Filing Enabled
+              </span>
+            )}
           </h1>
           <p
             className="block text-sm mt-1 max-w-2xl"
@@ -781,7 +867,7 @@ const AddWellnessApplicationForm = () => {
                     <input
                       ref={dateInputRef}
                       type="date"
-                      min={minDate}
+                      min={pickerMinDate}
                       value={dateValue}
                       onInput={handleDateInput}
                       onChange={handleDateCommit}
@@ -820,7 +906,7 @@ const AddWellnessApplicationForm = () => {
                       <span
                         style={{ color: "var(--app-text)", fontWeight: 700 }}
                       >
-                        {minDate}
+                        {pickerMinDate}
                       </span>
                     </div>
                   )}
@@ -883,6 +969,97 @@ const AddWellnessApplicationForm = () => {
                         </button>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ LATE FILING UI BLOCK */}
+              {isLateMode && (
+                <div
+                  className="space-y-4 p-5 rounded-xl border transition-colors duration-300 ease-out animate-in fade-in"
+                  style={{
+                    backgroundColor:
+                      resolvedTheme === "dark"
+                        ? "rgba(245,158,11,0.05)"
+                        : "#fffbeb",
+                    borderColor:
+                      resolvedTheme === "dark"
+                        ? "rgba(245,158,11,0.2)"
+                        : "#fde68a",
+                  }}
+                >
+                  <Banner
+                    tone="amber"
+                    message="You have opted to file this request late. A justification is required to proceed."
+                  />
+
+                  <div className="space-y-2 mt-4">
+                    <label
+                      className="text-sm font-bold flex items-center gap-2"
+                      style={{
+                        color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+                      }}
+                    >
+                      Late Filing Justification{" "}
+                      <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      value={lateJustification}
+                      onChange={(e) => setLateJustification(e.target.value)}
+                      disabled={isBusy}
+                      className="w-full p-3 rounded-lg outline-none resize-none text-sm border transition-colors"
+                      style={{
+                        backgroundColor: isBusy
+                          ? "var(--app-surface-2)"
+                          : "var(--app-surface)",
+                        borderColor:
+                          resolvedTheme === "dark"
+                            ? "rgba(245,158,11,0.3)"
+                            : "#fcd34d",
+                        color: "var(--app-text)",
+                      }}
+                      rows={3}
+                      placeholder="Explain why this request is being filed on short notice..."
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label
+                      className="text-sm font-bold flex items-center gap-2"
+                      style={{
+                        color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+                      }}
+                    >
+                      <UploadCloud size={16} />
+                      Supporting Document{" "}
+                      {isAttachmentRequired ? (
+                        <span className="text-red-500">*</span>
+                      ) : (
+                        <span className="text-xs font-normal opacity-70">
+                          (Optional)
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      disabled={isBusy}
+                      onChange={(e) => setLateAttachment(e.target.files[0])}
+                      className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold cursor-pointer transition-colors"
+                      style={{
+                        color: "var(--app-text)",
+                      }}
+                    />
+                    <style>{`
+                      input[type="file"]::file-selector-button {
+                        background-color: ${resolvedTheme === "dark" ? "rgba(245,158,11,0.1)" : "#fef3c7"};
+                        color: ${resolvedTheme === "dark" ? "#fcd34d" : "#b45309"};
+                        transition: background-color 0.2s;
+                      }
+                      input[type="file"]::file-selector-button:hover {
+                        background-color: ${resolvedTheme === "dark" ? "rgba(245,158,11,0.2)" : "#fde68a"};
+                      }
+                    `}</style>
                   </div>
                 </div>
               )}

@@ -34,10 +34,23 @@ function assertObjectId(id, label = "id") {
     throw httpError(`Invalid ${label}`, 400);
 }
 
+/**
+ * ✅ NEW: Strips null bytes and strictly caps string lengths to prevent
+ * Payload Denial of Service and Null Byte Injection.
+ */
+function sanitizeString(str, maxLength = 100) {
+  return String(str || "")
+    .replace(/\0/g, "") // Strip null bytes
+    .trim()
+    .slice(0, maxLength); // Strictly cap at specified length
+}
+
 function getClientIp(req) {
   const xf = req?.headers?.["x-forwarded-for"];
-  if (typeof xf === "string" && xf.length) return xf.split(",")[0].trim();
-  return req?.socket?.remoteAddress || null;
+  // Note: x-forwarded-for can be spoofed. Only trust if behind a configured reverse proxy.
+  if (typeof xf === "string" && xf.length)
+    return sanitizeString(xf.split(",")[0], 50);
+  return sanitizeString(req?.socket?.remoteAddress, 50) || null;
 }
 
 const U = (v) => String(v || "").toUpperCase();
@@ -292,11 +305,16 @@ const getWellnessApplicationsForApproverService = async (
   const safePage = clampPage(page);
   const safeLimit = clampLimit(limit);
 
+  // ✅ NEW: Strictly sanitize search and status variables
+  const safeSearch = sanitizeString(search, 100).toLowerCase();
+  const safeStatus = sanitizeString(status, 20).toUpperCase();
+
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
       path: "wellnessApplication",
+      // ✅ NEW: Added lateFiling to projection
       select:
-        "employee approvals overallStatus inclusiveDates totalDays reason createdAt employeeType commutation applicantSignatureUrl certificationOfLeaveCredits actionDetails",
+        "employee approvals overallStatus inclusiveDates totalDays reason createdAt employeeType commutation applicantSignatureUrl certificationOfLeaveCredits actionDetails lateFiling",
       populate: [
         {
           path: "employee",
@@ -353,16 +371,13 @@ const getWellnessApplicationsForApproverService = async (
     return isTheirTurn;
   });
 
-  const searchText = String(search || "")
-    .trim()
-    .toLowerCase();
-  const appsAfterSearch = !searchText
-    ? apps
-    : apps.filter((app) => {
-        const fullName =
-          `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
-        return fullName.includes(searchText);
-      });
+  if (safeSearch) {
+    apps = apps.filter((app) => {
+      const fullName =
+        `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
+      return fullName.includes(safeSearch);
+    });
+  }
 
   const statusCounts = {
     PENDING: 0,
@@ -372,7 +387,7 @@ const getWellnessApplicationsForApproverService = async (
     total: 0,
   };
 
-  appsAfterSearch.forEach((app) => {
+  apps.forEach((app) => {
     const ordered = sortByLevel(app.approvals || []);
     const myStep = ordered.find((s) =>
       sameId(s?.approver?._id || s?.approver, approverId),
@@ -386,23 +401,22 @@ const getWellnessApplicationsForApproverService = async (
     if (effective === "CANCELLED") statusCounts.CANCELLED++;
   });
 
-  const statusFilter = U(status);
-  const appsAfterStatus = !statusFilter
-    ? appsAfterSearch
-    : appsAfterSearch.filter((app) => {
-        const ordered = sortByLevel(app.approvals || []);
-        const myStep = ordered.find((s) =>
-          sameId(s?.approver?._id || s?.approver, approverId),
-        );
-        const effective = getEffectiveStatusForApprover(app, myStep);
-        return effective === statusFilter;
-      });
+  if (safeStatus) {
+    apps = apps.filter((app) => {
+      const ordered = sortByLevel(app.approvals || []);
+      const myStep = ordered.find((s) =>
+        sameId(s?.approver?._id || s?.approver, approverId),
+      );
+      const effective = getEffectiveStatusForApprover(app, myStep);
+      return effective === safeStatus;
+    });
+  }
 
-  const total = appsAfterStatus.length;
+  const total = apps.length;
   const totalPages = Math.max(Math.ceil(total / safeLimit), 1);
   const startIndex = (safePage - 1) * safeLimit;
 
-  const data = appsAfterStatus.slice(startIndex, startIndex + safeLimit);
+  const data = apps.slice(startIndex, startIndex + safeLimit);
 
   const formattedData = data.map((app) => {
     const appObj = app.toObject ? app.toObject() : { ...app };
@@ -418,7 +432,6 @@ const getWellnessApplicationsForApproverService = async (
   };
 };
 
-// ✅ ADDED THE LEDGER HERE
 const getWellnessApplicationByIdService = async (wellnessApplicationId) => {
   if (!wellnessApplicationId)
     throw httpError("Application ID is required.", 400);
@@ -449,7 +462,7 @@ const getWellnessApplicationByIdService = async (wellnessApplicationId) => {
 
   const appObj = application.toObject ? application.toObject() : application;
   appObj.type = "WELLNESS";
-  appObj.ledger = ledger; // ✅ Attach Ledger Object
+  appObj.ledger = ledger;
 
   return appObj;
 };
@@ -581,7 +594,6 @@ const approveWellnessApplicationService = async ({
       timestamp: new Date(),
     });
 
-    // ✅ Replaced with centralized helper
     try {
       await NotificationService.notifyEmployeeOnWellnessApproval({
         employeeId: application.employee._id,
@@ -622,7 +634,6 @@ const approveWellnessApplicationService = async ({
         (s) => s.level === currentStep.level + 1,
       );
       if (nextStep) {
-        // ✅ Replaced with centralized helper
         try {
           await NotificationService.notifyApproverOnWellnessRequired({
             approverId: nextStep.approver,
@@ -662,7 +673,6 @@ const approveWellnessApplicationService = async ({
         }
       }
 
-      // ✅ Email the APPLICANT to notify them of intermediate step approval
       try {
         if (application.employee.email) {
           const applicantEnabled = await canSend(EMAIL_KEYS.WELLNESS_APPROVAL);
@@ -703,6 +713,9 @@ const rejectWellnessApplicationService = async ({
 }) => {
   assertObjectId(approverId, "approverId");
   assertObjectId(applicationId, "applicationId");
+
+  // ✅ NEW: Sanitize Rejection Remarks
+  const safeRemarks = sanitizeString(remarks, 1000) || "No remarks provided";
 
   const approver = await Employee.findById(approverId)
     .select(
@@ -768,7 +781,7 @@ const rejectWellnessApplicationService = async ({
       {
         $set: {
           status: "REJECTED",
-          remarks: remarks || "No remarks provided",
+          remarks: safeRemarks, // ✅ Use sanitized string here
           reviewedAt: new Date(),
           approverSnapshot: {
             prefixTitle: approver.prefixTitle || "",
@@ -811,7 +824,6 @@ const rejectWellnessApplicationService = async ({
     await session.commitTransaction();
     session.endSession();
 
-    // ✅ Switched logging context completely to "email" values
     const auditBody = {
       approverId,
       applicationId,
@@ -842,13 +854,12 @@ const rejectWellnessApplicationService = async ({
       timestamp: new Date(),
     });
 
-    // ✅ Replaced with centralized helper
     try {
       await NotificationService.notifyEmployeeOnWellnessRejection({
         employeeId: application.employee._id,
         approver,
         wellnessApplication: application,
-        remarks,
+        remarks: safeRemarks, // ✅ Use sanitized string here
       });
     } catch (e) {
       console.error(
@@ -862,7 +873,7 @@ const rejectWellnessApplicationService = async ({
       if (application.employee.email && enabled) {
         const tpl = wellnessRejectionEmail({
           employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
-          remarks: remarks || "No remarks provided",
+          remarks: safeRemarks, // ✅ Use sanitized string here
         });
         await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
       }

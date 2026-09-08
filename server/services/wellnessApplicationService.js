@@ -4,6 +4,7 @@ const WellnessApplication = require("../models/wellnessApplicationModel");
 const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const RevocationSetting = require("../models/revocationSettingModel");
+const GeneralSetting = require("../models/generalSettingsModel"); // ✅ Imported General Setting
 const { resolveApproversFromRoute } = require("./approvalRoute.service");
 const NotificationService = require("./notificationService");
 const { APPROVAL_ROLE_VALUES } = require("../constants/approvalRoles");
@@ -18,7 +19,7 @@ const {
   wellnessRevocationRequestEmail,
   wellnessRevocationApprovedEmail,
   wellnessRevocationRejectedEmail,
-  wellnessRevocationCancelledEmail, // ✅ Added for revocation cancellation
+  wellnessRevocationCancelledEmail,
 } = require("../utils/emailTemplates");
 const { getRevocationApproverEmails } = require("../utils/getHrEmails");
 
@@ -64,6 +65,28 @@ function formatLedgerDates(dates) {
     return fmt(start);
   }
   return `${fmt(start)} to ${fmt(end)}`;
+}
+
+// ✅ NEW HELPER: Calculate working days difference for late filing
+function getWorkingDaysLeadTime(startDate, endDate, activeWorkingDays) {
+  let current = new Date(startDate);
+  current.setHours(0, 0, 0, 0);
+
+  const end = new Date(endDate);
+  end.setHours(0, 0, 0, 0);
+
+  let workingDaysCount = 0;
+
+  if (current >= end) return 0;
+
+  while (current < end) {
+    current.setDate(current.getDate() + 1);
+    if (activeWorkingDays.includes(current.getDay())) {
+      workingDaysCount++;
+    }
+  }
+
+  return workingDaysCount;
 }
 
 async function safeSendEmail(to, subject, html) {
@@ -309,6 +332,7 @@ const addWellnessApplicationService = async ({
   commutation,
   certificationOfLeaveCredits,
   actionDetails,
+  lateFiling, // ✅ ADDED LATE FILING
   req,
 }) => {
   const finalReason = String(reason || "Availment of Wellness Leave").trim();
@@ -324,6 +348,64 @@ const addWellnessApplicationService = async ({
   }
 
   const totalDays = inclusiveDates.length;
+
+  // ==========================================
+  // ✅ DYNAMIC LATE FILING VALIDATION RULE
+  // ==========================================
+  const settings = (await GeneralSetting.findOne()) || {
+    workingDaysEnable: true,
+    workingDaysValue: 5,
+    activeWorkingDays: [1, 2, 3, 4, 5], // Default Mon-Fri
+  };
+
+  let validatedLateFiling = { isLateFiling: false };
+
+  if (settings.workingDaysEnable) {
+    const earliestDate = new Date(
+      Math.min(...inclusiveDates.map((d) => new Date(d))),
+    );
+    const today = new Date();
+
+    const leadTime = getWorkingDaysLeadTime(
+      today,
+      earliestDate,
+      settings.activeWorkingDays,
+    );
+
+    if (leadTime < settings.workingDaysValue) {
+      if (
+        !lateFiling ||
+        lateFiling.isLateFiling !== true ||
+        !lateFiling.justification?.trim()
+      ) {
+        throw Object.assign(
+          new Error(
+            `Applications filed with less than ${settings.workingDaysValue} working days of lead time require a late filing justification. (Your lead time: ${leadTime} working days)`,
+          ),
+          { status: 400 },
+        );
+      }
+
+      validatedLateFiling = {
+        isLateFiling: true,
+        justification: sanitizeText(lateFiling.justification, 1000),
+        attachment: lateFiling.attachment || null,
+      };
+    } else if (lateFiling && lateFiling.isLateFiling) {
+      validatedLateFiling = {
+        isLateFiling: true,
+        justification: sanitizeText(lateFiling.justification, 1000),
+        attachment: lateFiling.attachment || null,
+      };
+    }
+  } else if (lateFiling && lateFiling.isLateFiling) {
+    validatedLateFiling = {
+      isLateFiling: true,
+      justification: sanitizeText(lateFiling.justification, 1000),
+      attachment: lateFiling.attachment || null,
+    };
+  }
+  // ==========================================
 
   const employee = await Employee.findById(userId).populate("salary").lean();
   if (!employee) {
@@ -458,6 +540,7 @@ const addWellnessApplicationService = async ({
       totalDays,
       reason: finalReason,
       overallStatus: "PENDING",
+      lateFiling: validatedLateFiling, // ✅ ATTACHED LATE FILING
     };
 
     if (isOrganic) {
@@ -468,8 +551,6 @@ const addWellnessApplicationService = async ({
       applicationPayload.applicantSnapshot.salaryAmount =
         employee.salary?.amount;
 
-      // ✅ ADDED: Snapshot the SL and VL balances directly from the employee profile
-      // just like the CTO service to guarantee they appear in the PDF!
       const currentVlDays = employee.balances?.vlDays || 0;
       const currentSlDays = employee.balances?.slDays || 0;
 
@@ -748,8 +829,9 @@ const getAllWellnessApplicationsService = async (
 
   const [applications, total] = await Promise.all([
     WellnessApplication.find(query)
+      // ✅ ADDED lateFiling, memo, revocationHistory to the projection
       .select(
-        "totalDays reason overallStatus approvals employee inclusiveDates createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest",
+        "totalDays reason overallStatus approvals employee inclusiveDates createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling memo revocationHistory",
       )
       .populate(
         "employee",
@@ -1461,9 +1543,9 @@ const getRevocationRequestsService = async (
 
   const [applications, total] = await Promise.all([
     WellnessApplication.find(baseQuery)
-      // ✅ ADDED PROJECTION TO MATCH CTO
+      // ✅ ADDED lateFiling, memo, revocationHistory to the projection
       .select(
-        "totalDays reason overallStatus approvals employee inclusiveDates createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest",
+        "totalDays reason overallStatus approvals employee inclusiveDates createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling memo revocationHistory",
       )
       .populate(
         "employee",

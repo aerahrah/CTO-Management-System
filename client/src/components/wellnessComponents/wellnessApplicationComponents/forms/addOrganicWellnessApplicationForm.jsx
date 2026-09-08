@@ -1,6 +1,6 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   addWellnessApplicationRequest,
   fetchMyWellnessApplications,
@@ -9,7 +9,14 @@ import { fetchPublicWorkingDaysGeneralSettings } from "../../../../api/generalSe
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
 import { getMyProfile } from "../../../../api/employee";
 import { useAuth } from "../../../../store/authStore";
-import { AlertCircle, X, UserCheck, PenTool, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  X,
+  UserCheck,
+  PenTool,
+  Loader2,
+  UploadCloud,
+} from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import Breadcrumbs from "../../../breadCrumbs";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -20,6 +27,7 @@ import * as yup from "yup";
 import Forbidden403 from "../../../../pages/forbidden403_FormPage";
 
 const MAX_REASON_LEN = 1000;
+const MAX_WELLNESS_DAYS = 3;
 
 const clampInt = (v, min, max, fallback) => {
   const n = Number(v);
@@ -128,12 +136,19 @@ const Banner = ({ tone = "error", message, borderColor }) => {
             fg: "var(--app-text)",
             icon: "#16a34a",
           }
-        : {
-            bg: "rgba(239,68,68,0.10)",
-            br: "rgba(239,68,68,0.18)",
-            fg: "var(--app-text)",
-            icon: "#ef4444",
-          };
+        : tone === "amber"
+          ? {
+              bg: "rgba(245,158,11,0.10)",
+              br: "rgba(245,158,11,0.25)",
+              fg: "var(--app-text)",
+              icon: "#f59e0b",
+            }
+          : {
+              bg: "rgba(239,68,68,0.10)",
+              br: "rgba(239,68,68,0.18)",
+              fg: "var(--app-text)",
+              icon: "#ef4444",
+            };
 
   return (
     <div
@@ -157,6 +172,10 @@ const Banner = ({ tone = "error", message, borderColor }) => {
 const AddOrganicWellnessApplicationForm = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
+  // URL State Detection for Late Filing
+  const [searchParams] = useSearchParams();
+  const isLateMode = searchParams.get("late") === "true";
 
   // ✅ LOCAL SESSION DATA: Used for immediate UI rendering (Name, Dept)
   const { admin } = useAuth();
@@ -187,6 +206,10 @@ const AddOrganicWellnessApplicationForm = () => {
   }, [resolvedTheme]);
 
   const dateInputRef = useRef(null);
+
+  // Late Filing States
+  const [lateJustification, setLateJustification] = useState("");
+  const [lateAttachment, setLateAttachment] = useState(null);
 
   const [dateValue, setDateValue] = useState("");
   const [dateError, setDateError] = useState("");
@@ -268,6 +291,9 @@ const AddOrganicWellnessApplicationForm = () => {
 
   // ✅ EXTRACT NEW SETTINGS WITH DEFAULTS
   const activeWorkingDays = workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+  const isAttachmentRequired = Boolean(
+    workingDoc?.lateFilingAttachmentRequired,
+  );
 
   const leadTimeDays = useMemo(() => {
     const enabled =
@@ -283,6 +309,9 @@ const AddOrganicWellnessApplicationForm = () => {
     () => getMinSelectableDateISO(leadTimeDays, activeWorkingDays),
     [leadTimeDays, activeWorkingDays],
   );
+
+  const todayISO = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const pickerMinDate = isLateMode ? todayISO : minDate;
 
   useEffect(() => {
     if (workingDaysIsError) {
@@ -372,20 +401,28 @@ const AddOrganicWellnessApplicationForm = () => {
 
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
-    const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
-    if (filtered.length !== formData.inclusiveDates.length) {
-      setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
-      showBanner("info", "Some selected dates were removed (lead-time rule).");
-    }
-  }, [minDate]);
 
-  // ✅ Update Validation Logic Context to include blockedDates
+    if (!isLateMode) {
+      const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
+      if (filtered.length !== formData.inclusiveDates.length) {
+        setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
+        showBanner(
+          "info",
+          "Some selected dates were removed (lead-time rule). Use 'Late Filing' to bypass.",
+        );
+      }
+    }
+  }, [minDate, isLateMode]);
+
+  // ✅ Update Validation Logic Context to include blockedDates & lateMode
   const validateDateLogic = useCallback(
     (value) => {
       if (!value) return "";
       if (!isFullISODate(value)) return "";
 
-      if (value < minDate) return leadTimeMsg;
+      if (isLateMode && value < todayISO) return "Cannot select past dates.";
+      if (!isLateMode && value < minDate) return leadTimeMsg;
+
       if (isNonWorkingDay(value, activeWorkingDays))
         return "Please select a valid scheduled working day.";
       if (formData.inclusiveDates.includes(value))
@@ -401,6 +438,8 @@ const AddOrganicWellnessApplicationForm = () => {
     [
       formData.inclusiveDates,
       minDate,
+      isLateMode,
+      todayISO,
       leadTimeMsg,
       activeWorkingDays,
       blockedDates,
@@ -468,7 +507,7 @@ const AddOrganicWellnessApplicationForm = () => {
     }));
   };
 
-  // ✅ Updated Schema constraints with overlap block
+  // ✅ Updated Schema constraints with overlap block & late mode bypass
   const validationSchema = useMemo(() => {
     return yup.object().shape({
       commutation: yup
@@ -494,9 +533,11 @@ const AddOrganicWellnessApplicationForm = () => {
         .array()
         .of(yup.string())
         .min(1, "Please select at least one inclusive date.")
-        .test("lead-time", leadTimeMsg, (dates) =>
-          !dates ? true : !dates.some((d) => d < minDate),
-        )
+        .test("lead-time", leadTimeMsg, (dates) => {
+          if (!dates) return true;
+          if (isLateMode) return true;
+          return !dates.some((d) => d < minDate);
+        })
         .test(
           "no-weekends",
           "One or more selected dates fall on a non-working day.",
@@ -516,6 +557,7 @@ const AddOrganicWellnessApplicationForm = () => {
     });
   }, [
     minDate,
+    isLateMode,
     leadTimeMsg,
     hasValidApprovalRoute,
     activeWorkingDays,
@@ -535,7 +577,6 @@ const AddOrganicWellnessApplicationForm = () => {
     submitInFlightRef.current = true;
 
     try {
-      // Backend infers totalDays from inclusiveDates.length
       const rawPayload = {
         // Employee type evaluated from live profile, fallback to session
         employeeType:
@@ -550,9 +591,54 @@ const AddOrganicWellnessApplicationForm = () => {
       };
 
       await validationSchema.validate(rawPayload, { abortEarly: false });
-      rawPayload.clientRequestId = makeClientRequestId();
 
-      await mutation.mutateAsync(rawPayload);
+      // ✅ Strict Check: If they clicked "Late Filing", they MUST provide justification
+      if (isLateMode && !lateJustification.trim()) {
+        showBanner(
+          "error",
+          "Late filing justification is required to proceed.",
+        );
+        submitInFlightRef.current = false;
+        return;
+      }
+
+      // ✅ Strict Check: If late attachment is required by admin, block if missing
+      if (isLateMode && isAttachmentRequired && !lateAttachment) {
+        showBanner(
+          "error",
+          "A supporting document is required for late filings. Please attach a file.",
+        );
+        submitInFlightRef.current = false;
+        return;
+      }
+
+      // Switch to FormData for multipart submission
+      const formPayload = new FormData();
+      formPayload.append("employeeType", rawPayload.employeeType);
+      formPayload.append("commutation", rawPayload.commutation);
+      formPayload.append("reason", rawPayload.reason);
+      formPayload.append("routeId", rawPayload.routeId);
+      formPayload.append("type", rawPayload.type);
+      formPayload.append("clientRequestId", makeClientRequestId());
+      formPayload.append(
+        "inclusiveDates",
+        JSON.stringify(rawPayload.inclusiveDates),
+      );
+
+      if (isLateMode) {
+        formPayload.append(
+          "lateFiling",
+          JSON.stringify({
+            isLateFiling: true,
+            justification: lateJustification.trim(),
+          }),
+        );
+        if (lateAttachment) {
+          formPayload.append("file", lateAttachment);
+        }
+      }
+
+      await mutation.mutateAsync(formPayload);
       successLatchRef.current = true;
       setSuccessLatchUI(true);
 
@@ -610,8 +696,13 @@ const AddOrganicWellnessApplicationForm = () => {
         baseColor={skeletonColors.baseColor}
         highlightColor={skeletonColors.highlightColor}
       >
-        <div className="pt-2 pb-6 px-4 md:px-0">
+        <div className="pt-2 pb-6 px-4 md:px-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <Breadcrumbs rootLabel="home" rootTo="/app" />
+          {isLateMode && (
+            <span className="text-sm font-semibold px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+              Late Filing Mode Enabled
+            </span>
+          )}
         </div>
 
         <div
@@ -870,15 +961,18 @@ const AddOrganicWellnessApplicationForm = () => {
                       className="mt-6 border-t pt-4 transition-colors duration-300"
                       style={{ borderColor: borderColor }}
                     >
-                      <h3 className="text-xs font-bold uppercase mb-2">
-                        Inclusive Dates
+                      <h3 className="text-xs font-bold uppercase mb-2 flex justify-between items-center">
+                        <span>Inclusive Dates</span>
+                        <span className="text-[10px] normal-case font-normal italic text-gray-500">
+                          {isLateMode ? "Late Mode Active" : `Min: ${minDate}`}
+                        </span>
                       </h3>
 
                       <div className="flex items-center gap-2 mb-3">
                         <input
                           ref={dateInputRef}
                           type="date"
-                          min={minDate}
+                          min={pickerMinDate}
                           value={dateValue}
                           onInput={handleDateInput}
                           onChange={handleDateCommit}
@@ -981,6 +1075,71 @@ const AddOrganicWellnessApplicationForm = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* ✅ LATE FILING SECTION FOR ORGANIC WELLNESS */}
+                {isLateMode && (
+                  <div
+                    className="p-4 border-b transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "rgba(245,158,11,0.05)",
+                      borderColor: borderColor,
+                    }}
+                  >
+                    <Banner
+                      tone="amber"
+                      message="You have opted to file this request late. A justification is required to proceed."
+                    />
+                    <div className="space-y-4 mt-4">
+                      <div>
+                        <h3
+                          className="text-xs font-bold uppercase mb-2"
+                          style={{ color: "#d97706" }}
+                        >
+                          Late Filing Justification{" "}
+                          <span className="text-red-500">*</span>
+                        </h3>
+                        <textarea
+                          value={lateJustification}
+                          onChange={(e) => setLateJustification(e.target.value)}
+                          disabled={isFormDisabled}
+                          className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded"
+                          style={{
+                            borderColor: borderColor,
+                            color: "var(--app-text)",
+                            backgroundColor: isFormDisabled
+                              ? "var(--app-surface-2)"
+                              : "var(--app-surface)",
+                          }}
+                          rows="3"
+                          placeholder="Explain why this request is being filed on short notice..."
+                        />
+                      </div>
+                      <div>
+                        <h3
+                          className="text-xs font-bold uppercase mb-2 flex items-center gap-2"
+                          style={{ color: "#d97706" }}
+                        >
+                          <UploadCloud size={14} /> Supporting Document{" "}
+                          {isAttachmentRequired ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            <span className="normal-case opacity-70">
+                              (Optional)
+                            </span>
+                          )}
+                        </h3>
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          disabled={isFormDisabled}
+                          onChange={(e) => setLateAttachment(e.target.files[0])}
+                          className="w-full text-xs file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 cursor-pointer"
+                          style={{ color: "var(--app-text)" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* ROW 3: Reason / Custom Digital Fields */}
                 <div
@@ -1100,7 +1259,8 @@ const AddOrganicWellnessApplicationForm = () => {
                 disabled={
                   isFormDisabled ||
                   (workingDaysLoading && !workingDaysIsError) ||
-                  !hasValidApprovalRoute
+                  !hasValidApprovalRoute ||
+                  appsLoading // ✅ Disable button if still loading past apps
                 }
                 className="px-8 py-2 rounded font-semibold text-sm disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 text-white"
                 style={{ backgroundColor: "var(--accent)" }}
