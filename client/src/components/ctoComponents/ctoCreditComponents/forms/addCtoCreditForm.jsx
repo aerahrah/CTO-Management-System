@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Upload,
   Users,
@@ -29,12 +29,6 @@ const todayISO = () => new Date().toISOString().split("T")[0];
 const isLikelyObjectId = (v) =>
   typeof v === "string" && /^[a-fA-F0-9]{24}$/.test(v);
 
-const clampInt = (value, min, max) => {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return min;
-  return Math.min(Math.max(Math.trunc(n), min), max);
-};
-
 // best effort UUID / idempotency key
 const makeClientRequestId = () => {
   try {
@@ -45,27 +39,17 @@ const makeClientRequestId = () => {
 };
 
 /* ------------------ Formatting Utility ------------------ */
-// Helper to capitalize the first letter of each word
-const capitalizeName = (str) => {
-  if (!str) return "";
-  return str
-    .toLowerCase()
-    .replace(/(?:^|[\s-])\w/g, (match) => match.toUpperCase());
-};
-
-// Formats name as: "LastName NameExtension, FirstName MiddleName" (Alphabetical and Capitalized)
 const formatEmployeeName = (emp) => {
   if (!emp) return "";
-
   const firstName = emp.firstName || "";
   const middleInitial = emp.middleName
     ? ` ${emp.middleName.trim().charAt(0).toUpperCase()}.`
     : "";
   const lastName = emp.lastName ? ` ${emp.lastName}` : "";
   const extension = emp.nameExtension ? ` ${emp.nameExtension}` : "";
-
   return `${firstName}${middleInitial}${lastName}${extension}`.trim();
 };
+
 /* ------------------ Theme Resolvers ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
@@ -85,19 +69,15 @@ function useResolvedTheme(prefTheme) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-
     if (prefTheme !== "system") {
       setTheme(prefTheme === "dark" ? "dark" : "light");
       return;
     }
-
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const update = () => setTheme(mq.matches ? "dark" : "light");
-
     update();
     if (mq.addEventListener) mq.addEventListener("change", update);
     else mq.addListener(update);
-
     return () => {
       if (mq.removeEventListener) mq.removeEventListener("change", update);
       else mq.removeListener(update);
@@ -110,7 +90,6 @@ function useResolvedTheme(prefTheme) {
 /* ------------------ Banner Component ------------------ */
 const Banner = ({ tone = "error", message, borderColor }) => {
   if (!message) return null;
-
   const palette =
     tone === "info"
       ? {
@@ -160,7 +139,6 @@ const Banner = ({ tone = "error", message, borderColor }) => {
 };
 
 /* ------------------ CSC Limit Helper Hook ------------------ */
-// Helper hook to fetch the limits for a specific employee
 const useEmployeeLimit = (employeeId, targetDate) => {
   return useQuery({
     queryKey: ["ctoRemainingHours", employeeId, targetDate],
@@ -188,13 +166,11 @@ const AddCtoCreditForm = () => {
   const clearBanner = () => setBanner({ tone: "error", message: "" });
   const showBanner = (tone, message) => setBanner({ tone, message });
 
-  // Rapid-click guard & Success latch
   const submitInFlightRef = useRef(false);
   const successLatchRef = useRef(false);
   const [successLatchUI, setSuccessLatchUI] = useState(false);
   const [submitLockUI, setSubmitLockUI] = useState(false);
 
-  // We track the limits of the *first* selected employee just to provide a visual hint to HR
   const [primaryEmployeeId, setPrimaryEmployeeId] = useState(null);
 
   const initialState = useMemo(
@@ -212,7 +188,6 @@ const AddCtoCreditForm = () => {
 
   const [formData, setFormData] = useState(initialState);
 
-  // Fetch limit data for the visual hint
   const { data: limitData, isLoading: limitLoading } = useEmployeeLimit(
     primaryEmployeeId,
     formData.inclusiveDates.startDate || todayISO(),
@@ -225,7 +200,6 @@ const AddCtoCreditForm = () => {
     };
   }, []);
 
-  // Set the primary employee ID whenever the list changes
   useEffect(() => {
     if (formData.employees.length > 0) {
       setPrimaryEmployeeId(formData.employees[0]);
@@ -249,7 +223,6 @@ const AddCtoCreditForm = () => {
 
   const isBusy = mutation.isPending || submitLockUI || successLatchUI;
 
-  // Extract raw employees for filtering
   const rawEmployees = useMemo(() => {
     return employeesData?.data?.data || employeesData?.data || [];
   }, [employeesData]);
@@ -259,12 +232,9 @@ const AddCtoCreditForm = () => {
       value: emp._id || emp.id,
       label: formatEmployeeName(emp),
     }));
-
-    // Sort alphabetically by the generated label
     return options.sort((a, b) => a.label.localeCompare(b.label));
   }, [rawEmployees]);
 
-  // Quick Select Groups
   const organicIds = useMemo(() => {
     return rawEmployees
       .filter(
@@ -287,6 +257,7 @@ const AddCtoCreditForm = () => {
       .map((e) => e._id || e.id);
   }, [rawEmployees]);
 
+  // ✅ STRICT INPUT HANDLING FOR HOURS AND MINUTES
   const handleChange = (e) => {
     const { name, value, files } = e.target;
     clearBanner();
@@ -294,24 +265,56 @@ const AddCtoCreditForm = () => {
     if (isBusy) return;
 
     if (name === "hours") {
-      const hours = clampInt(value, 0, 1000);
+      if (value === "") {
+        setFormData((prev) => ({
+          ...prev,
+          duration: { ...prev.duration, hours: "" },
+        }));
+        return;
+      }
+
+      let h = parseInt(value, 10);
+      if (isNaN(h)) return;
+      if (h > 40) h = 40; // Strict maximum cap
+      if (h < 0) h = 0;
+
       setFormData((prev) => ({
         ...prev,
-        duration: { ...prev.duration, hours: String(hours) },
+        duration: {
+          ...prev.duration,
+          hours: String(h),
+          // Force minutes to 0 if hours are maxed at 40
+          minutes: h === 40 ? "0" : prev.duration.minutes,
+        },
       }));
       return;
     }
 
     if (name === "minutes") {
-      const minutes = clampInt(value, 0, 59);
+      if (value === "") {
+        setFormData((prev) => ({
+          ...prev,
+          duration: { ...prev.duration, minutes: "" },
+        }));
+        return;
+      }
+
+      let m = parseInt(value, 10);
+      if (isNaN(m)) return;
+      if (m > 59) m = 59;
+      if (m < 0) m = 0;
+
       setFormData((prev) => ({
         ...prev,
-        duration: { ...prev.duration, minutes: String(minutes) },
+        duration: {
+          ...prev.duration,
+          // Prevent minute increments if already at 40 hours
+          minutes: prev.duration.hours === "40" ? "0" : String(m),
+        },
       }));
       return;
     }
 
-    // Handle inclusive dates
     if (name === "startDate" || name === "endDate") {
       setFormData((prev) => ({
         ...prev,
@@ -329,7 +332,6 @@ const AddCtoCreditForm = () => {
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  // Selection Handlers
   const handleSelectGroup = (ids) => {
     clearBanner();
     setFormData((prev) => {
@@ -360,12 +362,21 @@ const AddCtoCreditForm = () => {
       return { ok: false, msg: "Please select at least one employee." };
     }
 
-    const hours = clampInt(formData.duration.hours, 0, 1000);
-    const minutes = clampInt(formData.duration.minutes, 0, 59);
+    // Backend fallback validation
+    const hours = parseInt(formData.duration.hours || "0", 10);
+    const minutes = parseInt(formData.duration.minutes || "0", 10);
+
     if (hours === 0 && minutes === 0) {
       return {
         ok: false,
         msg: "Please enter a credit duration (hours or minutes).",
+      };
+    }
+
+    if (hours > 40 || (hours === 40 && minutes > 0)) {
+      return {
+        ok: false,
+        msg: "Credit duration cannot exceed the absolute CSC limit of 40 hours per memo.",
       };
     }
 
@@ -377,7 +388,6 @@ const AddCtoCreditForm = () => {
       return { ok: false, msg: "Date approved cannot be in the future." };
     }
 
-    // Validate inclusiveDates with strict Future-Date constraints
     const { startDate, endDate } = formData.inclusiveDates;
     if (!startDate || !endDate) {
       return {
@@ -388,12 +398,10 @@ const AddCtoCreditForm = () => {
     if (startDate > endDate) {
       return { ok: false, msg: "End date cannot be earlier than start date." };
     }
-    const today = todayISO();
-    if (startDate > today || endDate > today) {
+    if (startDate > todayISO() || endDate > todayISO()) {
       return { ok: false, msg: "Overtime dates cannot be in the future." };
     }
 
-    // Validate purpose
     const purpose = String(formData.purpose || "").trim();
     if (!purpose) {
       return { ok: false, msg: "Please specify the purpose or activity done." };
@@ -468,7 +476,6 @@ const AddCtoCreditForm = () => {
       toast.success("CTO credit added successfully!");
       queryClient.invalidateQueries({ queryKey: ["ctoCredits"] });
       queryClient.invalidateQueries({ queryKey: ["allCredits"] });
-      // Invalidate limits too so the dashboard reflects the new caps
       queryClient.invalidateQueries({ queryKey: ["ctoRemainingHours"] });
 
       setTimeout(() => {
@@ -496,7 +503,6 @@ const AddCtoCreditForm = () => {
       className="w-full max-w-4xl transition-colors duration-300 ease-out pb-12"
       style={{ color: "var(--app-text)" }}
     >
-      {/* Page Header */}
       <div className="pt-2 pb-6 px-4 md:px-0">
         <Breadcrumbs rootLabel="home" rootTo="/app" />
         <h1
@@ -514,7 +520,6 @@ const AddCtoCreditForm = () => {
         </p>
       </div>
 
-      {/* CSC Info Banner */}
       <div className="px-4 md:px-0 mb-6">
         <div
           className="rounded-xl border px-4 py-3 flex items-start gap-3 transition-colors duration-300 ease-out"
@@ -535,16 +540,16 @@ const AddCtoCreditForm = () => {
               CSC Earning Limits Applied Automatically
             </span>
             <span style={{ color: "var(--app-muted)" }}>
-              The system will automatically calculate the available capacity for
-              each employee based on the 120-hour total balance limit and the
-              40-hour monthly earning limit. Any excess hours beyond their
-              personal cap will be forfeited.
+              The system limits single-memo credits to <strong>40 hours</strong>
+              . Additionally, the backend automatically calculates the available
+              capacity for each employee based on the 120-hour total balance
+              limit and the 40-hour monthly earning limit. Any excess hours
+              beyond their personal cap will be forfeited.
             </span>
           </div>
         </div>
       </div>
 
-      {/* Form Card */}
       <div
         className="w-full rounded-xl overflow-hidden border shadow-sm transition-colors duration-300 ease-out"
         style={{
@@ -552,7 +557,6 @@ const AddCtoCreditForm = () => {
           borderColor: borderColor,
         }}
       >
-        {/* Card Header */}
         <div
           className="px-6 py-5 border-b flex items-center justify-between gap-3 transition-colors duration-300 ease-out"
           style={{ borderColor: borderColor }}
@@ -584,7 +588,6 @@ const AddCtoCreditForm = () => {
               borderColor={borderColor}
             />
 
-            {/* Employees Selection Block */}
             <div
               className="space-y-4 border-b pb-8 transition-colors duration-300 ease-out"
               style={{ borderColor: borderColor }}
@@ -604,7 +607,6 @@ const AddCtoCreditForm = () => {
                   Select Employees
                 </div>
 
-                {/* CSC Visual Hint (Shows only if 1 employee is selected, just to help HR see their specific cap) */}
                 {formData.employees.length === 1 &&
                   !limitLoading &&
                   limitData && (
@@ -623,7 +625,6 @@ const AddCtoCreditForm = () => {
                   )}
               </div>
 
-              {/* Quick Select Buttons */}
               <div className="flex flex-wrap items-center gap-2">
                 <span
                   className="text-[10px] uppercase font-bold mr-1"
@@ -659,7 +660,6 @@ const AddCtoCreditForm = () => {
                 </button>
               </div>
 
-              {/* Dropdown - Strictly for Searching & Adding */}
               <Select
                 options={employeeOptions}
                 isMulti
@@ -716,7 +716,6 @@ const AddCtoCreditForm = () => {
                 }}
               />
 
-              {/* SEPARATE SELECTED EMPLOYEES BLOCK */}
               <div
                 className="rounded-lg overflow-hidden border shadow-sm flex flex-col transition-colors duration-300 ease-out"
                 style={{
@@ -749,7 +748,6 @@ const AddCtoCreditForm = () => {
                   )}
                 </div>
 
-                {/* Fixed height scrollable area for selected chips */}
                 <div className="max-h-[250px] overflow-y-auto p-3 custom-scrollbar flex flex-wrap gap-2 content-start min-h-[80px]">
                   {formData.employees.length === 0 ? (
                     <div
@@ -806,7 +804,6 @@ const AddCtoCreditForm = () => {
               </div>
             </div>
 
-            {/* Inclusive Dates */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
               <div className="space-y-2">
                 <div
@@ -880,7 +877,6 @@ const AddCtoCreditForm = () => {
               </div>
             </div>
 
-            {/* Duration & Date Approved */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
               <div className="space-y-2">
                 <div
@@ -897,15 +893,16 @@ const AddCtoCreditForm = () => {
                   >
                     <Clock className="w-4 h-4" />
                   </div>
-                  Credit Duration
+                  Credit Duration (Max 40h)
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex gap-3 relative group">
                   <input
                     type="number"
                     name="hours"
                     placeholder="Hours"
                     min="0"
+                    max="40"
                     value={formData.duration.hours}
                     onChange={handleChange}
                     disabled={isBusy}
@@ -926,16 +923,26 @@ const AddCtoCreditForm = () => {
                     max="59"
                     value={formData.duration.minutes}
                     onChange={handleChange}
-                    disabled={isBusy}
+                    disabled={isBusy || formData.duration.hours === "40"}
                     className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out"
                     style={{
-                      backgroundColor: isBusy
-                        ? "var(--app-surface-2)"
-                        : "var(--app-surface)",
+                      backgroundColor:
+                        isBusy || formData.duration.hours === "40"
+                          ? "var(--app-surface-2)"
+                          : "var(--app-surface)",
                       borderColor: borderColor,
-                      color: isBusy ? "var(--app-muted)" : "var(--app-text)",
+                      color:
+                        isBusy || formData.duration.hours === "40"
+                          ? "var(--app-muted)"
+                          : "var(--app-text)",
                     }}
                   />
+                  {/* Tooltip hint if maxed */}
+                  {formData.duration.hours === "40" && (
+                    <div className="absolute -top-8 right-0 text-[10px] bg-black text-white px-2 py-1 rounded hidden group-hover:block whitespace-nowrap">
+                      Minutes disabled at 40h limit
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -976,7 +983,6 @@ const AddCtoCreditForm = () => {
               </div>
             </div>
 
-            {/* Purpose */}
             <div className="space-y-2">
               <div
                 className="flex items-center gap-2 text-sm font-medium"
@@ -1013,7 +1019,6 @@ const AddCtoCreditForm = () => {
               />
             </div>
 
-            {/* Memo Number */}
             <div className="space-y-2">
               <div
                 className="flex items-center gap-2 text-sm font-medium"
@@ -1051,7 +1056,6 @@ const AddCtoCreditForm = () => {
               />
             </div>
 
-            {/* File Upload */}
             <div className="space-y-2">
               <label
                 className="block text-sm font-medium mb-2"
@@ -1128,7 +1132,6 @@ const AddCtoCreditForm = () => {
             </div>
           </div>
 
-          {/* Sticky Footer */}
           <div
             className="border-t px-6 py-4 flex flex-row items-stretch sm:items-center justify-end gap-3 sticky bottom-0 transition-colors duration-300 ease-out"
             style={{

@@ -43,7 +43,7 @@ function sendError(res, err) {
   return res.status(status).json({ message: err.message || "Server error" });
 }
 
-// ✅ NEW CONTROLLER: Fetch how many hours an employee can still earn/be credited this month
+// ✅ Fetch how many hours an employee can still earn/be credited this month
 const getRemainingCreditableHoursRequest = async (req, res) => {
   try {
     const employeeId = req.params.employeeId || req?.user?.id;
@@ -231,7 +231,7 @@ const getEmployeeCredits = async (req, res) => {
 };
 
 module.exports = {
-  getRemainingCreditableHoursRequest, // ✅ Exported new controller
+  getRemainingCreditableHoursRequest,
   addCtoCreditRequest,
   rollbackCreditedRequest,
   getAllCreditRequests,

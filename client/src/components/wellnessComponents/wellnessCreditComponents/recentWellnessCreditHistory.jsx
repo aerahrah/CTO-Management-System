@@ -28,11 +28,11 @@ import {
   Inbox,
   Layers,
   CheckCircle2,
-  MoreVertical,
   Users,
   Calendar,
   CalendarDays,
   ArrowUp,
+  ChevronDown,
 } from "lucide-react";
 
 const pageSizeOptions = [20, 50, 100];
@@ -119,46 +119,48 @@ const ActionMenu = ({
   if (!canManageCredits) return null;
 
   return (
-    <div className="relative inline-flex justify-center" ref={menuRef}>
+    <div className="relative inline-flex justify-end" ref={menuRef}>
       <button
-        type="button"
-        disabled={isRollbackPending}
+        aria-haspopup="true"
+        aria-expanded={isOpen}
         onClick={(e) => {
           e.stopPropagation();
           if (isRollbackPending) return;
           setIsOpen((o) => !o);
         }}
-        className="p-2 rounded-full disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-        style={{ color: "var(--app-muted)" }}
-        onMouseEnter={(e) => {
-          if (isRollbackPending) return;
-          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-          e.currentTarget.style.color = "var(--app-text)";
+        disabled={isRollbackPending}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm text-xs cursor-pointer font-bold transition-all duration-200 ease-out active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+        style={{
+          backgroundColor: isOpen
+            ? "var(--app-surface-2)"
+            : "var(--app-surface)",
+          borderColor: borderColor,
+          color: isOpen ? "var(--accent)" : "var(--app-text)",
         }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
-          e.currentTarget.style.color = "var(--app-muted)";
-        }}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
         title="Actions"
+        type="button"
       >
-        <MoreVertical size={18} />
+        <span>Actions</span>
+        <ChevronDown
+          size={14}
+          className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+        />
       </button>
 
       {isOpen && (
         <div
-          className="absolute right-0 top-full mt-2 w-44 rounded-lg shadow-lg z-30 py-1 border transition-colors duration-300 ease-out"
+          className="absolute right-0 top-full mt-1 w-48 rounded-lg shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
           style={{
             backgroundColor: "var(--app-surface)",
-            borderColor,
+            border: `1px solid ${borderColor}`,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
           }}
         >
           <button
             type="button"
             disabled={credit.status !== "CREDITED" || isRollbackPending}
             onClick={() => handle(onRollback)}
-            className="w-full px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left disabled:opacity-30 disabled:cursor-not-allowed"
             style={{ color: "#ef4444" }}
             onMouseEnter={(e) => {
               if (credit.status !== "CREDITED" || isRollbackPending) return;

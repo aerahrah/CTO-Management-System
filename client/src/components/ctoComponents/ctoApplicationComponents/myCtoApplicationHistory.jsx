@@ -1390,7 +1390,7 @@ const MyCtoApplications = () => {
                       }}
                     >
                       <Plus className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:rotate-90" />
-                      New Application
+                      File Leave
                     </button>
                   </div>
                 </div>

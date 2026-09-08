@@ -5,6 +5,7 @@ import { StatusBadge } from "../../statusUtils";
 import {
   fetchMyWellnessApplications,
   fetchWellnessApplicationById, // ✅ Added import here
+  fetchMyWellnessCredits, // ✅ Added import for Balance Query
   cancelWellnessApplicationRequest,
   followUpWellnessApplicationRequest,
   requestRevocationWellness,
@@ -57,6 +58,16 @@ import RevokeRequestModal from "../../revocationComponents/revokeRequestModal";
 
 const pageSizeOptions = [20, 50, 100];
 
+/* ------------------ Helpers ------------------ */
+const fmtDays = (d) => {
+  const n = Number(d ?? 0);
+  return Number.isFinite(n)
+    ? Number.isInteger(n)
+      ? String(n)
+      : n.toFixed(2)
+    : "0";
+};
+
 /* ------------------ Theme Resolvers ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
@@ -98,6 +109,47 @@ function useResolvedTheme(prefTheme) {
   return theme;
 }
 
+function getIconChip(kind, borderColor) {
+  const map = {
+    accent: {
+      bg: "var(--accent-soft)",
+      fg: "var(--accent)",
+      br: "var(--accent-soft2, rgba(37,99,235,0.18))",
+    },
+    green: {
+      bg: "rgba(34,197,94,0.14)",
+      fg: "#16a34a",
+      br: "rgba(34,197,94,0.22)",
+    },
+    red: {
+      bg: "rgba(239,68,68,0.14)",
+      fg: "#ef4444",
+      br: "rgba(239,68,68,0.22)",
+    },
+    amber: {
+      bg: "rgba(245,158,11,0.16)",
+      fg: "#d97706",
+      br: "rgba(245,158,11,0.26)",
+    },
+    purple: {
+      bg: "rgba(168,85,247,0.16)",
+      fg: "#9333ea",
+      br: "rgba(168,85,247,0.26)",
+    },
+    slate: {
+      bg: "rgba(148,163,184,0.18)",
+      fg: "var(--app-text)",
+      br: "rgba(148,163,184,0.24)",
+    },
+    neutral: {
+      bg: "var(--app-surface-2)",
+      fg: "var(--app-muted)",
+      br: borderColor || "var(--app-border)",
+    },
+  };
+  return map[kind] || map.neutral;
+}
+
 /* ------------------ Theme Maps ------------------ */
 const tabTone = {
   accent: {
@@ -132,6 +184,56 @@ const tabTone = {
   },
 };
 
+/* ------------------ Balance Days Card ------------------ */
+const BalanceDaysCard = ({ days, loading, borderColor }) => {
+  const showValue =
+    days === null || days === undefined
+      ? "0 Days"
+      : `${fmtDays(days)} Day${Number(days) !== 1 ? "s" : ""}`;
+
+  const chip = getIconChip("accent", borderColor);
+
+  return (
+    <div
+      className="w-full rounded-xl px-4 py-2 flex items-center gap-3 shadow-sm border transition-colors duration-300 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor: borderColor,
+      }}
+    >
+      <div
+        className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border transition-colors duration-300 ease-out"
+        style={{
+          backgroundColor: chip.bg,
+          color: chip.fg,
+          borderColor: chip.br,
+        }}
+      >
+        <HeartPulse className="w-5 h-5" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div
+          className="text-[10px] uppercase tracking-widest font-bold truncate"
+          style={{ color: "var(--app-muted)" }}
+        >
+          Balance Days
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div
+            className="leading-tight text-[15px] sm:text-base font-extrabold truncate"
+            style={{ color: "var(--accent)" }}
+          >
+            {loading ? <Skeleton width={70} /> : showValue}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ------------------ Action Menu ------------------ */
 const ApplicationActionMenu = ({
   app,
   onViewDetails,
@@ -437,7 +539,7 @@ const ApplicationCard = ({
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
+            className="rounded-lg border p-2 transition-colors duration-300 ease-out flex flex-col justify-center"
             style={{
               backgroundColor: "var(--app-surface-2)",
               borderColor: borderColor,
@@ -939,6 +1041,24 @@ const MyWellnessApplications = () => {
     placeholderData: (prev) => prev,
   });
 
+  // ✅ Balance Fetching Logic
+  const {
+    data: creditSummaryData,
+    isLoading: isBalanceLoading,
+    refetch: refetchBalance,
+  } = useQuery({
+    queryKey: ["myWellnessBalance"],
+    queryFn: () => fetchMyWellnessCredits({ page: 1, limit: 1 }),
+    staleTime: 1000 * 60,
+  });
+
+  const balanceDays =
+    data?.balanceDays ??
+    data?.totals?.totalRemainingDays ??
+    data?.totals?.remainingDays ??
+    creditSummaryData?.totals?.totalRemainingDays ??
+    null;
+
   const cancelMutation = useMutation({
     mutationFn: (applicationId) =>
       cancelWellnessApplicationRequest(applicationId),
@@ -1145,7 +1265,7 @@ const MyWellnessApplications = () => {
           >
             {/* HEADER */}
             <div className="pt-2 pb-3 md:pb-6 px-1">
-              <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div>
                   <Breadcrumbs rootLabel="home" rootTo="/app" />
                   <h1
@@ -1164,60 +1284,69 @@ const MyWellnessApplications = () => {
                 </div>
 
                 {canManageSelf && (
-                  <div className="w-full md:w-auto flex flex-row items-stretch md:items-center gap-2 md:gap-3 rounded-xl shrink-0">
-                    <button
-                      onClick={() =>
-                        navigate(
-                          isUserOrganic
-                            ? "/app/wellness-apply/organic?late=true"
-                            : "/app/wellness-apply/add?late=true",
-                        )
-                      }
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-32 md:py-3.5 px-4 py-3 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 flex-1"
-                      type="button"
-                      style={{
-                        backgroundColor: "rgba(245,158,11,0.12)",
-                        color: "#d97706",
-                        border: "1px solid rgba(245,158,11,0.25)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor =
-                          "rgba(245,158,11,0.20)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor =
-                          "rgba(245,158,11,0.12)";
-                      }}
-                    >
-                      <Clock4 className="w-4 h-4 shrink-0" />
-                      Late Filing
-                    </button>
+                  <div className="w-full md:w-72 flex flex-col gap-3 shrink-0">
+                    {/* ✅ Added Balance Days Card here */}
+                    <BalanceDaysCard
+                      days={balanceDays}
+                      loading={isBalanceLoading}
+                      borderColor={borderColor}
+                    />
 
-                    <button
-                      onClick={() =>
-                        navigate(
-                          isUserOrganic
-                            ? "/app/wellness-apply/organic"
-                            : "/app/wellness-apply/add",
-                        )
-                      }
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg min-w-32 md:py-3.5 px-4 py-3 text-sm font-semibold shadow-md transition-all focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 flex-1"
-                      type="button"
-                      style={{
-                        backgroundColor: "var(--accent)",
-                        color: "#fff",
-                        border: "1px solid var(--accent)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.filter = "brightness(0.95)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.filter = "none";
-                      }}
-                    >
-                      <Plus className="w-4 h-4 transition-transform group-hover:rotate-90 shrink-0" />
-                      File Leave
-                    </button>
+                    <div className="flex flex-row items-center gap-2 w-full">
+                      <button
+                        onClick={() =>
+                          navigate(
+                            isUserOrganic
+                              ? "/app/wellness-apply/organic?late=true"
+                              : "/app/wellness-apply/add?late=true",
+                          )
+                        }
+                        className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1"
+                        type="button"
+                        style={{
+                          backgroundColor: "rgba(245,158,11,0.12)",
+                          color: "#d97706",
+                          border: "1px solid rgba(245,158,11,0.25)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(245,158,11,0.20)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(245,158,11,0.12)";
+                        }}
+                      >
+                        <Clock4 className="w-3.5 h-3.5 shrink-0" />
+                        Late Filing
+                      </button>
+
+                      <button
+                        onClick={() =>
+                          navigate(
+                            isUserOrganic
+                              ? "/app/wellness-apply/organic"
+                              : "/app/wellness-apply/add",
+                          )
+                        }
+                        className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1"
+                        type="button"
+                        style={{
+                          backgroundColor: "var(--accent)",
+                          color: "#fff",
+                          border: "1px solid var(--accent)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.filter = "brightness(0.95)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.filter = "none";
+                        }}
+                      >
+                        <Plus className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:rotate-90" />
+                        File Leave
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
