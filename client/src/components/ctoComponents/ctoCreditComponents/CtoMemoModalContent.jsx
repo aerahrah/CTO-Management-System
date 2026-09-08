@@ -1,4 +1,3 @@
-// CtoMemoModalContent.jsx
 import React, { memo, useMemo } from "react";
 import {
   FileText,
@@ -241,7 +240,7 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
             </div>
           </div>
 
-          {/* ✅ NEW: Overtime Details Block */}
+          {/* Overtime Details Block */}
           <div
             className="mb-3 mt-2 border-t pt-2 transition-colors duration-300 ease-out"
             style={{ borderColor: ui.borderSoft }}
@@ -322,8 +321,11 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
             </div>
 
             <div
-              className="flex-1 px-2 py-1.5 text-center transition-colors duration-300 ease-out"
-              style={{ backgroundColor: ui.surface }}
+              className="flex-1 border-r px-2 py-1.5 text-center transition-colors duration-300 ease-out"
+              style={{
+                borderColor: ui.borderSoft,
+                backgroundColor: ui.surface,
+              }}
             >
               <span
                 className="block text-[10px] uppercase transition-colors duration-300 ease-out"
@@ -338,6 +340,27 @@ const CtoMemoModalContent = memo(function CtoMemoModalContent({
                 }}
               >
                 {memo.remainingHours || 0}h
+              </span>
+            </div>
+
+            <div
+              className="flex-1 px-2 py-1.5 text-center transition-colors duration-300 ease-out"
+              style={{ backgroundColor: ui.surface }}
+            >
+              <span
+                className="block text-[10px] uppercase transition-colors duration-300 ease-out"
+                style={{ color: ui.muted }}
+                title="Lost due to CSC Limits"
+              >
+                Forfeited
+              </span>
+              <span
+                className="text-sm font-bold transition-colors duration-300 ease-out"
+                style={{
+                  color: (memo.forfeitedHours || 0) > 0 ? "#ef4444" : ui.muted,
+                }}
+              >
+                {memo.forfeitedHours || 0}h
               </span>
             </div>
           </div>

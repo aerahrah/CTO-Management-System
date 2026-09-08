@@ -9,7 +9,7 @@ const {
   processRevocationRequestService,
   getRevocationRequestsService,
   getCtoRevocationByIdService,
-  cancelRevocationCtoRequestService, // ✅ Imported the new service
+  cancelRevocationCtoRequestService,
 } = require("../services/ctoApplication.service");
 
 const addCtoApplicationRequest = async (req, res) => {
@@ -75,7 +75,7 @@ const addCtoApplicationRequest = async (req, res) => {
       commutation,
       certificationOfLeaveCredits,
       actionDetails,
-      lateFiling, // ✅ Pass the dynamically parsed and updated lateFiling object
+      lateFiling,
     });
 
     res.status(201).json({
@@ -248,7 +248,6 @@ const requestRevocationController = async (req, res) => {
   }
 };
 
-// ✅ NEW: Controller to cancel an active revocation request
 const cancelRevocationController = async (req, res) => {
   try {
     const userId = req.user.id || req.user._id;
@@ -310,6 +309,6 @@ module.exports = {
   followUpCtoApplicationRequest,
   getRevocationRequestsController,
   requestRevocationController,
-  cancelRevocationController, // ✅ Exported the new controller
+  cancelRevocationController,
   processRevocationController,
 };

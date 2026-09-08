@@ -106,9 +106,7 @@ app.use(mongoSanitize());
    CORS CONFIGURATION
    (Moved ABOVE Static Files so we can use it on uploads)
 ====================================================== */
-const allowedOrigins = (
-  process.env.ALLOWED_ORIGINS || "https://cto.dictr2.cloud"
-)
+const allowedOrigins = (process.env.CORS_ORIGINS || "https://cto.dictr2.cloud")
   .split(",")
   .map((o) => o.trim().replace(/^"(.+)"$/, "$1"))
   .filter(Boolean);
@@ -150,14 +148,62 @@ app.options(/.*/, cors(corsOptions));
 ====================================================== */
 app.use(
   "/uploads/cto_memos",
-  cors(corsOptions), // ✅ FIX: Allows React-PDF to fetch memos cross-origin
+  cors(corsOptions),
   express.static(path.join(process.cwd(), "uploads", "cto_memos")),
 );
 
 app.use(
   "/uploads/signatures",
-  cors(corsOptions), // ✅ FIX: Allows React-PDF to fetch signatures cross-origin
+  cors(corsOptions),
   express.static(path.join(process.cwd(), "uploads", "signatures")),
+);
+
+// ✅ Serve CTO Late Filing Attachments publicly
+app.use(
+  "/uploads/cto/applications/attachments",
+  cors(corsOptions),
+  express.static(
+    path.join(process.cwd(), "uploads", "cto", "applications", "attachments"),
+  ),
+);
+
+// ✅ Serve CTO Revocation Attachments publicly
+app.use(
+  "/uploads/cto/revocation/attachments",
+  cors(corsOptions),
+  express.static(
+    path.join(process.cwd(), "uploads", "cto", "revocation", "attachments"),
+  ),
+);
+
+// ✅ NEW: Serve Wellness Application Attachments publicly
+app.use(
+  "/uploads/wellness/applications/attachments",
+  cors(corsOptions),
+  express.static(
+    path.join(
+      process.cwd(),
+      "uploads",
+      "wellness",
+      "applications",
+      "attachments",
+    ),
+  ),
+);
+
+// ✅ NEW: Serve Wellness Revocation Attachments publicly
+app.use(
+  "/uploads/wellness/revocation/attachments",
+  cors(corsOptions),
+  express.static(
+    path.join(
+      process.cwd(),
+      "uploads",
+      "wellness",
+      "revocation",
+      "attachments",
+    ),
+  ),
 );
 
 /* ======================================================

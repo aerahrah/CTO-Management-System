@@ -1,3 +1,4 @@
+// services/ctoCredit.service.js
 const mongoose = require("mongoose");
 const CtoCredit = require("../models/ctoCreditModel");
 const Employee = require("../models/employeeModel");
@@ -73,13 +74,96 @@ async function canSend(key) {
   return await isEmailEnabled(key);
 }
 
+// ✅ UPDATED HELPER: Made `session` optional so it can be called cleanly by the new API
+async function calculateEarnedCTOHoursForMonth(
+  employeeId,
+  targetDate,
+  session = null,
+) {
+  const date = new Date(targetDate);
+  const startOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const endOfMonth = new Date(
+    date.getFullYear(),
+    date.getMonth() + 1,
+    0,
+    23,
+    59,
+    59,
+    999,
+  );
+
+  const pipeline = [
+    {
+      $match: {
+        "inclusiveDates.startDate": { $gte: startOfMonth, $lte: endOfMonth },
+        status: { $in: [CTO_STATUS.ACTIVE, CTO_STATUS.CREDITED] },
+      },
+    },
+    { $unwind: "$employees" },
+    {
+      $match: {
+        "employees.employee": new mongoose.Types.ObjectId(employeeId),
+        "employees.status": { $ne: CTO_STATUS.ROLLEDBACK },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        totalEarned: { $sum: "$employees.creditedHours" },
+      },
+    },
+  ];
+
+  const result = session
+    ? await CtoCredit.aggregate(pipeline, { session })
+    : await CtoCredit.aggregate(pipeline);
+
+  return result.length > 0 ? result[0].totalEarned : 0;
+}
+
 // --- SERVICE METHODS ---
+
+// ✅ NEW SERVICE: Calculates exact remaining room for an employee based on CSC rules
+async function getRemainingCreditableHours(employeeId, targetDate) {
+  assertObjectId(employeeId, "employeeId");
+
+  const MAX_COC_BALANCE = Number(process.env.MAX_COC_BALANCE || 120);
+  const MAX_COC_PER_MONTH = Number(process.env.MAX_COC_ACCRUAL_PER_MONTH || 40);
+
+  const emp = await Employee.findById(employeeId).select("balances").lean();
+  if (!emp) throw createServiceError("Employee not found.", 404);
+
+  const currentBalance = Number(emp.balances?.ctoHours || 0);
+  const dateToCheck = targetDate || new Date();
+
+  // Get how much they've already accrued in this target month
+  const earnedThisMonth = await calculateEarnedCTOHoursForMonth(
+    employeeId,
+    dateToCheck,
+  );
+
+  const roomUntil120 = Math.max(0, MAX_COC_BALANCE - currentBalance);
+  const roomUntil40 = Math.max(0, MAX_COC_PER_MONTH - earnedThisMonth);
+
+  // The actual amount HR can still safely grant them this month
+  const absoluteCreditableNow = Math.min(roomUntil120, roomUntil40);
+
+  return {
+    maxBalanceLimit: MAX_COC_BALANCE,
+    currentBalance,
+    roomUntilMaxBalance: roomUntil120,
+    maxMonthlyEarning: MAX_COC_PER_MONTH,
+    earnedThisMonth,
+    roomUntilMonthlyLimit: roomUntil40,
+    absoluteCreditableNow,
+  };
+}
 
 async function addCredit({
   employees,
   duration,
-  inclusiveDates, // ✅ added
-  purpose, // ✅ added
+  inclusiveDates,
+  purpose,
   memoNo,
   dateApproved,
   userId,
@@ -118,8 +202,18 @@ async function addCredit({
   employeeIds.forEach((id) => assertObjectId(id, "employeeId"));
 
   const totalHours = toHours(duration);
-  if (totalHours <= 0)
+
+  if (totalHours <= 0) {
     throw createServiceError("Credited hours must be > 0.", 400);
+  }
+
+  // ✅ STRICT 40-HOUR MEMO LIMIT
+  if (totalHours > 40) {
+    throw createServiceError(
+      "Total duration cannot exceed exactly 40 hours (if hours is 40, minutes must be 0).",
+      400,
+    );
+  }
 
   const approvedDate = dateApproved ? new Date(dateApproved) : new Date();
   if (Number.isNaN(approvedDate.getTime())) {
@@ -129,43 +223,93 @@ async function addCredit({
   const session = await mongoose.startSession();
   try {
     let created;
+    let finalEmployeeObjs = [];
+
+    // ✅ CSC RULES LIMITS
+    const MAX_COC_BALANCE = Number(process.env.MAX_COC_BALANCE || 120);
+    const MAX_COC_PER_MONTH = Number(
+      process.env.MAX_COC_ACCRUAL_PER_MONTH || 40,
+    );
 
     await session.withTransaction(async () => {
-      const existingCount = await Employee.countDocuments(
-        { _id: { $in: employeeIds } },
-        { session },
-      );
+      // 1. Fetch all employees to check their current balance
+      const employeesData = await Employee.find({ _id: { $in: employeeIds } })
+        .select("balances firstName lastName email")
+        .session(session)
+        .lean();
 
-      if (existingCount !== employeeIds.length) {
+      if (employeesData.length !== employeeIds.length) {
         throw createServiceError(
           "One or more employee IDs are invalid or not found.",
           400,
         );
       }
 
-      const employeeObjs = employeeIds.map((id) => ({
-        employee: id,
-        creditedHours: totalHours,
-        usedHours: 0,
-        reservedHours: 0,
-        remainingHours: totalHours,
-        status: CTO_STATUS.ACTIVE,
-        dateCredited: approvedDate,
-      }));
+      const empMap = new Map(employeesData.map((e) => [e._id.toString(), e]));
+      const bulkEmployeeOps = [];
 
+      // 2. Iterate through each employee and apply CSC Capping Rules individually
+      for (const empId of employeeIds) {
+        const emp = empMap.get(String(empId));
+        const currentBalance = Number(emp.balances?.ctoHours || 0);
+
+        // Calculate Room in 120-hour max limit
+        const roomUntil120 = Math.max(0, MAX_COC_BALANCE - currentBalance);
+
+        // Calculate Room in 40-hour monthly limit
+        const earnedThisMonth = await calculateEarnedCTOHoursForMonth(
+          empId,
+          startDate,
+          session,
+        );
+        const roomUntil40 = Math.max(0, MAX_COC_PER_MONTH - earnedThisMonth);
+
+        // Absolute maximum they can receive from this memo
+        const maxAllowedToCredit = Math.min(roomUntil120, roomUntil40);
+
+        // Final creditable hours
+        const actualCreditedHours = Math.max(
+          0,
+          Math.min(totalHours, maxAllowedToCredit),
+        );
+        const forfeitedHours = Math.max(0, totalHours - actualCreditedHours);
+
+        finalEmployeeObjs.push({
+          employee: empId,
+          creditedHours: actualCreditedHours, // What they actually got
+          usedHours: 0,
+          reservedHours: 0,
+          remainingHours: actualCreditedHours,
+          forfeitedHours: forfeitedHours, // Record of what they lost due to cap
+          status: CTO_STATUS.ACTIVE,
+          dateCredited: approvedDate,
+        });
+
+        // Only update DB if they actually received > 0 hours
+        if (actualCreditedHours > 0) {
+          bulkEmployeeOps.push({
+            updateOne: {
+              filter: { _id: empId },
+              update: { $inc: { "balances.ctoHours": actualCreditedHours } },
+            },
+          });
+        }
+      }
+
+      // 3. Save the CtoCredit Memo with the dynamically adjusted individual hours
       const docs = await CtoCredit.create(
         [
           {
             memoNo: safeMemoNo,
             dateApproved: approvedDate,
             uploadedMemo: safeFilePath,
-            inclusiveDates: { startDate, endDate }, // ✅ added
-            purpose: safePurpose, // ✅ added
+            inclusiveDates: { startDate, endDate },
+            purpose: safePurpose,
             duration: {
               hours: Number(duration.hours || 0),
               minutes: Number(duration.minutes || 0),
             },
-            employees: employeeObjs,
+            employees: finalEmployeeObjs,
             creditedBy: userId,
             status: CTO_STATUS.CREDITED,
           },
@@ -175,11 +319,10 @@ async function addCredit({
 
       created = docs[0];
 
-      await Employee.updateMany(
-        { _id: { $in: employeeIds } },
-        { $inc: { "balances.ctoHours": totalHours } },
-        { session },
-      );
+      // 4. Update the actual Employee Balances
+      if (bulkEmployeeOps.length > 0) {
+        await Employee.bulkWrite(bulkEmployeeOps, { session });
+      }
     });
 
     // In-App Notifications
@@ -189,12 +332,12 @@ async function addCredit({
         .lean();
 
       await Promise.all(
-        employeeIds.map((employeeId) =>
+        finalEmployeeObjs.map((empObj) =>
           NotificationService.notifyEmployeeOnCtoCredit({
-            employeeId,
+            employeeId: empObj.employee,
             hrEmployee,
             ctoCredit: created,
-            creditedHours: totalHours,
+            creditedHours: empObj.creditedHours, // Notify them of their specific cap
           }),
         ),
       );
@@ -214,11 +357,16 @@ async function addCredit({
           recipients.map(async (emp) => {
             if (!emp?.email) return;
 
+            // Find their specific assigned object to get their capped hours
+            const specificEmpObj = finalEmployeeObjs.find(
+              (e) => String(e.employee) === String(emp._id),
+            );
+
             const tpl = ctoCreditAddedEmail({
               employeeName:
                 `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
               memoNo: safeMemoNo,
-              creditedHours: totalHours,
+              creditedHours: specificEmpObj.creditedHours, // Email tells them what they actually received
               dateApproved: approvedDate,
             });
 
@@ -266,6 +414,7 @@ async function rollbackCredit({ creditId, userId }) {
         );
       }
 
+      // Rollback only what they were specifically credited (respects previous caps)
       const ops = credit.employees.map((e) => ({
         updateOne: {
           filter: { _id: e.employee },
@@ -380,7 +529,7 @@ async function getAllCredits({
 
     query.$or = [
       { memoNo: { $regex: safe, $options: "i" } },
-      { purpose: { $regex: safe, $options: "i" } }, // ✅ Allow search by purpose
+      { purpose: { $regex: safe, $options: "i" } },
       { "employees.employee": { $in: employeeIds } },
     ];
   }
@@ -485,7 +634,7 @@ async function getEmployeeCredits(
       ? {
           $or: [
             { memoNo: { $regex: safeSearch, $options: "i" } },
-            { purpose: { $regex: safeSearch, $options: "i" } }, // ✅ Allows search by purpose
+            { purpose: { $regex: safeSearch, $options: "i" } },
           ],
         }
       : {}),
@@ -525,9 +674,10 @@ async function getEmployeeCredits(
       memoNo: credit.memoNo,
       dateApproved: credit.dateApproved,
       uploadedMemo: credit.uploadedMemo,
-      inclusiveDates: credit.inclusiveDates, // ✅ added
-      purpose: credit.purpose, // ✅ added
+      inclusiveDates: credit.inclusiveDates,
+      purpose: credit.purpose,
       creditedHours: empData?.creditedHours ?? 0,
+      forfeitedHours: empData?.forfeitedHours ?? 0,
       duration: credit.duration,
       usedHours: empData?.usedHours || 0,
       reservedHours: isRolledBack ? 0 : empData?.reservedHours || 0,
@@ -557,6 +707,7 @@ async function getEmployeeCredits(
 }
 
 module.exports = {
+  getRemainingCreditableHours,
   addCredit,
   rollbackCredit,
   getAllCredits,

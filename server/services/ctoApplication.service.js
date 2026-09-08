@@ -5,7 +5,7 @@ const ApprovalStep = require("../models/approvalStepModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const RevocationSetting = require("../models/revocationSettingModel");
-const GeneralSetting = require("../models/generalSettingsModel"); // ✅ Imported General Setting
+const GeneralSetting = require("../models/generalSettingsModel");
 
 const { resolveApproversFromRoute } = require("./approvalRoute.service");
 const sendEmail = require("../utils/sendEmail");
@@ -104,7 +104,6 @@ function formatLedgerDates(dates) {
   return `${fmt(start)} to ${fmt(end)}`;
 }
 
-// ✅ NEW HELPER: Calculate working days difference
 function getWorkingDaysLeadTime(startDate, endDate, activeWorkingDays) {
   let current = new Date(startDate);
   current.setHours(0, 0, 0, 0);
@@ -408,6 +407,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 /* =========================
    Services
 ========================= */
+
 const addCtoApplicationService = async ({
   userId,
   requestedHours,
@@ -420,7 +420,7 @@ const addCtoApplicationService = async ({
   commutation,
   certificationOfLeaveCredits,
   actionDetails,
-  lateFiling, // ✅ ADDED LATE FILING
+  lateFiling,
 }) => {
   console.log("=========================================");
   console.log("[addCtoApplicationService] STARTING...");
@@ -442,12 +442,33 @@ const addCtoApplicationService = async ({
   }
 
   // ==========================================
-  // ✅ DYNAMIC LATE FILING VALIDATION RULE
+  // ✅ ENFORCE CSC USAGE (AVAILMENT) RULES
+  // ==========================================
+
+  // Rule 1: Availed in blocks of 4 or 8 hours
+  if (strictReqHours % 4 !== 0) {
+    throw createServiceError(
+      "Per CSC rules, CTO must be availed in blocks of 4 hours (half day) or 8 hours (full day).",
+      400,
+    );
+  }
+
+  // Rule 2: Maximum of 5 consecutive days (40 hours) per single availment
+  if (strictReqHours > 40) {
+    throw createServiceError(
+      "Per CSC rules, continuous CTO availment cannot exceed 40 hours (5 consecutive days) per application. Please stagger your request.",
+      400,
+    );
+  }
+  // ==========================================
+
+  // ==========================================
+  // LATE FILING VALIDATION RULE
   // ==========================================
   const settings = (await GeneralSetting.findOne()) || {
     workingDaysEnable: true,
     workingDaysValue: 5,
-    activeWorkingDays: [1, 2, 3, 4, 5], // Default Mon-Fri
+    activeWorkingDays: [1, 2, 3, 4, 5],
   };
 
   let validatedLateFiling = { isLateFiling: false };
@@ -712,7 +733,7 @@ const addCtoApplicationService = async ({
       memo: memoUsage,
       overallStatus: "PENDING",
       commutation: commutation || "Not Requested",
-      lateFiling: validatedLateFiling, // ✅ ATTACHED DYNAMIC LATE FILING TO PAYLOAD
+      lateFiling: validatedLateFiling,
     };
 
     if (isOrganic) {
@@ -1460,7 +1481,7 @@ const getRevocationRequestsService = async (
   const [applications, total] = await Promise.all([
     CtoApplication.find(baseQuery)
       .select(
-        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest",
+        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling revocationHistory",
       )
       .populate({
         path: "approvals",
@@ -1573,7 +1594,7 @@ const getAllCtoApplicationsService = async (
   const [applications, total] = await Promise.all([
     CtoApplication.find(query)
       .select(
-        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest",
+        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling revocationHistory",
       )
       .populate({
         path: "approvals",

@@ -50,6 +50,12 @@ const isNonWorkingDay = (iso, activeWorkingDays = [1, 2, 3, 4, 5]) => {
 
 const isFullISODate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
 
+const requiredDaysFromHours = (hours, hoursPerDay = 8) => {
+  const h = Number(hours || 0);
+  if (!Number.isFinite(h) || h <= 0) return 0;
+  return Math.ceil(h / hoursPerDay);
+};
+
 const getMinSelectableDateISO = (
   leadTimeDays = 5,
   activeWorkingDays = [1, 2, 3, 4, 5],
@@ -77,14 +83,6 @@ const getMinSelectableDateISO = (
   }
 
   return date.toISOString().split("T")[0];
-};
-
-const makeClientRequestId = () => {
-  try {
-    if (typeof crypto !== "undefined" && crypto.randomUUID)
-      return crypto.randomUUID();
-  } catch {}
-  return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 };
 
 function resolveTheme(prefTheme) {
@@ -398,6 +396,9 @@ const AddOrganicCtoApplicationForm = () => {
     setMaxRequestedHours(totalRemaining);
   }, [validMemos]);
 
+  // ✅ ENFORCE CSC USAGE MAX LIMIT (40 hours per application max)
+  const absoluteMaxAllowed = Math.min(maxRequestedHours || 0, 40);
+
   const mutation = useMutation({
     mutationFn: addApplicationRequest,
     retry: 0,
@@ -444,7 +445,6 @@ const AddOrganicCtoApplicationForm = () => {
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
 
-    // Only prune dates dynamically if they are NOT explicitly doing a late filing
     if (!isLateMode) {
       const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
       if (filtered.length !== formData.inclusiveDates.length) {
@@ -539,8 +539,8 @@ const AddOrganicCtoApplicationForm = () => {
     clearBanner();
 
     if (name === "requestedHours") {
-      const cap = Math.min(maxRequestedHours || 0, 300);
-      const requested = value === "" ? "" : clampNumber(value, 1, cap);
+      const requested =
+        value === "" ? "" : clampNumber(value, 1, absoluteMaxAllowed);
 
       if (memoLoading) {
         setFormData((prev) => ({
@@ -634,10 +634,15 @@ const AddOrganicCtoApplicationForm = () => {
         .number()
         .typeError("Must be a valid number.")
         .required("Please enter requested hours.")
-        .min(1, "Minimum is 1 hour.")
+        .min(4, "Minimum availment is 4 hours (half-day).") // ✅ CSC Rule
         .max(
-          Math.min(maxRequestedHours || 0, 300),
-          "Exceeds available balance.",
+          absoluteMaxAllowed,
+          `Cannot exceed max allowed (${absoluteMaxAllowed} hrs). Check your credits.`,
+        )
+        .test(
+          "is-block-of-four",
+          "CTO must be filed in blocks of 4 or 8 hours.",
+          (value) => value % 4 === 0, // ✅ CSC Rule
         )
         .test(
           "memos-loaded",
@@ -650,7 +655,7 @@ const AddOrganicCtoApplicationForm = () => {
       reason: yup
         .string()
         .trim()
-        .required("Reason / Purpose  is required.")
+        .required("Reason / Purpose is required.")
         .max(
           MAX_REASON_LEN,
           `Remarks cannot exceed ${MAX_REASON_LEN} characters.`,
@@ -683,7 +688,7 @@ const AddOrganicCtoApplicationForm = () => {
         })
         .test("lead-time", leadTimeMsg, (dates) => {
           if (!dates) return true;
-          if (isLateMode) return true; // Bypass lead-time validation in explicit late mode
+          if (isLateMode) return true;
           return !dates.some((d) => d < minDate);
         })
         .test(
@@ -719,11 +724,11 @@ const AddOrganicCtoApplicationForm = () => {
         ),
     });
   }, [
+    absoluteMaxAllowed,
     minDate,
     isLateMode,
     leadTimeMsg,
     hasValidApprovalRoute,
-    maxRequestedHours,
     memoLoading,
     hoursPerDay,
     activeWorkingDays,
@@ -763,7 +768,6 @@ const AddOrganicCtoApplicationForm = () => {
 
       await validationSchema.validate(rawPayload, { abortEarly: false });
 
-      // ✅ Strict Check: If they clicked "Late Filing", they MUST provide justification
       if (isLateMode && !lateJustification.trim()) {
         showBanner(
           "error",
@@ -773,7 +777,6 @@ const AddOrganicCtoApplicationForm = () => {
         return;
       }
 
-      // ✅ Strict Check: If late attachment is required by admin, block if missing
       if (isLateMode && isAttachmentRequired && !lateAttachment) {
         showBanner(
           "error",
@@ -783,7 +786,6 @@ const AddOrganicCtoApplicationForm = () => {
         return;
       }
 
-      // Switch to FormData for multipart submission
       const formPayload = new FormData();
       formPayload.append("requestedHours", rawPayload.requestedHours);
       formPayload.append("reason", rawPayload.reason);
@@ -797,7 +799,6 @@ const AddOrganicCtoApplicationForm = () => {
         JSON.stringify(rawPayload.inclusiveDates),
       );
 
-      // Append lateFiling block if explicitly in late mode
       if (isLateMode) {
         formPayload.append(
           "lateFiling",
@@ -1098,9 +1099,22 @@ const AddOrganicCtoApplicationForm = () => {
                     className="flex-1 p-4 relative border-b md:border-b-0 md:border-r transition-colors duration-300"
                     style={{ borderColor: borderColor }}
                   >
-                    <h3 className="text-xs font-bold uppercase mb-4">
+                    <h3 className="text-xs font-bold uppercase mb-2">
                       6.C Number of Hours Applied For
                     </h3>
+
+                    <div
+                      className="text-[10px] text-center mb-4"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      Maximum Allowed (Per Request):{" "}
+                      <span
+                        className="font-bold"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {absoluteMaxAllowed} hrs
+                      </span>
+                    </div>
 
                     <div className="flex flex-col items-center">
                       <input
@@ -1108,9 +1122,9 @@ const AddOrganicCtoApplicationForm = () => {
                         name="requestedHours"
                         value={formData.requestedHours}
                         onChange={handleChange}
-                        min={1}
-                        step={1}
-                        max={300}
+                        min={4}
+                        step={4}
+                        max={absoluteMaxAllowed}
                         disabled={isFormDisabled}
                         className="border-b-2 w-32 text-center outline-none bg-transparent font-bold text-lg mb-1 disabled:opacity-50 transition-colors duration-300"
                         style={{
@@ -1484,7 +1498,7 @@ const AddOrganicCtoApplicationForm = () => {
                   isFormDisabled ||
                   (workingDaysLoading && !workingDaysIsError) ||
                   !hasValidApprovalRoute ||
-                  appsLoading // ✅ Disable button if still loading past apps
+                  appsLoading
                 }
                 className="px-8 py-2 rounded font-semibold text-sm disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 text-white"
                 style={{ backgroundColor: "var(--accent)" }}

@@ -71,6 +71,7 @@ const {
   getAllCreditRequests,
   getEmployeeDetails,
   getEmployeeCredits,
+  getRemainingCreditableHoursRequest, // ✅ Imported the new controller
 } = require("../controllers/ctoCreditController.js");
 
 const {
@@ -124,6 +125,13 @@ router.get(
   getEmployeeCredits,
 );
 
+// ✅ NEW: Route for an employee to check their own remaining creditable hours (CSC limits)
+router.get(
+  "/credits/my-remaining-hours",
+  ...requirePerm("cto.view_self"),
+  getRemainingCreditableHoursRequest,
+);
+
 router.post(
   "/credits",
   ...requirePerm("cto.credits_manage"),
@@ -136,6 +144,13 @@ router.get(
   "/credits/:employeeId/history",
   ...requirePerm("cto.credits_view"),
   getEmployeeCredits,
+);
+
+// ✅ NEW: Route for HR/Admins to check a specific employee's remaining creditable hours
+router.get(
+  "/credits/employee/:employeeId/remaining-hours",
+  ...requirePerm("cto.credits_view"),
+  getRemainingCreditableHoursRequest,
 );
 
 router.patch(
@@ -172,6 +187,7 @@ router.post(
   uploadCtoApplication.single("file"), // ✅ Uses updated storage
   addCtoApplicationRequest,
 );
+
 // Dynamic Routes Last
 router.get(
   "/applications/employee/:employeeId",

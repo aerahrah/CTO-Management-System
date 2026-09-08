@@ -1179,15 +1179,21 @@ const MyCtoCreditHistory = () => {
             </button>
           )}
 
-          {/* Memo Modal */}
+          {/* Memo Modal - Updated to remove default header/footer and make content scrollable */}
           <Modal
             isOpen={memoModal.isOpen}
             onClose={() => setMemoModal({ isOpen: false, memo: null })}
-            title="CTO Memo"
-            closeLabel="Close"
-            maxWidth="max-w-xl"
+            maxWidth="max-w-3xl"
+            hideHeader={true}
+            hideFooter={true}
           >
-            <CtoMemoModalContent memo={memoModal.memo} baseUrl={API_BASE_URL} />
+            <div className="max-h-[85vh] md:max-h-[80vh] overflow-y-auto cto-scrollbar md:p-2">
+              <CtoMemoModalContent
+                memo={memoModal.memo}
+                baseUrl={API_BASE_URL}
+                onClose={() => setMemoModal({ isOpen: false, memo: null })}
+              />
+            </div>
           </Modal>
         </SkeletonTheme>
       </div>

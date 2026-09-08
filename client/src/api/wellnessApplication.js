@@ -21,9 +21,11 @@ const safeError = (err, fallback = "Request failed") => {
    WELLNESS APPLICATIONS (Employee / Admin)
 ========================= */
 
-export const addWellnessApplicationRequest = async (payload) => {
+// ✅ UPDATED: Now supports FormData for late filing attachments
+export const addWellnessApplicationRequest = async (formData) => {
   try {
-    const res = await API.post("/wellness/applications/apply", payload, {
+    const res = await API.post("/wellness/applications/apply", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
       withCredentials: true,
     });
     return unwrap(res);

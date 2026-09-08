@@ -1,3 +1,4 @@
+// controllers/ctoCreditController.js
 const ctoCreditService = require("../services/ctoCredit.service");
 const path = require("path");
 const fs = require("fs/promises");
@@ -42,6 +43,28 @@ function sendError(res, err) {
   return res.status(status).json({ message: err.message || "Server error" });
 }
 
+// ✅ NEW CONTROLLER: Fetch how many hours an employee can still earn/be credited this month
+const getRemainingCreditableHoursRequest = async (req, res) => {
+  try {
+    const employeeId = req.params.employeeId || req?.user?.id;
+    if (!employeeId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { targetDate } = req.query; // optional date to check a specific month
+
+    const result = await ctoCreditService.getRemainingCreditableHours(
+      employeeId,
+      targetDate,
+    );
+
+    return res.json({
+      message: "Remaining creditable hours fetched successfully",
+      ...result,
+    });
+  } catch (error) {
+    return sendError(res, error);
+  }
+};
+
 const addCtoCreditRequest = async (req, res) => {
   try {
     const userId = getUserIdOrThrow(req);
@@ -49,7 +72,6 @@ const addCtoCreditRequest = async (req, res) => {
     console.log("--- INCOMING REQUEST BODY ---");
     console.log(req.body);
 
-    // ✅ Added inclusiveDates and purpose
     const {
       employees,
       duration,
@@ -64,7 +86,7 @@ const addCtoCreditRequest = async (req, res) => {
     const durationObj = parseJsonMaybe(duration, duration);
     const inclusiveDatesObj = parseJsonMaybe(inclusiveDates, inclusiveDates);
 
-    // ✅ normalize req.body too (helps audit middleware if it reads req.body)
+    // normalize req.body too (helps audit middleware if it reads req.body)
     req.body.employees = employeesArray;
     req.body.duration = durationObj;
     req.body.inclusiveDates = inclusiveDatesObj;
@@ -106,7 +128,6 @@ const addCtoCreditRequest = async (req, res) => {
       filePath = `/uploads/cto_memos/${fileName}`;
     }
 
-    // ✅ Pass new fields to service
     const creditRequest = await ctoCreditService.addCredit({
       employees: employeesArray,
       duration: durationObj,
@@ -210,6 +231,7 @@ const getEmployeeCredits = async (req, res) => {
 };
 
 module.exports = {
+  getRemainingCreditableHoursRequest, // ✅ Exported new controller
   addCtoCreditRequest,
   rollbackCreditedRequest,
   getAllCreditRequests,

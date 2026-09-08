@@ -194,7 +194,7 @@ const EmployeeMobileCard = ({ data }) => {
         />
 
         <div
-          className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 transition-colors duration-300 ease-out"
+          className="mt-3 grid grid-cols-4 gap-2 border-t pt-3 transition-colors duration-300 ease-out"
           style={{ borderColor: ui.border }}
         >
           <div className="text-center">
@@ -236,6 +236,22 @@ const EmployeeMobileCard = ({ data }) => {
             </p>
             <p className="text-sm font-bold" style={{ color: ui.text }}>
               {data.remainingHours}h
+            </p>
+          </div>
+
+          <div
+            className="text-center border-l"
+            style={{ borderColor: ui.border }}
+          >
+            <p
+              className="text-[10px] font-bold uppercase tracking-wider"
+              style={{ color: ui.muted }}
+              title="Hours forfeited due to CSC Limits (120h balance / 40h month)"
+            >
+              Forfeited
+            </p>
+            <p className="text-sm font-bold" style={{ color: "#ef4444" }}>
+              {data.forfeitedHours || 0}h
             </p>
           </div>
         </div>
@@ -284,7 +300,6 @@ const CtoCreditDetails = ({ credit }) => {
         })
       : "-";
 
-  // Helper for inclusive overtime dates to prevent duplicate same-day printing
   const formatOvertimeDates = (start, end) => {
     if (!start && !end) return "-";
     const formattedStart = formatDate(start);
@@ -308,7 +323,6 @@ const CtoCreditDetails = ({ credit }) => {
         color: ui.text,
       }}
     >
-      {/* Header */}
       <div
         className="sticky top-0 z-20 border-b p-3 transition-colors duration-300 ease-out"
         style={{
@@ -402,7 +416,6 @@ const CtoCreditDetails = ({ credit }) => {
       </div>
 
       <div className="space-y-6 p-4 transition-colors duration-300 ease-out md:space-y-8 md:p-6">
-        {/* Key Metrics */}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
           <div
             className="flex items-start gap-4 rounded-xl border p-4 transition-colors duration-300 ease-out"
@@ -520,7 +533,6 @@ const CtoCreditDetails = ({ credit }) => {
             </div>
           </div>
 
-          {/* ✅ NEW: Overtime Dates */}
           <div
             className="flex items-start gap-4 rounded-xl border p-4 transition-colors duration-300 ease-out"
             style={{
@@ -554,7 +566,6 @@ const CtoCreditDetails = ({ credit }) => {
             </div>
           </div>
 
-          {/* ✅ NEW: Purpose/Activity (Spans 2 columns to allow for long text) */}
           <div
             className="md:col-span-2 flex items-start gap-4 rounded-xl border p-4 transition-colors duration-300 ease-out"
             style={{
@@ -589,7 +600,6 @@ const CtoCreditDetails = ({ credit }) => {
           </div>
         </div>
 
-        {/* Employees */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h4
@@ -675,7 +685,7 @@ const CtoCreditDetails = ({ credit }) => {
                       Employee
                     </th>
                     <th
-                      className="w-5/12 px-4 py-3 text-[10px] font-bold uppercase tracking-wider"
+                      className="w-4/12 px-4 py-3 text-[10px] font-bold uppercase tracking-wider"
                       style={{ color: ui.muted }}
                     >
                       Utilization
@@ -685,6 +695,13 @@ const CtoCreditDetails = ({ credit }) => {
                       style={{ color: ui.muted }}
                     >
                       Remaining
+                    </th>
+                    <th
+                      className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider"
+                      style={{ color: ui.muted }}
+                      title="Hours forfeited due to CSC Earning Limits"
+                    >
+                      Forfeited
                     </th>
                     <th
                       className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-wider"
@@ -787,6 +804,19 @@ const CtoCreditDetails = ({ credit }) => {
                             }}
                           >
                             {e.remainingHours}h
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3 text-center align-middle">
+                          <span
+                            className="inline-block px-2 py-1 text-sm font-bold tabular-nums"
+                            style={{
+                              color:
+                                e.forfeitedHours > 0 ? "#ef4444" : ui.muted,
+                            }}
+                            title="Hours forfeited due to CSC Limits"
+                          >
+                            {e.forfeitedHours || 0}h
                           </span>
                         </td>
 

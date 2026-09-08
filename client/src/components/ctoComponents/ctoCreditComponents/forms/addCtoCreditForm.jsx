@@ -8,11 +8,16 @@ import {
   X,
   AlertCircle,
   Briefcase,
+  ShieldAlert,
 } from "lucide-react";
 import Select from "react-select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { fetchApprovers, addCreditRequest } from "../../../../api/cto";
+import {
+  fetchApprovers,
+  addCreditRequest,
+  fetchEmployeeRemainingCtoHours,
+} from "../../../../api/cto";
 import { toast } from "react-toastify";
 import Breadcrumbs from "../../../breadCrumbs";
 import { useAuth } from "../../../../store/authStore";
@@ -121,12 +126,19 @@ const Banner = ({ tone = "error", message, borderColor }) => {
             fg: "var(--app-text)",
             icon: "#16a34a",
           }
-        : {
-            bg: "rgba(239,68,68,0.10)",
-            br: "rgba(239,68,68,0.18)",
-            fg: "var(--app-text)",
-            icon: "#ef4444",
-          };
+        : tone === "amber"
+          ? {
+              bg: "rgba(245,158,11,0.10)",
+              br: "rgba(245,158,11,0.25)",
+              fg: "var(--app-text)",
+              icon: "#f59e0b",
+            }
+          : {
+              bg: "rgba(239,68,68,0.10)",
+              br: "rgba(239,68,68,0.18)",
+              fg: "var(--app-text)",
+              icon: "#ef4444",
+            };
 
   return (
     <div
@@ -145,6 +157,17 @@ const Banner = ({ tone = "error", message, borderColor }) => {
       <div className="leading-relaxed">{message}</div>
     </div>
   );
+};
+
+/* ------------------ CSC Limit Helper Hook ------------------ */
+// Helper hook to fetch the limits for a specific employee
+const useEmployeeLimit = (employeeId, targetDate) => {
+  return useQuery({
+    queryKey: ["ctoRemainingHours", employeeId, targetDate],
+    queryFn: () => fetchEmployeeRemainingCtoHours(employeeId, { targetDate }),
+    enabled: !!employeeId && !!targetDate,
+    staleTime: 60 * 1000,
+  });
 };
 
 /* ------------------ Main Form Component ------------------ */
@@ -171,6 +194,9 @@ const AddCtoCreditForm = () => {
   const [successLatchUI, setSuccessLatchUI] = useState(false);
   const [submitLockUI, setSubmitLockUI] = useState(false);
 
+  // We track the limits of the *first* selected employee just to provide a visual hint to HR
+  const [primaryEmployeeId, setPrimaryEmployeeId] = useState(null);
+
   const initialState = useMemo(
     () => ({
       employees: [],
@@ -186,12 +212,27 @@ const AddCtoCreditForm = () => {
 
   const [formData, setFormData] = useState(initialState);
 
+  // Fetch limit data for the visual hint
+  const { data: limitData, isLoading: limitLoading } = useEmployeeLimit(
+    primaryEmployeeId,
+    formData.inclusiveDates.startDate || todayISO(),
+  );
+
   useEffect(() => {
     return () => {
       submitInFlightRef.current = false;
       successLatchRef.current = false;
     };
   }, []);
+
+  // Set the primary employee ID whenever the list changes
+  useEffect(() => {
+    if (formData.employees.length > 0) {
+      setPrimaryEmployeeId(formData.employees[0]);
+    } else {
+      setPrimaryEmployeeId(null);
+    }
+  }, [formData.employees]);
 
   const { data: employeesData, isLoading } = useQuery({
     queryKey: ["ctoCreditEmployees"],
@@ -336,12 +377,12 @@ const AddCtoCreditForm = () => {
       return { ok: false, msg: "Date approved cannot be in the future." };
     }
 
-    // ✅ Validate inclusiveDates with strict Future-Date constraints
+    // Validate inclusiveDates with strict Future-Date constraints
     const { startDate, endDate } = formData.inclusiveDates;
     if (!startDate || !endDate) {
       return {
         ok: false,
-        msg: "Please select the Date Overtime Rendered (Start) Date Overtime Rendered (End).",
+        msg: "Please select the Date Overtime Rendered (Start and End).",
       };
     }
     if (startDate > endDate) {
@@ -427,6 +468,8 @@ const AddCtoCreditForm = () => {
       toast.success("CTO credit added successfully!");
       queryClient.invalidateQueries({ queryKey: ["ctoCredits"] });
       queryClient.invalidateQueries({ queryKey: ["allCredits"] });
+      // Invalidate limits too so the dashboard reflects the new caps
+      queryClient.invalidateQueries({ queryKey: ["ctoRemainingHours"] });
 
       setTimeout(() => {
         navigate(-1);
@@ -469,6 +512,36 @@ const AddCtoCreditForm = () => {
           Issue new Compensatory Time Credits to selected employees by uploading
           a signed memo.
         </p>
+      </div>
+
+      {/* CSC Info Banner */}
+      <div className="px-4 md:px-0 mb-6">
+        <div
+          className="rounded-xl border px-4 py-3 flex items-start gap-3 transition-colors duration-300 ease-out"
+          style={{
+            backgroundColor: "rgba(245, 158, 11, 0.05)",
+            borderColor: "rgba(245, 158, 11, 0.2)",
+          }}
+        >
+          <ShieldAlert
+            className="w-5 h-5 shrink-0 mt-0.5"
+            style={{ color: "#d97706" }}
+          />
+          <div className="text-sm">
+            <span
+              className="font-bold block mb-1"
+              style={{ color: "var(--app-text)" }}
+            >
+              CSC Earning Limits Applied Automatically
+            </span>
+            <span style={{ color: "var(--app-muted)" }}>
+              The system will automatically calculate the available capacity for
+              each employee based on the 120-hour total balance limit and the
+              40-hour monthly earning limit. Any excess hours beyond their
+              personal cap will be forfeited.
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* Form Card */}
@@ -516,18 +589,38 @@ const AddCtoCreditForm = () => {
               className="space-y-4 border-b pb-8 transition-colors duration-300 ease-out"
               style={{ borderColor: borderColor }}
             >
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <div
-                  className="w-7 h-7 rounded-md flex items-center justify-center border"
-                  style={{
-                    backgroundColor: "var(--app-surface-2)",
-                    borderColor: borderColor,
-                    color: "var(--app-muted)",
-                  }}
-                >
-                  <Users className="w-4 h-4" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center border"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor: borderColor,
+                      color: "var(--app-muted)",
+                    }}
+                  >
+                    <Users className="w-4 h-4" />
+                  </div>
+                  Select Employees
                 </div>
-                Select Employees
+
+                {/* CSC Visual Hint (Shows only if 1 employee is selected, just to help HR see their specific cap) */}
+                {formData.employees.length === 1 &&
+                  !limitLoading &&
+                  limitData && (
+                    <div className="text-[10px] uppercase font-bold tracking-wider px-3 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+                      Max Room for selected:{" "}
+                      <span
+                        className={
+                          limitData.absoluteCreditableNow <= 0
+                            ? "text-red-500"
+                            : "text-green-600"
+                        }
+                      >
+                        {limitData.absoluteCreditableNow}h
+                      </span>
+                    </div>
+                  )}
               </div>
 
               {/* Quick Select Buttons */}
@@ -713,6 +806,80 @@ const AddCtoCreditForm = () => {
               </div>
             </div>
 
+            {/* Inclusive Dates */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
+              <div className="space-y-2">
+                <div
+                  className="flex items-center gap-2 text-sm font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center border"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor: borderColor,
+                      color: "var(--app-muted)",
+                    }}
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  Date Overtime Rendered (Start)
+                </div>
+                <input
+                  type="date"
+                  name="startDate"
+                  value={formData.inclusiveDates.startDate}
+                  onChange={handleChange}
+                  max={todayISO()}
+                  disabled={isBusy}
+                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
+                  style={{
+                    backgroundColor: isBusy
+                      ? "var(--app-surface-2)"
+                      : "var(--app-surface)",
+                    borderColor: borderColor,
+                    color: isBusy ? "var(--app-muted)" : "var(--app-text)",
+                  }}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <div
+                  className="flex items-center gap-2 text-sm font-medium"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  <div
+                    className="w-7 h-7 rounded-md flex items-center justify-center border"
+                    style={{
+                      backgroundColor: "var(--app-surface-2)",
+                      borderColor: borderColor,
+                      color: "var(--app-muted)",
+                    }}
+                  >
+                    <Calendar className="w-4 h-4" />
+                  </div>
+                  Date Overtime Rendered (End)
+                </div>
+                <input
+                  type="date"
+                  name="endDate"
+                  value={formData.inclusiveDates.endDate}
+                  onChange={handleChange}
+                  min={formData.inclusiveDates.startDate || undefined}
+                  max={todayISO()}
+                  disabled={isBusy}
+                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
+                  style={{
+                    backgroundColor: isBusy
+                      ? "var(--app-surface-2)"
+                      : "var(--app-surface)",
+                    borderColor: borderColor,
+                    color: isBusy ? "var(--app-muted)" : "var(--app-text)",
+                  }}
+                />
+              </div>
+            </div>
+
             {/* Duration & Date Approved */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
               <div className="space-y-2">
@@ -795,82 +962,6 @@ const AddCtoCreditForm = () => {
                   name="dateApproved"
                   value={formData.dateApproved}
                   onChange={handleChange}
-                  max={todayISO()}
-                  disabled={isBusy}
-                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
-                  style={{
-                    backgroundColor: isBusy
-                      ? "var(--app-surface-2)"
-                      : "var(--app-surface)",
-                    borderColor: borderColor,
-                    color: isBusy ? "var(--app-muted)" : "var(--app-text)",
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Inclusive Dates */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
-              <div className="space-y-2">
-                <div
-                  className="flex items-center gap-2 text-sm font-medium"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  <div
-                    className="w-7 h-7 rounded-md flex items-center justify-center border"
-                    style={{
-                      backgroundColor: "var(--app-surface-2)",
-                      borderColor: borderColor,
-                      color: "var(--app-muted)",
-                    }}
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </div>
-                  Date Overtime Rendered (Start)
-                </div>
-                {/* ✅ ADDED max={todayISO()} to prevent future dates */}
-                <input
-                  type="date"
-                  name="startDate"
-                  value={formData.inclusiveDates.startDate}
-                  onChange={handleChange}
-                  max={todayISO()}
-                  disabled={isBusy}
-                  className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
-                  style={{
-                    backgroundColor: isBusy
-                      ? "var(--app-surface-2)"
-                      : "var(--app-surface)",
-                    borderColor: borderColor,
-                    color: isBusy ? "var(--app-muted)" : "var(--app-text)",
-                  }}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <div
-                  className="flex items-center gap-2 text-sm font-medium"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  <div
-                    className="w-7 h-7 rounded-md flex items-center justify-center border"
-                    style={{
-                      backgroundColor: "var(--app-surface-2)",
-                      borderColor: borderColor,
-                      color: "var(--app-muted)",
-                    }}
-                  >
-                    <Calendar className="w-4 h-4" />
-                  </div>
-                  Date Overtime Rendered (End)
-                </div>
-                {/* ✅ ADDED max={todayISO()} to prevent future dates */}
-                <input
-                  type="date"
-                  name="endDate"
-                  value={formData.inclusiveDates.endDate}
-                  onChange={handleChange}
-                  min={formData.inclusiveDates.startDate || undefined}
                   max={todayISO()}
                   disabled={isBusy}
                   className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"

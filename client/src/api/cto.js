@@ -121,6 +121,19 @@ export const fetchMyCtoApplications = async (params = {}) => {
   }
 };
 
+// ✅ UPDATED: Fetch remaining creditable hours (CSC limits) for the logged-in user
+export const fetchMyRemainingCtoHours = async (params = {}) => {
+  try {
+    const res = await API.get(
+      "/cto/credits/my-remaining-hours",
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch remaining creditable hours");
+  }
+};
+
 export const fetchAllCtoApplications = async (params = {}) => {
   try {
     const res = await API.get("/cto/applications/all", withCreds(params));
@@ -139,6 +152,22 @@ export const fetchEmployeeApplications = async (employeeId, params = {}) => {
     return unwrap(res);
   } catch (err) {
     safeError(err, "Failed to fetch employee applications");
+  }
+};
+
+// ✅ UPDATED: Fetch remaining creditable hours (CSC limits) for a specific employee
+export const fetchEmployeeRemainingCtoHours = async (
+  employeeId,
+  params = {},
+) => {
+  try {
+    const res = await API.get(
+      `/cto/credits/employee/${employeeId}/remaining-hours`,
+      withCreds(params),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to fetch employee's remaining creditable hours");
   }
 };
 

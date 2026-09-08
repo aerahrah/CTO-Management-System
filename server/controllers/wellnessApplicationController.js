@@ -19,7 +19,56 @@ const {
 const addWellnessApplicationRequest = async (req, res, next) => {
   try {
     const userId = req.user.id || req.user._id;
-    const payload = { ...req.body, userId };
+
+    // ✅ Safely parse lateFiling if it arrives as a JSON string via FormData
+    let parsedLateFiling = req.body.lateFiling;
+    if (typeof parsedLateFiling === "string") {
+      try {
+        parsedLateFiling = JSON.parse(parsedLateFiling);
+      } catch (e) {
+        console.warn("Could not parse lateFiling string");
+      }
+    }
+
+    // ✅ Attach the uploaded file to the lateFiling object if present
+    if (parsedLateFiling && String(parsedLateFiling.isLateFiling) === "true") {
+      if (req.file) {
+        parsedLateFiling.attachment = {
+          fileUrl: req.file.path.replace(/\\/g, "/"), // Normalize path for Windows/Linux
+          fileName: req.file.originalname,
+          fileType: req.file.mimetype,
+        };
+      }
+    }
+
+    // ✅ Safely parse inclusiveDates if it arrives as a JSON string via FormData
+    let parsedInclusiveDates = req.body.inclusiveDates;
+    if (typeof parsedInclusiveDates === "string") {
+      try {
+        parsedInclusiveDates = JSON.parse(parsedInclusiveDates);
+      } catch (e) {
+        // Fallback if it's just a single date string
+        parsedInclusiveDates = [req.body.inclusiveDates];
+      }
+    }
+
+    // ✅ Safely parse memos or approvers if necessary (standard FormData handling)
+    let parsedApprovers = req.body.approvers;
+    if (typeof parsedApprovers === "string") {
+      try {
+        parsedApprovers = JSON.parse(parsedApprovers);
+      } catch (e) {
+        console.warn("Could not parse approvers string");
+      }
+    }
+
+    const payload = {
+      ...req.body,
+      userId,
+      inclusiveDates: parsedInclusiveDates || req.body.inclusiveDates,
+      approvers: parsedApprovers || req.body.approvers,
+      lateFiling: parsedLateFiling, // ✅ Inject the structured lateFiling object
+    };
 
     const application = await addWellnessApplicationService(payload);
 
@@ -160,7 +209,7 @@ const requestRevocationWellnessController = async (req, res, next) => {
     let attachment = null;
     if (req.file) {
       attachment = {
-        url: req.file.path,
+        url: req.file.path.replace(/\\/g, "/"),
         filename: req.file.originalname,
         mimetype: req.file.mimetype,
       };

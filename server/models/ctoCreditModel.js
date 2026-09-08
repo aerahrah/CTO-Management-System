@@ -7,18 +7,40 @@ const ctoCreditSchema = new mongoose.Schema(
     dateApproved: { type: Date, required: true },
     uploadedMemo: { type: String, required: true },
 
-    // NEW: Inclusive dates of the overtime (handles single or multi-day)
+    // Inclusive dates of the overtime (handles single or multi-day)
     inclusiveDates: {
       startDate: { type: Date, required: true },
       endDate: { type: Date, required: true },
     },
 
-    // NEW: Generalized description of the activity/task performed
+    // Generalized description of the activity/task performed
     purpose: { type: String, required: true },
 
+    // Strict validation for the 40-hour limit
     duration: {
-      hours: { type: Number, required: true },
-      minutes: { type: Number, required: true },
+      hours: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 40,
+      },
+      minutes: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 59,
+        validate: {
+          validator: function (minutesValue) {
+            // 'this' refers to the current document being saved
+            if (this.duration.hours === 40 && minutesValue > 0) {
+              return false;
+            }
+            return true;
+          },
+          message:
+            "Total duration cannot exceed exactly 40 hours (if hours is 40, minutes must be 0).",
+        },
+      },
     },
 
     // Employee-level credits
@@ -35,6 +57,7 @@ const ctoCreditSchema = new mongoose.Schema(
         usedHours: { type: Number, default: 0 }, // approved CTO
         reservedHours: { type: Number, default: 0 }, // pending CTO
         remainingHours: { type: Number, required: true }, // credited - used - reserved
+        forfeitedHours: { type: Number, default: 0 }, // Tracks excess hours lost due to CSC caps
 
         status: {
           type: String,

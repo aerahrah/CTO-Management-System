@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchDashboard } from "../../api/cto";
+import { fetchDashboard, fetchMyRemainingCtoHours } from "../../api/cto";
 import { useAuth } from "../../store/authStore";
 import Breadcrumbs from "../breadCrumbs";
 import ThemeSync from "../themeSync";
@@ -20,9 +20,10 @@ import {
   User,
   XCircle,
   UserCheck,
+  ShieldAlert,
 } from "lucide-react";
 
-/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
+/* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
     const systemDark =
@@ -32,7 +33,7 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
-/* ------------------ Status styles (themed-friendly) ------------------ */
+/* ------------------ Status styles ------------------ */
 const getStatusStyle = (status) => {
   switch (status) {
     case "APPROVED":
@@ -69,7 +70,7 @@ const getStatusStyle = (status) => {
 };
 
 /* =========================
-   UI Primitives (layout unchanged, themed via CSS vars)
+   UI Primitives
 ========================= */
 const Card = ({ children, className = "", borderColor }) => (
   <div
@@ -149,16 +150,6 @@ const Pill = ({ children, tone = "neutral", className = "" }) => {
       backgroundColor: "rgba(239,68,68,0.14)",
       borderColor: "rgba(239,68,68,0.25)",
       color: "#ef4444",
-    },
-    dark: {
-      backgroundColor: "var(--app-text)",
-      borderColor: "var(--app-text)",
-      color: "var(--app-surface)",
-    },
-    gray: {
-      backgroundColor: "rgba(100,116,139,0.14)",
-      borderColor: "rgba(100,116,139,0.25)",
-      color: "#64748b",
     },
   };
 
@@ -394,7 +385,7 @@ const TabButton = ({ active, onClick, label, icon, borderColor }) => (
 );
 
 /* =========================
-   Loading Skeleton (layout-matched) — themed via vars
+   Loading Skeleton
 ========================= */
 const SkeletonStyles = () => (
   <style>
@@ -544,7 +535,6 @@ const LoadingSkeleton = ({ resolvedTheme, borderColor, isApprover }) => {
           </div>
         </div>
 
-        {/* Skeleton Tabs (Only if they are an approver) */}
         {isApprover && (
           <div
             className="mt-6 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
@@ -684,22 +674,27 @@ const PendingRequestItem = ({ request, borderColor, isLast }) => {
 };
 
 /* =========================
-   Main Page (Tabbed layout + theme-aware)
+   Main Page
 ========================= */
 const CtoDashboard = () => {
-  const { data, isLoading, isError } = useQuery({
+  const {
+    data: dashboardData,
+    isLoading: isDashLoading,
+    isError: isDashError,
+  } = useQuery({
     queryKey: ["ctoDashboard"],
     queryFn: fetchDashboard,
+  });
+
+  const { data: limitData, isLoading: isLimitLoading } = useQuery({
+    queryKey: ["ctoRemainingHours"],
+    queryFn: fetchMyRemainingCtoHours,
   });
 
   const { can } = usePermissions();
 
   const isApprover = can("cto.view_application");
-
-  // Track the active tab ("my", "approver")
   const [activeTab, setActiveTab] = useState("my");
-
-  // Theme-aware styling (design only)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
 
@@ -709,7 +704,7 @@ const CtoDashboard = () => {
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
 
-  useEffect(() => {}, []);
+  const isLoading = isDashLoading || isLimitLoading;
 
   if (isLoading)
     return (
@@ -720,7 +715,7 @@ const CtoDashboard = () => {
       />
     );
 
-  if (isError || !data)
+  if (isDashError || !dashboardData)
     return (
       <div
         className="p-10 text-center font-medium transition-colors duration-300 ease-out"
@@ -744,7 +739,7 @@ const CtoDashboard = () => {
       rejected: 0,
       cancelled: 0,
     },
-  } = data;
+  } = dashboardData;
 
   const totalCreditRaw = Number(myCtoSummary?.totalCredit || 0);
   const balance = Number(myCtoSummary?.balance || 0);
@@ -788,7 +783,6 @@ const CtoDashboard = () => {
       <ScrollbarsSync />
 
       <div className="w-full mx-auto py-3 sm:py-4 px-2 lg:px-0">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="min-w-0">
             <Breadcrumbs rootLabel="home" rootTo="/app" />
@@ -820,7 +814,6 @@ const CtoDashboard = () => {
           </div>
         </div>
 
-        {/* Dynamic Tabs (Only shown if user has Approver rights) */}
         {isApprover && (
           <div
             className="mt-6 mb-5 flex gap-2 overflow-x-auto no-scrollbar p-1 rounded-2xl border transition-colors duration-300 ease-out w-fit"
@@ -846,14 +839,9 @@ const CtoDashboard = () => {
           </div>
         )}
 
-        {/* Added Margin if Tabs are Hidden */}
         {!isApprover && <div className="mt-8"></div>}
 
-        {/* Tab Content Container */}
         <div className={isApprover ? "mt-4 space-y-6" : "space-y-6"}>
-          {/* =========================================
-              TAB: MY DASHBOARD 
-          ========================================= */}
           {activeTab === "my" && (
             <div className="space-y-6">
               <div className="space-y-3">
@@ -897,174 +885,312 @@ const CtoDashboard = () => {
               </div>
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {/* Time Credits */}
-                <Card borderColor={borderColor}>
-                  <CardHeader
-                    title="Time credits"
-                    icon={Clock}
-                    subtitle="Total credit, utilization, and available balance."
-                    borderColor={borderColor}
-                    action={
-                      <Pill tone="blue">
-                        {utilizationPct.toFixed(0)}% utilized
-                      </Pill>
-                    }
-                  />
-                  <div className="p-4">
-                    <div
-                      className="rounded-xl border p-4 transition-colors duration-300 ease-out"
-                      style={{
-                        borderColor: borderColor,
-                        backgroundColor: "var(--app-surface)",
-                      }}
-                    >
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <div
-                            className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            Hours left
-                          </div>
-                          <div
-                            className="mt-1 text-5xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-text)" }}
-                          >
-                            {balance.toFixed(1)}
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <div
-                            className="text-xs font-semibold transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            Total Credited Hours:{" "}
-                            <span
-                              className="font-bold transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {totalCredit.toFixed(1)}h
-                            </span>
-                          </div>
-                          <div
-                            className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            Reserved:{" "}
-                            <span
-                              className="font-bold transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {reserved.toFixed(1)}h
-                            </span>
-                          </div>
-                          <div
-                            className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            Used:{" "}
-                            <span
-                              className="font-bold transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {used.toFixed(1)}h
-                            </span>
-                          </div>
-                          <div
-                            className="text-xs mt-0.5 transition-colors duration-300 ease-out"
-                            style={{ color: "var(--app-muted)" }}
-                          >
-                            Balance:{" "}
-                            <span
-                              className="font-semibold transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {balance.toFixed(1)}h
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 space-y-2">
-                        <Progress
-                          reservedPct={reservedPct}
-                          usedPct={usedPct}
-                          borderColor={borderColor}
-                        />
-
-                        <div
-                          className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] transition-colors duration-300 ease-out"
-                          style={{ color: "var(--app-muted)" }}
-                        >
-                          <div className="inline-flex items-center gap-2">
-                            <span
-                              className="w-2.5 h-2.5 rounded-full border"
-                              style={{
-                                backgroundColor: "rgba(148,163,184,0.45)",
-                                borderColor: borderColor,
-                              }}
-                            />
-                            <span>Balance</span>
-                          </div>
-
-                          {reserved > 0 ? (
-                            <div className="inline-flex items-center gap-2">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full"
-                                style={{ backgroundColor: "#f59e0b" }}
-                              />
-                              <span>Reserved</span>
-                            </div>
-                          ) : null}
-
-                          {used > 0 ? (
-                            <div className="inline-flex items-center gap-2">
-                              <span
-                                className="w-2.5 h-2.5 rounded-full"
-                                style={{ backgroundColor: "#f43f5e" }}
-                              />
-                              <span>Used</span>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-
-                      <div className="mt-5 grid grid-cols-4 gap-2">
-                        {[
-                          { k: "Total", v: `${totalCredit.toFixed(1)}h` },
-                          { k: "Balance", v: `${balance.toFixed(1)}h` },
-                          { k: "Reserved", v: `${reserved.toFixed(1)}h` },
-                          { k: "Used", v: `${used.toFixed(1)}h` },
-                        ].map((t) => (
-                          <div
-                            key={t.k}
-                            className="rounded-lg border p-3 transition-colors duration-300 ease-out"
-                            style={{
-                              borderColor: borderColor,
-                              backgroundColor: "var(--app-surface-2)",
-                            }}
-                          >
+                <div className="flex flex-col gap-4">
+                  <Card borderColor={borderColor}>
+                    <CardHeader
+                      title="Time credits"
+                      icon={Clock}
+                      subtitle="Total credit, utilization, and available balance."
+                      borderColor={borderColor}
+                      action={
+                        <Pill tone="blue">
+                          {utilizationPct.toFixed(0)}% utilized
+                        </Pill>
+                      }
+                    />
+                    <div className="p-4">
+                      <div
+                        className="rounded-xl border p-4 transition-colors duration-300 ease-out"
+                        style={{
+                          borderColor: borderColor,
+                          backgroundColor: "var(--app-surface)",
+                        }}
+                      >
+                        <div className="flex items-end justify-between gap-3">
+                          <div>
                             <div
                               className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
                               style={{ color: "var(--app-muted)" }}
                             >
-                              {t.k}
+                              Hours left
                             </div>
                             <div
-                              className="mt-1 text-sm font-bold transition-colors duration-300 ease-out"
+                              className="mt-1 text-5xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
                               style={{ color: "var(--app-text)" }}
                             >
-                              {t.v}
+                              {balance.toFixed(1)}
                             </div>
                           </div>
-                        ))}
+
+                          <div className="text-right">
+                            <div
+                              className="text-xs font-semibold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Total Credited Hours:{" "}
+                              <span
+                                className="font-bold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {totalCredit.toFixed(1)}h
+                              </span>
+                            </div>
+                            <div
+                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Reserved:{" "}
+                              <span
+                                className="font-bold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {reserved.toFixed(1)}h
+                              </span>
+                            </div>
+                            <div
+                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Used:{" "}
+                              <span
+                                className="font-bold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {used.toFixed(1)}h
+                              </span>
+                            </div>
+                            <div
+                              className="text-xs mt-0.5 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Balance:{" "}
+                              <span
+                                className="font-semibold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {balance.toFixed(1)}h
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 space-y-2">
+                          <Progress
+                            reservedPct={reservedPct}
+                            usedPct={usedPct}
+                            borderColor={borderColor}
+                          />
+
+                          <div
+                            className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            <div className="inline-flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border"
+                                style={{
+                                  backgroundColor: "rgba(148,163,184,0.45)",
+                                  borderColor: borderColor,
+                                }}
+                              />
+                              <span>Balance</span>
+                            </div>
+
+                            {reserved > 0 ? (
+                              <div className="inline-flex items-center gap-2">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full"
+                                  style={{ backgroundColor: "#f59e0b" }}
+                                />
+                                <span>Reserved</span>
+                              </div>
+                            ) : null}
+
+                            {used > 0 ? (
+                              <div className="inline-flex items-center gap-2">
+                                <span
+                                  className="w-2.5 h-2.5 rounded-full"
+                                  style={{ backgroundColor: "#f43f5e" }}
+                                />
+                                <span>Used</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid grid-cols-4 gap-2">
+                          {[
+                            { k: "Total", v: `${totalCredit.toFixed(1)}h` },
+                            { k: "Balance", v: `${balance.toFixed(1)}h` },
+                            { k: "Reserved", v: `${reserved.toFixed(1)}h` },
+                            { k: "Used", v: `${used.toFixed(1)}h` },
+                          ].map((t) => (
+                            <div
+                              key={t.k}
+                              className="rounded-lg border p-3 transition-colors duration-300 ease-out"
+                              style={{
+                                borderColor: borderColor,
+                                backgroundColor: "var(--app-surface-2)",
+                              }}
+                            >
+                              <div
+                                className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                {t.k}
+                              </div>
+                              <div
+                                className="mt-1 text-sm font-bold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {t.v}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </Card>
+                  </Card>
 
-                {/* My Recent Activity */}
+                  {/* Accrual Limits (CSC Rules) - explicitly relabeled */}
+                  <Card borderColor={borderColor}>
+                    <CardHeader
+                      title="Earning Capacity (CSC Rules)"
+                      icon={ShieldAlert}
+                      subtitle="Maximum hours you can still accrue based on active limits."
+                      borderColor={borderColor}
+                      action={
+                        <Pill
+                          tone={
+                            (limitData?.absoluteCreditableNow ?? 0) <= 0
+                              ? "rose"
+                              : "green"
+                          }
+                        >
+                          {limitData?.absoluteCreditableNow ?? 0}h creditable
+                        </Pill>
+                      }
+                    />
+                    <div className="p-4">
+                      <div
+                        className="rounded-xl border p-4 transition-colors duration-300 ease-out"
+                        style={{
+                          borderColor: borderColor,
+                          backgroundColor: "var(--app-surface)",
+                        }}
+                      >
+                        <div className="flex items-end justify-between gap-3">
+                          <div>
+                            <div
+                              className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Room To Earn
+                            </div>
+                            <div
+                              className="mt-1 text-4xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-text)" }}
+                            >
+                              {limitData?.absoluteCreditableNow ?? 0}
+                              <span
+                                className="text-xl ml-1"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                h
+                              </span>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div
+                              className="text-xs font-semibold transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Max Balance Limit:{" "}
+                              <span
+                                className="font-bold"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {limitData?.maxBalanceLimit ?? 120}h
+                              </span>
+                            </div>
+                            <div
+                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Monthly Earning Cap:{" "}
+                              <span
+                                className="font-bold"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {limitData?.maxMonthlyEarning ?? 40}h
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 space-y-4">
+                          {/* Progress 1: Monthly Limit */}
+                          <div>
+                            <div
+                              className="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              <span>
+                                Earned This Month (
+                                {limitData?.earnedThisMonth ?? 0}h)
+                              </span>
+                              <span>
+                                {limitData?.roomUntilMonthlyLimit ?? 40}h room
+                              </span>
+                            </div>
+                            <Progress
+                              reservedPct={0}
+                              usedPct={
+                                ((limitData?.earnedThisMonth ?? 0) /
+                                  (limitData?.maxMonthlyEarning ?? 40)) *
+                                100
+                              }
+                              borderColor={borderColor}
+                            />
+                          </div>
+
+                          {/* Progress 2: 120h Balance Limit - CLARIFIED LABELS */}
+                          <div>
+                            <div
+                              className="flex justify-between items-end text-[10px] font-bold uppercase tracking-wider mb-1 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              <div className="flex flex-col">
+                                <span>
+                                  Total Unexpended (
+                                  {limitData?.currentBalance ?? 0}h)
+                                </span>
+                                {reserved > 0 && (
+                                  <span className="text-[9px] normal-case tracking-normal opacity-80 mt-0.5">
+                                    (Includes {reserved.toFixed(1)}h pending)
+                                  </span>
+                                )}
+                              </div>
+                              <span className="pb-0.5">
+                                {limitData?.roomUntilMaxBalance ?? 120}h room
+                              </span>
+                            </div>
+                            <Progress
+                              reservedPct={0}
+                              usedPct={
+                                ((limitData?.currentBalance ?? 0) /
+                                  (limitData?.maxBalanceLimit ?? 120)) *
+                                100
+                              }
+                              borderColor={borderColor}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
+
                 <Card borderColor={borderColor}>
                   <CardHeader
                     title="My recent requests"
@@ -1107,7 +1233,7 @@ const CtoDashboard = () => {
                     {myCtoSummary?.recentRequests &&
                     myCtoSummary.recentRequests.length > 0 ? (
                       <div
-                        className="border rounded-xl overflow-y-auto max-h-72 cto-scrollbar transition-colors duration-300 ease-out"
+                        className="border rounded-xl overflow-y-auto max-h-[855px] cto-scrollbar transition-colors duration-300 ease-out"
                         style={{
                           borderColor: borderColor,
                           backgroundColor: "var(--app-surface)",
@@ -1214,9 +1340,6 @@ const CtoDashboard = () => {
             </div>
           )}
 
-          {/* =========================================
-              TAB: APPROVER SECTION
-          ========================================= */}
           {activeTab === "approver" && isApprover && (
             <div className="space-y-6">
               <div className="space-y-3">
@@ -1265,9 +1388,7 @@ const CtoDashboard = () => {
                 </div>
               </div>
 
-              {/* Pending Queue & Recent Pending Layout */}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                {/* Approvals queue */}
                 <Card className="relative" borderColor={borderColor}>
                   <CardHeader
                     title="Approvals queue"
@@ -1338,7 +1459,6 @@ const CtoDashboard = () => {
                   </div>
                 </Card>
 
-                {/* Recent Pending */}
                 <Card borderColor={borderColor}>
                   <CardHeader
                     title="Recent pending requests"
