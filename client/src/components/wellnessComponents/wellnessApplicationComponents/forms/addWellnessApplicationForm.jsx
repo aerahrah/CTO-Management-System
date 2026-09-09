@@ -297,9 +297,16 @@ const AddWellnessApplicationForm = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // ✅ COMPUTATION MODE LOGIC
   const workingDoc = workingDaysRes?.data;
+  const computationMode = workingDoc?.computationMode || "Working Days";
 
-  const activeWorkingDays = workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+  // Override activeWorkingDays if Calendar Days is selected
+  const activeWorkingDays =
+    computationMode === "Calendar Days"
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+
   const isAttachmentRequired = Boolean(
     workingDoc?.lateFilingAttachmentRequired,
   );
@@ -326,8 +333,8 @@ const AddWellnessApplicationForm = () => {
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
       return "Requests require at least 1 day advance notice.";
-    return `Requests require at least ${leadTimeDays} working day(s) advance notice.`;
-  }, [leadTimeDays]);
+    return `Requests require at least ${leadTimeDays} ${computationMode === "Working Days" ? "working day(s)" : "calendar day(s)"} advance notice.`;
+  }, [leadTimeDays, computationMode]);
 
   useEffect(() => {
     if (workingDaysIsError) {
@@ -354,13 +361,13 @@ const AddWellnessApplicationForm = () => {
     queryFn: fetchAllApprovalRoutes,
   });
 
-  // ✅ NEW: Fetch the user's Wellness applications to determine overlapping dates
+  // ✅ Fetch the user's Wellness applications to determine overlapping dates
   const { data: appsResponse, isLoading: appsLoading } = useQuery({
     queryKey: ["myWellnessApplications"],
     queryFn: fetchMyWellnessApplications,
   });
 
-  // ✅ NEW: Extract all dates from PENDING or APPROVED applications
+  // ✅ Extract all dates from PENDING or APPROVED applications
   const blockedDates = useMemo(() => {
     const apps =
       appsResponse?.data?.data || appsResponse?.data || appsResponse || [];
@@ -687,10 +694,13 @@ const AddWellnessApplicationForm = () => {
     if (isLateMode) return "Late Filing Allowed";
     if (workingDaysLoading) return "Min. Lead Time: Loading…";
     if (leadTimeDays <= 0) return "Min. Lead Time: 1 day";
-    return `Min. Lead Time: ${leadTimeDays} Work Day${
+
+    const dayLabel =
+      computationMode === "Working Days" ? "Work Day" : "Calendar Day";
+    return `Min. Lead Time: ${leadTimeDays} ${dayLabel}${
       leadTimeDays === 1 ? "" : "s"
     }`;
-  }, [leadTimeDays, workingDaysLoading, isLateMode]);
+  }, [leadTimeDays, workingDaysLoading, isLateMode, computationMode]);
 
   // ✅ Disabled while fetching applications
   const dateDisabled = isBusy || workingDaysLoading || appsLoading;

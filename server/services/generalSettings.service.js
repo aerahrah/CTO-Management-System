@@ -119,7 +119,8 @@ async function getWorkingDaysSettings() {
     workingDaysValue: settings.workingDaysValue,
     hoursPerDay: settings.hoursPerDay,
     activeWorkingDays: settings.activeWorkingDays,
-    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired, // ✅ Added to GET
+    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
+    computationMode: settings.computationMode, // ✅ Added
   };
 }
 
@@ -134,7 +135,8 @@ async function updateWorkingDaysSettings(payload, userId) {
     workingDaysValue: settings.workingDaysValue,
     hoursPerDay: settings.hoursPerDay,
     activeWorkingDays: settings.activeWorkingDays,
-    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired, // ✅ Added to audit before
+    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
+    computationMode: settings.computationMode, // ✅ Added
   };
 
   // Update fields if they exist in the payload
@@ -151,12 +153,22 @@ async function updateWorkingDaysSettings(payload, userId) {
     settings.activeWorkingDays = payload.activeWorkingDays;
   }
 
-  // ✅ ADDED LATE FILING ATTACHMENT UPDATE LOGIC
+  // LATE FILING ATTACHMENT UPDATE LOGIC
   if (payload.lateFilingAttachmentRequired !== undefined) {
     const isRequired = toBool(payload.lateFilingAttachmentRequired);
     if (isRequired !== undefined) {
       settings.lateFilingAttachmentRequired = isRequired;
     }
+  }
+
+  // ✅ ADDED COMPUTATION MODE UPDATE LOGIC
+  if (payload.computationMode !== undefined) {
+    if (!["Working Days", "Calendar Days"].includes(payload.computationMode)) {
+      throw new Error(
+        "computationMode must be 'Working Days' or 'Calendar Days'",
+      );
+    }
+    settings.computationMode = payload.computationMode;
   }
 
   setUpdatedBy(settings, userId);
@@ -167,7 +179,8 @@ async function updateWorkingDaysSettings(payload, userId) {
     workingDaysValue: settings.workingDaysValue,
     hoursPerDay: settings.hoursPerDay,
     activeWorkingDays: settings.activeWorkingDays,
-    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired, // ✅ Added to audit after
+    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
+    computationMode: settings.computationMode, // ✅ Added
   };
 
   return { before, after };

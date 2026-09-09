@@ -289,8 +289,15 @@ const AddOrganicWellnessApplicationForm = () => {
 
   const workingDoc = workingDaysRes?.data;
 
-  // ✅ EXTRACT NEW SETTINGS WITH DEFAULTS
-  const activeWorkingDays = workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+  // ✅ COMPUTATION MODE LOGIC
+  const computationMode = workingDoc?.computationMode || "Working Days";
+
+  // Override activeWorkingDays if Calendar Days is selected
+  const activeWorkingDays =
+    computationMode === "Calendar Days"
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+
   const isAttachmentRequired = Boolean(
     workingDoc?.lateFilingAttachmentRequired,
   );
@@ -396,8 +403,8 @@ const AddOrganicWellnessApplicationForm = () => {
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
       return "Applications must be filed at least 1 day in advance.";
-    return `Applications must be filed at least ${leadTimeDays} working day(s) in advance.`;
-  }, [leadTimeDays]);
+    return `Applications must be filed at least ${leadTimeDays} ${computationMode === "Working Days" ? "working day(s)" : "calendar day(s)"} in advance.`;
+  }, [leadTimeDays, computationMode]);
 
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
@@ -540,7 +547,9 @@ const AddOrganicWellnessApplicationForm = () => {
         })
         .test(
           "no-weekends",
-          "One or more selected dates fall on a non-working day.",
+          computationMode === "Calendar Days"
+            ? "Invalid date selected."
+            : "One or more selected dates fall on a non-working day.",
           (dates) =>
             !dates
               ? true
@@ -562,6 +571,7 @@ const AddOrganicWellnessApplicationForm = () => {
     hasValidApprovalRoute,
     activeWorkingDays,
     blockedDates,
+    computationMode,
   ]);
 
   const startSubmit = async () => {

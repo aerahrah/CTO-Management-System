@@ -310,9 +310,16 @@ const AddCtoApplicationForm = () => {
     staleTime: 1000 * 60 * 5,
   });
 
+  // ✅ UPDATED COMPUTATION MODE LOGIC
   const workingDoc = workingDaysRes?.data;
   const hoursPerDay = workingDoc?.hoursPerDay || 8;
-  const activeWorkingDays = workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
+  const computationMode = workingDoc?.computationMode || "Working Days";
+
+  // If set to Calendar Days, override active working days to include all 7 days (0-6)
+  const activeWorkingDays =
+    computationMode === "Calendar Days"
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : workingDoc?.activeWorkingDays || [1, 2, 3, 4, 5];
 
   const isAttachmentRequired = Boolean(
     workingDoc?.lateFilingAttachmentRequired,
@@ -437,8 +444,8 @@ const AddCtoApplicationForm = () => {
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
       return "Applications must be filed at least 1 day in advance.";
-    return `Applications must be filed at least ${leadTimeDays} working day(s) in advance.`;
-  }, [leadTimeDays]);
+    return `Applications must be filed at least ${leadTimeDays} ${computationMode === "Working Days" ? "working day(s)" : "calendar day(s)"} in advance.`;
+  }, [leadTimeDays, computationMode]);
 
   const requiredDays = useMemo(() => {
     return Math.ceil(Number(formData.requestedHours || 0) / hoursPerDay);
@@ -695,7 +702,9 @@ const AddCtoApplicationForm = () => {
         })
         .test(
           "no-weekends",
-          "One or more selected dates fall on a non-working day.",
+          computationMode === "Calendar Days"
+            ? "Invalid date selected."
+            : "One or more selected dates fall on a non-working day.",
           (dates) =>
             !dates
               ? true
@@ -735,6 +744,7 @@ const AddCtoApplicationForm = () => {
     hoursPerDay,
     activeWorkingDays,
     blockedDates,
+    computationMode, // ✅ Added constraint dependency
   ]);
 
   const startSubmit = async () => {

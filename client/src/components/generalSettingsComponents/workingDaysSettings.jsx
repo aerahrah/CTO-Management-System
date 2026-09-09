@@ -15,7 +15,8 @@ import {
   ShieldAlert,
   Briefcase,
   Hourglass,
-  Paperclip, // ✅ Imported Paperclip icon for the new setting
+  Paperclip,
+  Calculator, // ✅ Imported Calculator for computation mode
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAuth } from "../../store/authStore";
@@ -386,7 +387,8 @@ export default function WorkingDaysSettings() {
   const [hoursPerDay, setHoursPerDay] = useState(8);
   const [activeWorkingDays, setActiveWorkingDays] = useState([1, 2, 3, 4, 5]);
   const [lateFilingAttachmentRequired, setLateFilingAttachmentRequired] =
-    useState(false); // ✅ Added state
+    useState(false);
+  const [computationMode, setComputationMode] = useState("Working Days"); // ✅ Added state
 
   // initial snapshot for dirty detection
   const [initial, setInitial] = useState(null);
@@ -408,20 +410,23 @@ export default function WorkingDaysSettings() {
     const awd = Array.isArray(doc.activeWorkingDays)
       ? doc.activeWorkingDays
       : [1, 2, 3, 4, 5];
-    const lateAttachReq = Boolean(doc.lateFilingAttachmentRequired); // ✅ Fetch late filing setting
+    const lateAttachReq = Boolean(doc.lateFilingAttachmentRequired);
+    const compMode = doc.computationMode || "Working Days"; // ✅ Fetch computation mode
 
     setWorkingDaysEnable(enabled);
     setWorkingDaysValue(days);
     setHoursPerDay(hpd);
     setActiveWorkingDays(awd);
-    setLateFilingAttachmentRequired(lateAttachReq); // ✅ Set late filing setting
+    setLateFilingAttachmentRequired(lateAttachReq);
+    setComputationMode(compMode); // ✅ Set computation mode
 
     setInitial({
       workingDaysEnable: enabled,
       workingDaysValue: days,
       hoursPerDay: hpd,
       activeWorkingDays: awd,
-      lateFilingAttachmentRequired: lateAttachReq, // ✅ Add to initial
+      lateFilingAttachmentRequired: lateAttachReq,
+      computationMode: compMode, // ✅ Add to initial
     });
   }, [doc]);
 
@@ -431,7 +436,8 @@ export default function WorkingDaysSettings() {
     if (initial.workingDaysValue !== workingDaysValue) return true;
     if (initial.hoursPerDay !== hoursPerDay) return true;
     if (initial.lateFilingAttachmentRequired !== lateFilingAttachmentRequired)
-      return true; // ✅ Dirty check
+      return true;
+    if (initial.computationMode !== computationMode) return true; // ✅ Dirty check for computation mode
 
     const sortedInitial = [...initial.activeWorkingDays].sort();
     const sortedCurrent = [...activeWorkingDays].sort();
@@ -442,7 +448,8 @@ export default function WorkingDaysSettings() {
     workingDaysValue,
     hoursPerDay,
     activeWorkingDays,
-    lateFilingAttachmentRequired, // ✅ Dependency added
+    lateFilingAttachmentRequired,
+    computationMode, // ✅ Dependency added
   ]);
 
   const refetch = useCallback(async () => {
@@ -467,7 +474,8 @@ export default function WorkingDaysSettings() {
         workingDaysValue,
         hoursPerDay,
         activeWorkingDays,
-        lateFilingAttachmentRequired, // ✅ Save new initial
+        lateFilingAttachmentRequired,
+        computationMode, // ✅ Save new initial
       });
     },
     onError: (err) => {
@@ -508,7 +516,8 @@ export default function WorkingDaysSettings() {
       workingDaysValue: days,
       hoursPerDay: hpd,
       activeWorkingDays: activeWorkingDays,
-      lateFilingAttachmentRequired: Boolean(lateFilingAttachmentRequired), // ✅ Add to payload
+      lateFilingAttachmentRequired: Boolean(lateFilingAttachmentRequired),
+      computationMode: computationMode, // ✅ Add to payload
     });
   };
 
@@ -518,7 +527,8 @@ export default function WorkingDaysSettings() {
     setWorkingDaysValue(5);
     setHoursPerDay(8);
     setActiveWorkingDays([1, 2, 3, 4, 5]);
-    setLateFilingAttachmentRequired(false); // ✅ Reset late filing to default (false)
+    setLateFilingAttachmentRequired(false);
+    setComputationMode("Working Days"); // ✅ Reset to default
     toast.info("Default values applied (not saved yet)");
   };
 
@@ -741,6 +751,65 @@ export default function WorkingDaysSettings() {
 
                   <hr style={{ borderColor: borderColor }} />
 
+                  {/* ✅ NEW: Computation Settings Section */}
+                  <div className="space-y-4">
+                    <h3
+                      className="text-sm font-bold flex items-center gap-2"
+                      style={{ color: "var(--app-text)" }}
+                    >
+                      <Calculator className="w-4 h-4" /> Computation Settings
+                    </h3>
+
+                    <div
+                      className="rounded-xl p-4 transition-colors duration-300 ease-out"
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        border: `1px solid ${borderColor}`,
+                      }}
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                        <div className="flex-1">
+                          <div
+                            className="text-sm font-semibold transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            Leave Computation Mode
+                          </div>
+                          <div
+                            className="text-[11px] mt-1 transition-colors duration-300 ease-out"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Determines if weekends are skipped (Working Days) or
+                            counted (Calendar Days) during CTO/Leave
+                            applications.
+                          </div>
+                        </div>
+
+                        <div className="w-full sm:w-48">
+                          <select
+                            value={computationMode}
+                            disabled={isSaving}
+                            onChange={(e) => setComputationMode(e.target.value)}
+                            className="w-full h-11 rounded-lg px-3 text-sm outline-none transition-colors duration-200 ease-out"
+                            style={{
+                              backgroundColor: isSaving ? disabledBg : subtleBg,
+                              color: isSaving
+                                ? "var(--app-muted)"
+                                : "var(--app-text)",
+                              border: `1px solid ${borderColor}`,
+                              cursor: isSaving ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            <option value="Working Days">Working Days</option>
+                            <option value="Calendar Days">Calendar Days</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <hr style={{ borderColor: borderColor }} />
+
                   {/* Lead Time Section */}
                   <div className="space-y-4">
                     <h3
@@ -818,9 +887,9 @@ export default function WorkingDaysSettings() {
                     </div>
                   </div>
 
-                  {/* ✅ NEW: LATE FILING ATTACHMENT SECTION */}
                   <hr style={{ borderColor: borderColor }} />
 
+                  {/* Late Filing Section */}
                   <div className="space-y-4">
                     <h3
                       className="text-sm font-bold flex items-center gap-2"
@@ -963,9 +1032,39 @@ export default function WorkingDaysSettings() {
                   </div>
                 </div>
 
+                {/* ✅ NEW: Computation Mode Summary */}
+                <div
+                  className="rounded-xl p-4 transition-colors duration-300 ease-out mt-3"
+                  style={{
+                    backgroundColor: subtleBg,
+                    border: `1px solid ${borderColor}`,
+                  }}
+                >
+                  <div
+                    className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out flex items-center gap-1"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    <Calculator className="w-3 h-3" /> Computation
+                  </div>
+                  <div
+                    className="mt-2 text-sm font-semibold transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {computationMode}
+                  </div>
+                  <div
+                    className="mt-1 text-xs transition-colors duration-300 ease-out"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    {computationMode === "Working Days"
+                      ? "Weekends are excluded."
+                      : "Weekends are included."}
+                  </div>
+                </div>
+
                 {/* Lead Time Summary */}
                 <div
-                  className="rounded-xl p-4 transition-colors duration-300 ease-out"
+                  className="rounded-xl p-4 transition-colors duration-300 ease-out mt-3"
                   style={{
                     backgroundColor: subtleBg,
                     border: `1px solid ${borderColor}`,
@@ -993,7 +1092,7 @@ export default function WorkingDaysSettings() {
                   </div>
                 </div>
 
-                {/* ✅ NEW: Late Filing Summary */}
+                {/* Late Filing Summary */}
                 <div
                   className="rounded-xl p-4 transition-colors duration-300 ease-out mt-3"
                   style={{

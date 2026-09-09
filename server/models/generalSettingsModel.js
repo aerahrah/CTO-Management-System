@@ -60,6 +60,16 @@ const generalSettingSchema = new mongoose.Schema(
         message: "activeWorkingDays must contain valid days of the week (0-6).",
       },
     },
+
+    // --- COMPUTATION SETTINGS ---
+    computationMode: {
+      type: String,
+      enum: ["Working Days", "Calendar Days"],
+      required: true,
+      default: "Working Days",
+      // 'Working Days' = Computes only on weekdays / activeWorkingDays
+      // 'Calendar Days' = Normal days, includes weekends
+    },
   },
   { timestamps: true },
 );

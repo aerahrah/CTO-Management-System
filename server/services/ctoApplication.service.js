@@ -463,17 +463,22 @@ const addCtoApplicationService = async ({
   // ==========================================
 
   // ==========================================
-  // LATE FILING VALIDATION RULE
+  // LATE FILING & COMPUTATION MODE RULE
   // ==========================================
-  const settings = (await GeneralSetting.findOne()) || {
-    workingDaysEnable: true,
-    workingDaysValue: 5,
-    activeWorkingDays: [1, 2, 3, 4, 5],
-  };
+  const settingsDoc = (await GeneralSetting.findOne()) || {};
+  const workingDaysEnable = settingsDoc.workingDaysEnable ?? true;
+  const workingDaysValue = settingsDoc.workingDaysValue ?? 5;
+  const computationMode = settingsDoc.computationMode || "Working Days";
+
+  // Override activeWorkingDays if Calendar Days is selected
+  const activeWorkingDays =
+    computationMode === "Calendar Days"
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : settingsDoc.activeWorkingDays || [1, 2, 3, 4, 5];
 
   let validatedLateFiling = { isLateFiling: false };
 
-  if (settings.workingDaysEnable) {
+  if (workingDaysEnable) {
     const earliestDate = new Date(
       Math.min(...inclusiveDates.map((d) => new Date(d))),
     );
@@ -482,21 +487,25 @@ const addCtoApplicationService = async ({
     const leadTime = getWorkingDaysLeadTime(
       today,
       earliestDate,
-      settings.activeWorkingDays,
+      activeWorkingDays,
     );
 
     console.log(
-      `[addCtoApplicationService] Earliest date: ${earliestDate.toDateString()}, Working Days Lead Time: ${leadTime}`,
+      `[addCtoApplicationService] Earliest date: ${earliestDate.toDateString()}, Lead Time (${computationMode}): ${leadTime}`,
     );
 
-    if (leadTime < settings.workingDaysValue) {
+    if (leadTime < workingDaysValue) {
       if (
         !lateFiling ||
         lateFiling.isLateFiling !== true ||
         !lateFiling.justification?.trim()
       ) {
+        const dayTypeLabel =
+          computationMode === "Calendar Days"
+            ? "calendar day(s)"
+            : "working day(s)";
         throw createServiceError(
-          `Applications filed with less than ${settings.workingDaysValue} working days of lead time require a late filing justification. (Your lead time: ${leadTime} working days)`,
+          `Applications filed with less than ${workingDaysValue} ${dayTypeLabel} of lead time require a late filing justification. (Your lead time: ${leadTime} ${dayTypeLabel})`,
           400,
         );
       }
