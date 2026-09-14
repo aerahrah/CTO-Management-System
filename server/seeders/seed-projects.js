@@ -1,12 +1,7 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
-// Load environment variables
-const envFile =
-  process.env.NODE_ENV === "production"
-    ? ".env.production"
-    : ".env.development";
-dotenv.config({ path: `../${envFile}` });
+require("./config/loadEnv");
 
 // Adjust path depending on your folder structure
 const Project = require("../models/Project");
