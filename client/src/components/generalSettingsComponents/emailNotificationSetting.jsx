@@ -16,6 +16,7 @@ import {
   Info,
   Sparkles,
   HeartPulse,
+  Smartphone, // ✅ Imported Smartphone icon for SMS
 } from "lucide-react";
 import { toast } from "react-toastify";
 import { useAuth } from "../../store/authStore";
@@ -342,6 +343,19 @@ const SkeletonBlock = ({ theme }) => (
    Settings definition
 ========================= */
 const GROUPS = [
+  // ✅ Added Global SMS Settings Block
+  {
+    title: "Global SMS Settings",
+    icon: Smartphone,
+    description: "Master killswitch for text message dispatch.",
+    items: [
+      {
+        key: "sms_enabled",
+        label: "Enable SMS Notifications",
+        hint: "Turn all outgoing SMS text messages on or off.",
+      },
+    ],
+  },
   {
     title: "Employee",
     icon: Mail,
@@ -610,12 +624,12 @@ export default function EmailNotificationSettings() {
     },
     onSuccess: async () => {
       setInlineError("");
-      toast.success("Email notification settings saved");
+      toast.success("Notification settings saved");
       await queryClient.invalidateQueries({ queryKey: QK });
       setInitial({ ...flags });
     },
     onError: (err) => {
-      const msg = getErrMsg(err, "Failed to save email notification settings");
+      const msg = getErrMsg(err, "Failed to save notification settings");
       setInlineError(msg);
       toast.error(msg);
     },
@@ -676,13 +690,14 @@ export default function EmailNotificationSettings() {
               className="text-2xl md:text-3xl font-bold tracking-tight transition-colors duration-300 ease-out"
               style={{ color: "var(--app-text)" }}
             >
-              Email <span className="font-bold">Notifications</span>
+              System <span className="font-bold">Notifications</span>
             </h1>
             <p
               className="text-sm mt-1 transition-colors duration-300 ease-out"
               style={{ color: "var(--app-muted)" }}
             >
-              Toggle system emails for onboarding, approvals, and credit events.
+              Toggle system emails and SMS text messages for onboarding,
+              approvals, and credit events.
             </p>
           </div>
 
@@ -728,8 +743,8 @@ export default function EmailNotificationSettings() {
                   className="text-xs mt-1 transition-colors duration-300 ease-out"
                   style={{ color: "var(--app-muted)" }}
                 >
-                  Defaults are ON. Disabling a switch prevents that email from
-                  being sent.
+                  Defaults are ON. Disabling a switch prevents that notification
+                  from being sent.
                 </div>
               </div>
 
@@ -749,7 +764,7 @@ export default function EmailNotificationSettings() {
                   >
                     {getErrMsg(
                       settingsQuery.error,
-                      "Failed to load email notification settings",
+                      "Failed to load notification settings",
                     )}
                   </div>
                 </div>
@@ -774,8 +789,8 @@ export default function EmailNotificationSettings() {
                           className="text-xs mt-0.5 transition-colors duration-300 ease-out"
                           style={{ color: "var(--app-muted)" }}
                         >
-                          Search by name or key (e.g., “approval”, “welcome”,
-                          “cto”).
+                          Search by name or key (e.g., “sms”, “approval”,
+                          “welcome”).
                         </div>
                       </div>
                       <div
@@ -870,8 +885,8 @@ export default function EmailNotificationSettings() {
                     theme={resolvedTheme}
                   >
                     {disabledCount
-                      ? `Some emails are disabled (${disabledCount}). Disabled emails will be skipped by the backend.`
-                      : "All email notifications are enabled."}
+                      ? `Some notifications are disabled (${disabledCount}). Disabled notifications will be skipped by the backend.`
+                      : "All system notifications are enabled."}
                   </SoftNotice>
 
                   <SoftNotice

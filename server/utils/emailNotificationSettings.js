@@ -1,4 +1,3 @@
-// utils/emailNotificationSettings.js  ✅ (NEW for flags Map design)
 const EmailNotificationSettings = require("../models/emailNotificationSettingsModel");
 const EMAIL_KEYS = require("./emailNotificationKeys");
 
@@ -43,7 +42,6 @@ async function isEmailEnabled(key) {
     const flags = await getFlagsCached();
     return !!flags[key]; // defaults to true from normalize()
   } catch (e) {
-    // fail-open (same behavior as your old util)
     console.error(
       "[EMAIL SETTINGS] failed to load, defaulting to ON:",
       e?.message,
@@ -52,8 +50,28 @@ async function isEmailEnabled(key) {
   }
 }
 
+// NEW: SMS toggle checker with .env fallback
+async function isSmsEnabled() {
+  try {
+    const flags = await getFlagsCached();
+    const dbValue = flags[EMAIL_KEYS.SMS_ENABLED];
+
+    // Check if it exists in DB, otherwise fallback to the .env feature flag
+    if (dbValue !== undefined) {
+      return !!dbValue;
+    }
+    return process.env.SMS_IS_ENABLED === "true";
+  } catch (e) {
+    console.error(
+      "[SMS SETTINGS] failed to load, defaulting to env:",
+      e?.message,
+    );
+    return process.env.SMS_IS_ENABLED === "true";
+  }
+}
+
 function bustEmailSettingsCache() {
   cache = { flags: null, expiresAt: 0 };
 }
 
-module.exports = { isEmailEnabled, bustEmailSettingsCache };
+module.exports = { isEmailEnabled, isSmsEnabled, bustEmailSettingsCache };

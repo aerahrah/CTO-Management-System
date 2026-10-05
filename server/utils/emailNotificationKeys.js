@@ -1,5 +1,7 @@
-// utils/emailNotificationKeys.js
 module.exports = {
+  // Global SMS Toggle
+  SMS_ENABLED: "sms_enabled",
+
   EMPLOYEE_WELCOME: "employee_welcome",
 
   // CTO Keys
@@ -10,7 +12,7 @@ module.exports = {
   CTO_REVOCATION_REQUEST: "cto_revocation_request",
   CTO_REVOCATION_APPROVED: "cto_revocation_approved",
   CTO_REVOCATION_REJECTED: "cto_revocation_rejected",
-  CTO_REVOCATION_CANCELLED: "cto_revocation_cancelled", // ✅ Added
+  CTO_REVOCATION_CANCELLED: "cto_revocation_cancelled",
   CTO_CREDIT_ADDED: "cto_credit_added",
   CTO_CREDIT_ROLLED_BACK: "cto_credit_rolled_back",
 
@@ -22,7 +24,7 @@ module.exports = {
   WELLNESS_REVOCATION_REQUEST: "wellness_revocation_request",
   WELLNESS_REVOCATION_APPROVED: "wellness_revocation_approved",
   WELLNESS_REVOCATION_REJECTED: "wellness_revocation_rejected",
-  WELLNESS_REVOCATION_CANCELLED: "wellness_revocation_cancelled", // ✅ Added
+  WELLNESS_REVOCATION_CANCELLED: "wellness_revocation_cancelled",
   WELLNESS_CREDIT_ADDED: "wellness_credit_added",
   WELLNESS_CREDIT_ROLLED_BACK: "wellness_credit_rolled_back",
 
