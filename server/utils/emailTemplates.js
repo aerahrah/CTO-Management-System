@@ -171,8 +171,8 @@ function emailLayout({
             <tr>
               <td style="padding: 24px 32px; text-align: center;">
                 <p style="margin:0 0 8px; color:${BRAND.muted}; font-size: 13px; line-height: 20px;">
-                  ${escapeHtml(footerNote)}
-                </p>
+                  ${escapeHtml(footerNote).replace(/\n/g, "<br />")}
+                   </p>
                 <p style="margin:0; color:${BRAND.muted}; font-size: 13px;">
                   &copy; ${new Date().getFullYear()} ${escapeHtml(brandName)}. All rights reserved.
                 </p>
@@ -221,6 +221,25 @@ function formatHours(hours) {
   const n = Number(hours);
   if (!Number.isFinite(n)) return "0";
   return String(Math.round(n * 100) / 100);
+}
+
+// Accepts either a preformatted string ("Oct 5, 2026 to Oct 6, 2026")
+// or an array of dates and returns readable text.
+function formatDateRange(dates) {
+  if (!dates) return "—";
+  if (typeof dates === "string") return dates.trim() || "—";
+  if (!Array.isArray(dates) || dates.length === 0) return "—";
+
+  const valid = dates
+    .map((d) => new Date(d))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a - b);
+
+  if (valid.length === 0) return "—";
+
+  const first = formatDateLikeHuman(valid[0]);
+  const last = formatDateLikeHuman(valid[valid.length - 1]);
+  return first === last ? first : `${first} to ${last}`;
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -436,6 +455,202 @@ function ctoRejectionEmail({ employeeName, remarks, brandName = BRAND.name }) {
   };
 }
 
+// Sent to approvers who already saw the request when the employee cancels it
+function ctoCancelledApproverEmail({
+  approverName,
+  employeeName,
+  requestedHours,
+  inclusiveDates,
+  brandName = BRAND.name,
+}) {
+  const safeApprover = escapeHtml(approverName || "Approver");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeHours = escapeHtml(formatHours(requestedHours));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+
+  const details = `
+    ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Hours", `${safeHours} hrs`)}
+    ${detailRow("Dates Covered", safeDates, true)}
+  `;
+
+  return {
+    subject: `Notice: CTO Application Cancelled — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "CTO Application Cancelled",
+      preheader: `${employeeName || "An employee"} has cancelled their CTO application.`,
+      greeting: `Hi <strong>${safeApprover}</strong>,`,
+      intro: `<strong>${safeEmployee}</strong> has cancelled their Compensatory Time-Off (CTO) application.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No further action is required from you. The application has been removed from your approval queue.",
+      brandName,
+    }),
+  };
+}
+
+// ───────────────────────────────────────────────────────────────
+// CTO — NOTIFIED EMPLOYEES (FYI only, no action required)
+// ───────────────────────────────────────────────────────────────
+
+// Sent when the CTO application is filed
+function ctoNotifiedEmail({
+  recipientName,
+  employeeName,
+  requestedHours,
+  inclusiveDates,
+  reason,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeHours = escapeHtml(formatHours(requestedHours));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeReason = escapeHtml(reason || "—");
+
+  const details = `
+    ${detailRow("Status", "Pending Approval", false, BRAND.warning)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Hours", `${safeHours} hrs`)}
+    ${detailRow("Dates Covered", safeDates)}
+    ${detailRow("Reason", safeReason, true)}
+  `;
+
+  return {
+    subject: `For Your Information: CTO Application — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "CTO Application Filed",
+      preheader: `${employeeName || "An employee"} has filed a CTO application.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that <strong>${safeEmployee}</strong> has filed a Compensatory Time-Off (CTO) application. You are receiving this because you were tagged to be notified on their requests.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. This notice is for your information and coordination only.",
+      brandName,
+    }),
+  };
+}
+
+// Sent when the CTO application is fully approved (final approver signed)
+function ctoNotifiedFinalApprovalEmail({
+  recipientName,
+  employeeName,
+  requestedHours,
+  inclusiveDates,
+  approvedBy,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeHours = escapeHtml(formatHours(requestedHours));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeApprovedBy = escapeHtml(approvedBy || "");
+
+  const details = `
+    ${detailRow("Status", "Approved", false, BRAND.success)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Approved Hours", `${safeHours} hrs`)}
+    ${detailRow("Dates Covered", safeDates, !safeApprovedBy)}
+    ${safeApprovedBy ? detailRow("Final Approver", safeApprovedBy, true) : ""}
+  `;
+
+  return {
+    subject: `For Your Information: CTO Approved — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "CTO Application Approved",
+      preheader: `${employeeName || "An employee"}'s CTO application has been approved.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that the Compensatory Time-Off (CTO) application of <strong>${safeEmployee}</strong> has been fully approved.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. Please take note of the dates above for coordination purposes.",
+      brandName,
+    }),
+  };
+}
+
+// Sent when the CTO application is rejected by an approver
+function ctoNotifiedRejectionEmail({
+  recipientName,
+  employeeName,
+  requestedHours,
+  inclusiveDates,
+  rejectedBy,
+  remarks,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeHours = escapeHtml(formatHours(requestedHours));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeRejectedBy = escapeHtml(rejectedBy || "an approver");
+  const safeRemarks = escapeHtml(remarks || "No remarks provided.");
+
+  const details = `
+    ${detailRow("Status", "Rejected", false, BRAND.danger)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Hours", `${safeHours} hrs`)}
+    ${detailRow("Dates Covered", safeDates)}
+    ${detailRow("Rejected By", safeRejectedBy)}
+    ${detailRow("Remarks", safeRemarks, true)}
+  `;
+
+  return {
+    subject: `For Your Information: CTO Not Approved — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "CTO Application Not Approved",
+      preheader: `${employeeName || "An employee"}'s CTO application was not approved.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that the Compensatory Time-Off (CTO) application of <strong>${safeEmployee}</strong> was not approved.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. The employee is expected to report for work on the dates above.",
+      brandName,
+    }),
+  };
+}
+
+// Sent when the employee cancels their CTO application
+function ctoNotifiedCancelledEmail({
+  recipientName,
+  employeeName,
+  requestedHours,
+  inclusiveDates,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeHours = escapeHtml(formatHours(requestedHours));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+
+  const details = `
+    ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Hours", `${safeHours} hrs`)}
+    ${detailRow("Dates Covered", safeDates, true)}
+  `;
+
+  return {
+    subject: `For Your Information: CTO Cancelled — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "CTO Application Cancelled",
+      preheader: `${employeeName || "An employee"} has cancelled their CTO application.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that <strong>${safeEmployee}</strong> has cancelled their Compensatory Time-Off (CTO) application.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. The employee is expected to report for work on the dates above.",
+      brandName,
+    }),
+  };
+}
+
 // ───────────────────────────────────────────────────────────────
 // WELLNESS APPROVALS
 // ───────────────────────────────────────────────────────────────
@@ -611,8 +826,204 @@ function wellnessRejectionEmail({
   };
 }
 
+// Sent to approvers who already saw the request when the employee cancels it
+function wellnessCancelledApproverEmail({
+  approverName,
+  employeeName,
+  requestedDays,
+  inclusiveDates,
+  brandName = BRAND.name,
+}) {
+  const safeApprover = escapeHtml(approverName || "Approver");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeDays = escapeHtml(String(requestedDays ?? 0));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+
+  const details = `
+    ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Days", `${safeDays} day(s)`)}
+    ${detailRow("Dates Covered", safeDates, true)}
+  `;
+
+  return {
+    subject: `Notice: Wellness Leave Cancelled — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "Wellness Leave Cancelled",
+      preheader: `${employeeName || "An employee"} has cancelled their Wellness Leave application.`,
+      greeting: `Hi <strong>${safeApprover}</strong>,`,
+      intro: `<strong>${safeEmployee}</strong> has cancelled their Wellness Leave application.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No further action is required from you. The application has been removed from your approval queue.",
+      brandName,
+    }),
+  };
+}
+
 // ───────────────────────────────────────────────────────────────
-// CTO REVOCATIONS (NEW)
+// WELLNESS — NOTIFIED EMPLOYEES (FYI only, no action required)
+// ───────────────────────────────────────────────────────────────
+
+// Sent when the Wellness Leave application is filed
+function wellnessNotifiedEmail({
+  recipientName,
+  employeeName,
+  requestedDays,
+  inclusiveDates,
+  reason,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeDays = escapeHtml(String(requestedDays ?? 0));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeReason = escapeHtml(reason || "—");
+
+  const details = `
+    ${detailRow("Status", "Pending Approval", false, BRAND.warning)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Days", `${safeDays} day(s)`)}
+    ${detailRow("Dates Covered", safeDates)}
+    ${detailRow("Reason", safeReason, true)}
+  `;
+
+  return {
+    subject: `For Your Information: Wellness Leave — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "Wellness Leave Filed",
+      preheader: `${employeeName || "An employee"} has filed a Wellness Leave application.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that <strong>${safeEmployee}</strong> has filed a Wellness Leave application. You are receiving this because you were tagged to be notified on their requests.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. This notice is for your information and coordination only.",
+      brandName,
+    }),
+  };
+}
+
+// Sent when the Wellness Leave application is fully approved
+function wellnessNotifiedFinalApprovalEmail({
+  recipientName,
+  employeeName,
+  requestedDays,
+  inclusiveDates,
+  approvedBy,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeDays = escapeHtml(String(requestedDays ?? 0));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeApprovedBy = escapeHtml(approvedBy || "");
+
+  const details = `
+    ${detailRow("Status", "Approved", false, BRAND.success)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Approved Days", `${safeDays} day(s)`)}
+    ${detailRow("Dates Covered", safeDates, !safeApprovedBy)}
+    ${safeApprovedBy ? detailRow("Final Approver", safeApprovedBy, true) : ""}
+  `;
+
+  return {
+    subject: `For Your Information: Wellness Leave Approved — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "Wellness Leave Approved",
+      preheader: `${employeeName || "An employee"}'s Wellness Leave has been approved.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that the Wellness Leave application of <strong>${safeEmployee}</strong> has been fully approved.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. Please take note of the dates above for coordination purposes.",
+      brandName,
+    }),
+  };
+}
+
+// Sent when the Wellness Leave application is rejected by an approver
+function wellnessNotifiedRejectionEmail({
+  recipientName,
+  employeeName,
+  requestedDays,
+  inclusiveDates,
+  rejectedBy,
+  remarks,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeDays = escapeHtml(String(requestedDays ?? 0));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeRejectedBy = escapeHtml(rejectedBy || "an approver");
+  const safeRemarks = escapeHtml(remarks || "No remarks provided.");
+
+  const details = `
+    ${detailRow("Status", "Rejected", false, BRAND.danger)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Days", `${safeDays} day(s)`)}
+    ${detailRow("Dates Covered", safeDates)}
+    ${detailRow("Rejected By", safeRejectedBy)}
+    ${detailRow("Remarks", safeRemarks, true)}
+  `;
+
+  return {
+    subject: `For Your Information: Wellness Leave Not Approved — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "Wellness Leave Not Approved",
+      preheader: `${employeeName || "An employee"}'s Wellness Leave was not approved.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that the Wellness Leave application of <strong>${safeEmployee}</strong> was not approved.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. The employee is expected to report for work on the dates above.",
+      brandName,
+    }),
+  };
+}
+
+// Sent when the employee cancels their Wellness Leave application
+function wellnessNotifiedCancelledEmail({
+  recipientName,
+  employeeName,
+  requestedDays,
+  inclusiveDates,
+  brandName = BRAND.name,
+}) {
+  const safeRecipient = escapeHtml(recipientName || "there");
+  const safeEmployee = escapeHtml(employeeName || "Employee");
+  const safeDays = escapeHtml(String(requestedDays ?? 0));
+  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+
+  const details = `
+    ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
+    ${detailRow("Employee", safeEmployee)}
+    ${detailRow("Requested Days", `${safeDays} day(s)`)}
+    ${detailRow("Dates Covered", safeDates, true)}
+  `;
+
+  return {
+    subject: `For Your Information: Wellness Leave Cancelled — ${employeeName || "Employee"}`,
+    html: emailLayout({
+      title: "Wellness Leave Cancelled",
+      preheader: `${employeeName || "An employee"} has cancelled their Wellness Leave application.`,
+      greeting: `Hi <strong>${safeRecipient}</strong>,`,
+      intro: `This is to inform you that <strong>${safeEmployee}</strong> has cancelled their Wellness Leave application.`,
+      detailsRowsHtml: details,
+      cta: null,
+      outro:
+        "No action is required from you. The employee is expected to report for work on the dates above.",
+      brandName,
+    }),
+  };
+}
+
+// ───────────────────────────────────────────────────────────────
+// CTO REVOCATIONS
 // ───────────────────────────────────────────────────────────────
 function ctoRevocationRequestEmail({
   hrName = "HR Admin",
@@ -743,7 +1154,7 @@ function ctoRevocationCancelledEmail({
 }
 
 // ───────────────────────────────────────────────────────────────
-// WELLNESS REVOCATIONS (NEW)
+// WELLNESS REVOCATIONS
 // ───────────────────────────────────────────────────────────────
 function wellnessRevocationRequestEmail({
   hrName = "HR Admin",
@@ -886,36 +1297,109 @@ function wellnessRevocationCancelledEmail({
 // ───────────────────────────────────────────────────────────────
 // CTO CREDIT EMAILS
 // ───────────────────────────────────────────────────────────────
+
+// Handles three cases:
+//  - Fully credited              (forfeitedHours = 0)
+//  - Partially credited (capped) (creditedHours > 0, forfeitedHours > 0)
+//  - Not credited (limit reached)(creditedHours = 0)
 function ctoCreditAddedEmail({
   employeeName,
   memoNo,
   creditedHours,
+  forfeitedHours = 0,
+  capReason = "", // "BALANCE" | "MONTHLY" | ""
+  maxBalanceLimit = 120,
+  maxMonthlyEarning = 40,
   dateApproved,
   brandName = BRAND.name,
 }) {
+  const credited = Number(creditedHours) || 0;
+  const forfeited = Number(forfeitedHours) || 0;
+
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeMemoNo = escapeHtml(memoNo || "—");
-  const safeHours = escapeHtml(formatHours(creditedHours));
+  const safeCredited = escapeHtml(formatHours(credited));
+  const safeForfeited = escapeHtml(formatHours(forfeited));
   const safeDate = escapeHtml(formatDateLikeHuman(dateApproved));
 
+  const limitText =
+    capReason === "BALANCE"
+      ? `the ${formatHours(maxBalanceLimit)}-hour maximum for unused CTO hours`
+      : capReason === "MONTHLY"
+        ? `the ${formatHours(maxMonthlyEarning)}-hour monthly earning limit`
+        : "the CSC earning limits";
+  const safeLimitText = escapeHtml(limitText);
+
+  const notCredited = credited <= 0;
+  const partial = !notCredited && forfeited > 0;
+
+  const statusLabel = notCredited
+    ? "Not Credited (Limit Reached)"
+    : partial
+      ? "Partially Credited"
+      : "Credited";
+  const statusColor = notCredited || partial ? BRAND.warning : BRAND.primary;
+
   const details = `
-    ${detailRow("Status", "Credited", false, BRAND.primary)}
+    ${detailRow("Status", statusLabel, false, statusColor)}
     ${detailRow("Memo Ref.", safeMemoNo)}
     ${detailRow("Date Approved", safeDate)}
-    ${detailRow("Credited Hours", `+${safeHours} hrs`, true, BRAND.success)}
+    ${detailRow(
+      "Credited Hours",
+      `+${safeCredited} hrs`,
+      forfeited <= 0,
+      notCredited ? BRAND.muted : BRAND.success,
+    )}
+    ${
+      forfeited > 0
+        ? `${detailRow("Not Credited", `${safeForfeited} hrs`, false, BRAND.danger)}
+           ${detailRow("Reason", `Reached ${safeLimitText}`, true)}`
+        : ""
+    }
   `;
 
+  const memoSuffix = memoNo ? ` (Memo ${memoNo})` : "";
+
+  let subject;
+  let title;
+  let preheader;
+  let intro;
+  let outro;
+
+  if (notCredited) {
+    subject = `Notice: CTO Credit Not Applied${memoSuffix}`;
+    title = "CTO Credit Not Applied";
+    preheader = "No CTO hours were added because you reached the CSC limit.";
+    intro = `You were included in a CTO credit memo, but <strong>no hours were added</strong> to your balance because you have reached ${safeLimitText}.`;
+    outro =
+      "Once you use some of your CTO hours (or a new month starts, for the monthly limit), you can earn credits again. Please contact HR if you believe this is incorrect.";
+  } else if (partial) {
+    subject = `Notice: CTO Partially Credited${memoSuffix}`;
+    title = "CTO Partially Credited";
+    preheader =
+      "Some of your CTO hours were not credited due to the CSC limit.";
+    intro = `<strong>${safeCredited} hour(s)</strong> were added to your CTO balance. The remaining <strong>${safeForfeited} hour(s)</strong> were not credited because you reached ${safeLimitText}.`;
+    outro =
+      "You can view your updated balance in the portal. Please contact HR if you believe this is incorrect.";
+  } else {
+    subject = `Notice: New CTO Credit Added${memoSuffix}`;
+    title = "CTO Balance Updated";
+    preheader = "New compensatory hours have been added to your account.";
+    intro =
+      "New Compensatory Time-Off (CTO) hours have been successfully credited to your balance.";
+    outro = "You can view your updated total balance directly in the portal.";
+  }
+
   return {
-    subject: `Notice: New CTO Credit Added (Memo ${memoNo || ""})`.trim(),
+    subject,
     html: emailLayout({
-      title: "CTO Balance Updated",
-      preheader: "New compensatory hours have been added to your account.",
+      title,
+      preheader,
       greeting: `Hi <strong>${safeEmployee}</strong>,`,
-      intro:
-        "New Compensatory Time-Off (CTO) hours have been successfully credited to your balance.",
+      intro,
       detailsRowsHtml: details,
       cta: null,
-      outro: "You can view your updated total balance directly in the portal.",
+      outro,
       brandName,
     }),
   };
@@ -1123,31 +1607,66 @@ function leaveCreditRolledBackEmail({
     }),
   };
 }
-
 module.exports = {
   employeeWelcomeEmail,
+
+  // CTO workflow
   ctoApprovalEmail,
   ctoFollowUpEmail,
   ctoStepApprovalEmail,
   ctoFinalApprovalEmail,
   ctoRejectionEmail,
+  ctoCancelledApproverEmail,
+
+  // CTO — notified employees
+  ctoNotifiedEmail,
+  ctoNotifiedFinalApprovalEmail,
+  ctoNotifiedRejectionEmail,
+  ctoNotifiedCancelledEmail,
+
+  // CTO revocations
   ctoRevocationRequestEmail,
   ctoRevocationApprovedEmail,
   ctoRevocationRejectedEmail,
-  ctoRevocationCancelledEmail, // ✅ Added CTO Revocation Cancelled
+  ctoRevocationCancelledEmail,
+
+  // CTO credits
   ctoCreditAddedEmail,
   ctoCreditRolledBackEmail,
+
+  // Wellness workflow
   wellnessApprovalEmail,
   wellnessFollowUpEmail,
   wellnessStepApprovalEmail,
   wellnessFinalApprovalEmail,
   wellnessRejectionEmail,
+  wellnessCancelledApproverEmail,
+
+  // Wellness — notified employees
+  wellnessNotifiedEmail,
+  wellnessNotifiedFinalApprovalEmail,
+  wellnessNotifiedRejectionEmail,
+  wellnessNotifiedCancelledEmail,
+
+  // Wellness revocations
   wellnessRevocationRequestEmail,
   wellnessRevocationApprovedEmail,
   wellnessRevocationRejectedEmail,
-  wellnessRevocationCancelledEmail, // ✅ Added Wellness Revocation Cancelled
+  wellnessRevocationCancelledEmail,
+
+  // Wellness credits
   wellnessCreditAddedEmail,
   wellnessCreditRolledBackEmail,
+
+  // Leave credits (VL/SL)
   leaveCreditAddedEmail,
   leaveCreditRolledBackEmail,
+
+  // Shared building blocks (used by utils/blastEmailTemplates.js)
+  BRAND,
+  emailLayout,
+  detailRow,
+  escapeHtml,
+  sanitizeUrl,
+  formatDateLikeHuman,
 };
