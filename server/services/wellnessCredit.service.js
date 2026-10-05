@@ -203,16 +203,23 @@ async function addCredit({ employees, days, dateApproved, userId }) {
       );
     });
 
-    // In-App Notifications
+    // Fetch recipients for both Email and In-App/SMS notifications
+    const recipients = await Employee.find({ _id: { $in: employeeIds } })
+      .select("firstName lastName email phone") // ✅ Added phone
+      .lean();
+    const recipientMap = new Map(recipients.map((e) => [String(e._id), e]));
+
+    // In-App & SMS Notifications
     try {
       const hrEmployee = await Employee.findById(userId)
-        .select("firstName lastName")
+        .select("firstName lastName phone") // ✅ Added phone
         .lean();
 
       await Promise.all(
         employeeIds.map((employeeId) =>
           NotificationService.notifyEmployeeOnWellnessCredit({
             employeeId,
+            employee: recipientMap.get(String(employeeId)), // ✅ Pass full object for SMS
             hrEmployee,
             wellnessCredit: created,
             creditedDays: creditedDays,
@@ -230,10 +237,6 @@ async function addCredit({ employees, days, dateApproved, userId }) {
     try {
       const enabled = await canSend(EMAIL_KEYS.WELLNESS_CREDIT_ADDED);
       if (enabled) {
-        const recipients = await Employee.find({ _id: { $in: employeeIds } })
-          .select("firstName lastName email")
-          .lean();
-
         await Promise.all(
           recipients.map(async (emp) => {
             if (!emp?.email) return;
@@ -355,16 +358,23 @@ async function rollbackCredit({ creditId, userId }) {
       updated = await credit.save({ session, runValidators: true });
     });
 
-    // In-App Notifications
+    let creditPopulated = null;
+
+    // In-App & SMS Notifications
     try {
+      creditPopulated = await WellnessCredit.findById(updated._id)
+        .populate("employees.employee", "firstName lastName email phone") // ✅ Added phone
+        .lean();
+
       const hrEmployee = await Employee.findById(userId)
-        .select("firstName lastName")
+        .select("firstName lastName phone") // ✅ Added phone
         .lean();
 
       await Promise.all(
-        (updated.employees || []).map((row) =>
+        (creditPopulated?.employees || []).map((row) =>
           NotificationService.notifyEmployeeOnWellnessRollback({
-            employeeId: row.employee,
+            employeeId: row.employee?._id,
+            employee: row.employee, // ✅ Pass full object for SMS
             hrEmployee,
             wellnessCredit: updated,
             rolledBackDays: row.creditedDays || 0,
@@ -381,15 +391,11 @@ async function rollbackCredit({ creditId, userId }) {
     // Email Notifications
     try {
       const enabled = await canSend(EMAIL_KEYS.WELLNESS_CREDIT_ROLLED_BACK);
-      if (enabled) {
-        const creditPopulated = await WellnessCredit.findById(updated._id)
-          .populate("employees.employee", "firstName lastName email")
-          .lean();
-
-        const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
+      if (enabled && creditPopulated) {
+        const dateRolledBack = creditPopulated.dateRolledBack || new Date();
 
         await Promise.all(
-          (creditPopulated?.employees || []).map(async (row) => {
+          (creditPopulated.employees || []).map(async (row) => {
             const emp = row?.employee;
             if (!emp?.email) return;
 
@@ -482,7 +488,7 @@ async function getEmployeeDetails(employeeId) {
   assertObjectId(employeeId, "employeeId");
 
   const employee = await Employee.findById(employeeId)
-    .select("firstName lastName position department email")
+    .select("firstName lastName position department email phone") // ✅ Added phone
     .lean();
 
   if (!employee) throw createServiceError("Employee not found.", 404);
@@ -553,7 +559,7 @@ async function getEmployeeCredits(
   const [totalCount, credits, statusAggregation] = await Promise.all([
     WellnessCredit.countDocuments(listMatch),
     WellnessCredit.find(listMatch)
-      .populate("employees.employee", "firstName lastName position")
+      .populate("employees.employee", "firstName lastName position email phone") // ✅ Added phone
       .populate("rolledBackBy", "firstName lastName position role")
       .populate("creditedBy", "firstName lastName position role")
       .sort({ createdAt: -1 })

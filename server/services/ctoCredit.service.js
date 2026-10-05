@@ -221,10 +221,10 @@ async function addCredit({
   }
 
   const session = await mongoose.startSession();
-  try {
-    let created;
-    let finalEmployeeObjs = [];
+  let created;
+  let finalEmployeeObjs = [];
 
+  try {
     // ✅ CSC RULES LIMITS
     const MAX_COC_BALANCE = Number(process.env.MAX_COC_BALANCE || 120);
     const MAX_COC_PER_MONTH = Number(
@@ -324,64 +324,66 @@ async function addCredit({
         await Employee.bulkWrite(bulkEmployeeOps, { session });
       }
     });
-
-    // In-App Notifications
-    try {
-      const hrEmployee = await Employee.findById(userId)
-        .select("firstName lastName")
-        .lean();
-
-      await Promise.all(
-        finalEmployeeObjs.map((empObj) =>
-          NotificationService.notifyEmployeeOnCtoCredit({
-            employeeId: empObj.employee,
-            hrEmployee,
-            ctoCredit: created,
-            creditedHours: empObj.creditedHours, // Notify them of their specific cap
-          }),
-        ),
-      );
-    } catch (e) {
-      console.error("Failed creating CTO credit notifications:", e?.message);
-    }
-
-    // Email Notifications
-    try {
-      const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ADDED);
-      if (enabled) {
-        const recipients = await Employee.find({ _id: { $in: employeeIds } })
-          .select("firstName lastName email")
-          .lean();
-
-        await Promise.all(
-          recipients.map(async (emp) => {
-            if (!emp?.email) return;
-
-            // Find their specific assigned object to get their capped hours
-            const specificEmpObj = finalEmployeeObjs.find(
-              (e) => String(e.employee) === String(emp._id),
-            );
-
-            const tpl = ctoCreditAddedEmail({
-              employeeName:
-                `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
-              memoNo: safeMemoNo,
-              creditedHours: specificEmpObj.creditedHours, // Email tells them what they actually received
-              dateApproved: approvedDate,
-            });
-
-            await safeSendEmail(emp.email, tpl.subject, tpl.html);
-          }),
-        );
-      }
-    } catch (e) {
-      console.error("Failed preparing CTO credit added emails:", e?.message);
-    }
-
-    return created;
   } finally {
     await session.endSession();
   }
+
+  // Fetch recipients for both Email and In-App notifications
+  const recipients = await Employee.find({ _id: { $in: employeeIds } })
+    .select("firstName lastName email phone")
+    .lean();
+  const recipientMap = new Map(recipients.map((e) => [e._id.toString(), e]));
+
+  // In-App & SMS Notifications
+  try {
+    const hrEmployee = await Employee.findById(userId)
+      .select("firstName lastName phone")
+      .lean();
+
+    await Promise.all(
+      finalEmployeeObjs.map((empObj) =>
+        NotificationService.notifyEmployeeOnCtoCredit({
+          employeeId: empObj.employee,
+          employee: recipientMap.get(String(empObj.employee)),
+          hrEmployee,
+          ctoCredit: created,
+          creditedHours: empObj.creditedHours, // Notify them of their specific cap
+        }),
+      ),
+    );
+  } catch (e) {
+    console.error("Failed creating CTO credit notifications:", e?.message);
+  }
+
+  // Email Notifications
+  try {
+    const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ADDED);
+    if (enabled) {
+      await Promise.all(
+        recipients.map(async (emp) => {
+          if (!emp?.email) return;
+
+          // Find their specific assigned object to get their capped hours
+          const specificEmpObj = finalEmployeeObjs.find(
+            (e) => String(e.employee) === String(emp._id),
+          );
+
+          const tpl = ctoCreditAddedEmail({
+            employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
+            memoNo: safeMemoNo,
+            creditedHours: specificEmpObj.creditedHours, // Email tells them what they actually received
+            dateApproved: approvedDate,
+          });
+
+          await safeSendEmail(emp.email, tpl.subject, tpl.html);
+        }),
+      );
+    }
+  } catch (e) {
+    console.error("Failed preparing CTO credit added emails:", e?.message);
+  }
+
+  return created;
 }
 
 async function rollbackCredit({ creditId, userId }) {
@@ -389,9 +391,9 @@ async function rollbackCredit({ creditId, userId }) {
   assertObjectId(userId, "userId");
 
   const session = await mongoose.startSession();
-  try {
-    let updated;
+  let updated;
 
+  try {
     await session.withTransaction(async () => {
       const credit = await CtoCredit.findById(creditId).session(session);
       if (!credit) throw createServiceError("Credit request not found.", 404);
@@ -439,64 +441,66 @@ async function rollbackCredit({ creditId, userId }) {
 
       updated = await credit.save({ session, runValidators: true });
     });
-
-    // In-App Notifications
-    try {
-      const hrEmployee = await Employee.findById(userId)
-        .select("firstName lastName")
-        .lean();
-
-      await Promise.all(
-        (updated.employees || []).map((row) =>
-          NotificationService.notifyEmployeeOnCtoRollback({
-            employeeId: row.employee,
-            hrEmployee,
-            ctoCredit: updated,
-            rolledBackHours: row.creditedHours || 0,
-          }),
-        ),
-      );
-    } catch (e) {
-      console.error("Failed creating CTO rollback notifications:", e?.message);
-    }
-
-    // Email Notifications
-    try {
-      const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK);
-      if (enabled) {
-        const creditPopulated = await CtoCredit.findById(updated._id)
-          .populate("employees.employee", "firstName lastName email")
-          .lean();
-
-        const memoNo = creditPopulated?.memoNo || "";
-        const dateRolledBack = creditPopulated?.dateRolledBack || new Date();
-
-        await Promise.all(
-          (creditPopulated?.employees || []).map(async (row) => {
-            const emp = row?.employee;
-            if (!emp?.email) return;
-
-            const tpl = ctoCreditRolledBackEmail({
-              employeeName:
-                `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
-              memoNo,
-              rolledBackHours: row?.creditedHours || 0,
-              dateRolledBack,
-              reason: "Credit memo rolled back by admin.",
-            });
-
-            await safeSendEmail(emp.email, tpl.subject, tpl.html);
-          }),
-        );
-      }
-    } catch (e) {
-      console.error("Failed preparing CTO credit rollback emails:", e?.message);
-    }
-
-    return updated;
   } finally {
     await session.endSession();
   }
+
+  let creditPopulated = null;
+
+  // In-App & SMS Notifications
+  try {
+    creditPopulated = await CtoCredit.findById(updated._id)
+      .populate("employees.employee", "firstName lastName email phone")
+      .lean();
+
+    const hrEmployee = await Employee.findById(userId)
+      .select("firstName lastName phone")
+      .lean();
+
+    await Promise.all(
+      (creditPopulated?.employees || []).map((row) =>
+        NotificationService.notifyEmployeeOnCtoRollback({
+          employeeId: row.employee?._id,
+          employee: row.employee,
+          hrEmployee,
+          ctoCredit: updated,
+          rolledBackHours: row.creditedHours || 0,
+        }),
+      ),
+    );
+  } catch (e) {
+    console.error("Failed creating CTO rollback notifications:", e?.message);
+  }
+
+  // Email Notifications
+  try {
+    const enabled = await canSend(EMAIL_KEYS.CTO_CREDIT_ROLLED_BACK);
+    if (enabled && creditPopulated) {
+      const memoNo = creditPopulated.memoNo || "";
+      const dateRolledBack = creditPopulated.dateRolledBack || new Date();
+
+      await Promise.all(
+        (creditPopulated.employees || []).map(async (row) => {
+          const emp = row?.employee;
+          if (!emp?.email) return;
+
+          const tpl = ctoCreditRolledBackEmail({
+            employeeName: `${emp.firstName || ""} ${emp.lastName || ""}`.trim(),
+            memoNo,
+            rolledBackHours: row?.creditedHours || 0,
+            dateRolledBack,
+            reason: "Credit memo rolled back by admin.",
+          });
+
+          await safeSendEmail(emp.email, tpl.subject, tpl.html);
+        }),
+      );
+    }
+  } catch (e) {
+    console.error("Failed preparing CTO credit rollback emails:", e?.message);
+  }
+
+  return updated;
 }
 
 async function getAllCredits({

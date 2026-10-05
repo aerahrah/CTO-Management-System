@@ -20,9 +20,61 @@ function assertObjectId(id, label = "id") {
   }
 }
 
+function extractId(item) {
+  if (item && typeof item === "object") {
+    return item._id || item.id || item.employee || item.approver;
+  }
+  return item;
+}
+
+async function normalizeAndValidateNotifiedIds(notifiedEmployees) {
+  if (!notifiedEmployees) return [];
+
+  let parsed = notifiedEmployees;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      throw httpError("notifiedEmployees must be a valid array.", 400);
+    }
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw httpError("notifiedEmployees must be an array.", 400);
+  }
+
+  if (parsed.length === 0) return [];
+
+  const extractedIds = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const rawId = extractId(parsed[i]);
+    if (!rawId || !mongoose.Types.ObjectId.isValid(rawId)) {
+      throw httpError(`Notified employee ${i + 1}: invalid employee ID.`, 400);
+    }
+    extractedIds.push(String(rawId));
+  }
+
+  const uniqueIds = [...new Set(extractedIds)];
+
+  const found = await Employee.countDocuments({
+    _id: { $in: uniqueIds },
+  });
+  if (found !== uniqueIds.length) {
+    throw httpError("One or more notified employees not found.", 404);
+  }
+
+  return uniqueIds;
+}
+
 const POPULATE_STEPS = {
   path: "steps.approver",
   select: "firstName lastName position designation",
+};
+
+const POPULATE_NOTIFIED_EMPLOYEES = {
+  path: "notifiedEmployees",
+  select: "firstName lastName position designation",
+  options: { strictPopulate: false },
 };
 
 const POPULATE_CREATED_BY = {
@@ -32,7 +84,6 @@ const POPULATE_CREATED_BY = {
 
 /* ─── GET ROLES ──────────────────────────────────── */
 async function getApprovalRolesService() {
-  // Transforms the constant object into an array for the frontend
   return Object.values(APPROVAL_ROLES).map((role) => ({
     id: role,
     label: role,
@@ -49,6 +100,7 @@ async function getAllApprovalRoutesService({ requesterId }) {
   })
     .populate(POPULATE_CREATED_BY)
     .populate(POPULATE_STEPS)
+    .populate(POPULATE_NOTIFIED_EMPLOYEES)
     .sort({ createdAt: -1 })
     .lean();
 
@@ -63,11 +115,11 @@ async function getApprovalRouteByIdService({ id, requesterId }) {
   const route = await ApprovalRoute.findById(id)
     .populate(POPULATE_CREATED_BY)
     .populate(POPULATE_STEPS)
+    .populate(POPULATE_NOTIFIED_EMPLOYEES)
     .lean();
 
   if (!route) throw httpError("Approval route not found.", 404);
 
-  // Only allow viewing if public or owned by requester
   const isOwner =
     String(route.createdBy?._id || route.createdBy) === String(requesterId);
   if (!route.isPublic && !isOwner) {
@@ -81,7 +133,8 @@ async function getApprovalRouteByIdService({ id, requesterId }) {
 async function createApprovalRouteService({ data, createdBy }) {
   assertObjectId(createdBy, "createdBy");
 
-  const { name, description, isPublic, steps } = data || {};
+  const { name, description, isPublic, category, steps, notifiedEmployees } =
+    data || {};
 
   if (!name || !String(name).trim()) {
     throw httpError("Route name is required.", 400);
@@ -91,29 +144,29 @@ async function createApprovalRouteService({ data, createdBy }) {
     throw httpError("At least one approver step is required.", 400);
   }
 
-  // Validate steps
   const sortedSteps = [...steps].sort((a, b) => a.level - b.level);
 
   for (let i = 0; i < sortedSteps.length; i++) {
     const s = sortedSteps[i];
-    if (!s.approver || !mongoose.Types.ObjectId.isValid(s.approver)) {
+    const approverId = extractId(s.approver);
+    if (!approverId || !mongoose.Types.ObjectId.isValid(approverId)) {
       throw httpError(`Step ${i + 1}: invalid approver ID.`, 400);
     }
+    s.approver = String(approverId);
+
     if (s.level !== i + 1) {
       throw httpError(
-        `Steps must be sequential starting at 1. Got level ${s.level} at position ${i + 1}.`,
+        `Steps must be sequential starting at 1. Got level \({s.level} at position\){i + 1}.`,
         400,
       );
     }
   }
 
-  // All approvers must be distinct
   const approverIds = sortedSteps.map((s) => String(s.approver));
   if (new Set(approverIds).size !== approverIds.length) {
     throw httpError("Each step must have a unique approver.", 400);
   }
 
-  // ✅ NEW: All roles must be distinct (a role can only be assigned once per workflow)
   const assignedRoles = sortedSteps.map((s) => s.role).filter(Boolean);
   if (new Set(assignedRoles).size !== assignedRoles.length) {
     throw httpError(
@@ -122,7 +175,6 @@ async function createApprovalRouteService({ data, createdBy }) {
     );
   }
 
-  // Verify all approvers exist
   const found = await Employee.countDocuments({
     _id: { $in: approverIds },
   });
@@ -130,11 +182,17 @@ async function createApprovalRouteService({ data, createdBy }) {
     throw httpError("One or more approvers not found.", 404);
   }
 
+  const approverIdSet = new Set(approverIds);
+  const validatedNotifiedIds = (
+    await normalizeAndValidateNotifiedIds(notifiedEmployees)
+  ).filter((id) => !approverIdSet.has(id));
+
   const route = await ApprovalRoute.create({
     name: String(name).trim(),
     description: description ? String(description).trim() : "",
     createdBy,
-    isPublic: isPublic !== false, // default true
+    isPublic: isPublic !== false,
+    ...(category ? { category } : {}),
     steps: sortedSteps.map((s) => ({
       level: s.level,
       approver: s.approver,
@@ -142,11 +200,13 @@ async function createApprovalRouteService({ data, createdBy }) {
       notes: s.notes || "",
       isEnabled: s.isEnabled !== false,
     })),
+    notifiedEmployees: validatedNotifiedIds,
   });
 
   return ApprovalRoute.findById(route._id)
     .populate(POPULATE_CREATED_BY)
     .populate(POPULATE_STEPS)
+    .populate(POPULATE_NOTIFIED_EMPLOYEES)
     .lean();
 }
 
@@ -163,7 +223,8 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
     throw httpError("You can only edit your own routes.", 403);
   }
 
-  const { name, description, isPublic, steps } = data || {};
+  const { name, description, isPublic, category, steps, notifiedEmployees } =
+    data || {};
 
   if (name !== undefined) {
     if (!String(name).trim())
@@ -179,6 +240,10 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
     route.isPublic = Boolean(isPublic);
   }
 
+  if (category !== undefined) {
+    route.category = category;
+  }
+
   if (steps !== undefined) {
     if (!Array.isArray(steps) || steps.length === 0) {
       throw httpError("At least one approver step is required.", 400);
@@ -188,12 +253,15 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
 
     for (let i = 0; i < sortedSteps.length; i++) {
       const s = sortedSteps[i];
-      if (!s.approver || !mongoose.Types.ObjectId.isValid(s.approver)) {
+      const approverId = extractId(s.approver);
+      if (!approverId || !mongoose.Types.ObjectId.isValid(approverId)) {
         throw httpError(`Step ${i + 1}: invalid approver ID.`, 400);
       }
+      s.approver = String(approverId);
+
       if (s.level !== i + 1) {
         throw httpError(
-          `Steps must be sequential starting at 1. Got level ${s.level} at position ${i + 1}.`,
+          `Steps must be sequential starting at 1. Got level \({s.level} at position\){i + 1}.`,
           400,
         );
       }
@@ -204,7 +272,6 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
       throw httpError("Each step must have a unique approver.", 400);
     }
 
-    // ✅ NEW: All roles must be distinct (a role can only be assigned once per workflow)
     const assignedRoles = sortedSteps.map((s) => s.role).filter(Boolean);
     if (new Set(assignedRoles).size !== assignedRoles.length) {
       throw httpError(
@@ -227,6 +294,17 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
     }));
   }
 
+  if (notifiedEmployees !== undefined) {
+    const currentApproverIds = new Set(
+      (route.steps || []).map((s) => String(extractId(s.approver))),
+    );
+    const validatedNotifiedIds = (
+      await normalizeAndValidateNotifiedIds(notifiedEmployees)
+    ).filter((empId) => !currentApproverIds.has(empId));
+
+    route.notifiedEmployees = validatedNotifiedIds;
+  }
+
   console.log(
     "[UPDATE ROUTE] Saving route with steps:",
     JSON.stringify(route.steps, null, 2),
@@ -237,6 +315,7 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
   return ApprovalRoute.findById(route._id)
     .populate(POPULATE_CREATED_BY)
     .populate(POPULATE_STEPS)
+    .populate(POPULATE_NOTIFIED_EMPLOYEES)
     .lean();
 }
 
@@ -267,12 +346,11 @@ async function resolveApproversFromRoute(routeId) {
     throw httpError("Approval route has no steps configured.", 400);
   }
 
-  // ✅ FIXED: Now returns an array of objects { approver, role } instead of just strings
   return route.steps
     .filter((s) => s.isEnabled !== false)
     .sort((a, b) => a.level - b.level)
     .map((s) => ({
-      approver: String(s.approver),
+      approver: String(extractId(s.approver)),
       role: s.role || "",
     }));
 }
@@ -281,7 +359,7 @@ async function resolveApproversFromRoute(routeId) {
 async function upsertMyApprovalRouteService({ data, requesterId }) {
   assertObjectId(requesterId, "requesterId");
 
-  const { name, steps, isPublic } = data || {};
+  const { name, steps, isPublic, category, notifiedEmployees } = data || {};
 
   if (!Array.isArray(steps) || steps.length === 0) {
     throw httpError("At least one approver step is required.", 400);
@@ -289,10 +367,9 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
 
   const sortedSteps = [...steps].sort((a, b) => a.level - b.level);
 
-  // Re-number levels sequentially to be safe
   const normalizedSteps = sortedSteps.map((s, i) => ({
     level: i + 1,
-    approver: s.approver,
+    approver: extractId(s.approver),
     role: s.role || "",
     notes: s.notes || "",
     isEnabled: s.isEnabled !== false,
@@ -302,15 +379,19 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
     if (!s.approver || !mongoose.Types.ObjectId.isValid(s.approver)) {
       throw httpError(`Step ${s.level}: invalid approver ID.`, 400);
     }
+    s.approver = String(s.approver);
   }
 
   const approverIds = normalizedSteps.map((s) => String(s.approver));
+  if (new Set(approverIds).size !== approverIds.length) {
+    throw httpError("Each step must have a unique approver.", 400);
+  }
+
   const found = await Employee.countDocuments({ _id: { $in: approverIds } });
   if (found !== approverIds.length) {
     throw httpError("One or more approvers not found.", 404);
   }
 
-  // ✅ NEW: All roles must be distinct (a role can only be assigned once per workflow)
   const assignedRoles = normalizedSteps.map((s) => s.role).filter(Boolean);
   if (new Set(assignedRoles).size !== assignedRoles.length) {
     throw httpError(
@@ -319,9 +400,16 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
     );
   }
 
+  const approverIdSet = new Set(approverIds);
+  let validatedNotifiedIds;
+  if (notifiedEmployees !== undefined) {
+    validatedNotifiedIds = (
+      await normalizeAndValidateNotifiedIds(notifiedEmployees)
+    ).filter((id) => !approverIdSet.has(id));
+  }
+
   const routeName = name || "Personal Workflow";
 
-  // Clean up any duplicates caused by the previous race condition bug
   const userRoutes = await ApprovalRoute.find({ createdBy: requesterId }).sort({
     createdAt: -1,
   });
@@ -337,15 +425,19 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
 
   let route;
   if (targetRouteId) {
+    const updateFields = {
+      name: String(routeName).trim(),
+      isPublic: isPublic === true,
+      steps: normalizedSteps,
+    };
+    if (category !== undefined) updateFields.category = category;
+    if (validatedNotifiedIds !== undefined) {
+      updateFields.notifiedEmployees = validatedNotifiedIds;
+    }
+
     route = await ApprovalRoute.findByIdAndUpdate(
       targetRouteId,
-      {
-        $set: {
-          name: String(routeName).trim(),
-          isPublic: isPublic === true,
-          steps: normalizedSteps,
-        },
-      },
+      { $set: updateFields },
       { new: true, runValidators: true },
     );
   } else {
@@ -353,13 +445,16 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
       createdBy: requesterId,
       name: String(routeName).trim(),
       isPublic: isPublic === true,
+      ...(category ? { category } : {}),
       steps: normalizedSteps,
+      notifiedEmployees: validatedNotifiedIds || [],
     });
   }
 
   return ApprovalRoute.findById(route._id)
     .populate(POPULATE_CREATED_BY)
     .populate(POPULATE_STEPS)
+    .populate(POPULATE_NOTIFIED_EMPLOYEES)
     .lean();
 }
 

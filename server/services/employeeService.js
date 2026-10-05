@@ -13,6 +13,7 @@ const CtoCredit = require("../models/ctoCreditModel");
 const { getSessionSettings } = require("./generalSettings.service");
 const sendEmail = require("../utils/sendEmail");
 const { employeeWelcomeEmail } = require("../utils/emailTemplates");
+const { sendNotificationSms } = require("./smsService"); // ✅ Imported SMS service
 
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
@@ -204,7 +205,8 @@ function generateSecureTempPassword() {
 const createEmployeeService = async (employeeData = {}) => {
   const {
     employeeId,
-    email, // ✅ Email is now required as the primary login identifier
+    email,
+    phone, // ✅ Destructured phone number
     prefixTitle,
     firstName,
     middleName,
@@ -272,6 +274,7 @@ const createEmployeeService = async (employeeData = {}) => {
   const employee = new Employee({
     employeeId: String(employeeId).trim(),
     email: String(email).trim().toLowerCase(),
+    phone: phone ? String(phone).trim() : undefined, // ✅ Ensure phone is saved
     prefixTitle: prefixTitle ? String(prefixTitle).trim() : "",
     firstName: String(firstName).trim(),
     middleName: String(middleName).trim(),
@@ -299,6 +302,7 @@ const createEmployeeService = async (employeeData = {}) => {
 
   const frontendUrl = process.env.FRONTEND_URL || "https://cto.dictr2.cloud";
 
+  // --- 1. SEND WELCOME EMAIL ---
   if (employee.email) {
     const enabled = await canSend(EMAIL_KEYS.EMPLOYEE_WELCOME);
     if (enabled) {
@@ -312,12 +316,30 @@ const createEmployeeService = async (employeeData = {}) => {
     }
   }
 
+  // --- 2. SEND WELCOME SMS (NEW) ---
+  if (employee.phone) {
+    // Keep it brief to fit under the SMS 320 character limit
+    const smsMessage = `Welcome to DICT R2 HRMS, ${employee.firstName}! Your temp password is: ${tempPassword}. Login at ${frontendUrl}`;
+
+    // Fire and forget - use employee ID to prevent accidental duplicate welcome texts
+    sendNotificationSms(
+      employee.phone,
+      smsMessage,
+      `welcome-${employee._id}`,
+    ).catch((err) =>
+      console.error(
+        `[SMS Dispatch Failed] Welcome SMS for ${employee._id}`,
+        err.message,
+      ),
+    );
+  }
+
   const safeEmployee = employee.toObject();
   delete safeEmployee.password;
   delete safeEmployee.loginAttempts;
   delete safeEmployee.lockUntil;
 
-  return { employee: safeEmployee, tempPassword }; // Ensure tempPassword returns
+  return { employee: safeEmployee, tempPassword };
 };
 
 const getEmployeesService = async ({

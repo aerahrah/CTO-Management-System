@@ -29,6 +29,23 @@ import Forbidden403 from "../../../../pages/forbidden403_FormPage";
 
 const MAX_REASON_LEN = 1000;
 
+// Choosing "Others" reveals a text box so the employee can type their own reason.
+const OTHER_REASON = "Others";
+
+const REASON_OPTIONS = [
+  "Family gathering, celebration, or event",
+  "Personal or family matters",
+  "Processing of personal documents or government IDs/licenses",
+  "Medical or health-related appointment",
+  "Assistance to an immediate family member",
+  "Personal commitments or appointments",
+  "Rest, recovery, or personal break",
+  "Participation in an event or activity",
+  "Bereavement or funeral-related matters",
+  "Other personal matters",
+  OTHER_REASON,
+];
+
 const clampNumber = (v, min, max) => {
   const n = Number(v);
   if (!Number.isFinite(n)) return min;
@@ -225,6 +242,10 @@ const AddOrganicCtoApplicationForm = () => {
   const [selectedMemos, setSelectedMemos] = useState([]);
   const [maxRequestedHours, setMaxRequestedHours] = useState(0);
 
+  // Reason dropdown states
+  const [reasonChoice, setReasonChoice] = useState("");
+  const [customReason, setCustomReason] = useState("");
+
   // Late Filing States
   const [lateJustification, setLateJustification] = useState("");
   const [lateAttachment, setLateAttachment] = useState(null);
@@ -257,6 +278,8 @@ const AddOrganicCtoApplicationForm = () => {
     setIsMemoModalOpen(false);
     setLateJustification("");
     setLateAttachment(null);
+    setReasonChoice("");
+    setCustomReason("");
 
     setDateValue("");
     setDateError("");
@@ -577,15 +600,25 @@ const AddOrganicCtoApplicationForm = () => {
       return;
     }
 
-    if (name === "reason") {
-      setFormData((prev) => ({
-        ...prev,
-        reason: value.slice(0, MAX_REASON_LEN),
-      }));
-      return;
-    }
-
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Reason dropdown: preset reasons are stored directly; "Other" switches to the typed text.
+  const handleReasonSelect = (e) => {
+    clearBanner();
+    const choice = e.target.value;
+    setReasonChoice(choice);
+    setFormData((prev) => ({
+      ...prev,
+      reason: choice === OTHER_REASON ? customReason : choice,
+    }));
+  };
+
+  const handleCustomReasonChange = (e) => {
+    clearBanner();
+    const v = e.target.value.slice(0, MAX_REASON_LEN);
+    setCustomReason(v);
+    setFormData((prev) => ({ ...prev, reason: v }));
   };
 
   const handleDateInput = (e) => {
@@ -662,7 +695,11 @@ const AddOrganicCtoApplicationForm = () => {
       reason: yup
         .string()
         .trim()
-        .required("Reason / Purpose is required.")
+        .required(
+          reasonChoice === OTHER_REASON
+            ? "Please specify your reason / purpose."
+            : "Please select a reason / purpose.",
+        )
         .max(
           MAX_REASON_LEN,
           `Remarks cannot exceed ${MAX_REASON_LEN} characters.`,
@@ -743,6 +780,7 @@ const AddOrganicCtoApplicationForm = () => {
     activeWorkingDays,
     blockedDates,
     computationMode, // ✅ Added constraint dependency
+    reasonChoice,
   ]);
 
   const startSubmit = async () => {
@@ -1399,23 +1437,64 @@ const AddOrganicCtoApplicationForm = () => {
                   <h3 className="text-xs font-bold uppercase mb-2">
                     Reason / Purpose
                   </h3>
-                  <textarea
-                    name="reason"
-                    value={formData.reason}
-                    onChange={handleChange}
-                    rows="2"
-                    maxLength={MAX_REASON_LEN}
+                  <select
+                    name="reasonChoice"
+                    value={reasonChoice}
+                    onChange={handleReasonSelect}
                     disabled={isFormDisabled}
-                    className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded"
+                    className="w-full border p-2 text-xs outline-none disabled:opacity-50 transition-colors duration-300 rounded cursor-pointer disabled:cursor-not-allowed"
                     style={{
                       borderColor: borderColor,
                       color: "var(--app-text)",
                       backgroundColor: isFormDisabled
                         ? "var(--app-surface-2)"
-                        : "transparent",
+                        : "var(--app-surface)",
                     }}
-                    placeholder="Enter justification for leave..."
-                  />
+                  >
+                    <option
+                      value=""
+                      disabled
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        color: "var(--app-text)",
+                      }}
+                    >
+                      Select a reason...
+                    </option>
+                    {REASON_OPTIONS.map((opt) => (
+                      <option
+                        key={opt}
+                        value={opt}
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          color: "var(--app-text)",
+                        }}
+                      >
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+
+                  {reasonChoice === OTHER_REASON && (
+                    <textarea
+                      name="customReason"
+                      value={customReason}
+                      onChange={handleCustomReasonChange}
+                      rows="2"
+                      maxLength={MAX_REASON_LEN}
+                      disabled={isFormDisabled}
+                      autoFocus
+                      className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded mt-2"
+                      style={{
+                        borderColor: borderColor,
+                        color: "var(--app-text)",
+                        backgroundColor: isFormDisabled
+                          ? "var(--app-surface-2)"
+                          : "transparent",
+                      }}
+                      placeholder="Please specify your reason..."
+                    />
+                  )}
                 </div>
 
                 <div

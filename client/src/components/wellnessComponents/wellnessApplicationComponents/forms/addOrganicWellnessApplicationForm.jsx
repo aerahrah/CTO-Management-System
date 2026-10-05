@@ -16,6 +16,7 @@ import {
   PenTool,
   Loader2,
   UploadCloud,
+  ChevronDown,
 } from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import Breadcrumbs from "../../../breadCrumbs";
@@ -28,6 +29,12 @@ import Forbidden403 from "../../../../pages/forbidden403_FormPage";
 
 const MAX_REASON_LEN = 1000;
 const MAX_WELLNESS_DAYS = 3;
+
+const WELLNESS_REASONS = [
+  "Mental Health Care (e.g., therapy or counseling)",
+  "Recreation or Physical Wellness Activities (e.g., hobbies and sports)",
+  "Rest and Recuperation from Work",
+];
 
 const clampInt = (v, min, max, fallback) => {
   const n = Number(v);
@@ -523,7 +530,7 @@ const AddOrganicWellnessApplicationForm = () => {
       reason: yup
         .string()
         .trim()
-        .required("Reason / Additional Justification is required.")
+        .required("Please select a Reason / Additional Justification.")
         .max(
           MAX_REASON_LEN,
           `Remarks cannot exceed ${MAX_REASON_LEN} characters.`,
@@ -1151,7 +1158,7 @@ const AddOrganicWellnessApplicationForm = () => {
                   </div>
                 )}
 
-                {/* ROW 3: Reason / Custom Digital Fields */}
+                {/* ROW 3: Reason / Custom Digital Fields (Dropdown) */}
                 <div
                   className="p-4 border-b transition-colors duration-300 ease-out"
                   style={{ borderColor: borderColor }}
@@ -1159,23 +1166,53 @@ const AddOrganicWellnessApplicationForm = () => {
                   <h3 className="text-xs font-bold uppercase mb-2">
                     Reason / Additional Justification
                   </h3>
-                  <textarea
-                    name="reason"
-                    value={formData.reason}
-                    onChange={handleChange}
-                    rows="2"
-                    maxLength={MAX_REASON_LEN}
-                    disabled={isFormDisabled}
-                    className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded"
-                    style={{
-                      borderColor: borderColor,
-                      color: "var(--app-text)",
-                      backgroundColor: isFormDisabled
-                        ? "var(--app-surface-2)"
-                        : "transparent",
-                    }}
-                    placeholder="Enter justification for leave..."
-                  />
+                  <div className="relative">
+                    <select
+                      name="reason"
+                      value={formData.reason}
+                      onChange={handleChange}
+                      disabled={isFormDisabled}
+                      className="w-full border py-2 pl-2.5 pr-8 text-xs outline-none appearance-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-300 rounded"
+                      style={{
+                        borderColor: borderColor,
+                        color: formData.reason
+                          ? "var(--app-text)"
+                          : "var(--app-muted)",
+                        backgroundColor: isFormDisabled
+                          ? "var(--app-surface-2)"
+                          : "var(--app-surface)",
+                      }}
+                    >
+                      <option
+                        value=""
+                        disabled
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          color: "var(--app-muted)",
+                        }}
+                      >
+                        Select justification for wellness leave...
+                      </option>
+                      {WELLNESS_REASONS.map((option) => (
+                        <option
+                          key={option}
+                          value={option}
+                          style={{
+                            backgroundColor: "var(--app-surface)",
+                            color: "var(--app-text)",
+                          }}
+                        >
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+
+                    <ChevronDown
+                      size={14}
+                      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 opacity-70"
+                      style={{ color: "var(--app-muted)" }}
+                    />
+                  </div>
                 </div>
 
                 {/* ROW 4: Approval Workflow Selection */}

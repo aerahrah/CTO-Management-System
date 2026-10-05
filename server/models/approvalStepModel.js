@@ -74,4 +74,6 @@ const approvalStepSchema = new mongoose.Schema(
   },
 );
 
-module.exports = mongoose.model("ApprovalStep", approvalStepSchema);
+module.exports =
+  mongoose.models.ApprovalStep ||
+  mongoose.model("ApprovalStep", approvalStepSchema);

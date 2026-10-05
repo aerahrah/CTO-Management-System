@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -7,26 +7,38 @@ import {
 } from "../../../../api/wellnessApplication";
 import { fetchPublicWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
-import { getMyWellnessBalance } from "../../../../api/employee";
+import { getMyProfile, getMyWellnessBalance } from "../../../../api/employee";
 import { useAuth } from "../../../../store/authStore";
 import Breadcrumbs from "../../../breadCrumbs";
 import {
-  Calendar,
-  FileText,
-  UserCheck,
   AlertCircle,
   X,
-  HeartPulse,
-  Layers,
-  ArrowLeft,
+  UserCheck,
+  PenTool,
+  Loader2,
   UploadCloud,
+  HeartPulse,
 } from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { toast } from "react-toastify";
 
+import Forbidden403 from "../../../../pages/forbidden403_FormPage";
+
 const MAX_REASON_LEN = 500;
 const MAX_WELLNESS_DAYS = 3;
+
+// This form is only for Job Order employees
+const ALLOWED_EMPLOYEE_TYPE = "JO";
+
+// Set to false if Wellness Leave should not require an e-signature
+const REQUIRE_SIGNATURE = true;
+
+const WELLNESS_REASONS = [
+  "Mental Health Care (e.g., therapy or counseling)",
+  "Recreation or Physical Wellness Activities (e.g., hobbies and sports)",
+  "Rest and Recuperation from Work",
+];
 
 /* ------------------ Helpers ------------------ */
 const clampInt = (v, min, max, fallback) => {
@@ -65,6 +77,7 @@ const getMinSelectableDateISO = (
 
   date.setDate(date.getDate() + 1);
 
+  // Skip ahead if we landed on a non-working day
   while (!activeWorkingDays.includes(date.getDay())) {
     date.setDate(date.getDate() + 1);
   }
@@ -118,7 +131,7 @@ function useResolvedTheme(prefTheme) {
 }
 
 /* =========================
-   Validation Logic
+   Date Validation Logic
 ========================= */
 const validateDate = ({
   value,
@@ -142,7 +155,7 @@ const validateDate = ({
     return "Please select a valid scheduled working day.";
   if (inclusiveDates.includes(value)) return "That date is already selected.";
 
-  // ✅ PREVENT OVERLAPPING WITH EXISTING PENDING/APPROVED DATES
+  // Prevent overlapping with existing PENDING/APPROVED dates
   if (blockedDates.includes(value)) {
     return "You already have a Pending/Approved application for this date.";
   }
@@ -165,7 +178,6 @@ const validateDate = ({
 ========================= */
 const Banner = ({ tone = "error", message, borderColor }) => {
   if (!message) return null;
-
   const palette =
     tone === "info"
       ? {
@@ -197,11 +209,11 @@ const Banner = ({ tone = "error", message, borderColor }) => {
 
   return (
     <div
-      className="rounded-xl border px-3 py-2 text-xs font-medium flex items-start gap-2 transition-colors duration-300 ease-out mb-6"
+      className="rounded-xl border px-3 py-2 text-xs font-medium flex items-start gap-2 mb-4 transition-colors duration-300 ease-out"
       role={tone === "error" ? "alert" : "status"}
       style={{
         backgroundColor: palette.bg,
-        borderColor: palette.br || borderColor || "var(--app-border)",
+        borderColor: palette.br || borderColor,
         color: palette.fg,
       }}
     >
@@ -220,18 +232,22 @@ const Banner = ({ tone = "error", message, borderColor }) => {
 const AddWellnessApplicationForm = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const { admin, user } = useAuth();
 
+  // URL State Detection for Late Filing
   const [searchParams] = useSearchParams();
   const isLateMode = searchParams.get("late") === "true";
+
+  // LOCAL SESSION DATA
+  const { admin, user } = useAuth();
+  const sessionAdmin = admin || {};
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
   const borderColor = useMemo(() => {
     return resolvedTheme === "dark"
-      ? "rgba(255,255,255,0.07)"
-      : "rgba(15,23,42,0.10)";
+      ? "rgba(255,255,255,0.15)"
+      : "rgba(15,23,42,0.2)";
   }, [resolvedTheme]);
 
   const skeletonColors = useMemo(() => {
@@ -251,11 +267,6 @@ const AddWellnessApplicationForm = () => {
 
   const dateInputRef = useRef(null);
 
-  // Late Filing States
-  const [lateJustification, setLateJustification] = useState("");
-  const [lateAttachment, setLateAttachment] = useState(null);
-
-  // Date input states
   const [dateValue, setDateValue] = useState("");
   const [dateError, setDateError] = useState("");
 
@@ -268,8 +279,13 @@ const AddWellnessApplicationForm = () => {
   const [successLatchUI, setSuccessLatchUI] = useState(false);
   const submitInFlightRef = useRef(false);
 
+  // Late Filing States
+  const [lateJustification, setLateJustification] = useState("");
+  const [lateAttachment, setLateAttachment] = useState(null);
+
   const initialState = useMemo(
     () => ({
+      leaveType: "Wellness Leave",
       reason: "",
       inclusiveDates: [],
       routeId: "",
@@ -286,7 +302,26 @@ const AddWellnessApplicationForm = () => {
     };
   }, []);
 
-  // Fetch Working Days for Lead Time
+  // LIVE DATABASE DATA
+  const {
+    data: profileDataResponse,
+    isLoading: isProfileLoading,
+    isFetching: isProfileFetching,
+  } = useQuery({
+    queryKey: ["myProfile"],
+    queryFn: getMyProfile,
+    refetchOnMount: "always",
+  });
+
+  const liveProfile = profileDataResponse || {};
+  const hasSignature = REQUIRE_SIGNATURE
+    ? Boolean(liveProfile.signature)
+    : true;
+  const checkingProfile =
+    isProfileLoading ||
+    (REQUIRE_SIGNATURE && isProfileFetching && !hasSignature);
+
+  // Working Days Settings (lead time)
   const {
     data: workingDaysRes,
     isLoading: workingDaysLoading,
@@ -301,7 +336,7 @@ const AddWellnessApplicationForm = () => {
   const workingDoc = workingDaysRes?.data;
   const computationMode = workingDoc?.computationMode || "Working Days";
 
-  // Override activeWorkingDays if Calendar Days is selected
+  // If set to Calendar Days, override active working days to include all 7 days (0-6)
   const activeWorkingDays =
     computationMode === "Calendar Days"
       ? [0, 1, 2, 3, 4, 5, 6]
@@ -326,8 +361,6 @@ const AddWellnessApplicationForm = () => {
   );
 
   const todayISO = useMemo(() => new Date().toISOString().split("T")[0], []);
-
-  // Date Picker minimum changes depending on explicit mode
   const pickerMinDate = isLateMode ? todayISO : minDate;
 
   const leadTimeMsg = useMemo(() => {
@@ -346,28 +379,32 @@ const AddWellnessApplicationForm = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workingDaysIsError]);
 
-  // Fetch Balances
+  // Wellness Balance
   const { data: balanceData, isLoading: isBalanceLoading } = useQuery({
     queryKey: ["myWellnessBalance"],
     queryFn: getMyWellnessBalance,
   });
 
   const maxWellnessDays =
-    balanceData?.data?.wellnessDays ?? user?.balances?.wellnessDays ?? 0;
+    balanceData?.data?.wellnessDays ??
+    liveProfile.balances?.wellnessDays ??
+    user?.balances?.wellnessDays ??
+    0;
 
-  // Fetch Approval Routes
+  const maxPerThisRequest = Math.min(MAX_WELLNESS_DAYS, maxWellnessDays);
+
+  // Approval Routes
   const { data: routesResponse, isLoading: isRoutesLoading } = useQuery({
     queryKey: ["approvalRoutes"],
     queryFn: fetchAllApprovalRoutes,
   });
 
-  // ✅ Fetch the user's Wellness applications to determine overlapping dates
+  // Existing Wellness applications (for overlapping dates)
   const { data: appsResponse, isLoading: appsLoading } = useQuery({
     queryKey: ["myWellnessApplications"],
     queryFn: fetchMyWellnessApplications,
   });
 
-  // ✅ Extract all dates from PENDING or APPROVED applications
   const blockedDates = useMemo(() => {
     const apps =
       appsResponse?.data?.data || appsResponse?.data || appsResponse || [];
@@ -390,15 +427,16 @@ const AddWellnessApplicationForm = () => {
     return Array.from(new Set(blocked));
   }, [appsResponse]);
 
-  // Auto-select route
+  const userId =
+    liveProfile._id || liveProfile.id || sessionAdmin._id || sessionAdmin.id;
+
   const myRoute = useMemo(() => {
-    if (!routesResponse || !Array.isArray(routesResponse)) return null;
+    if (!routesResponse || !Array.isArray(routesResponse) || !userId)
+      return null;
     return routesResponse.find(
-      (r) =>
-        String(r.createdBy?._id || r.createdBy) ===
-        String(admin?.id || admin?._id),
+      (r) => String(r.createdBy?._id || r.createdBy) === String(userId),
     );
-  }, [routesResponse, admin]);
+  }, [routesResponse, userId]);
 
   const hasValidApprovalRoute = useMemo(() => {
     if (!myRoute) return false;
@@ -420,6 +458,8 @@ const AddWellnessApplicationForm = () => {
   });
 
   const isBusy = mutation.isPending || successLatchUI || appsLoading;
+  const isFormDisabled = !hasSignature || checkingProfile || isBusy;
+  const dateDisabled = isFormDisabled || workingDaysLoading;
 
   // Validate typed dates instantly
   useEffect(() => {
@@ -463,12 +503,9 @@ const AddWellnessApplicationForm = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minDate, isLateMode]);
 
-  const handleDateInput = (e) => {
-    clearBanner();
-    setDateValue(e.target.value);
-
-    const err = validateDate({
-      value: e.target.value,
+  const runDateValidation = (value) =>
+    validateDate({
+      value,
       inclusiveDates: formData.inclusiveDates,
       blockedDates,
       minDate,
@@ -478,7 +515,12 @@ const AddWellnessApplicationForm = () => {
       maxWellnessDays,
       activeWorkingDays,
     });
-    setDateError(err);
+
+  const handleDateInput = (e) => {
+    clearBanner();
+    const v = e.target.value;
+    setDateValue(v);
+    setDateError(runDateValidation(v));
   };
 
   const handleDateCommit = (e) => {
@@ -486,19 +528,8 @@ const AddWellnessApplicationForm = () => {
     const v = e.target.value;
     setDateValue(v);
 
-    const err = validateDate({
-      value: v,
-      inclusiveDates: formData.inclusiveDates,
-      blockedDates,
-      minDate,
-      isLateMode,
-      todayISO,
-      leadTimeMsg,
-      maxWellnessDays,
-      activeWorkingDays,
-    });
+    const err = runDateValidation(v);
     setDateError(err);
-
     if (!isFullISODate(v) || err) return;
 
     if (workingDaysLoading) {
@@ -510,7 +541,6 @@ const AddWellnessApplicationForm = () => {
       ...prev,
       inclusiveDates: [...prev.inclusiveDates, v].sort(),
     }));
-
     setDateValue("");
     setDateError("");
     try {
@@ -519,6 +549,7 @@ const AddWellnessApplicationForm = () => {
   };
 
   const handleDateRemove = (date) => {
+    if (isFormDisabled) return;
     clearBanner();
     setFormData((prev) => ({
       ...prev,
@@ -526,15 +557,12 @@ const AddWellnessApplicationForm = () => {
     }));
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  const handleReasonSelect = (e) => {
     clearBanner();
-    if (name === "reason") {
-      setFormData((prev) => ({
-        ...prev,
-        reason: value.slice(0, MAX_REASON_LEN),
-      }));
-    }
+    setFormData((prev) => ({
+      ...prev,
+      reason: String(e.target.value || "").slice(0, MAX_REASON_LEN),
+    }));
   };
 
   const sanitizeAndValidatePayload = () => {
@@ -546,7 +574,6 @@ const AddWellnessApplicationForm = () => {
       return {
         ok: false,
         message: `Maximum of ${MAX_WELLNESS_DAYS} days allowed per request.`,
-        isToastOnly: true,
       };
     }
 
@@ -554,7 +581,6 @@ const AddWellnessApplicationForm = () => {
       return {
         ok: false,
         message: `You only have ${maxWellnessDays} Wellness Day(s) left.`,
-        isToastOnly: true,
       };
     }
 
@@ -565,8 +591,27 @@ const AddWellnessApplicationForm = () => {
       return {
         ok: false,
         message: `You already have a Pending or Approved application for: ${overlaps.join(", ")}`,
-        isToastOnly: true,
       };
+    }
+
+    if (!isLateMode && formData.inclusiveDates.some((d) => d < minDate)) {
+      return { ok: false, message: leadTimeMsg };
+    }
+
+    if (
+      formData.inclusiveDates.some((d) => isNonWorkingDay(d, activeWorkingDays))
+    ) {
+      return {
+        ok: false,
+        message: "One or more selected dates fall on a non-working day.",
+      };
+    }
+
+    const reason = String(formData.reason || "")
+      .trim()
+      .slice(0, MAX_REASON_LEN);
+    if (!reason) {
+      return { ok: false, message: "Please select a reason / purpose." };
     }
 
     if (!formData.routeId) {
@@ -576,60 +621,48 @@ const AddWellnessApplicationForm = () => {
     if (!hasValidApprovalRoute) {
       return {
         ok: false,
-        message:
-          "Your approval workflow has no active approvers. Please check your settings.",
-      };
-    }
-
-    const reason = String(formData.reason || "")
-      .trim()
-      .slice(0, MAX_REASON_LEN);
-    if (!reason) {
-      return {
-        ok: false,
-        message: "Please provide a reason or justification.",
+        message: "Your approval workflow has no active approvers.",
       };
     }
 
     return {
       ok: true,
       payload: {
-        inclusiveDates: formData.inclusiveDates,
+        inclusiveDates: [...formData.inclusiveDates].sort(),
         reason,
         routeId: formData.routeId,
         clientRequestId: makeClientRequestId(),
-        employeeType: admin?.employeeType || "JO",
+        employeeType: ALLOWED_EMPLOYEE_TYPE,
       },
     };
   };
 
   const startSubmit = async () => {
     clearBanner();
-
-    if (successLatchRef.current || submitInFlightRef.current) return;
+    if (
+      successLatchRef.current ||
+      submitInFlightRef.current ||
+      mutation.isPending ||
+      successLatchUI ||
+      !hasSignature
+    )
+      return;
     submitInFlightRef.current = true;
-
-    if (mutation.isPending || successLatchUI) return;
 
     const result = sanitizeAndValidatePayload();
     if (!result.ok) {
-      if (result.isToastOnly) {
-        toast.error(result.message);
-      } else {
-        showBanner("error", result.message);
-      }
+      showBanner("error", result.message);
+      toast.error(result.message);
       submitInFlightRef.current = false;
       return;
     }
 
-    // ✅ Strict Check: If late mode, require justification
     if (isLateMode && !lateJustification.trim()) {
       showBanner("error", "Late filing justification is required to proceed.");
       submitInFlightRef.current = false;
       return;
     }
 
-    // ✅ Strict Check: If late mode & attachment required, block if missing
     if (isLateMode && isAttachmentRequired && !lateAttachment) {
       showBanner(
         "error",
@@ -640,7 +673,6 @@ const AddWellnessApplicationForm = () => {
     }
 
     try {
-      // ✅ Switch to FormData for multipart submission
       const formPayload = new FormData();
       formPayload.append("reason", result.payload.reason);
       formPayload.append("routeId", result.payload.routeId);
@@ -673,9 +705,7 @@ const AddWellnessApplicationForm = () => {
       queryClient.invalidateQueries({ queryKey: ["myWellnessApplications"] });
       queryClient.invalidateQueries({ queryKey: ["myWellnessBalance"] });
 
-      setTimeout(() => {
-        navigate(-1);
-      }, 1500);
+      setTimeout(() => navigate(-1), 1500);
     } catch (err) {
       const msg =
         err?.response?.data?.error ||
@@ -691,100 +721,72 @@ const AddWellnessApplicationForm = () => {
   };
 
   const leadTimeLabel = useMemo(() => {
-    if (isLateMode) return "Late Filing Allowed";
-    if (workingDaysLoading) return "Min. Lead Time: Loading…";
-    if (leadTimeDays <= 0) return "Min. Lead Time: 1 day";
+    if (isLateMode) return "Late Mode Active";
+    if (workingDaysLoading) return "Min: Loading…";
+    return `Min: ${minDate}`;
+  }, [isLateMode, workingDaysLoading, minDate]);
 
-    const dayLabel =
-      computationMode === "Working Days" ? "Work Day" : "Calendar Day";
-    return `Min. Lead Time: ${leadTimeDays} ${dayLabel}${
-      leadTimeDays === 1 ? "" : "s"
-    }`;
-  }, [leadTimeDays, workingDaysLoading, isLateMode, computationMode]);
+  // ✅ JO-ONLY ACCESS GUARD
+  const currentEmployeeType =
+    liveProfile.employeeType || sessionAdmin.employeeType;
+  if (
+    !isProfileLoading &&
+    profileDataResponse &&
+    currentEmployeeType !== ALLOWED_EMPLOYEE_TYPE
+  ) {
+    return (
+      <Forbidden403
+        employeeType={currentEmployeeType}
+        borderColor={borderColor}
+      />
+    );
+  }
 
-  // ✅ Disabled while fetching applications
-  const dateDisabled = isBusy || workingDaysLoading || appsLoading;
+  const remainingAfterRequest = Math.max(
+    0,
+    maxWellnessDays - formData.inclusiveDates.length,
+  );
 
   return (
     <div
-      className="w-full max-w-4xl transition-colors duration-300 ease-out pb-12"
+      className="w-full max-w-5xl transition-colors duration-300 ease-out pb-12"
       style={{ color: "var(--app-text)" }}
     >
       <SkeletonTheme
         baseColor={skeletonColors.baseColor}
         highlightColor={skeletonColors.highlightColor}
       >
-        {/* Page Header */}
-        <div className="pt-2 pb-6 px-4 md:px-0">
+        <div className="pt-2 pb-6 px-4 md:px-0 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <Breadcrumbs rootLabel="home" rootTo="/app" />
-          <h1
-            className="text-2xl md:text-3xl font-bold tracking-tight font-sans mt-2"
-            style={{ color: "var(--app-text)" }}
-          >
-            New Wellness Leave
-            {isLateMode && (
-              <span className="ml-3 text-sm font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-700 border border-amber-200 align-middle">
-                Late Filing Enabled
-              </span>
-            )}
-          </h1>
-          <p
-            className="block text-sm mt-1 max-w-2xl"
-            style={{ color: "var(--app-muted)" }}
-          >
-            File a new day-based Wellness Leave request for approval.
-          </p>
+          {isLateMode && (
+            <span className="text-sm font-semibold px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">
+              Late Filing Mode Enabled
+            </span>
+          )}
         </div>
 
-        {/* Form Card */}
         <div
-          className="w-full rounded-xl overflow-hidden border shadow-sm transition-colors duration-300 ease-out"
+          className="w-full shadow-lg rounded-sm overflow-hidden transition-colors duration-300 ease-out border"
           style={{
+            fontFamily: "Arial, sans-serif",
             backgroundColor: "var(--app-surface)",
+            color: "var(--app-text)",
             borderColor: borderColor,
           }}
         >
-          {/* Card Header */}
           <div
-            className="px-6 py-5 border-b flex items-center justify-between gap-3 transition-colors duration-300 ease-out"
+            className="text-center py-6 border-b-2 transition-colors duration-300 ease-out"
             style={{ borderColor: borderColor }}
           >
-            <div className="flex items-center gap-3 min-w-0">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "var(--accent-soft)",
-                  borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
-                  color: "var(--accent)",
-                }}
-              >
-                <HeartPulse className="w-6 h-6" />
-              </div>
-              <div className="min-w-0">
-                <h2 className="text-lg font-semibold truncate">
-                  Request Details
-                </h2>
-              </div>
-            </div>
-
-            <div className="text-right shrink-0">
-              <p
-                className="text-[10px] font-bold uppercase tracking-wider"
-                style={{ color: "var(--app-muted)" }}
-              >
-                Available Balance
-              </p>
-              {isBalanceLoading ? (
-                <Skeleton width={40} />
-              ) : (
-                <p
-                  className="text-sm font-extrabold"
-                  style={{ color: "var(--accent)" }}
-                >
-                  {maxWellnessDays} Day(s)
-                </p>
-              )}
-            </div>
+            <h1 className="text-2xl font-bold uppercase tracking-wide">
+              Application for Leave
+            </h1>
+            <p
+              className="text-xs mt-1 transition-colors duration-300 ease-out"
+              style={{ color: "var(--app-muted)" }}
+            >
+              Job Order (JO) Wellness Leave Application
+            </p>
           </div>
 
           <form
@@ -794,416 +796,534 @@ const AddWellnessApplicationForm = () => {
             }}
             className="flex flex-col"
           >
-            <div className="px-6 py-6 space-y-8">
+            <div className="px-6 py-4">
+              {checkingProfile ? (
+                <div
+                  className="mb-6 p-4 rounded flex items-center gap-3 shadow-sm border-l-4 transition-colors duration-300 ease-out"
+                  style={{
+                    backgroundColor: "var(--app-surface-2)",
+                    borderLeftColor: "var(--app-muted)",
+                  }}
+                >
+                  <Loader2
+                    className="w-5 h-5 animate-spin"
+                    style={{ color: "var(--app-muted)" }}
+                  />
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {REQUIRE_SIGNATURE
+                      ? "Checking signature configuration..."
+                      : "Loading your profile..."}
+                  </span>
+                </div>
+              ) : !hasSignature ? (
+                <div
+                  className="mb-6 p-4 rounded flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm border-l-4 transition-colors duration-300 ease-out"
+                  style={{
+                    backgroundColor:
+                      resolvedTheme === "dark"
+                        ? "rgba(249, 115, 22, 0.1)"
+                        : "#fff7ed",
+                    borderLeftColor: "#f97316",
+                    color: resolvedTheme === "dark" ? "#fed7aa" : "#9a3412",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 shrink-0" />
+                    <div>
+                      <h4 className="font-bold text-sm">
+                        E-Signature Required
+                      </h4>
+                      <p className="text-xs opacity-90">
+                        You do not currently have a digital signature
+                        configured. A signature is required to file a leave
+                        application.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigate("/app/my-profile")}
+                    className="flex items-center gap-2 whitespace-nowrap px-4 py-2 text-white text-xs font-bold rounded shadow transition-colors"
+                    style={{ backgroundColor: "#ea580c" }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.backgroundColor = "#c2410c")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.backgroundColor = "#ea580c")
+                    }
+                  >
+                    <PenTool size={14} /> Upload Signature
+                  </button>
+                </div>
+              ) : null}
+
               <Banner
                 tone={banner.tone}
                 message={banner.message}
                 borderColor={borderColor}
               />
 
-              {/* Total Days & Inclusive Dates Row */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
-                <div className="space-y-2">
-                  <div
-                    className="flex items-center gap-2 text-sm font-medium"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    <div
-                      className="w-7 h-7 rounded-md flex items-center justify-center border"
-                      style={{
-                        backgroundColor: "var(--app-surface-2)",
-                        borderColor: borderColor,
-                        color: "var(--app-muted)",
-                      }}
-                    >
-                      <Layers className="w-4 h-4" />
-                    </div>
-                    Total Days Selected
-                  </div>
-                  <div
-                    className="w-full h-11 sm:h-10 px-3 rounded-lg border flex items-center transition-colors duration-200 ease-out"
-                    style={{
-                      backgroundColor: isBusy
-                        ? "var(--app-surface-2)"
-                        : "var(--app-surface)",
-                      borderColor: borderColor,
-                    }}
-                  >
-                    <span
-                      className="font-bold text-sm"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      {formData.inclusiveDates.length} Day(s)
-                    </span>
-                  </div>
-                  {formData.inclusiveDates.length > 0 && (
-                    <div
-                      className="text-[10px] leading-relaxed"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      Remaining allowance:{" "}
-                      <span
-                        style={{ color: "var(--app-text)", fontWeight: 700 }}
-                      >
-                        {Math.max(
-                          0,
-                          maxWellnessDays - formData.inclusiveDates.length,
-                        )}
-                      </span>{" "}
-                      day(s)
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <div
-                    className="flex items-center gap-2 text-sm font-medium"
-                    style={{ color: "var(--app-text)" }}
-                  >
-                    <div
-                      className="w-7 h-7 rounded-md flex items-center justify-center border"
-                      style={{
-                        backgroundColor: "var(--app-surface-2)",
-                        borderColor: borderColor,
-                        color: "var(--app-muted)",
-                      }}
-                    >
-                      <Calendar className="w-4 h-4" />
-                    </div>
-                    Add Inclusive Date
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      ref={dateInputRef}
-                      type="date"
-                      min={pickerMinDate}
-                      value={dateValue}
-                      onInput={handleDateInput}
-                      onChange={handleDateCommit}
-                      disabled={dateDisabled}
-                      aria-invalid={!!dateError}
-                      className="w-full h-11 sm:h-10 px-3 rounded-lg outline-none border transition-colors duration-200 ease-out text-[16px] sm:text-sm"
-                      style={{
-                        backgroundColor: dateDisabled
-                          ? "var(--app-surface-2)"
-                          : dateError
-                            ? "rgba(239,68,68,0.08)"
-                            : "var(--app-surface)",
-                        borderColor: dateError
-                          ? "rgba(239,68,68,0.22)"
-                          : borderColor,
-                        color: dateDisabled
-                          ? "var(--app-muted)"
-                          : "var(--app-text)",
-                      }}
-                    />
-                  </div>
-
-                  {dateError ? (
-                    <div
-                      className="text-[11px] font-semibold"
-                      style={{ color: "#ef4444" }}
-                    >
-                      {dateError}
-                    </div>
-                  ) : (
-                    <div
-                      className="text-[10px] leading-relaxed"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      Earliest selectable date:{" "}
-                      <span
-                        style={{ color: "var(--app-text)", fontWeight: 700 }}
-                      >
-                        {pickerMinDate}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Selected Dates Display */}
-              {formData.inclusiveDates.length > 0 && (
-                <div className="space-y-3 animate-in fade-in duration-300">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-1">
-                    <span
-                      className="text-[10px] font-bold uppercase tracking-widest"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      Dates Selected ({formData.inclusiveDates.length} /{" "}
-                      {Math.min(MAX_WELLNESS_DAYS, maxWellnessDays)} Max)
-                    </span>
-                    <span
-                      className="text-[10px] italic"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      {leadTimeLabel}
-                    </span>
-                  </div>
-
-                  <div
-                    className="flex flex-wrap gap-2 p-3 rounded-xl border min-h-[50px] transition-colors duration-300 ease-out"
-                    style={{
-                      backgroundColor: "rgba(37,99,235,0.06)",
-                      borderColor: "rgba(37,99,235,0.14)",
-                    }}
-                  >
-                    {formData.inclusiveDates.map((date) => (
-                      <div
-                        key={date}
-                        className="flex items-center gap-2 px-2.5 py-1 rounded-lg text-xs font-semibold shadow-sm border transition-colors duration-300 ease-out"
-                        style={{
-                          backgroundColor: "var(--app-surface)",
-                          borderColor:
-                            "var(--accent-soft2, rgba(37,99,235,0.18))",
-                          color: "var(--accent)",
-                        }}
-                      >
-                        <span className="truncate max-w-[150px]">{date}</span>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => handleDateRemove(date)}
-                          className="transition-colors disabled:opacity-50"
-                          style={{ color: "var(--app-muted)" }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.color = "#ef4444")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.color = "var(--app-muted)")
-                          }
-                          aria-label={`Remove ${date}`}
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* ✅ LATE FILING UI BLOCK */}
-              {isLateMode && (
-                <div
-                  className="space-y-4 p-5 rounded-xl border transition-colors duration-300 ease-out animate-in fade-in"
-                  style={{
-                    backgroundColor:
-                      resolvedTheme === "dark"
-                        ? "rgba(245,158,11,0.05)"
-                        : "#fffbeb",
-                    borderColor:
-                      resolvedTheme === "dark"
-                        ? "rgba(245,158,11,0.2)"
-                        : "#fde68a",
-                  }}
-                >
-                  <Banner
-                    tone="amber"
-                    message="You have opted to file this request late. A justification is required to proceed."
-                  />
-
-                  <div className="space-y-2 mt-4">
-                    <label
-                      className="text-sm font-bold flex items-center gap-2"
-                      style={{
-                        color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
-                      }}
-                    >
-                      Late Filing Justification{" "}
-                      <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={lateJustification}
-                      onChange={(e) => setLateJustification(e.target.value)}
-                      disabled={isBusy}
-                      className="w-full p-3 rounded-lg outline-none resize-none text-sm border transition-colors"
-                      style={{
-                        backgroundColor: isBusy
-                          ? "var(--app-surface-2)"
-                          : "var(--app-surface)",
-                        borderColor:
-                          resolvedTheme === "dark"
-                            ? "rgba(245,158,11,0.3)"
-                            : "#fcd34d",
-                        color: "var(--app-text)",
-                      }}
-                      rows={3}
-                      placeholder="Explain why this request is being filed on short notice..."
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label
-                      className="text-sm font-bold flex items-center gap-2"
-                      style={{
-                        color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
-                      }}
-                    >
-                      <UploadCloud size={16} />
-                      Supporting Document{" "}
-                      {isAttachmentRequired ? (
-                        <span className="text-red-500">*</span>
-                      ) : (
-                        <span className="text-xs font-normal opacity-70">
-                          (Optional)
-                        </span>
-                      )}
-                    </label>
-                    <input
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      disabled={isBusy}
-                      onChange={(e) => setLateAttachment(e.target.files[0])}
-                      className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold cursor-pointer transition-colors"
-                      style={{
-                        color: "var(--app-text)",
-                      }}
-                    />
-                    <style>{`
-                      input[type="file"]::file-selector-button {
-                        background-color: ${resolvedTheme === "dark" ? "rgba(245,158,11,0.1)" : "#fef3c7"};
-                        color: ${resolvedTheme === "dark" ? "#fcd34d" : "#b45309"};
-                        transition: background-color 0.2s;
-                      }
-                      input[type="file"]::file-selector-button:hover {
-                        background-color: ${resolvedTheme === "dark" ? "rgba(245,158,11,0.2)" : "#fde68a"};
-                      }
-                    `}</style>
-                  </div>
-                </div>
-              )}
-
-              {/* Reason */}
-              <div className="space-y-2">
-                <div
-                  className="flex items-center gap-2 text-sm font-medium"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  <div
-                    className="w-7 h-7 rounded-md flex items-center justify-center border"
-                    style={{
-                      backgroundColor: "var(--app-surface-2)",
-                      borderColor: borderColor,
-                      color: "var(--app-muted)",
-                    }}
-                  >
-                    <FileText className="w-4 h-4" />
-                  </div>
-                  Reason / Justification
-                </div>
-
-                <textarea
-                  name="reason"
-                  value={formData.reason}
-                  onChange={handleChange}
-                  rows="4"
-                  maxLength={MAX_REASON_LEN}
-                  placeholder="Provide details for your wellness leave..."
-                  disabled={isBusy}
-                  className="w-full p-3 rounded-lg outline-none resize-none text-sm border transition-colors duration-200 ease-out"
-                  style={{
-                    backgroundColor: isBusy
-                      ? "var(--app-surface-2)"
-                      : "var(--app-surface)",
-                    borderColor: borderColor,
-                    color: isBusy ? "var(--app-muted)" : "var(--app-text)",
-                  }}
-                />
-
-                <div
-                  className="text-[10px] text-right"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  {String(formData.reason || "").length}/{MAX_REASON_LEN}
-                </div>
-              </div>
-
-              {/* Approval Routing */}
+              {/* Employee Info (no salary for JO) */}
               <div
-                className="space-y-3 pt-6 mt-6 border-t transition-colors duration-300 ease-out"
+                className="mb-6 grid grid-cols-1 md:grid-cols-3 border transition-colors duration-300 ease-out text-sm"
                 style={{ borderColor: borderColor }}
               >
                 <div
-                  className="flex items-center gap-2 text-sm font-bold"
-                  style={{ color: "var(--app-text)" }}
+                  className="p-2 border-b md:border-b-0 md:border-r transition-colors duration-300"
+                  style={{ borderColor: borderColor }}
                 >
-                  <div
-                    className="w-7 h-7 rounded-md flex items-center justify-center border"
-                    style={{
-                      backgroundColor: "var(--app-surface-2)",
-                      borderColor: borderColor,
-                      color: "var(--app-muted)",
-                    }}
+                  <span
+                    className="text-[10px] uppercase block font-semibold transition-colors"
+                    style={{ color: "var(--app-muted)" }}
                   >
-                    <UserCheck className="w-4 h-4" />
+                    1. Office/Department
+                  </span>
+                  <div className="font-semibold mt-1">
+                    {liveProfile.division ||
+                      liveProfile.department ||
+                      sessionAdmin.division ||
+                      sessionAdmin.department ||
+                      "N/A"}
                   </div>
-                  Approval Steps
+                </div>
+                <div
+                  className="p-2 border-b md:border-b-0 md:border-r transition-colors duration-300"
+                  style={{ borderColor: borderColor }}
+                >
+                  <span
+                    className="text-[10px] uppercase block font-semibold transition-colors"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    2. Name (Last, First, Middle)
+                  </span>
+                  <div className="font-semibold mt-1 uppercase">
+                    {`${liveProfile.lastName || sessionAdmin.lastName || ""}, ${liveProfile.firstName || sessionAdmin.firstName || ""} ${liveProfile.middleName || sessionAdmin.middleName || ""}`.trim()}
+                  </div>
+                </div>
+                <div className="p-2 transition-colors duration-300">
+                  <span
+                    className="text-[10px] uppercase block font-semibold transition-colors"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    3. Position
+                  </span>
+                  <div className="font-semibold mt-1">
+                    {liveProfile.position || sessionAdmin.position || "N/A"}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={`border transition-colors duration-300 ease-out ${isFormDisabled ? "opacity-60 pointer-events-none" : ""}`}
+                style={{ borderColor: borderColor }}
+              >
+                <div
+                  className="font-bold py-1.5 uppercase text-sm tracking-widest text-center border-b transition-colors duration-300"
+                  style={{
+                    backgroundColor: "var(--app-surface-2)",
+                    borderColor: borderColor,
+                  }}
+                >
+                  6. Details of Application
                 </div>
 
-                <div className="space-y-2 mt-2">
-                  {isRoutesLoading ? (
-                    <Skeleton height={40} borderRadius={8} count={2} />
-                  ) : !hasValidApprovalRoute ? (
+                {/* 6.A Type of Leave */}
+                <div
+                  className="flex flex-col md:flex-row border-b transition-colors duration-300 ease-out"
+                  style={{ borderColor: borderColor }}
+                >
+                  <div className="flex-1 p-4">
+                    <h3 className="text-xs font-bold uppercase mb-3">
+                      6.A Type of Leave to be Availed of
+                    </h3>
                     <div
-                      className="p-3 rounded-lg border flex items-start sm:items-center gap-2 text-xs font-medium transition-colors duration-300 ease-out"
+                      className="flex items-start gap-2 text-sm p-3 rounded border transition-colors duration-300"
                       style={{
-                        backgroundColor: "rgba(245,158,11,0.10)",
-                        borderColor: "rgba(245,158,11,0.30)",
-                        color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
+                        backgroundColor: "var(--accent-soft)",
+                        borderColor: "rgba(37,99,235,0.18)",
                       }}
                     >
-                      <AlertCircle
-                        size={14}
-                        className="shrink-0 mt-0.5 sm:mt-0"
+                      <input
+                        type="checkbox"
+                        checked={true}
+                        readOnly
+                        className="mt-1 shrink-0"
+                        style={{ accentColor: "var(--accent)" }}
                       />
-                      <span>
-                        You need an active approval route to submit an
-                        application. Please configure your approval route
-                        settings and ensure at least one approver is enabled.
+                      <span
+                        className="font-bold transition-colors flex items-center gap-1.5"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        <HeartPulse size={14} /> Wellness Leave
                       </span>
                     </div>
+                  </div>
+                </div>
+
+                {/* 6.C Days + Dates | Balance */}
+                <div
+                  className="flex flex-col md:flex-row border-b transition-colors duration-300 ease-out"
+                  style={{ borderColor: borderColor }}
+                >
+                  <div
+                    className="flex-1 p-4 relative border-b md:border-b-0 md:border-r transition-colors duration-300"
+                    style={{ borderColor: borderColor }}
+                  >
+                    <h3 className="text-xs font-bold uppercase mb-2">
+                      6.C Number of Days Applied For
+                    </h3>
+
+                    <div
+                      className="text-[10px] text-center mb-4"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      Maximum Allowed (Per Request):{" "}
+                      <span
+                        className="font-bold"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {maxPerThisRequest} day(s)
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-center">
+                      <div
+                        className="border-b-2 w-32 text-center font-bold text-lg mb-1 transition-colors duration-300"
+                        style={{
+                          borderColor: borderColor,
+                          color: "var(--app-text)",
+                        }}
+                      >
+                        {formData.inclusiveDates.length}
+                      </div>
+                      <span
+                        className="text-[10px] uppercase transition-colors duration-300"
+                        style={{ color: "var(--app-muted)" }}
+                      >
+                        Day(s)
+                      </span>
+                    </div>
+
+                    <div
+                      className="mt-6 border-t pt-4 transition-colors duration-300"
+                      style={{ borderColor: borderColor }}
+                    >
+                      <h3 className="text-xs font-bold uppercase mb-2 flex justify-between items-center">
+                        <span>Inclusive Dates</span>
+                        <span className="text-[10px] normal-case font-normal italic text-gray-500">
+                          {leadTimeLabel}
+                        </span>
+                      </h3>
+
+                      <div className="flex items-center gap-2 mb-3">
+                        <input
+                          ref={dateInputRef}
+                          type="date"
+                          min={pickerMinDate}
+                          value={dateValue}
+                          onInput={handleDateInput}
+                          onChange={handleDateCommit}
+                          disabled={dateDisabled}
+                          aria-invalid={!!dateError}
+                          className="border outline-none p-1.5 text-xs bg-transparent w-full disabled:opacity-50 transition-colors duration-300"
+                          style={{
+                            borderColor: dateError ? "#ef4444" : borderColor,
+                            color: "var(--app-text)",
+                            backgroundColor: dateDisabled
+                              ? "var(--app-surface-2)"
+                              : "transparent",
+                          }}
+                        />
+                      </div>
+
+                      {dateError && (
+                        <div className="text-[10px] text-red-500 font-bold mb-2">
+                          {dateError}
+                        </div>
+                      )}
+
+                      <div
+                        className="flex flex-wrap gap-1 min-h-[40px] border border-dashed p-2 transition-colors duration-300"
+                        style={{ borderColor: borderColor }}
+                      >
+                        {formData.inclusiveDates.length === 0 ? (
+                          <span
+                            className="text-[10px] italic transition-colors"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            No dates selected
+                          </span>
+                        ) : (
+                          formData.inclusiveDates.map((date) => (
+                            <div
+                              key={date}
+                              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border transition-colors duration-300"
+                              style={{
+                                backgroundColor: "var(--app-surface-2)",
+                                borderColor: borderColor,
+                                color: "var(--app-text)",
+                              }}
+                            >
+                              {date}
+                              <button
+                                type="button"
+                                disabled={isFormDisabled}
+                                onClick={() => handleDateRemove(date)}
+                                className="text-red-500 hover:text-red-700 disabled:opacity-50 transition-colors"
+                                aria-label={`Remove ${date}`}
+                              >
+                                <X size={12} />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Wellness Balance */}
+                  <div className="flex-1 p-4 flex flex-col">
+                    <h3
+                      className="text-xs font-bold uppercase mb-3 transition-colors"
+                      style={{ color: "var(--accent)" }}
+                    >
+                      Wellness Leave Balance
+                    </h3>
+
+                    <div className="text-xs space-y-0">
+                      <div
+                        className="flex justify-between border-b border-dashed py-2 transition-colors duration-300"
+                        style={{ borderColor: borderColor }}
+                      >
+                        <span style={{ color: "var(--app-muted)" }}>
+                          Available Balance
+                        </span>
+                        <span className="font-bold">
+                          {isBalanceLoading ? (
+                            <Skeleton width={40} />
+                          ) : (
+                            `${maxWellnessDays} day(s)`
+                          )}
+                        </span>
+                      </div>
+                      <div
+                        className="flex justify-between border-b border-dashed py-2 transition-colors duration-300"
+                        style={{ borderColor: borderColor }}
+                      >
+                        <span style={{ color: "var(--app-muted)" }}>
+                          Max per Request
+                        </span>
+                        <span className="font-bold">
+                          {MAX_WELLNESS_DAYS} day(s)
+                        </span>
+                      </div>
+                      <div
+                        className="flex justify-between border-b border-dashed py-2 transition-colors duration-300"
+                        style={{ borderColor: borderColor }}
+                      >
+                        <span style={{ color: "var(--app-muted)" }}>
+                          Applying For
+                        </span>
+                        <span
+                          className="font-bold"
+                          style={{ color: "var(--accent)" }}
+                        >
+                          -{formData.inclusiveDates.length} day(s)
+                        </span>
+                      </div>
+                      <div className="flex justify-between py-2">
+                        <span className="font-bold uppercase text-[10px] tracking-wide">
+                          Remaining After Request
+                        </span>
+                        <span className="font-bold">
+                          {isBalanceLoading ? (
+                            <Skeleton width={40} />
+                          ) : (
+                            `${remainingAfterRequest} day(s)`
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    {!isBalanceLoading && maxWellnessDays <= 0 && (
+                      <div
+                        className="mt-3 text-[10px] italic"
+                        style={{ color: "#ef4444" }}
+                      >
+                        You have no Wellness Leave days left.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ✅ LATE FILING SECTION FOR JO */}
+                {isLateMode && (
+                  <div
+                    className="p-4 border-b transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "rgba(245,158,11,0.05)",
+                      borderColor: borderColor,
+                    }}
+                  >
+                    <Banner
+                      tone="amber"
+                      message="You have opted to file this request late. A justification is required to proceed."
+                    />
+                    <div className="space-y-4 mt-4">
+                      <div>
+                        <h3
+                          className="text-xs font-bold uppercase mb-2"
+                          style={{ color: "#d97706" }}
+                        >
+                          Late Filing Justification{" "}
+                          <span className="text-red-500">*</span>
+                        </h3>
+                        <textarea
+                          value={lateJustification}
+                          onChange={(e) => setLateJustification(e.target.value)}
+                          disabled={isFormDisabled}
+                          className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded"
+                          style={{
+                            borderColor: borderColor,
+                            color: "var(--app-text)",
+                            backgroundColor: isFormDisabled
+                              ? "var(--app-surface-2)"
+                              : "var(--app-surface)",
+                          }}
+                          rows="3"
+                          placeholder="Explain why this request is being filed on short notice..."
+                        />
+                      </div>
+                      <div>
+                        <h3
+                          className="text-xs font-bold uppercase mb-2 flex items-center gap-2"
+                          style={{ color: "#d97706" }}
+                        >
+                          <UploadCloud size={14} /> Supporting Document{" "}
+                          {isAttachmentRequired ? (
+                            <span className="text-red-500">*</span>
+                          ) : (
+                            <span className="normal-case opacity-70">
+                              (Optional)
+                            </span>
+                          )}
+                        </h3>
+                        <input
+                          type="file"
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          disabled={isFormDisabled}
+                          onChange={(e) => setLateAttachment(e.target.files[0])}
+                          className="w-full text-xs file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-[10px] file:font-bold file:bg-amber-100 file:text-amber-800 hover:file:bg-amber-200 cursor-pointer"
+                          style={{ color: "var(--app-text)" }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Reason / Purpose */}
+                <div
+                  className="p-4 border-b transition-colors duration-300 ease-out"
+                  style={{ borderColor: borderColor }}
+                >
+                  <h3 className="text-xs font-bold uppercase mb-2">
+                    Reason / Purpose
+                  </h3>
+                  <select
+                    name="reason"
+                    value={formData.reason}
+                    onChange={handleReasonSelect}
+                    disabled={isFormDisabled}
+                    className="w-full border p-2 text-xs outline-none disabled:opacity-50 transition-colors duration-300 rounded cursor-pointer disabled:cursor-not-allowed"
+                    style={{
+                      borderColor: borderColor,
+                      color: "var(--app-text)",
+                      backgroundColor: isFormDisabled
+                        ? "var(--app-surface-2)"
+                        : "var(--app-surface)",
+                    }}
+                  >
+                    <option
+                      value=""
+                      disabled
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        color: "var(--app-text)",
+                      }}
+                    >
+                      Select a reason for your wellness leave...
+                    </option>
+                    {WELLNESS_REASONS.map((opt) => (
+                      <option
+                        key={opt}
+                        value={opt}
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          color: "var(--app-text)",
+                        }}
+                      >
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Workflow Approvers */}
+                <div
+                  className="p-4 transition-colors duration-300 ease-out"
+                  style={{ backgroundColor: "var(--accent-soft)" }}
+                >
+                  <h3
+                    className="text-xs font-bold uppercase mb-2 flex items-center gap-1 transition-colors"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    <UserCheck size={14} /> Workflow Approvers
+                  </h3>
+
+                  {isRoutesLoading ? (
+                    <Skeleton height={36} count={2} />
+                  ) : !hasValidApprovalRoute ? (
+                    <div className="text-xs text-red-500 italic">
+                      No active approval route found. Please configure your
+                      settings.
+                    </div>
                   ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="flex flex-wrap gap-4">
                       {myRoute?.steps
                         ?.filter((s) => s.isEnabled !== false)
                         ?.map((step, idx) => (
                           <div
                             key={idx}
-                            className="flex items-center gap-3 p-3 rounded-lg shadow-sm border transition-colors duration-300 ease-out"
+                            className="border px-3 py-1.5 text-xs flex items-center gap-2 min-w-[200px] transition-colors duration-300 rounded shadow-sm"
                             style={{
                               backgroundColor: "var(--app-surface)",
-                              borderColor: borderColor,
+                              borderColor: "rgba(37,99,235,0.18)",
                             }}
                           >
-                            <div
-                              className="w-7 h-7 rounded-md flex items-center justify-center text-[10px] font-black shrink-0 border"
-                              style={{
-                                backgroundColor: "var(--accent-soft)",
-                                color: "var(--accent)",
-                                borderColor:
-                                  "var(--accent-soft2, rgba(37,99,235,0.18))",
-                              }}
+                            <span
+                              className="font-bold transition-colors"
+                              style={{ color: "var(--accent)" }}
                             >
-                              {idx + 1}
-                            </div>
-
-                            <div className="min-w-0">
-                              <p
-                                className="text-xs font-semibold truncate"
+                              {idx + 1}.
+                            </span>
+                            <div>
+                              <div
+                                className="font-bold transition-colors"
                                 style={{ color: "var(--app-text)" }}
                               >
                                 {step.approver
                                   ? `${step.approver.firstName} ${step.approver.lastName}`
-                                  : "Not Assigned"}
-                              </p>
-                              <p
-                                className="text-[10px] uppercase tracking-tight truncate"
+                                  : "Unassigned"}
+                              </div>
+                              <div
+                                className="text-[10px] uppercase transition-colors"
                                 style={{ color: "var(--app-muted)" }}
                               >
-                                {step.approver?.position ||
-                                  "Position not specified"}
-                              </p>
+                                {step.approver?.position}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1213,9 +1333,8 @@ const AddWellnessApplicationForm = () => {
               </div>
             </div>
 
-            {/* Sticky Footer */}
             <div
-              className="border-t px-6 py-4 flex flex-row items-stretch sm:items-center justify-end gap-3 sticky bottom-0 transition-colors duration-300 ease-out"
+              className="border-t px-6 py-4 flex flex-row items-center justify-end gap-3 sticky bottom-0 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] transition-colors duration-300 ease-out"
               style={{
                 backgroundColor: "var(--app-surface)",
                 borderColor: borderColor,
@@ -1224,11 +1343,8 @@ const AddWellnessApplicationForm = () => {
               <button
                 type="button"
                 disabled={mutation.isPending}
-                onClick={() => {
-                  if (mutation.isPending) return;
-                  navigate(-1);
-                }}
-                className="px-6 py-2.5 sm:py-2 rounded-lg border font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+                onClick={() => navigate(-1)}
+                className="px-6 py-2 rounded border font-semibold text-sm disabled:opacity-50 transition-colors duration-200"
                 style={{
                   backgroundColor: "var(--app-surface-2)",
                   borderColor: borderColor,
@@ -1236,41 +1352,40 @@ const AddWellnessApplicationForm = () => {
                 }}
                 onMouseEnter={(e) => {
                   if (e.currentTarget.disabled) return;
-                  e.currentTarget.style.filter = "brightness(0.98)";
+                  e.currentTarget.style.filter = "brightness(0.95)";
                 }}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
               >
-                Back
+                Cancel
               </button>
-
               <button
                 type="submit"
                 disabled={
-                  isBusy ||
+                  isFormDisabled ||
                   (workingDaysLoading && !workingDaysIsError) ||
                   !hasValidApprovalRoute ||
                   formData.inclusiveDates.length === 0 ||
-                  appsLoading // ✅ Disable button if still loading past apps
+                  appsLoading
                 }
-                className="w-full sm:w-auto px-8 py-2.5 sm:py-2 rounded-lg font-bold disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-                style={{
-                  backgroundColor: "var(--accent)",
-                  border: "1px solid var(--accent)",
-                  color: "#fff",
-                }}
+                className="px-8 py-2 rounded font-semibold text-sm disabled:opacity-70 disabled:cursor-not-allowed transition-colors duration-200 text-white"
+                style={{ backgroundColor: "var(--accent)" }}
                 onMouseEnter={(e) => {
                   if (e.currentTarget.disabled) return;
                   e.currentTarget.style.filter = "brightness(0.95)";
                 }}
                 onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
               >
-                {workingDaysLoading || appsLoading
-                  ? "Loading..."
-                  : mutation.isPending
-                    ? "Submitting..."
-                    : successLatchUI
-                      ? "Submitted"
-                      : "Submit Application"}
+                {checkingProfile || appsLoading
+                  ? "Checking Status..."
+                  : !hasSignature
+                    ? "Signature Required"
+                    : workingDaysLoading
+                      ? "Loading..."
+                      : mutation.isPending
+                        ? "Submitting..."
+                        : successLatchUI
+                          ? "Submitted"
+                          : "Submit Wellness Application"}
               </button>
             </div>
           </form>

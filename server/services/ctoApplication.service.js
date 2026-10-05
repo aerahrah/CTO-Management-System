@@ -2,6 +2,7 @@
 const mongoose = require("mongoose");
 const CtoApplication = require("../models/ctoApplicationModel");
 const ApprovalStep = require("../models/approvalStepModel");
+const ApprovalRoute = require("../models/approvalRouteModel");
 const Employee = require("../models/employeeModel");
 const CtoCredit = require("../models/ctoCreditModel");
 const RevocationSetting = require("../models/revocationSettingModel");
@@ -15,6 +16,9 @@ const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 const {
   ctoApprovalEmail,
+  ctoNotifiedEmail,
+  ctoCancelledApproverEmail,
+  ctoNotifiedCancelledEmail,
   ctoFollowUpEmail,
   ctoRevocationRequestEmail,
   ctoRevocationCancelledEmail,
@@ -43,8 +47,21 @@ function createServiceError(message, statusCode = 400) {
 
 function assertObjectId(id, label = "ID") {
   if (!mongoose.isValidObjectId(id)) {
-    throw createServiceError(`Invalid ${label} format.`, 400);
+    throw createServiceError("Invalid " + label + " format.", 400);
   }
+}
+
+function extractId(item) {
+  if (item && typeof item === "object") {
+    return item._id || item.id || item.employee || item.approver;
+  }
+  return item;
+}
+
+function fullNameOf(person) {
+  const first = person?.firstName || "";
+  const last = person?.lastName || "";
+  return (first + " " + last).trim();
 }
 
 function sanitizeSearch(str, limit = 100) {
@@ -101,7 +118,7 @@ function formatLedgerDates(dates) {
   if (start.getTime() === end.getTime()) {
     return fmt(start);
   }
-  return `${fmt(start)} to ${fmt(end)}`;
+  return fmt(start) + " to " + fmt(end);
 }
 
 function getWorkingDaysLeadTime(startDate, endDate, activeWorkingDays) {
@@ -140,6 +157,7 @@ async function safeSendEmail(to, subject, html) {
 }
 
 async function canSend(key) {
+  if (!key) return false;
   return await isEmailEnabled(key);
 }
 
@@ -149,16 +167,22 @@ const populateApplicationById = async (applicationId) => {
   const app = await CtoApplication.findById(applicationId)
     .populate(
       "employee",
-      "prefixTitle firstName middleName lastName nameExtension postfixTitle division position email employeeId signature",
+      "prefixTitle firstName middleName lastName nameExtension postfixTitle division position email employeeId signature phone",
     )
     .populate({
       path: "approvals",
       populate: {
         path: "approver",
         select:
-          "prefixTitle firstName middleName lastName nameExtension postfixTitle division position email",
+          "prefixTitle firstName middleName lastName nameExtension postfixTitle division position email phone",
       },
       options: { sort: { level: 1 } },
+    })
+    .populate({
+      path: "notifiedEmployees",
+      select:
+        "prefixTitle firstName middleName lastName nameExtension postfixTitle division position email phone",
+      strictPopulate: false,
     })
     .populate("memo.memoId", "memoNo uploadedMemo duration totalHours");
 
@@ -181,9 +205,13 @@ const cancelApprovalSteps = async ({
 }) => {
   await ApprovalStep.updateMany(
     {
-      _id: { $in: approvalIds },
+      _id: {
+        $in: approvalIds,
+      },
       status: "PENDING",
-      level: { $gt: afterLevel },
+      level: {
+        $gt: afterLevel,
+      },
       ctoApplication: applicationId,
     },
     {
@@ -208,7 +236,9 @@ const restoreMemoHours = async ({ employeeId, memoItems }) => {
     await CtoCredit.updateOne(
       {
         _id: m.memoId,
-        employees: { $elemMatch: { employee: employeeId } },
+        employees: {
+          $elemMatch: { employee: employeeId },
+        },
       },
       {
         $inc: {
@@ -225,11 +255,15 @@ async function notifyApproversOfCancellation({
   employee,
   approvalIds = [],
 }) {
-  if (!approvalIds.length) return;
-
-  const approvalSteps = await ApprovalStep.find({
-    _id: { $in: approvalIds },
-  }).select("approver level status");
+  const approvalSteps = approvalIds.length
+    ? await ApprovalStep.find({
+        _id: {
+          $in: approvalIds,
+        },
+      })
+        .select("approver level status remarks")
+        .lean()
+    : [];
 
   const approverIds = [
     ...new Set(
@@ -239,19 +273,156 @@ async function notifyApproversOfCancellation({
     ),
   ].filter((id) => mongoose.isValidObjectId(id));
 
-  if (!approverIds.length) return;
+  // Only email approvers who have already seen the request:
+  // those who approved it + the one it was waiting on.
+  // Later-level approvers were never emailed, so they are skipped.
+  const orderedSteps = [...approvalSteps].sort(
+    (a, b) => Number(a.level || 0) - Number(b.level || 0),
+  );
+  const waitingStep = orderedSteps.find(
+    (s) =>
+      s.status === "CANCELLED" && s.remarks === AUTO_CANCEL_REMARK_EMPLOYEE,
+  );
+  const emailApproverIds = new Set(
+    orderedSteps
+      .filter(
+        (s) =>
+          s.status === "APPROVED" ||
+          (waitingStep && String(s._id) === String(waitingStep._id)),
+      )
+      .map((s) => String(s.approver))
+      .filter((id) => mongoose.isValidObjectId(id)),
+  );
 
+  let emailEnabled = false;
   try {
-    await NotificationService.notifyApproversOnCtoCancellation({
-      approverIds,
-      employee,
-      ctoApplication: application,
-    });
-  } catch (e) {
-    console.error(
-      "Failed creating CTO cancellation notifications:",
-      e?.message || e,
+    emailEnabled = await canSend(
+      EMAIL_KEYS.CTO_CANCELLED || EMAIL_KEYS.CTO_APPROVAL,
     );
+  } catch (e) {
+    console.error("Failed reading CTO cancel email setting:", e?.message);
+  }
+
+  const employeeName = fullNameOf(employee);
+
+  // 1. Notify approvers (In-App + SMS to all, Email to those who saw it)
+  if (approverIds.length > 0) {
+    let approvers = [];
+    try {
+      approvers = await Employee.find({
+        _id: {
+          $in: approverIds,
+        },
+      })
+        .select("phone firstName lastName email")
+        .lean();
+
+      await NotificationService.notifyApproversOnCtoCancellation({
+        approverIds,
+        approvers,
+        employee,
+        ctoApplication: application,
+      });
+    } catch (e) {
+      console.error(
+        "Failed creating CTO cancellation notifications for approvers:",
+        e?.message || e,
+      );
+    }
+
+    if (emailEnabled && emailApproverIds.size > 0) {
+      try {
+        await Promise.all(
+          approvers
+            .filter((a) => a?.email && emailApproverIds.has(String(a._id)))
+            .map((a) => {
+              const tpl = ctoCancelledApproverEmail({
+                approverName: fullNameOf(a),
+                employeeName,
+                requestedHours: application.requestedHours,
+                inclusiveDates: application.inclusiveDates,
+              });
+              return safeSendEmail(a.email, tpl.subject, tpl.html);
+            }),
+        );
+      } catch (e) {
+        console.error(
+          "Failed emailing approvers on CTO cancellation:",
+          e?.message || e,
+        );
+      }
+    }
+  }
+
+  // 2. Notify passive tagged employees (In-App + SMS + Email)
+  //    Skipped entirely when there are no notified employees.
+  const approverIdSet = new Set(approverIds);
+  const notifiedIds = [
+    ...new Set(
+      (application?.notifiedEmployees || [])
+        .map((item) => String(extractId(item)))
+        .filter((id) => mongoose.isValidObjectId(id) && !approverIdSet.has(id)),
+    ),
+  ];
+
+  if (notifiedIds.length > 0) {
+    let notifiedDocs = [];
+    try {
+      notifiedDocs = await Employee.find({
+        _id: {
+          $in: notifiedIds,
+        },
+      })
+        .select("phone firstName lastName email")
+        .lean();
+
+      if (
+        typeof NotificationService.notifyTaggedEmployeesOnCtoCancellation ===
+        "function"
+      ) {
+        await NotificationService.notifyTaggedEmployeesOnCtoCancellation({
+          notifiedIds,
+          notifiedEmployees: notifiedDocs,
+          employee,
+          ctoApplication: application,
+        });
+      } else {
+        await NotificationService.notifyApproversOnCtoCancellation({
+          approverIds: notifiedIds,
+          approvers: notifiedDocs,
+          employee,
+          ctoApplication: application,
+        });
+      }
+    } catch (e) {
+      console.error(
+        "Failed creating CTO cancellation notifications for tagged employees:",
+        e?.message || e,
+      );
+    }
+
+    if (emailEnabled) {
+      try {
+        await Promise.all(
+          notifiedDocs
+            .filter((doc) => doc?.email)
+            .map((doc) => {
+              const tpl = ctoNotifiedCancelledEmail({
+                recipientName: fullNameOf(doc),
+                employeeName,
+                requestedHours: application.requestedHours,
+                inclusiveDates: application.inclusiveDates,
+              });
+              return safeSendEmail(doc.email, tpl.subject, tpl.html);
+            }),
+        );
+      } catch (e) {
+        console.error(
+          "Failed emailing tagged employees on CTO cancellation:",
+          e?.message || e,
+        );
+      }
+    }
   }
 }
 
@@ -299,9 +470,9 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 
         let description = "N/A";
         if (credit.purpose) {
-          description = `${credit.purpose} (Please see attached memo)`;
+          description = credit.purpose + " (Please see attached memo)";
         } else if (credit.memoNo) {
-          description = `Memo ${credit.memoNo}`;
+          description = "Memo " + credit.memoNo;
         }
 
         transactions.push({
@@ -320,7 +491,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
   applications.forEach((app) => {
     const datesCovered = formatLedgerDates(app.inclusiveDates);
     const descriptionBase = datesCovered
-      ? `Compensatory Time Off (${datesCovered})`
+      ? "Compensatory Time Off (" + datesCovered + ")"
       : "Compensatory Time Off";
 
     const transactionDate = app.createdAt;
@@ -340,7 +511,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         date: transactionDate,
         displayDate: displayDate,
         type: "APPLICATION",
-        description: `${descriptionBase}${statusSuffix}`,
+        description: descriptionBase + statusSuffix,
         amount: -strictNumber(app.requestedHours),
         referenceId: app._id,
         sortPriority: 1,
@@ -365,7 +536,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         date: revokeDate,
         displayDate: displayDate,
         type: "REVOCATION_RESTORED",
-        description: `${descriptionBase} - Revoked`,
+        description: descriptionBase + " - Revoked",
         amount: strictNumber(app.requestedHours),
         referenceId: app._id,
         sortPriority: 2,
@@ -414,6 +585,7 @@ const addCtoApplicationService = async ({
   reason,
   routeId,
   approvers,
+  notifiedEmployees,
   inclusiveDates,
   memos,
   employeeType,
@@ -422,9 +594,6 @@ const addCtoApplicationService = async ({
   actionDetails,
   lateFiling,
 }) => {
-  console.log("=========================================");
-  console.log("[addCtoApplicationService] STARTING...");
-
   assertObjectId(userId, "User ID");
 
   const strictReqHours = strictNumber(requestedHours);
@@ -442,7 +611,7 @@ const addCtoApplicationService = async ({
   }
 
   // ==========================================
-  // ✅ ENFORCE CSC USAGE (AVAILMENT) RULES
+  // ENFORCE CSC USAGE (AVAILMENT) RULES
   // ==========================================
 
   // Rule 1: Availed in blocks of 4 or 8 hours
@@ -460,7 +629,6 @@ const addCtoApplicationService = async ({
       400,
     );
   }
-  // ==========================================
 
   // ==========================================
   // LATE FILING & COMPUTATION MODE RULE
@@ -470,7 +638,6 @@ const addCtoApplicationService = async ({
   const workingDaysValue = settingsDoc.workingDaysValue ?? 5;
   const computationMode = settingsDoc.computationMode || "Working Days";
 
-  // Override activeWorkingDays if Calendar Days is selected
   const activeWorkingDays =
     computationMode === "Calendar Days"
       ? [0, 1, 2, 3, 4, 5, 6]
@@ -490,10 +657,6 @@ const addCtoApplicationService = async ({
       activeWorkingDays,
     );
 
-    console.log(
-      `[addCtoApplicationService] Earliest date: ${earliestDate.toDateString()}, Lead Time (${computationMode}): ${leadTime}`,
-    );
-
     if (leadTime < workingDaysValue) {
       if (
         !lateFiling ||
@@ -505,7 +668,15 @@ const addCtoApplicationService = async ({
             ? "calendar day(s)"
             : "working day(s)";
         throw createServiceError(
-          `Applications filed with less than ${workingDaysValue} ${dayTypeLabel} of lead time require a late filing justification. (Your lead time: ${leadTime} ${dayTypeLabel})`,
+          "Applications filed with less than " +
+            workingDaysValue +
+            " " +
+            dayTypeLabel +
+            " of lead time require a late filing justification. (Your lead time: " +
+            leadTime +
+            " " +
+            dayTypeLabel +
+            ")",
           400,
         );
       }
@@ -529,12 +700,10 @@ const addCtoApplicationService = async ({
       attachment: lateFiling.attachment || null,
     };
   }
+
   // ==========================================
-
-  console.log(
-    `[addCtoApplicationService] Fetching employee profile for ID: ${userId}`,
-  );
-
+  // EMPLOYEE & DUPLICATE CHECKS
+  // ==========================================
   const employee = await Employee.findById(userId).populate("salary").lean();
   if (!employee) {
     throw createServiceError("Employee not found.", 404);
@@ -547,8 +716,12 @@ const addCtoApplicationService = async ({
 
   const existingApplications = await CtoApplication.find({
     employee: userId,
-    overallStatus: { $in: ["PENDING", "APPROVED"] },
-    inclusiveDates: { $in: inclusiveDates },
+    overallStatus: {
+      $in: ["PENDING", "APPROVED"],
+    },
+    inclusiveDates: {
+      $in: inclusiveDates,
+    },
   });
 
   if (existingApplications.length > 0) {
@@ -581,19 +754,35 @@ const addCtoApplicationService = async ({
     }
   }
 
+  // ==========================================
+  // APPROVERS & NOTIFIED EMPLOYEES
+  // ==========================================
   let finalApprovers = [];
+  let routeNotifiedIds = [];
+
   if (routeId) {
     assertObjectId(routeId, "Route ID");
     finalApprovers = await resolveApproversFromRoute(routeId);
+
+    const routeDoc = await ApprovalRoute.findById(routeId)
+      .select("notifiedEmployees")
+      .lean();
+    if (Array.isArray(routeDoc?.notifiedEmployees)) {
+      routeNotifiedIds = routeDoc.notifiedEmployees
+        .map((item) => extractId(item))
+        .filter((id) => mongoose.isValidObjectId(id))
+        .map(String);
+    }
   } else if (approvers && Array.isArray(approvers)) {
     finalApprovers = approvers
       .map((a) => {
-        if (a && a.approver && mongoose.isValidObjectId(a.approver)) {
-          return { approver: a.approver, role: a.role };
+        const approverId = extractId(a?.approver || a);
+        if (approverId && mongoose.isValidObjectId(approverId)) {
+          return { approver: String(approverId), role: a?.role };
         }
-        return { approver: a, role: undefined };
+        return { approver: null, role: undefined };
       })
-      .filter((a) => mongoose.isValidObjectId(a.approver));
+      .filter((a) => a.approver && mongoose.isValidObjectId(a.approver));
   }
 
   if (!finalApprovers || finalApprovers.length === 0) {
@@ -606,12 +795,51 @@ const addCtoApplicationService = async ({
   for (const fa of finalApprovers) {
     if (!fa.role || !APPROVAL_ROLE_VALUES.includes(fa.role)) {
       throw createServiceError(
-        `Invalid or missing approval role for approver ID ${fa.approver}. Role must be one of: ${APPROVAL_ROLE_VALUES.join(", ")}`,
+        "Invalid or missing approval role for approver ID " +
+          fa.approver +
+          ". Role must be one of: " +
+          APPROVAL_ROLE_VALUES.join(", "),
         400,
       );
     }
   }
 
+  // Safely parse notifiedEmployees (array, JSON string from FormData, or route defaults)
+  let parsedNotifiedInput = notifiedEmployees;
+  if (typeof parsedNotifiedInput === "string" && parsedNotifiedInput.trim()) {
+    try {
+      parsedNotifiedInput = JSON.parse(parsedNotifiedInput);
+    } catch {
+      parsedNotifiedInput = [parsedNotifiedInput.trim()];
+    }
+  }
+
+  const candidateNotifiedIds = Array.isArray(parsedNotifiedInput)
+    ? parsedNotifiedInput.map((item) => extractId(item)).filter(Boolean)
+    : routeNotifiedIds;
+
+  for (let i = 0; i < candidateNotifiedIds.length; i++) {
+    if (!mongoose.isValidObjectId(candidateNotifiedIds[i])) {
+      throw createServiceError(
+        "Invalid notified employee ID at position " + (i + 1) + ".",
+        400,
+      );
+    }
+  }
+
+  // Exclude the applicant and active approvers from notifiedEmployees
+  const excludedIds = new Set([
+    String(userId),
+    ...finalApprovers.map((a) => String(a.approver)),
+  ]);
+
+  const finalNotifiedIds = [
+    ...new Set(candidateNotifiedIds.map((id) => String(id))),
+  ].filter((id) => !excludedIds.has(id));
+
+  // ==========================================
+  // MEMO VALIDATION
+  // ==========================================
   if (!memos || !Array.isArray(memos) || !memos.length) {
     throw createServiceError(
       "At least one memo with applied hours must be provided.",
@@ -631,7 +859,9 @@ const addCtoApplicationService = async ({
   const memoIds = sanitizedMemos.map((m) => m.memoId);
 
   const credits = await CtoCredit.find({
-    _id: { $in: memoIds },
+    _id: {
+      $in: memoIds,
+    },
     "employees.employee": employee._id,
     status: "CREDITED",
   });
@@ -640,9 +870,20 @@ const addCtoApplicationService = async ({
     throw createServiceError("Some memos are invalid or not credited.", 400);
   }
 
+  // ==========================================
+  // PERSIST (reserve hours -> steps -> application)
+  // Anything that fails here is fully rolled back.
+  // ==========================================
+  let stage = "reserve-hours";
   let totalAppliedHours = 0;
   const memoUsage = [];
   const rollbackActions = [];
+
+  let newApplication = null;
+  let approvalSteps = [];
+  let approverEmployees = [];
+  let stepsInserted = false;
+  let applicationSaved = false;
 
   try {
     for (const input of sanitizedMemos) {
@@ -652,7 +893,7 @@ const addCtoApplicationService = async ({
 
       if (!credit)
         throw createServiceError(
-          `Credit not found for memoId ${input.memoId}`,
+          "Credit not found for memoId " + input.memoId,
           400,
         );
 
@@ -661,7 +902,7 @@ const addCtoApplicationService = async ({
       );
       if (!empCredit)
         throw createServiceError(
-          `Employee credit record not found for memo ${credit.memoNo}`,
+          "Employee credit record not found for memo " + credit.memoNo,
           400,
         );
 
@@ -669,7 +910,10 @@ const addCtoApplicationService = async ({
 
       if (input.appliedHours <= 0 || input.appliedHours > availableHours) {
         throw createServiceError(
-          `Invalid applied hours for memo ${credit.memoNo}. Available: ${availableHours}`,
+          "Invalid applied hours for memo " +
+            credit.memoNo +
+            ". Available: " +
+            availableHours,
           400,
         );
       }
@@ -680,7 +924,9 @@ const addCtoApplicationService = async ({
           employees: {
             $elemMatch: {
               employee: employee._id,
-              remainingHours: { $gte: input.appliedHours },
+              remainingHours: {
+                $gte: input.appliedHours,
+              },
             },
           },
         },
@@ -697,7 +943,9 @@ const addCtoApplicationService = async ({
 
       if (updateResult.modifiedCount === 0) {
         throw createServiceError(
-          `Failed to reserve hours for memo ${credit.memoNo}. Concurrency mismatch.`,
+          "Failed to reserve hours for memo " +
+            credit.memoNo +
+            ". Concurrency mismatch.",
           400,
         );
       }
@@ -718,10 +966,16 @@ const addCtoApplicationService = async ({
 
     if (totalAppliedHours !== strictReqHours) {
       throw createServiceError(
-        `Sum of applied hours (${totalAppliedHours}) does not match requested hours (${strictReqHours})`,
+        "Sum of applied hours (" +
+          totalAppliedHours +
+          ") does not match requested hours (" +
+          strictReqHours +
+          ")",
         400,
       );
     }
+
+    stage = "build-application";
 
     const applicationPayload = {
       employee: employee._id,
@@ -740,6 +994,7 @@ const addCtoApplicationService = async ({
       reason: safeReason,
       inclusiveDates,
       memo: memoUsage,
+      notifiedEmployees: finalNotifiedIds,
       overallStatus: "PENDING",
       commutation: commutation || "Not Requested",
       lateFiling: validatedLateFiling,
@@ -772,15 +1027,19 @@ const addCtoApplicationService = async ({
 
     if (actionDetails) applicationPayload.actionDetails = actionDetails;
 
-    const newApplication = new CtoApplication(applicationPayload);
+    newApplication = new CtoApplication(applicationPayload);
+
+    stage = "build-approval-steps";
 
     const approverIds = finalApprovers.map((a) => a.approver);
 
-    const approverEmployees = await Employee.find({
-      _id: { $in: approverIds },
+    approverEmployees = await Employee.find({
+      _id: {
+        $in: approverIds,
+      },
     })
       .select(
-        "prefixTitle firstName middleName lastName nameExtension postfixTitle position signature",
+        "prefixTitle firstName middleName lastName nameExtension postfixTitle position signature phone email",
       )
       .lean();
 
@@ -788,7 +1047,7 @@ const addCtoApplicationService = async ({
       approverEmployees.map((emp) => [String(emp._id), emp]),
     );
 
-    const approvalSteps = finalApprovers.map((approverObj, index) => {
+    approvalSteps = finalApprovers.map((approverObj, index) => {
       const approverData = approverMap.get(String(approverObj.approver));
 
       return new ApprovalStep({
@@ -812,61 +1071,60 @@ const addCtoApplicationService = async ({
 
     newApplication.approvals = approvalSteps.map((step) => step._id);
 
-    await newApplication.save();
+    // Validate the application BEFORE writing anything else
+    stage = "validate-application";
+    await newApplication.validate();
+
+    stage = "insert-approval-steps";
     await ApprovalStep.insertMany(approvalSteps);
+    stepsInserted = true;
 
-    const populatedApp = await populateApplicationById(newApplication._id);
-    const justApproverIds = finalApprovers.map((a) => a.approver);
-
-    try {
-      await NotificationService.notifyApproversOnCtoSubmission({
-        approverIds: justApproverIds,
-        employee,
-        ctoApplication: newApplication,
-      });
-      await NotificationService.notifyEmployeeOnCtoSubmissionCreated({
-        employee,
-        ctoApplication: newApplication,
-      });
-    } catch (err) {
-      console.error(
-        "Failed to create CTO submission notifications:",
-        err?.message,
-      );
-    }
-
-    try {
-      const firstApproval = approvalSteps.find((a) => a.level === 1);
-      const approverUser = await Employee.findById(firstApproval.approver)
-        .select("firstName lastName email")
-        .lean();
-
-      const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
-
-      if (approverUser?.email && enabled) {
-        const tpl = ctoApprovalEmail({
-          approverName: `${approverUser.firstName} ${approverUser.lastName}`,
-          employeeName: `${employee.firstName} ${employee.lastName}`,
-          requestedHours: strictReqHours,
-          reason: safeReason,
-          level: 1,
-          link: `${process.env.FRONTEND_URL}/app/cto-approvals/${newApplication._id}`,
-        });
-
-        await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
-      }
-    } catch (err) {
-      console.error("Failed to send CTO approval email:", err?.message);
-    }
-
-    return populatedApp;
+    stage = "save-application";
+    await newApplication.save();
+    applicationSaved = true;
   } catch (error) {
+    console.error(
+      '[addCtoApplicationService] failed at stage "' + stage + '":',
+      error?.message || error,
+    );
+
+    // Undo anything that was written so no half-saved application remains
+    if (applicationSaved && newApplication?._id) {
+      try {
+        await CtoApplication.deleteOne({ _id: newApplication._id });
+      } catch (e) {
+        console.error(
+          "[ROLLBACK FAILED] Could not delete application " +
+            newApplication._id +
+            ":",
+          e?.message,
+        );
+      }
+    }
+
+    if (stepsInserted && approvalSteps.length > 0) {
+      try {
+        await ApprovalStep.deleteMany({
+          _id: { $in: approvalSteps.map((s) => s._id) },
+        });
+      } catch (e) {
+        console.error(
+          "[ROLLBACK FAILED] Could not delete approval steps for application " +
+            newApplication?._id +
+            ":",
+          e?.message,
+        );
+      }
+    }
+
     for (const action of rollbackActions) {
       try {
         await CtoCredit.updateOne(
           {
             _id: action.memoId,
-            employees: { $elemMatch: { employee: employee._id } },
+            employees: {
+              $elemMatch: { employee: employee._id },
+            },
           },
           {
             $inc: {
@@ -877,7 +1135,11 @@ const addCtoApplicationService = async ({
         );
       } catch (rollbackErr) {
         console.error(
-          `[ROLLBACK FAILED] Could not restore ${action.appliedHours}h to memo ${action.memoId}. Manual intervention may be required! Error:`,
+          "[ROLLBACK FAILED] Could not restore " +
+            action.appliedHours +
+            "h to memo " +
+            action.memoId +
+            ". Manual intervention may be required! Error:",
           rollbackErr.message,
         );
       }
@@ -885,6 +1147,161 @@ const addCtoApplicationService = async ({
 
     throw error;
   }
+
+  // ==========================================
+  // SIDE EFFECTS (the application is already saved —
+  // nothing below may fail the request)
+  // ==========================================
+  let populatedApp = null;
+  try {
+    populatedApp = await populateApplicationById(newApplication._id);
+  } catch (err) {
+    console.error(
+      "[addCtoApplicationService] populate failed (application was saved):",
+      err?.message,
+    );
+    populatedApp = newApplication.toObject();
+  }
+
+  const justApproverIds = finalApprovers.map((a) => String(a.approver));
+
+  // 1. Notify active approvers (In-App + SMS)
+  try {
+    await NotificationService.notifyApproversOnCtoSubmission({
+      approverIds: justApproverIds,
+      approvers: approverEmployees,
+      employee,
+      ctoApplication: newApplication,
+    });
+  } catch (err) {
+    console.error(
+      "Failed to notify approvers on CTO submission:",
+      err?.message,
+    );
+  }
+
+  // 2. Notify passive tagged employees (In-App + SMS + Email)
+  //    Skipped entirely when there are no notified employees.
+  if (finalNotifiedIds.length > 0) {
+    let notifiedDocs = [];
+
+    try {
+      notifiedDocs = await Employee.find({
+        _id: {
+          $in: finalNotifiedIds,
+        },
+      })
+        .select(
+          "prefixTitle firstName middleName lastName nameExtension postfixTitle position phone email",
+        )
+        .lean();
+
+      if (
+        typeof NotificationService.notifyTaggedEmployeesOnCtoSubmission ===
+        "function"
+      ) {
+        await NotificationService.notifyTaggedEmployeesOnCtoSubmission({
+          notifiedIds: finalNotifiedIds,
+          notifiedEmployees: notifiedDocs,
+          employee,
+          ctoApplication: newApplication,
+        });
+      } else {
+        await NotificationService.notifyApproversOnCtoSubmission({
+          approverIds: finalNotifiedIds,
+          approvers: notifiedDocs,
+          employee,
+          ctoApplication: newApplication,
+        });
+      }
+    } catch (err) {
+      console.error(
+        "Failed to notify tagged employees on CTO submission:",
+        err?.message,
+      );
+    }
+
+    // Email only those notified employees who actually have an email
+    try {
+      const recipients = notifiedDocs.filter((doc) => doc?.email);
+
+      if (recipients.length > 0) {
+        const emailKey = EMAIL_KEYS.CTO_NOTIFIED || EMAIL_KEYS.CTO_APPROVAL;
+        const enabled = await canSend(emailKey);
+
+        if (enabled) {
+          await Promise.all(
+            recipients.map((doc) => {
+              const tpl = ctoNotifiedEmail({
+                recipientName: fullNameOf(doc),
+                employeeName: fullNameOf(employee),
+                requestedHours: strictReqHours,
+                inclusiveDates,
+                reason: safeReason,
+              });
+              return safeSendEmail(doc.email, tpl.subject, tpl.html);
+            }),
+          );
+        }
+      }
+    } catch (err) {
+      console.error(
+        "Failed to email tagged employees on CTO submission:",
+        err?.message,
+      );
+    }
+  }
+
+  // 3. Notify the applicant (In-App + SMS)
+  try {
+    await NotificationService.notifyEmployeeOnCtoSubmissionCreated({
+      employee,
+      ctoApplication: newApplication,
+    });
+  } catch (err) {
+    console.error(
+      "Failed to notify applicant on CTO submission:",
+      err?.message,
+    );
+  }
+
+  // 4. Email the level-1 approver
+  try {
+    const firstApproval = approvalSteps.find((a) => a.level === 1);
+    const approverUser = firstApproval
+      ? await Employee.findById(firstApproval.approver)
+          .select("firstName lastName email")
+          .lean()
+      : null;
+
+    const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
+
+    if (approverUser?.email && enabled) {
+      const frontendUrl = process.env.FRONTEND_URL || "";
+      const tpl = ctoApprovalEmail({
+        approverName: fullNameOf(approverUser),
+        employeeName: fullNameOf(employee),
+        requestedHours: strictReqHours,
+        reason: safeReason,
+        level: 1,
+        link: frontendUrl + "/app/cto-approvals/" + newApplication._id,
+      });
+
+      await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+    } else if (!enabled) {
+      console.warn(
+        "[addCtoApplicationService] CTO_APPROVAL email is disabled in settings — email not sent.",
+      );
+    } else if (!approverUser?.email) {
+      console.warn(
+        "[addCtoApplicationService] Level-1 approver has no email on file — email not sent.",
+      );
+    }
+  } catch (err) {
+    console.error("Failed to send CTO approval email:", err?.message);
+  }
+
+  return populatedApp;
 };
 
 const cancelCtoApplicationService = async ({ userId, applicationId }) => {
@@ -908,7 +1325,7 @@ const cancelCtoApplicationService = async ({ userId, applicationId }) => {
   }
 
   const employee = await Employee.findById(userId).select(
-    "prefixTitle firstName middleName lastName nameExtension postfixTitle email",
+    "prefixTitle firstName middleName lastName nameExtension postfixTitle email phone",
   );
 
   app.overallStatus = "CANCELLED";
@@ -954,7 +1371,7 @@ const followUpCtoApplicationService = async ({ userId, applicationId }) => {
       path: "approvals",
       populate: {
         path: "approver",
-        select: "firstName lastName email",
+        select: "firstName lastName email phone",
       },
       options: { sort: { level: 1 } },
     });
@@ -998,12 +1415,13 @@ const followUpCtoApplicationService = async ({ userId, applicationId }) => {
   const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
 
   if (enabled) {
+    const frontendUrl = process.env.FRONTEND_URL || "";
     const tpl = ctoFollowUpEmail({
-      approverName: `${approverUser.firstName} ${approverUser.lastName}`,
-      employeeName: `${app.employee.firstName} ${app.employee.lastName}`,
+      approverName: fullNameOf(approverUser),
+      employeeName: fullNameOf(app.employee),
       requestedHours: app.requestedHours,
       level: currentStep.level,
-      link: `${process.env.FRONTEND_URL}/app/cto-approvals/${app._id}`,
+      link: frontendUrl + "/app/cto-approvals/" + app._id,
     });
 
     await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
@@ -1011,6 +1429,7 @@ const followUpCtoApplicationService = async ({ userId, applicationId }) => {
     try {
       await NotificationService.notifyApproverOnCtoFollowUp({
         approverId: approverUser._id,
+        approver: approverUser,
         employee: app.employee,
         ctoApplication: app,
       });
@@ -1105,32 +1524,37 @@ const requestRevocationCtoApplicationService = async ({
   await app.save();
 
   try {
-    const employee =
-      await Employee.findById(userId).select("firstName lastName");
+    const employee = await Employee.findById(userId).select(
+      "firstName lastName phone",
+    );
     const hrEmails = await getRevocationApproverEmails();
     let hrIds = [];
+    let hrEmployees = [];
 
     if (hrEmails && hrEmails.length > 0) {
-      const hrEmployees = await Employee.find({
-        email: { $in: hrEmails },
-      }).select("_id");
+      hrEmployees = await Employee.find({
+        email: {
+          $in: hrEmails,
+        },
+      }).select("_id phone firstName lastName");
       hrIds = hrEmployees.map((emp) => emp._id);
 
       await NotificationService.notifyHrOnCtoRevocationRequest({
         hrIds,
+        hrs: hrEmployees,
         employee,
         ctoApplication: app,
       });
 
       const emailEnabled = await canSend(EMAIL_KEYS.CTO_REVOCATION_REQUEST);
       if (emailEnabled) {
+        const frontendUrl = process.env.FRONTEND_URL || "";
         const tpl = ctoRevocationRequestEmail({
           hrName: "HR Team",
-          employeeName:
-            `${employee?.firstName || ""} ${employee?.lastName || ""}`.trim(),
+          employeeName: fullNameOf(employee),
           requestedHours: app.requestedHours,
           reason: safeReason,
-          link: `${process.env.FRONTEND_URL}/app/leave-revocations/${app._id}`,
+          link: frontendUrl + "/app/leave-revocations/" + app._id,
         });
 
         const emailPromises = hrEmails.map((hrEmail) =>
@@ -1210,19 +1634,24 @@ const cancelRevocationCtoRequestService = async ({ userId, applicationId }) => {
   }
 
   try {
-    const employee =
-      await Employee.findById(userId).select("firstName lastName");
+    const employee = await Employee.findById(userId).select(
+      "firstName lastName phone",
+    );
     const hrEmails = await getRevocationApproverEmails();
     let hrIds = [];
+    let hrEmployees = [];
 
     if (hrEmails && hrEmails.length > 0) {
-      const hrEmployees = await Employee.find({
-        email: { $in: hrEmails },
-      }).select("_id");
+      hrEmployees = await Employee.find({
+        email: {
+          $in: hrEmails,
+        },
+      }).select("_id phone firstName lastName");
       hrIds = hrEmployees.map((emp) => emp._id);
 
       await NotificationService.notifyHrOnCtoRevocationCancelled({
         hrIds,
+        hrs: hrEmployees,
         employee,
         ctoApplication: application,
       });
@@ -1231,8 +1660,7 @@ const cancelRevocationCtoRequestService = async ({ userId, applicationId }) => {
       if (emailEnabled) {
         const tpl = ctoRevocationCancelledEmail({
           hrName: "HR Team",
-          employeeName:
-            `${employee?.firstName || ""} ${employee?.lastName || ""}`.trim(),
+          employeeName: fullNameOf(employee),
           requestedHours: application.requestedHours,
         });
 
@@ -1292,7 +1720,7 @@ const processRevocationRequestService = async ({
 
   try {
     application = await CtoApplication.findById(applicationId)
-      .populate("employee", "_id firstName lastName email balances")
+      .populate("employee", "_id firstName lastName email phone balances")
       .session(session);
 
     if (!application) {
@@ -1322,7 +1750,9 @@ const processRevocationRequestService = async ({
             employees: {
               $elemMatch: {
                 employee: employeeId,
-                usedHours: { $gte: appliedHours },
+                usedHours: {
+                  $gte: appliedHours,
+                },
               },
             },
           },
@@ -1340,7 +1770,9 @@ const processRevocationRequestService = async ({
 
         if (!creditResult) {
           throw createServiceError(
-            `Failed to restore credit hours for memo ${memoId}. Data mismatch or insufficient used hours.`,
+            "Failed to restore credit hours for memo " +
+              memoId +
+              ". Data mismatch or insufficient used hours.",
             400,
           );
         }
@@ -1348,7 +1780,11 @@ const processRevocationRequestService = async ({
 
       const updatedEmployee = await Employee.findOneAndUpdate(
         { _id: employeeId },
-        { $inc: { "balances.ctoHours": requestedHours } },
+        {
+          $inc: {
+            "balances.ctoHours": requestedHours,
+          },
+        },
         { session, new: true },
       );
 
@@ -1398,12 +1834,13 @@ const processRevocationRequestService = async ({
   try {
     const emp = application.employee;
     if (emp && emp.email) {
-      const empName = `${emp.firstName || ""} ${emp.lastName || ""}`.trim();
+      const empName = fullNameOf(emp);
       const requestedHours = strictNumber(application.requestedHours);
 
       if (safeAction === "APPROVE") {
         await NotificationService.notifyEmployeeOnCtoRevocationApproved({
           employeeId: emp._id,
+          employee: emp,
           hrEmployee: hrAdmin,
           ctoApplication: application,
           restoredHours: requestedHours,
@@ -1421,6 +1858,7 @@ const processRevocationRequestService = async ({
       } else if (safeAction === "REJECT") {
         await NotificationService.notifyEmployeeOnCtoRevocationRejected({
           employeeId: emp._id,
+          employee: emp,
           hrEmployee: hrAdmin,
           ctoApplication: application,
           remarks: safeRemarks,
@@ -1460,7 +1898,9 @@ const getRevocationRequestsService = async (
   if (filters.status) {
     baseQuery.overallStatus = String(filters.status).toUpperCase();
   } else {
-    baseQuery.overallStatus = { $in: ["REVOCATION_REQUESTED", "REVOKED"] };
+    baseQuery.overallStatus = {
+      $in: ["REVOCATION_REQUESTED", "REVOKED"],
+    };
   }
 
   if (filters.employeeId) {
@@ -1490,7 +1930,7 @@ const getRevocationRequestsService = async (
   const [applications, total] = await Promise.all([
     CtoApplication.find(baseQuery)
       .select(
-        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling revocationHistory",
+        "requestedHours reason overallStatus approvals notifiedEmployees employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling revocationHistory",
       )
       .populate({
         path: "approvals",
@@ -1500,6 +1940,12 @@ const getRevocationRequestsService = async (
           select:
             "prefixTitle firstName middleName lastName nameExtension postfixTitle division position _id",
         },
+      })
+      .populate({
+        path: "notifiedEmployees",
+        select:
+          "prefixTitle firstName middleName lastName nameExtension postfixTitle division position _id",
+        strictPopulate: false,
       })
       .populate(
         "employee",
@@ -1526,11 +1972,19 @@ const getRevocationRequestsService = async (
   });
 
   const statusAgg = await CtoApplication.aggregate([
-    { $match: { overallStatus: { $in: ["REVOCATION_REQUESTED", "REVOKED"] } } },
+    {
+      $match: {
+        overallStatus: {
+          $in: ["REVOCATION_REQUESTED", "REVOKED"],
+        },
+      },
+    },
     {
       $group: {
         _id: "$overallStatus",
-        count: { $sum: 1 },
+        count: {
+          $sum: 1,
+        },
       },
     },
   ]);
@@ -1603,7 +2057,7 @@ const getAllCtoApplicationsService = async (
   const [applications, total] = await Promise.all([
     CtoApplication.find(query)
       .select(
-        "requestedHours reason overallStatus approvals employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling revocationHistory",
+        "requestedHours reason overallStatus approvals notifiedEmployees employee inclusiveDates memo createdAt employeeType commutation applicantSignatureUrl applicantSnapshot certificationOfLeaveCredits revokedBy revokeReason revokedAt revocationRequest lateFiling revocationHistory",
       )
       .populate({
         path: "approvals",
@@ -1613,6 +2067,12 @@ const getAllCtoApplicationsService = async (
           select:
             "prefixTitle firstName middleName lastName nameExtension postfixTitle division position _id",
         },
+      })
+      .populate({
+        path: "notifiedEmployees",
+        select:
+          "prefixTitle firstName middleName lastName nameExtension postfixTitle division position _id",
+        strictPopulate: false,
       })
       .populate(
         "employee",
@@ -1639,11 +2099,15 @@ const getAllCtoApplicationsService = async (
   });
 
   const statusAgg = await CtoApplication.aggregate([
-    { $match: baseQuery },
+    {
+      $match: baseQuery,
+    },
     {
       $group: {
         _id: "$overallStatus",
-        count: { $sum: 1 },
+        count: {
+          $sum: 1,
+        },
       },
     },
   ]);
@@ -1695,7 +2159,11 @@ const getCtoApplicationsByEmployeeService = async (
   limit = Math.min(parseInt(limit) || 20, 100);
   const skip = (page - 1) * limit;
 
-  const pipeline = [{ $match: { employee: employeeObjectId } }];
+  const pipeline = [
+    {
+      $match: { employee: employeeObjectId },
+    },
+  ];
 
   if (filters.employeeType) {
     pipeline.push({
@@ -1717,9 +2185,9 @@ const getCtoApplicationsByEmployeeService = async (
   pipeline.push({
     $lookup: {
       from: "ctocredits",
-      let: { memoIds: "$memo.memoId", appEmployeeId: "$employee" },
+      localField: "memo.memoId",
+      foreignField: "_id",
       pipeline: [
-        { $match: { $expr: { $in: ["$_id", "$$memoIds"] } } },
         {
           $project: {
             dateApproved: 1,
@@ -1734,20 +2202,6 @@ const getCtoApplicationsByEmployeeService = async (
             purpose: 1,
           },
         },
-        {
-          $addFields: {
-            employee: {
-              $first: {
-                $filter: {
-                  input: "$employees",
-                  as: "emp",
-                  cond: { $eq: ["$$emp.employee", "$$appEmployeeId"] },
-                },
-              },
-            },
-          },
-        },
-        { $project: { employees: 0 } },
       ],
       as: "memoDetails",
     },
@@ -1757,7 +2211,10 @@ const getCtoApplicationsByEmployeeService = async (
     const safeSearch = sanitizeSearch(filters.search, 100);
     pipeline.push({
       $match: {
-        "memoDetails.memoNo": { $regex: safeSearch, $options: "i" },
+        "memoDetails.memoNo": {
+          $regex: safeSearch,
+          $options: "i",
+        },
       },
     });
   }
@@ -1773,9 +2230,9 @@ const getCtoApplicationsByEmployeeService = async (
   pipeline.push({
     $lookup: {
       from: "approvalsteps",
-      let: { approvalIds: "$approvals" },
+      localField: "approvals",
+      foreignField: "_id",
       pipeline: [
-        { $match: { $expr: { $in: ["$_id", "$$approvalIds"] } } },
         {
           $lookup: {
             from: "employees",
@@ -1784,7 +2241,12 @@ const getCtoApplicationsByEmployeeService = async (
             as: "approver",
           },
         },
-        { $unwind: { path: "$approver", preserveNullAndEmptyArrays: true } },
+        {
+          $unwind: {
+            path: "$approver",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
         {
           $project: {
             level: 1,
@@ -1807,9 +2269,35 @@ const getCtoApplicationsByEmployeeService = async (
             },
           },
         },
-        { $sort: { level: 1 } },
+        {
+          $sort: { level: 1 },
+        },
       ],
       as: "approvals",
+    },
+  });
+
+  pipeline.push({
+    $lookup: {
+      from: "employees",
+      localField: "notifiedEmployees",
+      foreignField: "_id",
+      pipeline: [
+        {
+          $project: {
+            _id: 1,
+            prefixTitle: 1,
+            firstName: 1,
+            middleName: 1,
+            lastName: 1,
+            nameExtension: 1,
+            postfixTitle: 1,
+            division: 1,
+            position: 1,
+          },
+        },
+      ],
+      as: "notifiedEmployees",
     },
   });
 
@@ -1823,7 +2311,10 @@ const getCtoApplicationsByEmployeeService = async (
   });
 
   pipeline.push({
-    $unwind: { path: "$employeeDoc", preserveNullAndEmptyArrays: true },
+    $unwind: {
+      path: "$employeeDoc",
+      preserveNullAndEmptyArrays: true,
+    },
   });
 
   pipeline.push({
@@ -1843,10 +2334,22 @@ const getCtoApplicationsByEmployeeService = async (
     },
   });
 
-  pipeline.push({ $project: { employeeDoc: 0 } });
-  pipeline.push({ $sort: { createdAt: -1 } });
-  pipeline.push({ $skip: skip });
-  pipeline.push({ $limit: limit });
+  pipeline.push({
+    $project: { employeeDoc: 0 },
+  });
+  pipeline.push({
+    $sort: { createdAt: -1 },
+  });
+  pipeline.push({
+    $skip: skip,
+  });
+  pipeline.push({
+    $limit: limit,
+  });
+
+  const skipKey = "$" + "skip";
+  const limitKey = "$" + "limit";
+  const sortKey = "$" + "sort";
 
   let applications = await CtoApplication.aggregate(pipeline);
 
@@ -1856,7 +2359,18 @@ const getCtoApplicationsByEmployeeService = async (
 
     if (app.memo && Array.isArray(app.memo)) {
       const memoMap = (app.memoDetails || []).reduce((acc, md) => {
-        if (md && md._id) acc[md._id.toString()] = md;
+        if (md && md._id) {
+          const matchedEmp = Array.isArray(md.employees)
+            ? md.employees.find(
+                (e) => String(e.employee) === String(employeeId),
+              ) || null
+            : null;
+          const { employees, ...restMemo } = md;
+          acc[md._id.toString()] = {
+            ...restMemo,
+            employee: matchedEmp,
+          };
+        }
         return acc;
       }, {});
 
@@ -1876,9 +2390,11 @@ const getCtoApplicationsByEmployeeService = async (
   const countPipeline = [
     ...pipeline.filter(
       (stage) =>
-        !("$skip" in stage) && !("$limit" in stage) && !("$sort" in stage),
+        !(skipKey in stage) && !(limitKey in stage) && !(sortKey in stage),
     ),
-    { $count: "total" },
+    {
+      $count: "total",
+    },
   ];
 
   const totalResult = await CtoApplication.aggregate(countPipeline);
@@ -1887,7 +2403,9 @@ const getCtoApplicationsByEmployeeService = async (
   countPipelineStages.push({
     $group: {
       _id: "$overallStatus",
-      count: { $sum: 1 },
+      count: {
+        $sum: 1,
+      },
     },
   });
 

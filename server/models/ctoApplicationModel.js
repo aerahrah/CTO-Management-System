@@ -11,6 +11,12 @@ const CtoApplicationSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    notifiedEmployees: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+      },
+    ],
     employeeType: {
       type: String,
       enum: ["Organic", "JO"],

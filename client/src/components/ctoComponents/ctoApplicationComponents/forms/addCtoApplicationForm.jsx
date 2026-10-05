@@ -17,11 +17,8 @@ import {
   PenTool,
   Loader2,
   UploadCloud,
-  Clock,
-  Calendar,
-  FileText,
 } from "lucide-react";
-import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
+import { SkeletonTheme } from "react-loading-skeleton";
 import Breadcrumbs from "../../../breadCrumbs";
 import "react-loading-skeleton/dist/skeleton.css";
 import { toast } from "react-toastify";
@@ -31,6 +28,26 @@ import SelectCtoMemoModal from "./selectCtoMemoModal";
 import Forbidden403 from "../../../../pages/forbidden403_FormPage";
 
 const MAX_REASON_LEN = 1000;
+
+// This form is only for Job Order employees
+const ALLOWED_EMPLOYEE_TYPE = "JO";
+
+// Choosing "Others" reveals a text box so the employee can type their own reason.
+const OTHER_REASON = "Others";
+
+const REASON_OPTIONS = [
+  "Family gathering, celebration, or event",
+  "Personal or family matters",
+  "Processing of personal documents or government IDs/licenses",
+  "Medical or health-related appointment",
+  "Assistance to an immediate family member",
+  "Personal commitments or appointments",
+  "Rest, recovery, or personal break",
+  "Participation in an event or activity",
+  "Bereavement or funeral-related matters",
+  "Other personal matters",
+  OTHER_REASON,
+];
 
 const clampNumber = (v, min, max) => {
   const n = Number(v);
@@ -52,12 +69,6 @@ const isNonWorkingDay = (iso, activeWorkingDays = [1, 2, 3, 4, 5]) => {
 };
 
 const isFullISODate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
-
-const requiredDaysFromHours = (hours, hoursPerDay = 8) => {
-  const h = Number(hours || 0);
-  if (!Number.isFinite(h) || h <= 0) return 0;
-  return Math.ceil(h / hoursPerDay);
-};
 
 const getMinSelectableDateISO = (
   leadTimeDays = 5,
@@ -228,6 +239,10 @@ const AddCtoApplicationForm = () => {
   const [selectedMemos, setSelectedMemos] = useState([]);
   const [maxRequestedHours, setMaxRequestedHours] = useState(0);
 
+  // Reason dropdown states
+  const [reasonChoice, setReasonChoice] = useState("");
+  const [customReason, setCustomReason] = useState("");
+
   // Late Filing States
   const [lateJustification, setLateJustification] = useState("");
   const [lateAttachment, setLateAttachment] = useState(null);
@@ -237,7 +252,6 @@ const AddCtoApplicationForm = () => {
       leaveType: "Compensatory Time-Off (CTO)",
       requestedHours: "",
       memos: [],
-      commutation: "Not Requested",
       inclusiveDates: [],
       reason: "",
       routeId: "",
@@ -253,22 +267,6 @@ const AddCtoApplicationForm = () => {
       submitInFlightRef.current = false;
     };
   }, []);
-
-  const resetForm = useCallback(() => {
-    setFormData(initialState);
-    setSelectedMemos([]);
-    setIsMemoModalOpen(false);
-    setLateJustification("");
-    setLateAttachment(null);
-
-    setDateValue("");
-    setDateError("");
-    clearBanner();
-
-    successLatchRef.current = false;
-    setSuccessLatchUI(false);
-    submitInFlightRef.current = false;
-  }, [initialState]);
 
   // LIVE DATABASE DATA
   const {
@@ -286,20 +284,6 @@ const AddCtoApplicationForm = () => {
   const checkingProfile =
     isProfileLoading || (isProfileFetching && !hasSignature);
 
-  const salaryText = useMemo(() => {
-    if (isProfileLoading) return "Loading...";
-    const amt = liveProfile.salary?.amount;
-    const sg = liveProfile.salary?.grade;
-    if (amt && sg) {
-      return `₱${Number(amt).toLocaleString("en-PH", { minimumFractionDigits: 2 })} (SG ${sg})`;
-    } else if (amt) {
-      return `₱${Number(amt).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`;
-    } else if (sg) {
-      return `SG ${sg}`;
-    }
-    return "N/A";
-  }, [liveProfile, isProfileLoading]);
-
   const {
     data: workingDaysRes,
     isLoading: workingDaysLoading,
@@ -310,7 +294,7 @@ const AddCtoApplicationForm = () => {
     staleTime: 1000 * 60 * 5,
   });
 
-  // ✅ UPDATED COMPUTATION MODE LOGIC
+  // ✅ COMPUTATION MODE LOGIC
   const workingDoc = workingDaysRes?.data;
   const hoursPerDay = workingDoc?.hoursPerDay || 8;
   const computationMode = workingDoc?.computationMode || "Working Days";
@@ -579,15 +563,25 @@ const AddCtoApplicationForm = () => {
       return;
     }
 
-    if (name === "reason") {
-      setFormData((prev) => ({
-        ...prev,
-        reason: value.slice(0, MAX_REASON_LEN),
-      }));
-      return;
-    }
-
     setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  // Reason dropdown: preset reasons are stored directly; "Others" switches to the typed text.
+  const handleReasonSelect = (e) => {
+    clearBanner();
+    const choice = e.target.value;
+    setReasonChoice(choice);
+    setFormData((prev) => ({
+      ...prev,
+      reason: choice === OTHER_REASON ? customReason : choice,
+    }));
+  };
+
+  const handleCustomReasonChange = (e) => {
+    clearBanner();
+    const v = e.target.value.slice(0, MAX_REASON_LEN);
+    setCustomReason(v);
+    setFormData((prev) => ({ ...prev, reason: v }));
   };
 
   const handleDateInput = (e) => {
@@ -658,13 +652,14 @@ const AddCtoApplicationForm = () => {
           "Please wait while memos are loading.",
           () => !memoLoading,
         ),
-      commutation: yup
-        .string()
-        .required("Commutation is required for Organic employees."),
       reason: yup
         .string()
         .trim()
-        .required("Reason / Purpose is required.")
+        .required(
+          reasonChoice === OTHER_REASON
+            ? "Please specify your reason / purpose."
+            : "Please select a reason / purpose.",
+        )
         .max(
           MAX_REASON_LEN,
           `Remarks cannot exceed ${MAX_REASON_LEN} characters.`,
@@ -744,7 +739,8 @@ const AddCtoApplicationForm = () => {
     hoursPerDay,
     activeWorkingDays,
     blockedDates,
-    computationMode, // ✅ Added constraint dependency
+    computationMode,
+    reasonChoice,
   ]);
 
   const startSubmit = async () => {
@@ -761,9 +757,7 @@ const AddCtoApplicationForm = () => {
 
     try {
       const rawPayload = {
-        employeeType:
-          liveProfile.employeeType || sessionAdmin.employeeType || "Organic",
-        commutation: formData.commutation,
+        employeeType: ALLOWED_EMPLOYEE_TYPE,
         reason: String(formData.reason || "").trim(),
         inclusiveDates: Array.from(
           new Set((formData.inclusiveDates || []).filter(Boolean)),
@@ -803,7 +797,6 @@ const AddCtoApplicationForm = () => {
       formPayload.append("reason", rawPayload.reason);
       formPayload.append("routeId", rawPayload.routeId);
       formPayload.append("employeeType", rawPayload.employeeType);
-      formPayload.append("commutation", rawPayload.commutation);
 
       formPayload.append("memos", JSON.stringify(rawPayload.memos));
       formPayload.append(
@@ -830,7 +823,7 @@ const AddCtoApplicationForm = () => {
       successLatchRef.current = true;
       setSuccessLatchUI(true);
 
-      toast.success("Organic CTO application submitted successfully!");
+      toast.success("CTO application submitted successfully!");
 
       queryClient.invalidateQueries({ queryKey: ["ctoApplications"] });
       queryClient.invalidateQueries({ queryKey: ["myCtoMemos"] });
@@ -856,12 +849,13 @@ const AddCtoApplicationForm = () => {
 
   const dateDisabled = !formData.requestedHours || isFormDisabled;
 
+  // ✅ JO-ONLY ACCESS GUARD
   const currentEmployeeType =
     liveProfile.employeeType || sessionAdmin.employeeType;
   if (
     !isProfileLoading &&
     profileDataResponse &&
-    currentEmployeeType !== "Organic"
+    currentEmployeeType !== ALLOWED_EMPLOYEE_TYPE
   ) {
     return (
       <Forbidden403
@@ -909,7 +903,7 @@ const AddCtoApplicationForm = () => {
               className="text-xs mt-1 transition-colors duration-300 ease-out"
               style={{ color: "var(--app-muted)" }}
             >
-              Civil Service Form No. 6 (Organic CTO Edition)
+              Job Order (JO) CTO Application
             </p>
           </div>
 
@@ -989,7 +983,7 @@ const AddCtoApplicationForm = () => {
               />
 
               <div
-                className="mb-6 grid grid-cols-1 md:grid-cols-4 border transition-colors duration-300 ease-out text-sm"
+                className="mb-6 grid grid-cols-1 md:grid-cols-3 border transition-colors duration-300 ease-out text-sm"
                 style={{ borderColor: borderColor }}
               >
                 <div
@@ -1007,7 +1001,7 @@ const AddCtoApplicationForm = () => {
                       liveProfile.department ||
                       sessionAdmin.division ||
                       sessionAdmin.department ||
-                      "ADMIN AND FINANCE"}
+                      "N/A"}
                   </div>
                 </div>
                 <div
@@ -1024,10 +1018,7 @@ const AddCtoApplicationForm = () => {
                     {`${liveProfile.lastName || sessionAdmin.lastName || ""}, ${liveProfile.firstName || sessionAdmin.firstName || ""} ${liveProfile.middleName || sessionAdmin.middleName || ""}`.trim()}
                   </div>
                 </div>
-                <div
-                  className="p-2 border-b md:border-b-0 md:border-r transition-colors duration-300"
-                  style={{ borderColor: borderColor }}
-                >
+                <div className="p-2 transition-colors duration-300">
                   <span
                     className="text-[10px] uppercase block font-semibold transition-colors"
                     style={{ color: "var(--app-muted)" }}
@@ -1036,23 +1027,6 @@ const AddCtoApplicationForm = () => {
                   </span>
                   <div className="font-semibold mt-1">
                     {liveProfile.position || sessionAdmin.position || "N/A"}
-                  </div>
-                </div>
-                <div
-                  className="p-2 transition-colors duration-300"
-                  style={{ backgroundColor: "var(--accent-soft)" }}
-                >
-                  <span
-                    className="text-[10px] uppercase block font-semibold transition-colors"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    4. Salary
-                  </span>
-                  <div
-                    className="font-semibold mt-1 transition-colors"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    {salaryText}
                   </div>
                 </div>
               </div>
@@ -1229,107 +1203,64 @@ const AddCtoApplicationForm = () => {
                     </div>
                   </div>
 
-                  <div className="flex-1 p-4 flex flex-col justify-between">
-                    <div className="mb-6">
-                      <h3 className="text-xs font-bold uppercase mb-3">
-                        6.D Commutation
+                  <div className="flex-1 p-4 flex flex-col">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3
+                        className="text-xs font-bold uppercase transition-colors"
+                        style={{ color: "var(--accent)" }}
+                      >
+                        CTO Memos Required
                       </h3>
-                      <div className="space-y-2">
-                        <label
-                          className={`flex items-center gap-2 text-xs ${!isFormDisabled ? "cursor-pointer" : "cursor-not-allowed opacity-70"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="commutation"
-                            value="Not Requested"
-                            checked={formData.commutation === "Not Requested"}
-                            onChange={handleChange}
-                            disabled={isFormDisabled}
-                            className="transition-colors"
-                            style={{ accentColor: "var(--accent)" }}
-                          />
-                          Not Requested
-                        </label>
-                        <label
-                          className={`flex items-center gap-2 text-xs ${!isFormDisabled ? "cursor-pointer" : "cursor-not-allowed opacity-70"}`}
-                        >
-                          <input
-                            type="radio"
-                            name="commutation"
-                            value="Requested"
-                            checked={formData.commutation === "Requested"}
-                            onChange={handleChange}
-                            disabled={isFormDisabled}
-                            className="transition-colors"
-                            style={{ accentColor: "var(--accent)" }}
-                          />
-                          Requested
-                        </label>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsMemoModalOpen(true)}
+                        disabled={isFormDisabled}
+                        className="text-[10px] border px-2 py-1 disabled:opacity-50 transition-colors rounded"
+                        style={{
+                          color: "var(--accent)",
+                          borderColor: "var(--accent)",
+                          backgroundColor: "transparent",
+                        }}
+                        onMouseEnter={(e) => {
+                          if (e.currentTarget.disabled) return;
+                          e.currentTarget.style.backgroundColor =
+                            "var(--accent-soft)";
+                        }}
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.backgroundColor =
+                            "transparent")
+                        }
+                      >
+                        Select Memos
+                      </button>
                     </div>
-
-                    <div
-                      className="border-t pt-4 transition-colors duration-300"
-                      style={{ borderColor: borderColor }}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <h3
-                          className="text-xs font-bold uppercase transition-colors"
-                          style={{ color: "var(--accent)" }}
-                        >
-                          CTO Memos Required
-                        </h3>
-                        <button
-                          type="button"
-                          onClick={() => setIsMemoModalOpen(true)}
-                          disabled={isFormDisabled}
-                          className="text-[10px] border px-2 py-1 disabled:opacity-50 transition-colors rounded"
-                          style={{
-                            color: "var(--accent)",
-                            borderColor: "var(--accent)",
-                            backgroundColor: "transparent",
-                          }}
-                          onMouseEnter={(e) => {
-                            if (e.currentTarget.disabled) return;
-                            e.currentTarget.style.backgroundColor =
-                              "var(--accent-soft)";
-                          }}
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.backgroundColor =
-                              "transparent")
-                          }
-                        >
-                          Select Memos
-                        </button>
+                    {selectedMemos.length === 0 ? (
+                      <div
+                        className="text-[10px] italic transition-colors"
+                        style={{ color: "var(--app-muted)" }}
+                      >
+                        No memos attached. Required for CTO.
                       </div>
-                      {selectedMemos.length === 0 ? (
-                        <div
-                          className="text-[10px] italic transition-colors"
-                          style={{ color: "var(--app-muted)" }}
-                        >
-                          No memos attached. Required for CTO.
-                        </div>
-                      ) : (
-                        <div className="text-[10px]">
-                          {selectedMemos.map((m) => (
-                            <div
-                              key={m.id}
-                              className="flex justify-between border-b border-dashed py-1 transition-colors duration-300"
-                              style={{ borderColor: borderColor }}
-                            >
-                              <span>{m.memoNo}</span>
-                              <span className="font-bold">
-                                -{m.appliedHours}h
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    ) : (
+                      <div className="text-[10px]">
+                        {selectedMemos.map((m) => (
+                          <div
+                            key={m.id}
+                            className="flex justify-between border-b border-dashed py-1 transition-colors duration-300"
+                            style={{ borderColor: borderColor }}
+                          >
+                            <span>{m.memoNo}</span>
+                            <span className="font-bold">
+                              -{m.appliedHours}h
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* ✅ LATE FILING SECTION FOR ORGANIC */}
+                {/* ✅ LATE FILING SECTION FOR JO */}
                 {isLateMode && (
                   <div
                     className="p-4 border-b transition-colors duration-300 ease-out"
@@ -1401,23 +1332,64 @@ const AddCtoApplicationForm = () => {
                   <h3 className="text-xs font-bold uppercase mb-2">
                     Reason / Purpose
                   </h3>
-                  <textarea
-                    name="reason"
-                    value={formData.reason}
-                    onChange={handleChange}
-                    rows="2"
-                    maxLength={MAX_REASON_LEN}
+                  <select
+                    name="reasonChoice"
+                    value={reasonChoice}
+                    onChange={handleReasonSelect}
                     disabled={isFormDisabled}
-                    className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded"
+                    className="w-full border p-2 text-xs outline-none disabled:opacity-50 transition-colors duration-300 rounded cursor-pointer disabled:cursor-not-allowed"
                     style={{
                       borderColor: borderColor,
                       color: "var(--app-text)",
                       backgroundColor: isFormDisabled
                         ? "var(--app-surface-2)"
-                        : "transparent",
+                        : "var(--app-surface)",
                     }}
-                    placeholder="Enter justification for leave..."
-                  />
+                  >
+                    <option
+                      value=""
+                      disabled
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        color: "var(--app-text)",
+                      }}
+                    >
+                      Select a reason...
+                    </option>
+                    {REASON_OPTIONS.map((opt) => (
+                      <option
+                        key={opt}
+                        value={opt}
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          color: "var(--app-text)",
+                        }}
+                      >
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+
+                  {reasonChoice === OTHER_REASON && (
+                    <textarea
+                      name="customReason"
+                      value={customReason}
+                      onChange={handleCustomReasonChange}
+                      rows="2"
+                      maxLength={MAX_REASON_LEN}
+                      disabled={isFormDisabled}
+                      autoFocus
+                      className="w-full border p-2 text-xs outline-none resize-none bg-transparent disabled:opacity-50 transition-colors duration-300 rounded mt-2"
+                      style={{
+                        borderColor: borderColor,
+                        color: "var(--app-text)",
+                        backgroundColor: isFormDisabled
+                          ? "var(--app-surface-2)"
+                          : "transparent",
+                      }}
+                      placeholder="Please specify your reason..."
+                    />
+                  )}
                 </div>
 
                 <div

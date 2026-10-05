@@ -29,9 +29,11 @@ import {
   ArrowUp,
   Info,
   MoreVertical,
+  Bell,
 } from "lucide-react";
 
 import Breadcrumbs from "../../breadCrumbs";
+import NotifiedEmployeesModal from "./NotifiedEmployeeModal";
 
 /* =========================
    Helpers & Theme
@@ -215,6 +217,46 @@ const PrimaryButton = ({
         border: `1px solid ${disabled ? borderColor : "var(--accent)"}`,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? 0.65 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+};
+
+const OutlineButton = ({
+  children,
+  disabled,
+  onClick,
+  className = "",
+  borderColor,
+  theme,
+}) => {
+  const disabledBg =
+    theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(15,23,42,0.04)";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={[
+        "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-colors duration-200 ease-out",
+        className,
+      ].join(" ")}
+      style={{
+        backgroundColor: disabled ? disabledBg : "transparent",
+        color: disabled ? "var(--app-muted)" : "var(--accent)",
+        border: `1px solid ${disabled ? borderColor : "var(--accent)"}`,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.65 : 1,
+      }}
+      onMouseEnter={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.backgroundColor = "var(--accent-soft)";
+      }}
+      onMouseLeave={(e) => {
+        if (disabled) return;
+        e.currentTarget.style.backgroundColor = "transparent";
       }}
     >
       {children}
@@ -554,6 +596,7 @@ export default function ApprovalRoutesList() {
 
   const [steps, setSteps] = useState([]);
   const [searchInput, setSearchInput] = useState("");
+  const [isNotifiedOpen, setIsNotifiedOpen] = useState(false);
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -596,6 +639,8 @@ export default function ApprovalRoutesList() {
     }
   }, [myRoute]);
 
+  const notifiedCount = myRoute?.notifiedEmployees?.length || 0;
+
   const { data: approversRaw = [], isLoading: approversLoading } = useQuery({
     queryKey: ["approvers"],
     queryFn: fetchApprovers,
@@ -617,7 +662,8 @@ export default function ApprovalRoutesList() {
         // ✅ Applied dynamic schema-based name formatting
         label: formatFullName(emp),
         position: emp.position || emp.designation?.name || "Staff",
-      }));
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [approversRaw]);
 
   const { data: rolesRaw, isLoading: rolesLoading } = useQuery({
@@ -653,6 +699,8 @@ export default function ApprovalRoutesList() {
   const reindexSteps = (rawSteps) =>
     rawSteps.map((s, i) => ({ ...s, level: i + 1 }));
 
+  // NOTE: notifiedEmployees is intentionally NOT sent here, so the backend
+  // keeps whatever recipients were saved from the Notified Employees modal.
   const saveRoute = useCallback(
     (newSteps) => {
       const sanitizedSteps = reindexSteps(newSteps);
@@ -673,6 +721,12 @@ export default function ApprovalRoutesList() {
 
   const removeStep = (id) => {
     const newSteps = steps.filter((s) => s.id !== id);
+    if (newSteps.length === 0) {
+      toast.error(
+        "A workflow needs at least one approver step. Add another step before deleting this one.",
+      );
+      return;
+    }
     const finalSteps = reindexSteps(newSteps);
     setSteps(finalSteps);
     saveRoute(finalSteps);
@@ -745,15 +799,33 @@ export default function ApprovalRoutesList() {
               </p>
             </div>
 
-            <PrimaryButton
-              onClick={() => navigate("step/new")}
-              disabled={isBusy}
-              borderColor={borderColor}
-              theme={resolvedTheme}
-              className="w-full md:w-auto"
-            >
-              <Plus className="w-4 h-4" /> Create Step
-            </PrimaryButton>
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <OutlineButton
+                onClick={() => setIsNotifiedOpen(true)}
+                disabled={isBusy || isLoading}
+                borderColor={borderColor}
+                theme={resolvedTheme}
+                className="w-full md:w-auto"
+              >
+                <Bell className="w-4 h-4" /> Notified Employees
+                <span
+                  className="text-[11px] px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: "var(--accent-soft)" }}
+                >
+                  {notifiedCount}
+                </span>
+              </OutlineButton>
+
+              <PrimaryButton
+                onClick={() => navigate("step/new")}
+                disabled={isBusy}
+                borderColor={borderColor}
+                theme={resolvedTheme}
+                className="w-full md:w-auto"
+              >
+                <Plus className="w-4 h-4" /> Create Step
+              </PrimaryButton>
+            </div>
           </div>
 
           {/* Stats Grid */}
@@ -774,18 +846,18 @@ export default function ApprovalRoutesList() {
                 tone: "indigo",
               },
               {
+                label: "Notified",
+                value: notifiedCount,
+                sub: "Employees kept informed",
+                icon: Bell,
+                tone: "amber",
+              },
+              {
                 label: "Active Routes",
                 value: myRoute ? 1 : 0,
                 sub: "Operating workflows",
                 icon: Zap,
                 tone: "green",
-              },
-              {
-                label: "System Status",
-                value: "Automated",
-                sub: "Routing is active",
-                icon: Settings,
-                tone: "amber",
               },
             ].map((stat, i) => {
               const toneMeta = {
@@ -1098,6 +1170,17 @@ export default function ApprovalRoutesList() {
           </Card>
         </div>
       </div>
+
+      {/* Notified Employees Modal */}
+      <NotifiedEmployeesModal
+        isOpen={isNotifiedOpen}
+        onClose={() => setIsNotifiedOpen(false)}
+        myRoute={myRoute}
+        steps={steps}
+        employeeOptions={approverOptions}
+        admin={admin}
+        borderColor={borderColor}
+      />
 
       {/* Back to top */}
       {showScrollTop && (

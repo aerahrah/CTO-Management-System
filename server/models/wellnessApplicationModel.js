@@ -1,3 +1,4 @@
+// models/wellnessApplicationModel.js
 const mongoose = require("mongoose");
 
 const wellnessApplicationSchema = new mongoose.Schema(
@@ -72,6 +73,13 @@ const wellnessApplicationSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "ApprovalStep",
+      },
+    ],
+    // Passive recipients who only get notified (no approval/signature interaction)
+    notifiedEmployees: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
       },
     ],
     overallStatus: {

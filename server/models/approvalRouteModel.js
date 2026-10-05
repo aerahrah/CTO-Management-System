@@ -31,7 +31,7 @@ const approvalRouteSchema = new mongoose.Schema(
       default: "cto_wellness",
       required: true,
     },
-    // Ordered list of approver steps (level 1 → N)
+    // Ordered list of active approver steps (level 1 → N)
     steps: [
       {
         level: { type: Number, required: true },
@@ -46,7 +46,7 @@ const approvalRouteSchema = new mongoose.Schema(
             values: APPROVAL_ROLE_VALUES,
             message: "{VALUE} is not a valid approval role",
           },
-          required: true, // Making this required since it now relies on a strict enum
+          required: true,
         },
         notes: {
           type: String,
@@ -58,6 +58,13 @@ const approvalRouteSchema = new mongoose.Schema(
         },
       },
     ],
+    // Passive recipients who only get notified (no approval/signature interaction)
+    notifiedEmployees: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Employee",
+      },
+    ],
   },
   { timestamps: true },
 );
@@ -67,4 +74,6 @@ approvalRouteSchema.index({ createdBy: 1 });
 // Index for filtering public routes
 approvalRouteSchema.index({ isPublic: 1 });
 
-module.exports = mongoose.model("ApprovalRoute", approvalRouteSchema);
+module.exports =
+  mongoose.models.ApprovalRoute ||
+  mongoose.model("ApprovalRoute", approvalRouteSchema);

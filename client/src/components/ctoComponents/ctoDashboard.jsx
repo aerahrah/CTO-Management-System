@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { fetchDashboard, fetchMyRemainingCtoHours } from "../../api/cto";
@@ -14,6 +14,7 @@ import {
   Calendar,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
   Clock,
   History,
   TrendingUp,
@@ -21,6 +22,7 @@ import {
   XCircle,
   UserCheck,
   ShieldAlert,
+  Info,
 } from "lucide-react";
 
 /* ------------------ Resolve theme ------------------ */
@@ -67,6 +69,16 @@ const getStatusStyle = (status) => {
         color: "var(--app-muted)",
       };
   }
+};
+
+/* ------------------ Number helpers ------------------ */
+const num = (v, fallback = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+const fmtH = (v) => {
+  const n = num(v);
+  return Number.isInteger(n) ? `${n}` : n.toFixed(1);
 };
 
 /* =========================
@@ -674,6 +686,275 @@ const PendingRequestItem = ({ request, borderColor, isLast }) => {
 };
 
 /* =========================
+   CSC Rules (clickable / collapsible)
+========================= */
+const CscRulesToggle = ({ maxMonthly, maxBalance, borderColor }) => {
+  const [open, setOpen] = useState(false);
+
+  const labelStyle = { color: "var(--app-muted)" };
+  const valueStyle = { color: "var(--app-text)" };
+
+  return (
+    <div
+      className="mt-5 rounded-lg border overflow-hidden transition-colors duration-300 ease-out"
+      style={{
+        borderColor: open ? "var(--accent)" : borderColor,
+        backgroundColor: "var(--app-surface-2)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls="csc-rules-panel"
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors duration-200 ease-out"
+        style={{ backgroundColor: "transparent" }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = "var(--accent-soft)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = "transparent";
+        }}
+      >
+        <span className="flex items-center gap-2">
+          <Info
+            className="w-4 h-4 shrink-0"
+            style={{ color: "var(--accent)" }}
+          />
+          <span className="text-xs font-semibold" style={valueStyle}>
+            How CTO credits work (CSC rules)
+          </span>
+        </span>
+        <span
+          className="flex items-center gap-1 text-[11px] font-semibold"
+          style={{ color: "var(--accent)" }}
+        >
+          {open ? "Hide" : "View"}
+          <ChevronDown
+            className="w-4 h-4 transition-transform duration-200"
+            style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
+          />
+        </span>
+      </button>
+
+      {open && (
+        <div
+          id="csc-rules-panel"
+          className="px-3 pb-3 pt-2 border-t text-[11px] leading-relaxed"
+          style={{ borderColor, ...labelStyle }}
+        >
+          <ul className="list-disc pl-4 space-y-1.5">
+            <li>
+              You can earn up to{" "}
+              <b style={valueStyle}>{fmtH(maxMonthly)} hours</b> of credits per
+              month.
+            </li>
+            <li>
+              Your unused hours can&apos;t go over{" "}
+              <b style={valueStyle}>{fmtH(maxBalance)} hours</b>. Hours on
+              pending requests still count until they&apos;re used.
+            </li>
+            <li>
+              What you can still earn is limited by whichever of these two
+              limits you reach first.
+            </li>
+            <li>
+              Credits expire if not used within <b style={valueStyle}>1 year</b>{" "}
+              and can&apos;t be converted to cash.
+            </li>
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* =========================
+   Earning Capacity (CSC Rules)
+========================= */
+const EarningCapacityCard = ({ limitData, reserved, borderColor }) => {
+  const maxMonthly = num(limitData?.maxMonthlyEarning, 40);
+  const maxBalance = num(limitData?.maxBalanceLimit, 120);
+  const earnedThisMonth = num(limitData?.earnedThisMonth, 0);
+  const unusedHours = num(limitData?.currentBalance, 0);
+
+  const roomMonthly = Math.max(
+    num(limitData?.roomUntilMonthlyLimit, maxMonthly - earnedThisMonth),
+    0,
+  );
+  const roomBalance = Math.max(
+    num(limitData?.roomUntilMaxBalance, maxBalance - unusedHours),
+    0,
+  );
+
+  // CSC: you can only earn up to whichever limit you'll hit first
+  const canStillEarn = Math.max(
+    num(limitData?.absoluteCreditableNow, Math.min(roomMonthly, roomBalance)),
+    0,
+  );
+
+  const limitingFactor =
+    canStillEarn <= 0
+      ? roomBalance <= 0
+        ? "balance"
+        : "monthly"
+      : roomMonthly <= roomBalance
+        ? "monthly"
+        : "balance";
+
+  const statusMessage =
+    canStillEarn <= 0
+      ? limitingFactor === "balance"
+        ? `You've reached the ${fmtH(maxBalance)}-hour limit for unused hours. Use some of your CTO before you can earn more.`
+        : `You've reached this month's ${fmtH(maxMonthly)}-hour earning limit. You can earn again next month.`
+      : limitingFactor === "monthly"
+        ? `You can still earn up to ${fmtH(canStillEarn)}h, limited by this month's ${fmtH(maxMonthly)}-hour cap.`
+        : `You can still earn up to ${fmtH(canStillEarn)}h before reaching the ${fmtH(maxBalance)}-hour limit for unused hours.`;
+
+  const labelStyle = { color: "var(--app-muted)" };
+  const valueStyle = { color: "var(--app-text)" };
+
+  return (
+    <Card borderColor={borderColor}>
+      <CardHeader
+        title="Earning Capacity (CSC Rules)"
+        icon={ShieldAlert}
+        subtitle="How many more overtime hours you can still earn as credits."
+        borderColor={borderColor}
+        action={
+          <Pill tone={canStillEarn <= 0 ? "rose" : "green"}>
+            {fmtH(canStillEarn)}h can still be earned
+          </Pill>
+        }
+      />
+      <div className="p-4">
+        <div
+          className="rounded-xl border p-4 transition-colors duration-300 ease-out"
+          style={{
+            borderColor: borderColor,
+            backgroundColor: "var(--app-surface)",
+          }}
+        >
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div
+                className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                style={labelStyle}
+              >
+                Hours You Can Still Earn
+              </div>
+              <div
+                className="mt-1 text-4xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
+                style={valueStyle}
+              >
+                {fmtH(canStillEarn)}
+                <span className="text-xl ml-1" style={labelStyle}>
+                  h
+                </span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div
+                className="text-xs font-semibold transition-colors duration-300 ease-out"
+                style={labelStyle}
+              >
+                Max Unused Hours:{" "}
+                <span className="font-bold" style={valueStyle}>
+                  {fmtH(maxBalance)}h
+                </span>
+              </div>
+              <div
+                className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                style={labelStyle}
+              >
+                Max Earned per Month:{" "}
+                <span className="font-bold" style={valueStyle}>
+                  {fmtH(maxMonthly)}h
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Plain-language status */}
+          <div
+            className="mt-4 rounded-lg border px-3 py-2 text-xs leading-relaxed"
+            style={{
+              borderColor:
+                canStillEarn <= 0
+                  ? "rgba(239,68,68,0.25)"
+                  : "rgba(34,197,94,0.25)",
+              backgroundColor:
+                canStillEarn <= 0
+                  ? "rgba(239,68,68,0.08)"
+                  : "rgba(34,197,94,0.08)",
+              color: canStillEarn <= 0 ? "#ef4444" : "#16a34a",
+            }}
+          >
+            {statusMessage}
+          </div>
+
+          <div className="mt-5 space-y-4">
+            {/* Progress 1: Monthly limit */}
+            <div>
+              <div
+                className="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1 transition-colors duration-300 ease-out"
+                style={labelStyle}
+              >
+                <span>
+                  Earned This Month ({fmtH(earnedThisMonth)}h of{" "}
+                  {fmtH(maxMonthly)}h)
+                </span>
+                <span>{fmtH(roomMonthly)}h left</span>
+              </div>
+              <Progress
+                reservedPct={0}
+                usedPct={
+                  maxMonthly > 0 ? (earnedThisMonth / maxMonthly) * 100 : 0
+                }
+                borderColor={borderColor}
+              />
+            </div>
+
+            {/* Progress 2: Unused hours limit */}
+            <div>
+              <div
+                className="flex justify-between items-end text-[10px] font-bold uppercase tracking-wider mb-1 transition-colors duration-300 ease-out"
+                style={labelStyle}
+              >
+                <div className="flex flex-col">
+                  <span>
+                    Unused Hours ({fmtH(unusedHours)}h of {fmtH(maxBalance)}h)
+                  </span>
+                  {reserved > 0 && (
+                    <span className="text-[9px] normal-case tracking-normal opacity-80 mt-0.5">
+                      Includes {fmtH(reserved)}h on pending requests (not used
+                      yet)
+                    </span>
+                  )}
+                </div>
+                <span className="pb-0.5">{fmtH(roomBalance)}h left</span>
+              </div>
+              <Progress
+                reservedPct={0}
+                usedPct={maxBalance > 0 ? (unusedHours / maxBalance) * 100 : 0}
+                borderColor={borderColor}
+              />
+            </div>
+          </div>
+
+          {/* Clickable CSC rules */}
+          <CscRulesToggle
+            maxMonthly={maxMonthly}
+            maxBalance={maxBalance}
+            borderColor={borderColor}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+/* =========================
    Main Page
 ========================= */
 const CtoDashboard = () => {
@@ -1052,143 +1333,11 @@ const CtoDashboard = () => {
                     </div>
                   </Card>
 
-                  {/* Accrual Limits (CSC Rules) - explicitly relabeled */}
-                  <Card borderColor={borderColor}>
-                    <CardHeader
-                      title="Earning Capacity (CSC Rules)"
-                      icon={ShieldAlert}
-                      subtitle="Maximum hours you can still accrue based on active limits."
-                      borderColor={borderColor}
-                      action={
-                        <Pill
-                          tone={
-                            (limitData?.absoluteCreditableNow ?? 0) <= 0
-                              ? "rose"
-                              : "green"
-                          }
-                        >
-                          {limitData?.absoluteCreditableNow ?? 0}h creditable
-                        </Pill>
-                      }
-                    />
-                    <div className="p-4">
-                      <div
-                        className="rounded-xl border p-4 transition-colors duration-300 ease-out"
-                        style={{
-                          borderColor: borderColor,
-                          backgroundColor: "var(--app-surface)",
-                        }}
-                      >
-                        <div className="flex items-end justify-between gap-3">
-                          <div>
-                            <div
-                              className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Room To Earn
-                            </div>
-                            <div
-                              className="mt-1 text-4xl font-extrabold tracking-tight transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-text)" }}
-                            >
-                              {limitData?.absoluteCreditableNow ?? 0}
-                              <span
-                                className="text-xl ml-1"
-                                style={{ color: "var(--app-muted)" }}
-                              >
-                                h
-                              </span>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div
-                              className="text-xs font-semibold transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Max Balance Limit:{" "}
-                              <span
-                                className="font-bold"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {limitData?.maxBalanceLimit ?? 120}h
-                              </span>
-                            </div>
-                            <div
-                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              Monthly Earning Cap:{" "}
-                              <span
-                                className="font-bold"
-                                style={{ color: "var(--app-text)" }}
-                              >
-                                {limitData?.maxMonthlyEarning ?? 40}h
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="mt-5 space-y-4">
-                          {/* Progress 1: Monthly Limit */}
-                          <div>
-                            <div
-                              className="flex justify-between text-[10px] font-bold uppercase tracking-wider mb-1 transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              <span>
-                                Earned This Month (
-                                {limitData?.earnedThisMonth ?? 0}h)
-                              </span>
-                              <span>
-                                {limitData?.roomUntilMonthlyLimit ?? 40}h room
-                              </span>
-                            </div>
-                            <Progress
-                              reservedPct={0}
-                              usedPct={
-                                ((limitData?.earnedThisMonth ?? 0) /
-                                  (limitData?.maxMonthlyEarning ?? 40)) *
-                                100
-                              }
-                              borderColor={borderColor}
-                            />
-                          </div>
-
-                          {/* Progress 2: 120h Balance Limit - CLARIFIED LABELS */}
-                          <div>
-                            <div
-                              className="flex justify-between items-end text-[10px] font-bold uppercase tracking-wider mb-1 transition-colors duration-300 ease-out"
-                              style={{ color: "var(--app-muted)" }}
-                            >
-                              <div className="flex flex-col">
-                                <span>
-                                  Total Unexpended (
-                                  {limitData?.currentBalance ?? 0}h)
-                                </span>
-                                {reserved > 0 && (
-                                  <span className="text-[9px] normal-case tracking-normal opacity-80 mt-0.5">
-                                    (Includes {reserved.toFixed(1)}h pending)
-                                  </span>
-                                )}
-                              </div>
-                              <span className="pb-0.5">
-                                {limitData?.roomUntilMaxBalance ?? 120}h room
-                              </span>
-                            </div>
-                            <Progress
-                              reservedPct={0}
-                              usedPct={
-                                ((limitData?.currentBalance ?? 0) /
-                                  (limitData?.maxBalanceLimit ?? 120)) *
-                                100
-                              }
-                              borderColor={borderColor}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
+                  <EarningCapacityCard
+                    limitData={limitData}
+                    reserved={reserved}
+                    borderColor={borderColor}
+                  />
                 </div>
 
                 <Card borderColor={borderColor}>

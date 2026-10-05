@@ -8,7 +8,7 @@ const NotificationService = require("./notificationService");
 const buildAuditDetails = require("../utils/auditActionBuilder");
 const auditLogService = require("./auditLog.service");
 
-// ✅ Email Dependencies
+// Email Dependencies
 const sendEmail = require("../utils/sendEmail");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
@@ -31,23 +31,35 @@ function httpError(message, status = 400) {
 
 function assertObjectId(id, label = "id") {
   if (!id || !mongoose.Types.ObjectId.isValid(id))
-    throw httpError(`Invalid ${label}`, 400);
+    throw httpError("Invalid " + label, 400);
+}
+
+function extractId(item) {
+  if (item && typeof item === "object") {
+    return item._id || item.id || item.employee || item.approver;
+  }
+  return item;
+}
+
+function fullNameOf(person) {
+  const first = person?.firstName || "";
+  const last = person?.lastName || "";
+  return (first + " " + last).trim();
 }
 
 /**
- * ✅ NEW: Strips null bytes and strictly caps string lengths to prevent
+ * Strips null bytes and strictly caps string lengths to prevent
  * Payload Denial of Service and Null Byte Injection.
  */
 function sanitizeString(str, maxLength = 100) {
   return String(str || "")
-    .replace(/\0/g, "") // Strip null bytes
+    .replace(/\0/g, "")
     .trim()
-    .slice(0, maxLength); // Strictly cap at specified length
+    .slice(0, maxLength);
 }
 
 function getClientIp(req) {
   const xf = req?.headers?.["x-forwarded-for"];
-  // Note: x-forwarded-for can be spoofed. Only trust if behind a configured reverse proxy.
   if (typeof xf === "string" && xf.length)
     return sanitizeString(xf.split(",")[0], 50);
   return sanitizeString(req?.socket?.remoteAddress, 50) || null;
@@ -58,7 +70,7 @@ const sameId = (a, b) => String(a) === String(b);
 const sortByLevel = (steps = []) =>
   [...steps].sort((a, b) => Number(a?.level || 0) - Number(b?.level || 0));
 
-// ✅ The status filter strictly reflects the Approver's personal action
+// The status filter strictly reflects the Approver's personal action
 const getEffectiveStatusForApprover = (app, myStep) => {
   const myStatus = U(myStep?.status);
   const overall = U(app?.overallStatus);
@@ -74,7 +86,7 @@ const getEffectiveStatusForApprover = (app, myStep) => {
 const clampPage = (v) => Math.max(parseInt(v, 10) || 1, 1);
 const clampLimit = (v) => Math.min(Math.max(parseInt(v, 10) || 10, 1), 100);
 
-// ✅ Email Helpers
+// Email Helpers
 async function safeSendEmail(to, subject, html) {
   try {
     await sendEmail(to, subject, html);
@@ -91,11 +103,10 @@ async function canSend(key) {
   return await isEmailEnabled(key);
 }
 
-// ✅ HELPER: Formats inclusive dates into a short readable string for the ledger
+// HELPER: Formats inclusive dates into a short readable string for the ledger
 function formatLedgerDates(dates) {
   if (!Array.isArray(dates) || dates.length === 0) return "";
 
-  // Filter out invalid dates safely
   const validDates = dates.filter((d) => d && !isNaN(new Date(d).getTime()));
   if (validDates.length === 0) return "";
 
@@ -113,7 +124,7 @@ function formatLedgerDates(dates) {
   if (start.getTime() === end.getTime()) {
     return fmt(start);
   }
-  return `${fmt(start)} to ${fmt(end)}`;
+  return fmt(start) + " to " + fmt(end);
 }
 
 /* =========================
@@ -130,16 +141,19 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
   const targetYear = asOfDate
     ? new Date(asOfDate).getFullYear()
     : new Date().getFullYear();
-  const startOfYear = new Date(`${targetYear}-01-01T00:00:00.000Z`);
-  const endOfYear = new Date(`${targetYear}-12-31T23:59:59.999Z`);
+  const startOfYear = new Date(targetYear + "-01-01T00:00:00.000Z");
+  const endOfYear = new Date(targetYear + "-12-31T23:59:59.999Z");
 
-  // 3. Only fetch applications from that specific year!
+  // 3. Only fetch applications from that specific year
   const applications = await WellnessApplication.find({
     employee: employeeId,
     overallStatus: {
       $in: ["APPROVED", "REVOKED", "PENDING", "REVOCATION_REQUESTED"],
     },
-    createdAt: { $gte: startOfYear, $lte: endOfYear },
+    createdAt: {
+      $gte: startOfYear,
+      $lte: endOfYear,
+    },
   }).lean();
 
   // 4. Mathematically derive the Total Credited Days FOR THIS YEAR
@@ -154,18 +168,15 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
     }
   });
 
-  // This serves as our starting total sum of credited days for the year
   const totalCreditedDaysThisYear = currentBalance + totalUsedThisYear;
 
   let transactions = [];
 
-  // -------------------------
   // ADD APPLICATIONS (Usage & Revocations)
-  // -------------------------
   applications.forEach((app) => {
     const datesCovered = formatLedgerDates(app.inclusiveDates);
     const descriptionBase = datesCovered
-      ? `Wellness Leave (${datesCovered})`
+      ? "Wellness Leave (" + datesCovered + ")"
       : "Wellness Leave";
 
     const transactionDate = app.createdAt;
@@ -185,7 +196,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         date: transactionDate,
         displayDate: displayDate,
         type: "APPLICATION",
-        description: `${descriptionBase}${statusSuffix}`,
+        description: descriptionBase + statusSuffix,
         amount: -Number(app.totalDays),
         referenceId: app._id,
         sortPriority: 1,
@@ -210,7 +221,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         date: revokeDate,
         displayDate: displayDate,
         type: "REVOCATION_RESTORED",
-        description: `${descriptionBase} - Revoked`,
+        description: descriptionBase + " - Revoked",
         amount: Number(app.totalDays),
         referenceId: app._id,
         sortPriority: 2,
@@ -305,21 +316,19 @@ const getWellnessApplicationsForApproverService = async (
   const safePage = clampPage(page);
   const safeLimit = clampLimit(limit);
 
-  // ✅ NEW: Strictly sanitize search and status variables
   const safeSearch = sanitizeString(search, 100).toLowerCase();
   const safeStatus = sanitizeString(status, 20).toUpperCase();
 
   const approvalSteps = await ApprovalStep.find({ approver: approverId })
     .populate({
       path: "wellnessApplication",
-      // ✅ NEW: Added lateFiling to projection
       select:
-        "employee approvals overallStatus inclusiveDates totalDays reason createdAt employeeType commutation applicantSignatureUrl certificationOfLeaveCredits actionDetails lateFiling",
+        "employee approvals notifiedEmployees overallStatus inclusiveDates totalDays reason createdAt employeeType commutation applicantSignatureUrl certificationOfLeaveCredits actionDetails lateFiling",
       populate: [
         {
           path: "employee",
           select:
-            "prefixTitle firstName middleName lastName nameExtension postfixTitle position signature",
+            "prefixTitle firstName middleName lastName nameExtension postfixTitle position signature phone email",
         },
         {
           path: "approvals",
@@ -327,8 +336,14 @@ const getWellnessApplicationsForApproverService = async (
           populate: {
             path: "approver",
             select:
-              "prefixTitle firstName middleName lastName nameExtension postfixTitle position _id",
+              "prefixTitle firstName middleName lastName nameExtension postfixTitle position _id phone email",
           },
+        },
+        {
+          path: "notifiedEmployees",
+          select:
+            "prefixTitle firstName middleName lastName nameExtension postfixTitle position _id phone email",
+          options: { strictPopulate: false },
         },
       ],
     })
@@ -373,8 +388,7 @@ const getWellnessApplicationsForApproverService = async (
 
   if (safeSearch) {
     apps = apps.filter((app) => {
-      const fullName =
-        `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
+      const fullName = fullNameOf(app.employee).toLowerCase();
       return fullName.includes(safeSearch);
     });
   }
@@ -440,7 +454,7 @@ const getWellnessApplicationByIdService = async (wellnessApplicationId) => {
     .populate({
       path: "employee",
       select:
-        "prefixTitle firstName middleName lastName nameExtension postfixTitle position department signature employeeId email",
+        "prefixTitle firstName middleName lastName nameExtension postfixTitle position department signature employeeId email phone balances",
     })
     .populate({
       path: "approvals",
@@ -448,14 +462,20 @@ const getWellnessApplicationByIdService = async (wellnessApplicationId) => {
       populate: {
         path: "approver",
         select:
-          "prefixTitle firstName middleName lastName nameExtension postfixTitle position email",
+          "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone",
       },
+    })
+    .populate({
+      path: "notifiedEmployees",
+      select:
+        "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone",
+      options: { strictPopulate: false },
     })
     .lean();
 
   if (!application) throw httpError("Wellness Application not found", 404);
 
-  // ✅ Generate and attach Ledger
+  // Generate and attach Ledger
   const asOfDate = application.createdAt || new Date();
   const employeeId = application.employee?._id || application.employee;
   const ledger = await generateEmployeeLedger(employeeId, asOfDate);
@@ -477,7 +497,7 @@ const approveWellnessApplicationService = async ({
 
   const approver = await Employee.findById(approverId)
     .select(
-      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email signature",
+      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone signature",
     )
     .lean();
 
@@ -497,7 +517,7 @@ const approveWellnessApplicationService = async ({
   try {
     const application = await WellnessApplication.findById(applicationId)
       .populate("approvals")
-      .populate("employee")
+      .populate("employee", "_id firstName lastName email phone balances")
       .session(session);
 
     if (!application) throw httpError("Wellness Application not found.", 404);
@@ -518,7 +538,7 @@ const approveWellnessApplicationService = async ({
     );
     if (unapprovedPrevious)
       throw httpError(
-        `Level ${unapprovedPrevious.level} must approve first.`,
+        "Level " + unapprovedPrevious.level + " must approve first.",
         400,
       );
 
@@ -545,7 +565,9 @@ const approveWellnessApplicationService = async ({
     );
 
     const updatedSteps = await ApprovalStep.find({
-      _id: { $in: application.approvals },
+      _id: {
+        $in: application.approvals,
+      },
     }).session(session);
 
     const anyRejected = updatedSteps.some((s) => s.status === "REJECTED");
@@ -564,13 +586,15 @@ const approveWellnessApplicationService = async ({
     await session.commitTransaction();
     session.endSession();
 
+    const approverEmail = approver?.email || "unknown";
     const auditBody = {
       approverId,
       applicationId,
       level: currentStep.level,
-      approverName: `${approver?.email || "unknown"} (id: ${approverId})`,
-      approverEmail: approver?.email || "unknown",
-      employeeName: `${application.employee.email} (id: ${application.employee._id})`,
+      approverName: approverEmail + " (id: " + approverId + ")",
+      approverEmail: approverEmail,
+      employeeName:
+        application.employee.email + " (id: " + application.employee._id + ")",
     };
 
     const auditDetails = buildAuditDetails({
@@ -587,16 +611,18 @@ const approveWellnessApplicationService = async ({
       email: auditBody.approverEmail,
       method: "POST",
       endpoint: "Approve Wellness Application",
-      url: `/wellness/applications/approver/${application._id}/approve`,
+      url: "/wellness/applications/approver/" + application._id + "/approve",
       statusCode: 200,
       ip: getClientIp(req),
       summary: auditDetails.summary,
       timestamp: new Date(),
     });
 
+    // 1. Notify Applicant (In-App + SMS)
     try {
       await NotificationService.notifyEmployeeOnWellnessApproval({
         employeeId: application.employee._id,
+        employee: application.employee,
         approver,
         wellnessApplication: application,
         allApproved,
@@ -608,14 +634,22 @@ const approveWellnessApplicationService = async ({
       );
     }
 
+    const formattedDates = (application.inclusiveDates || [])
+      .map((d) => new Date(d).toLocaleDateString())
+      .join(", ");
+
     if (allApproved) {
+      const finalEmailEnabled = await canSend(
+        EMAIL_KEYS.WELLNESS_FINAL_APPROVAL,
+      );
+
+      // Email Applicant on Final Approval
       try {
-        const enabled = await canSend(EMAIL_KEYS.WELLNESS_FINAL_APPROVAL);
-        if (application.employee.email && enabled) {
+        if (application.employee.email && finalEmailEnabled) {
           const tpl = wellnessFinalApprovalEmail({
-            employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
+            employeeName: fullNameOf(application.employee),
             requestedDays: application.totalDays,
-            inclusiveDates: (application.inclusiveDates || []).join(", "),
+            inclusiveDates: formattedDates,
           });
           await safeSendEmail(
             application.employee.email,
@@ -629,14 +663,87 @@ const approveWellnessApplicationService = async ({
           err?.message,
         );
       }
+
+      // Notify Tagged Employees (notifiedEmployees) ONLY on Final Approval (In-App + SMS + Email)
+      const rawNotifiedIds = (application.notifiedEmployees || [])
+        .map((item) => String(extractId(item)))
+        .filter((id) => mongoose.isValidObjectId(id));
+
+      const uniqueNotifiedIds = [...new Set(rawNotifiedIds)];
+
+      if (uniqueNotifiedIds.length > 0) {
+        try {
+          const notifiedDocs = await Employee.find({
+            _id: {
+              $in: uniqueNotifiedIds,
+            },
+          })
+            .select("firstName lastName email phone")
+            .lean();
+
+          if (
+            typeof NotificationService.notifyTaggedEmployeesOnWellnessFinalApproval ===
+            "function"
+          ) {
+            await NotificationService.notifyTaggedEmployeesOnWellnessFinalApproval(
+              {
+                notifiedIds: uniqueNotifiedIds,
+                notifiedEmployees: notifiedDocs,
+                employee: application.employee,
+                approver,
+                wellnessApplication: application,
+              },
+            );
+          } else {
+            await Promise.all(
+              notifiedDocs.map((notifiedEmp) =>
+                NotificationService.notifyEmployeeOnWellnessApproval({
+                  employeeId: notifiedEmp._id,
+                  employee: notifiedEmp,
+                  approver,
+                  wellnessApplication: application,
+                  allApproved: true,
+                }),
+              ),
+            );
+          }
+
+          if (finalEmailEnabled) {
+            const applicantName = fullNameOf(application.employee);
+            const emailPromises = notifiedDocs
+              .filter((emp) => emp?.email)
+              .map((emp) => {
+                const tpl = wellnessFinalApprovalEmail({
+                  employeeName: applicantName,
+                  requestedDays: application.totalDays,
+                  inclusiveDates: formattedDates,
+                });
+                return safeSendEmail(emp.email, tpl.subject, tpl.html);
+              });
+            await Promise.all(emailPromises);
+          }
+        } catch (e) {
+          console.error(
+            "Failed notifying tagged employees on Wellness final approval:",
+            e?.message || e,
+          );
+        }
+      }
     } else {
+      // Intermediate Step: DO NOT notify notifiedEmployees here.
+      // Only alert the next approver and the applicant.
       const nextStep = updatedSteps.find(
         (s) => s.level === currentStep.level + 1,
       );
       if (nextStep) {
+        const nextApproverUser = await Employee.findById(nextStep.approver)
+          .select("firstName lastName email phone")
+          .lean();
+
         try {
           await NotificationService.notifyApproverOnWellnessRequired({
             approverId: nextStep.approver,
+            approver: nextApproverUser,
             employee: application.employee,
             wellnessApplication: application,
           });
@@ -648,20 +755,17 @@ const approveWellnessApplicationService = async ({
         }
 
         try {
-          const nextApproverUser = await Employee.findById(nextStep.approver)
-            .select("firstName lastName email")
-            .lean();
-
           const enabled = await canSend(EMAIL_KEYS.WELLNESS_APPROVAL);
           if (nextApproverUser?.email && enabled) {
+            const frontendUrl = process.env.FRONTEND_URL || "";
             const tpl = wellnessApprovalEmail({
-              approverName: `${nextApproverUser.firstName} ${nextApproverUser.lastName}`,
-              employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
+              approverName: fullNameOf(nextApproverUser),
+              employeeName: fullNameOf(application.employee),
               requestedDays: application.totalDays,
-              inclusiveDates: (application.inclusiveDates || []).join(", "),
+              inclusiveDates: formattedDates,
               reason: application.reason,
               level: nextStep.level,
-              link: `${process.env.FRONTEND_URL}/app/wellness-approvals/${application._id}`,
+              link: frontendUrl + "/app/wellness-approvals/" + application._id,
             });
             await safeSendEmail(nextApproverUser.email, tpl.subject, tpl.html);
           }
@@ -679,7 +783,7 @@ const approveWellnessApplicationService = async ({
           if (applicantEnabled) {
             const tpl = wellnessStepApprovalEmail({
               employeeName: application.employee.firstName,
-              approverName: `${approver.firstName} ${approver.lastName}`,
+              approverName: fullNameOf(approver),
               level: currentStep.level,
             });
             await safeSendEmail(
@@ -714,12 +818,11 @@ const rejectWellnessApplicationService = async ({
   assertObjectId(approverId, "approverId");
   assertObjectId(applicationId, "applicationId");
 
-  // ✅ NEW: Sanitize Rejection Remarks
   const safeRemarks = sanitizeString(remarks, 1000) || "No remarks provided";
 
   const approver = await Employee.findById(approverId)
     .select(
-      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email signature",
+      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone signature",
     )
     .lean();
 
@@ -739,7 +842,7 @@ const rejectWellnessApplicationService = async ({
   try {
     const application = await WellnessApplication.findById(applicationId)
       .populate("approvals")
-      .populate("employee", "firstName lastName email balances")
+      .populate("employee", "firstName lastName email phone balances")
       .session(session);
 
     if (!application) throw httpError("Wellness Application not found.", 404);
@@ -763,7 +866,7 @@ const rejectWellnessApplicationService = async ({
     );
     if (unapprovedPrevious)
       throw httpError(
-        `Level ${unapprovedPrevious.level} must approve first.`,
+        "Level " + unapprovedPrevious.level + " must approve first.",
         400,
       );
 
@@ -772,7 +875,11 @@ const rejectWellnessApplicationService = async ({
     // Refund Wellness Days
     await Employee.updateOne(
       { _id: employeeId },
-      { $inc: { "balances.wellnessDays": application.totalDays } },
+      {
+        $inc: {
+          "balances.wellnessDays": application.totalDays,
+        },
+      },
       { session },
     );
 
@@ -781,7 +888,7 @@ const rejectWellnessApplicationService = async ({
       {
         $set: {
           status: "REJECTED",
-          remarks: safeRemarks, // ✅ Use sanitized string here
+          remarks: safeRemarks,
           reviewedAt: new Date(),
           approverSnapshot: {
             prefixTitle: approver.prefixTitle || "",
@@ -805,7 +912,12 @@ const rejectWellnessApplicationService = async ({
 
     if (futureStepIds.length) {
       await ApprovalStep.updateMany(
-        { _id: { $in: futureStepIds }, status: "PENDING" },
+        {
+          _id: {
+            $in: futureStepIds,
+          },
+          status: "PENDING",
+        },
         {
           $set: {
             status: "CANCELLED",
@@ -824,13 +936,15 @@ const rejectWellnessApplicationService = async ({
     await session.commitTransaction();
     session.endSession();
 
+    const approverEmail = approver?.email || "unknown";
     const auditBody = {
       approverId,
       applicationId,
       level: currentStep.level,
-      approverName: `${approver?.email || "unknown"} (id: ${approverId})`,
-      approverEmail: approver?.email || "unknown",
-      employeeName: `${application.employee.email} (id: ${application.employee._id})`,
+      approverName: approverEmail + " (id: " + approverId + ")",
+      approverEmail: approverEmail,
+      employeeName:
+        application.employee.email + " (id: " + application.employee._id + ")",
     };
 
     const auditDetails = buildAuditDetails({
@@ -847,19 +961,21 @@ const rejectWellnessApplicationService = async ({
       email: auditBody.approverEmail,
       method: "POST",
       endpoint: "Reject Wellness Application",
-      url: `/wellness/applications/approver/${application._id}/reject`,
+      url: "/wellness/applications/approver/" + application._id + "/reject",
       statusCode: 200,
       ip: getClientIp(req),
       summary: auditDetails.summary,
       timestamp: new Date(),
     });
 
+    // 1. Notify Applicant (In-App + SMS)
     try {
       await NotificationService.notifyEmployeeOnWellnessRejection({
         employeeId: application.employee._id,
+        employee: application.employee,
         approver,
         wellnessApplication: application,
-        remarks: safeRemarks, // ✅ Use sanitized string here
+        remarks: safeRemarks,
       });
     } catch (e) {
       console.error(
@@ -868,17 +984,82 @@ const rejectWellnessApplicationService = async ({
       );
     }
 
+    // 2. Email Applicant
+    const rejectionEmailEnabled = await canSend(EMAIL_KEYS.WELLNESS_REJECTION);
     try {
-      const enabled = await canSend(EMAIL_KEYS.WELLNESS_REJECTION);
-      if (application.employee.email && enabled) {
+      if (application.employee.email && rejectionEmailEnabled) {
         const tpl = wellnessRejectionEmail({
-          employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
-          remarks: safeRemarks, // ✅ Use sanitized string here
+          employeeName: fullNameOf(application.employee),
+          remarks: safeRemarks,
         });
         await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
       }
     } catch (err) {
       console.error("Failed to send Wellness rejection email:", err?.message);
+    }
+
+    // 3. Notify Tagged Employees (notifiedEmployees) on Rejection (In-App + SMS + Email)
+    const rawNotifiedIds = (application.notifiedEmployees || [])
+      .map((item) => String(extractId(item)))
+      .filter((id) => mongoose.isValidObjectId(id));
+
+    const uniqueNotifiedIds = [...new Set(rawNotifiedIds)];
+
+    if (uniqueNotifiedIds.length > 0) {
+      try {
+        const notifiedDocs = await Employee.find({
+          _id: {
+            $in: uniqueNotifiedIds,
+          },
+        })
+          .select("firstName lastName email phone")
+          .lean();
+
+        if (
+          typeof NotificationService.notifyTaggedEmployeesOnWellnessRejection ===
+          "function"
+        ) {
+          await NotificationService.notifyTaggedEmployeesOnWellnessRejection({
+            notifiedIds: uniqueNotifiedIds,
+            notifiedEmployees: notifiedDocs,
+            employee: application.employee,
+            approver,
+            wellnessApplication: application,
+            remarks: safeRemarks,
+          });
+        } else {
+          await Promise.all(
+            notifiedDocs.map((notifiedEmp) =>
+              NotificationService.notifyEmployeeOnWellnessRejection({
+                employeeId: notifiedEmp._id,
+                employee: notifiedEmp,
+                approver,
+                wellnessApplication: application,
+                remarks: safeRemarks,
+              }),
+            ),
+          );
+        }
+
+        if (rejectionEmailEnabled) {
+          const applicantName = fullNameOf(application.employee);
+          const emailPromises = notifiedDocs
+            .filter((emp) => emp?.email)
+            .map((emp) => {
+              const tpl = wellnessRejectionEmail({
+                employeeName: applicantName,
+                remarks: safeRemarks,
+              });
+              return safeSendEmail(emp.email, tpl.subject, tpl.html);
+            });
+          await Promise.all(emailPromises);
+        }
+      } catch (e) {
+        console.error(
+          "Failed notifying tagged employees on Wellness rejection:",
+          e?.message || e,
+        );
+      }
     }
 
     return getWellnessApplicationByIdService(applicationId);

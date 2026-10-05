@@ -14,6 +14,8 @@ const {
   ctoRejectionEmail,
   ctoFinalApprovalEmail,
   ctoStepApprovalEmail,
+  ctoNotifiedFinalApprovalEmail,
+  ctoNotifiedRejectionEmail,
 } = require("../utils/emailTemplates");
 
 const buildAuditDetails = require("../utils/auditActionBuilder");
@@ -26,6 +28,7 @@ const CTO_STATUS = Object.freeze({
   REJECTED: "REJECTED",
   CANCELLED: "CANCELLED",
   EXHAUSTED: "EXHAUSTED",
+  ACTIVE: "ACTIVE",
 });
 
 /* =========================
@@ -41,8 +44,21 @@ function createServiceError(message, statusCode = 400) {
 
 function assertObjectId(id, label = "ID") {
   if (!mongoose.isValidObjectId(id)) {
-    throw createServiceError(`Invalid ${label} format.`, 400);
+    throw createServiceError("Invalid " + label + " format.", 400);
   }
+}
+
+function extractId(item) {
+  if (item && typeof item === "object") {
+    return item._id || item.id || item.employee || item.approver;
+  }
+  return item;
+}
+
+function fullNameOf(person) {
+  const first = person?.firstName || "";
+  const last = person?.lastName || "";
+  return (first + " " + last).trim();
 }
 
 /**
@@ -52,16 +68,16 @@ function assertObjectId(id, label = "ID") {
  */
 function sanitizeString(str, maxLength = 100) {
   return String(str || "")
-    .replace(/\0/g, "") // Strip null bytes
+    .replace(/\0/g, "")
     .trim()
-    .slice(0, maxLength); // Strictly cap at specified length
+    .slice(0, maxLength);
 }
 
 function getClientIp(req) {
   const xf = req?.headers?.["x-forwarded-for"];
-  // Note: x-forwarded-for can be spoofed. Only trust if behind a configured reverse proxy.
-  if (typeof xf === "string" && xf.length)
+  if (typeof xf === "string" && xf.length) {
     return sanitizeString(xf.split(",")[0], 50);
+  }
   return sanitizeString(req?.socket?.remoteAddress, 50) || null;
 }
 
@@ -94,7 +110,6 @@ function strictNumber(val, fallback = 0) {
 function formatLedgerDates(dates) {
   if (!Array.isArray(dates) || dates.length === 0) return "";
 
-  // Filter out invalid dates safely
   const validDates = dates.filter((d) => d && !isNaN(new Date(d).getTime()));
   if (validDates.length === 0) return "";
 
@@ -112,7 +127,7 @@ function formatLedgerDates(dates) {
   if (start.getTime() === end.getTime()) {
     return fmt(start);
   }
-  return `${fmt(start)} to ${fmt(end)}`;
+  return fmt(start) + " to " + fmt(end);
 }
 
 async function safeSendEmail(to, subject, html) {
@@ -128,7 +143,84 @@ async function safeSendEmail(to, subject, html) {
 }
 
 async function canSend(key) {
-  return await isEmailEnabled(key);
+  if (!key) return false;
+  try {
+    return await isEmailEnabled(key);
+  } catch (e) {
+    console.error("[EMAIL] could not read email setting:", key, e?.message);
+    return false;
+  }
+}
+
+// Loads the notified (tagged) employees of an application, excluding approvers
+async function getNotifiedDocs(application, excludeIds = []) {
+  const excluded = new Set(excludeIds.map(String));
+
+  const ids = [
+    ...new Set(
+      (application?.notifiedEmployees || [])
+        .map((item) => String(extractId(item)))
+        .filter((id) => mongoose.isValidObjectId(id) && !excluded.has(id)),
+    ),
+  ];
+
+  if (ids.length === 0) return { ids: [], docs: [] };
+
+  const docs = await Employee.find({ _id: { $in: ids } })
+    .select("firstName lastName email phone")
+    .lean();
+
+  return { ids, docs };
+}
+
+// Audit logging must never break an already-committed approval/rejection
+async function writeAuditLog({
+  endpoint,
+  urlSuffix,
+  approver,
+  approverId,
+  application,
+  currentStep,
+  req,
+}) {
+  try {
+    const approverEmail = approver?.email || "unknown";
+    const auditBody = {
+      approverId,
+      applicationId: String(application._id),
+      level: currentStep.level,
+      approverName: approverEmail + " (id: " + approverId + ")",
+      approverEmail,
+      employeeName:
+        (application.employee?.email || "unknown") +
+        " (id: " +
+        application.employee?._id +
+        ")",
+    };
+
+    const auditDetails = buildAuditDetails({
+      endpoint,
+      actor: auditBody.approverName,
+      targetUser: auditBody.employeeName,
+      body: auditBody,
+      params: { id: application._id },
+      before: { status: CTO_STATUS.PENDING },
+    });
+
+    await auditLogService.createAuditLog({
+      userId: approverId,
+      email: approverEmail,
+      method: "POST",
+      endpoint,
+      url: "/cto/applications/approver/" + application._id + "/" + urlSuffix,
+      statusCode: 200,
+      ip: getClientIp(req),
+      summary: auditDetails.summary,
+      timestamp: new Date(),
+    });
+  } catch (e) {
+    console.error("[AUDIT] Failed writing " + endpoint + " log:", e?.message);
+  }
 }
 
 /* =========================
@@ -161,11 +253,9 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
           strictNumber(empRec.reservedHours);
 
       if (earned > 0) {
-        // Chronological Math Date
         const accrualDate =
           credit.createdAt || credit.dateCredited || credit.dateApproved;
 
-        // Visual Frontend Date (Inclusive OT Dates)
         let displayDate = "N/A";
         if (credit.inclusiveDates?.startDate) {
           const datesArr = [credit.inclusiveDates.startDate];
@@ -176,12 +266,11 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
           displayDate = formatLedgerDates([credit.dateApproved]);
         }
 
-        // Description / Particulars
         let description = "N/A";
         if (credit.purpose) {
-          description = `${credit.purpose} (Please see attached memo)`;
+          description = credit.purpose + " (Please see attached memo)";
         } else if (credit.memoNo) {
-          description = `Memo ${credit.memoNo}`;
+          description = "Memo " + credit.memoNo;
         }
 
         transactions.push({
@@ -201,12 +290,10 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
   applications.forEach((app) => {
     const datesCovered = formatLedgerDates(app.inclusiveDates);
     const descriptionBase = datesCovered
-      ? `Compensatory Time Off (${datesCovered})`
+      ? "Compensatory Time Off (" + datesCovered + ")"
       : "Compensatory Time Off";
 
-    // Chronological Math Date
     const transactionDate = app.createdAt;
-    // Visual Frontend Date (Inclusive Usage Dates)
     const displayDate = datesCovered || "N/A";
 
     if (
@@ -223,13 +310,12 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         date: transactionDate,
         displayDate: displayDate,
         type: "APPLICATION",
-        description: `${descriptionBase}${statusSuffix}`,
+        description: descriptionBase + statusSuffix,
         amount: -strictNumber(app.requestedHours),
         referenceId: app._id,
         sortPriority: 1,
       });
     } else if (app.overallStatus === "REVOKED") {
-      // Original Usage Deduction
       transactions.push({
         date: transactionDate,
         displayDate: displayDate,
@@ -240,7 +326,6 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         sortPriority: 1,
       });
 
-      // Revocation / Refund
       let revokeDate = new Date(app.revokedAt || app.updatedAt);
       if (revokeDate.getTime() < new Date(transactionDate).getTime()) {
         revokeDate = new Date(new Date(transactionDate).getTime() + 1000);
@@ -248,9 +333,9 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 
       transactions.push({
         date: revokeDate,
-        displayDate: displayDate, // Keeps the same context as the original usage
+        displayDate: displayDate,
         type: "REVOCATION_RESTORED",
-        description: `${descriptionBase} - Revoked`,
+        description: descriptionBase + " - Revoked",
         amount: strictNumber(app.requestedHours),
         referenceId: app._id,
         sortPriority: 2,
@@ -258,7 +343,6 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
     }
   });
 
-  // Filter out any transactions that happened AFTER the snapshot date
   if (asOfDate) {
     const cutoffDate = new Date(asOfDate);
     transactions = transactions.filter((t) => new Date(t.date) <= cutoffDate);
@@ -297,15 +381,13 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 ========================= */
 
 const getApproverOptionsService = async () => {
-  // Fetch employees and project the explicitly needed fields
   const employees = await Employee.find(
     {},
-    "_id prefixTitle firstName middleName lastName nameExtension postfixTitle position email employeeType",
+    "_id prefixTitle firstName middleName lastName nameExtension postfixTitle position email employeeType phone",
   )
     .sort({ lastName: 1, firstName: 1 })
     .lean();
 
-  // Calculate counts
   const organicCount = employees.filter(
     (e) => e.employeeType === "Organic",
   ).length;
@@ -380,21 +462,19 @@ const getCtoApplicationsForApproverService = async (
   const safePage = clampPage(page);
   const safeLimit = clampLimit(limit);
 
-  // Strictly sanitize search to exactly 100 characters max
   const safeSearch = sanitizeString(search, 100).toLowerCase();
   const safeStatus = sanitizeString(status, 20).toUpperCase();
 
-  // Strict projection to prevent Out Of Memory (OOM) crashes
   const approvalSteps = await ApprovalStep.find({ approver: safeId })
     .populate({
       path: "ctoApplication",
       select:
-        "employee approvals overallStatus requestedHours inclusiveDates reason createdAt lateFiling",
+        "employee approvals notifiedEmployees overallStatus requestedHours inclusiveDates reason createdAt lateFiling",
       populate: [
         {
           path: "employee",
           select:
-            "prefixTitle firstName middleName lastName nameExtension postfixTitle position email",
+            "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone",
         },
         {
           path: "approvals",
@@ -402,8 +482,14 @@ const getCtoApplicationsForApproverService = async (
           populate: {
             path: "approver",
             select:
-              "prefixTitle firstName middleName lastName nameExtension postfixTitle position email _id",
+              "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone _id",
           },
+        },
+        {
+          path: "notifiedEmployees",
+          select:
+            "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone _id",
+          strictPopulate: false,
         },
       ],
     })
@@ -442,8 +528,7 @@ const getCtoApplicationsForApproverService = async (
 
   if (safeSearch) {
     apps = apps.filter((app) => {
-      const fullName =
-        `${app.employee?.firstName || ""} ${app.employee?.lastName || ""}`.toLowerCase();
+      const fullName = fullNameOf(app.employee).toLowerCase();
       return fullName.includes(safeSearch);
     });
   }
@@ -498,7 +583,7 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
     .populate({
       path: "employee",
       select:
-        "prefixTitle firstName middleName lastName nameExtension postfixTitle position department email balances",
+        "prefixTitle firstName middleName lastName nameExtension postfixTitle position department email phone balances",
     })
     .populate({
       path: "approvals",
@@ -506,8 +591,14 @@ const getCtoApplicationByIdService = async (ctoApplicationId) => {
       populate: {
         path: "approver",
         select:
-          "prefixTitle firstName middleName lastName nameExtension postfixTitle position email",
+          "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone",
       },
+    })
+    .populate({
+      path: "notifiedEmployees",
+      select:
+        "prefixTitle firstName middleName lastName nameExtension postfixTitle position email phone",
+      strictPopulate: false,
     })
     .populate({ path: "memo.memoId", select: "memoNo uploadedMemo" })
     .lean();
@@ -538,7 +629,7 @@ const approveCtoApplicationService = async ({
 
   const approver = await Employee.findById(safeApproverId)
     .select(
-      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email signature",
+      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email signature phone",
     )
     .lean();
 
@@ -552,13 +643,22 @@ const approveCtoApplicationService = async ({
     );
   }
 
+  // ==========================================
+  // TRANSACTION (all DB changes succeed or none do)
+  // ==========================================
+  let application;
+  let currentStep;
+  let updatedSteps = [];
+  let allApproved = false;
+
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
-    const application = await CtoApplication.findById(safeAppId)
+    session.startTransaction();
+
+    application = await CtoApplication.findById(safeAppId)
       .populate("approvals")
-      .populate("employee", "_id firstName lastName email balances")
+      .populate("employee", "_id firstName lastName email balances phone")
       .session(session);
 
     if (!application)
@@ -567,7 +667,7 @@ const approveCtoApplicationService = async ({
       throw createServiceError("Application has already been processed.", 400);
     }
 
-    const currentStep = application.approvals.find((s) =>
+    currentStep = application.approvals.find((s) =>
       sameId(s.approver, safeApproverId),
     );
     if (!currentStep)
@@ -583,11 +683,11 @@ const approveCtoApplicationService = async ({
     );
     if (unapprovedPrevious)
       throw createServiceError(
-        `Level ${unapprovedPrevious.level} must approve first.`,
+        "Level " + unapprovedPrevious.level + " must approve first.",
         400,
       );
 
-    // Update approval step securely via $set, injecting the full approverSnapshot
+    // Update approval step securely, injecting the full approverSnapshot
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
       {
@@ -601,13 +701,13 @@ const approveCtoApplicationService = async ({
       { session, runValidators: true },
     );
 
-    const updatedSteps = await ApprovalStep.find({
-      _id: { $in: application.approvals },
+    updatedSteps = await ApprovalStep.find({
+      _id: {
+        $in: application.approvals,
+      },
     }).session(session);
 
-    const allApproved = updatedSteps.every(
-      (s) => s.status === CTO_STATUS.APPROVED,
-    );
+    allApproved = updatedSteps.every((s) => s.status === CTO_STATUS.APPROVED);
 
     if (allApproved) {
       application.overallStatus = CTO_STATUS.APPROVED;
@@ -624,8 +724,14 @@ const approveCtoApplicationService = async ({
         const creditResult = await CtoCredit.findOneAndUpdate(
           {
             _id: memoId,
-            "employees.employee": employeeId,
-            "employees.reservedHours": { $gte: appliedHours }, // Concurrency guard
+            employees: {
+              $elemMatch: {
+                employee: employeeId,
+                reservedHours: {
+                  $gte: appliedHours,
+                },
+              },
+            },
           },
           {
             $inc: {
@@ -654,8 +760,15 @@ const approveCtoApplicationService = async ({
           updatedEmpCredit.status !== CTO_STATUS.EXHAUSTED
         ) {
           await CtoCredit.updateOne(
-            { _id: memoId, "employees.employee": employeeId },
-            { $set: { "employees.$.status": CTO_STATUS.EXHAUSTED } },
+            {
+              _id: memoId,
+              employees: { $elemMatch: { employee: employeeId } },
+            },
+            {
+              $set: {
+                "employees.$.status": CTO_STATUS.EXHAUSTED,
+              },
+            },
             { session },
           );
         }
@@ -666,9 +779,15 @@ const approveCtoApplicationService = async ({
       const updatedEmployee = await Employee.findOneAndUpdate(
         {
           _id: employeeId,
-          "balances.ctoHours": { $gte: requestedHours }, // Concurrency check
+          "balances.ctoHours": {
+            $gte: requestedHours,
+          },
         },
-        { $inc: { "balances.ctoHours": -requestedHours } },
+        {
+          $inc: {
+            "balances.ctoHours": -requestedHours,
+          },
+        },
         { session, new: true },
       );
 
@@ -683,127 +802,178 @@ const approveCtoApplicationService = async ({
     }
 
     await session.commitTransaction();
-    session.endSession();
-
-    // Background Logging and Notifications (Post-Transaction)
-    const auditBody = {
-      approverId: safeApproverId,
-      applicationId: safeAppId,
-      level: currentStep.level,
-      approverName: `${approver?.email || "unknown"} (id: ${safeApproverId})`,
-      approverEmail: approver?.email || "unknown",
-      employeeName: `${application.employee.email} (id: ${application.employee._id})`,
-    };
-
-    const auditDetails = buildAuditDetails({
-      endpoint: "Approve Application",
-      actor: auditBody.approverName,
-      targetUser: auditBody.employeeName,
-      body: auditBody,
-      params: { id: application._id },
-      before: { status: currentStep.status },
-    });
-
-    await auditLogService.createAuditLog({
-      userId: safeApproverId,
-      email: auditBody.approverEmail,
-      method: "POST",
-      endpoint: "Approve Application",
-      url: `/cto/applications/approver/${application._id}/approve`,
-      statusCode: 200,
-      ip: getClientIp(req),
-      summary: auditDetails.summary,
-      timestamp: new Date(),
-    });
-
-    // 1. IN-APP NOTIFICATION TO APPLICANT (Triggers for every approval step)
-    try {
-      await NotificationService.notifyEmployeeOnCtoApproval({
-        employeeId: application.employee._id,
-        approver: approver || {
-          _id: safeApproverId,
-          firstName: "Approver",
-          lastName: "",
-        },
-        ctoApplication: application,
-        approvalStep: currentStep,
-      });
-    } catch (e) {
-      console.error("Failed creating CTO approval notification:", e?.message);
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
     }
+    throw err;
+  } finally {
+    session.endSession();
+  }
 
-    // 2. EMAIL NOTIFICATIONS & NEXT APPROVER NOTIFICATIONS
-    if (!allApproved) {
-      // Find the next approver to alert them
-      const nextStep = updatedSteps.find(
-        (s) => s.level === currentStep.level + 1,
-      );
-      if (nextStep) {
-        try {
-          await NotificationService.notifyApproverOnCtoRequired({
-            approverId: nextStep.approver,
-            employee: application.employee,
-            ctoApplication: application,
-          });
-        } catch (e) {
-          console.error(
-            "Failed creating next step CTO notification:",
-            e?.message,
-          );
-        }
+  // ==========================================
+  // SIDE EFFECTS (already committed — nothing below may fail the request)
+  // ==========================================
+  await writeAuditLog({
+    endpoint: "Approve Application",
+    urlSuffix: "approve",
+    approver,
+    approverId: safeApproverId,
+    application,
+    currentStep,
+    req,
+  });
 
-        const nextApprover = await Employee.findById(nextStep.approver)
-          .select("email firstName lastName")
+  const applicantName = fullNameOf(application.employee);
+
+  // 1. IN-APP NOTIFICATION TO APPLICANT (Triggers for every approval step)
+  try {
+    await NotificationService.notifyEmployeeOnCtoApproval({
+      employeeId: application.employee._id,
+      employee: application.employee,
+      approver,
+      ctoApplication: application,
+      approvalStep: currentStep,
+    });
+  } catch (e) {
+    console.error("Failed creating CTO approval notification:", e?.message);
+  }
+
+  if (!allApproved) {
+    // ---------- INTERMEDIATE STEP ----------
+    // Notified employees are NOT informed on intermediate steps.
+    const nextStep = updatedSteps.find(
+      (s) => s.level === currentStep.level + 1,
+    );
+
+    if (nextStep) {
+      let nextApprover = null;
+
+      try {
+        nextApprover = await Employee.findById(nextStep.approver)
+          .select("email firstName lastName phone")
           .lean();
-        const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
 
+        await NotificationService.notifyApproverOnCtoRequired({
+          approverId: nextStep.approver,
+          approver: nextApprover,
+          employee: application.employee,
+          ctoApplication: application,
+        });
+      } catch (e) {
+        console.error(
+          "Failed creating next step CTO notification:",
+          e?.message,
+        );
+      }
+
+      try {
+        const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
         if (nextApprover?.email && enabled) {
+          const frontendUrl = process.env.FRONTEND_URL || "";
           const tpl = ctoApprovalEmail({
-            approverName: `${nextApprover.firstName} ${nextApprover.lastName}`,
-            employeeName: `${application.employee.firstName} ${application.employee.lastName}`,
+            approverName: fullNameOf(nextApprover),
+            employeeName: applicantName,
             requestedHours: application.requestedHours,
             reason: application.reason,
             level: nextStep.level,
-            link: `${process.env.FRONTEND_URL}/app/cto-approvals/${application._id}`,
+            link: frontendUrl + "/app/cto-approvals/" + application._id,
           });
           await safeSendEmail(nextApprover.email, tpl.subject, tpl.html);
         }
+      } catch (e) {
+        console.error("Failed emailing next CTO approver:", e?.message);
       }
+    }
 
-      // ✅ Email the APPLICANT to notify them of intermediate step approval utilizing the new template
-      if (application.employee.email) {
-        const applicantEnabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
-        if (applicantEnabled) {
-          const tpl = ctoStepApprovalEmail({
-            employeeName: application.employee.firstName,
-            approverName: `${approver.firstName} ${approver.lastName}`,
-            level: currentStep.level,
-          });
-          await safeSendEmail(
-            application.employee.email,
-            tpl.subject,
-            tpl.html,
-          );
-        }
+    // Email the APPLICANT about the intermediate approval
+    try {
+      const applicantEnabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
+      if (application.employee.email && applicantEnabled) {
+        const tpl = ctoStepApprovalEmail({
+          employeeName: application.employee.firstName,
+          approverName: fullNameOf(approver),
+          level: currentStep.level,
+        });
+        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
       }
-    } else if (application.employee.email) {
-      // Existing: Email the APPLICANT for FINAL approval
-      const enabled = await canSend(EMAIL_KEYS.CTO_FINAL_APPROVAL);
-      if (enabled) {
+    } catch (e) {
+      console.error("Failed emailing applicant on CTO step:", e?.message);
+    }
+  } else {
+    // ---------- FINAL APPROVAL ----------
+    const finalApprovalEmailEnabled = await canSend(
+      EMAIL_KEYS.CTO_FINAL_APPROVAL,
+    );
+
+    // Email the applicant
+    try {
+      if (application.employee.email && finalApprovalEmailEnabled) {
         const tpl = ctoFinalApprovalEmail({
           employeeName: application.employee.firstName,
           requestedHours: application.requestedHours,
         });
         await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
       }
+    } catch (e) {
+      console.error("Failed emailing applicant on CTO final:", e?.message);
     }
 
-    return getCtoApplicationByIdService(safeAppId);
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    throw err;
+    // Notify passive tagged employees ONLY on Final Approval
+    try {
+      const approverIds = updatedSteps.map((s) => String(s.approver));
+      const { ids: notifiedIds, docs: notifiedDocs } = await getNotifiedDocs(
+        application,
+        approverIds,
+      );
+
+      if (notifiedIds.length > 0) {
+        if (
+          typeof NotificationService.notifyTaggedEmployeesOnCtoFinalApproval ===
+          "function"
+        ) {
+          try {
+            await NotificationService.notifyTaggedEmployeesOnCtoFinalApproval({
+              notifiedIds,
+              notifiedEmployees: notifiedDocs,
+              employee: application.employee,
+              approver,
+              ctoApplication: application,
+            });
+          } catch (e) {
+            console.error(
+              "Failed in-app notify of tagged employees on CTO final:",
+              e?.message,
+            );
+          }
+        }
+
+        if (finalApprovalEmailEnabled) {
+          await Promise.all(
+            notifiedDocs
+              .filter((emp) => emp?.email)
+              .map((emp) => {
+                const tpl = ctoNotifiedFinalApprovalEmail({
+                  recipientName: fullNameOf(emp),
+                  employeeName: applicantName,
+                  requestedHours: application.requestedHours,
+                  inclusiveDates: application.inclusiveDates,
+                  approvedBy: fullNameOf(approver),
+                });
+                return safeSendEmail(emp.email, tpl.subject, tpl.html);
+              }),
+          );
+        }
+      }
+    } catch (e) {
+      console.error(
+        "Failed notifying tagged employees on CTO final approval:",
+        e?.message,
+      );
+    }
   }
+
+  return getCtoApplicationByIdService(safeAppId);
 };
 
 const rejectCtoApplicationService = async ({
@@ -815,11 +985,14 @@ const rejectCtoApplicationService = async ({
   const safeApproverId = String(approverId).trim();
   const safeAppId = String(applicationId).trim();
 
+  assertObjectId(safeApproverId, "Approver ID");
+  assertObjectId(safeAppId, "Application ID");
+
   const safeRemarks = sanitizeString(remarks, 1000) || "No remarks provided";
 
   const approver = await Employee.findById(safeApproverId)
     .select(
-      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email signature",
+      "prefixTitle firstName middleName lastName nameExtension postfixTitle position email signature phone",
     )
     .lean();
 
@@ -833,14 +1006,21 @@ const rejectCtoApplicationService = async ({
     );
   }
 
+  // ==========================================
+  // TRANSACTION (all DB changes succeed or none do)
+  // ==========================================
+  let application;
+  let currentStep;
+
   const session = await mongoose.startSession();
-  session.startTransaction();
 
   try {
-    const application = await CtoApplication.findById(safeAppId)
+    session.startTransaction();
+
+    application = await CtoApplication.findById(safeAppId)
       .populate("approvals")
       .populate("memo.memoId")
-      .populate("employee", "firstName lastName email balances")
+      .populate("employee", "firstName lastName email balances phone")
       .session(session);
 
     if (!application)
@@ -849,7 +1029,7 @@ const rejectCtoApplicationService = async ({
       throw createServiceError("Application has already been processed.", 400);
     }
 
-    const currentStep = application.approvals.find((s) =>
+    currentStep = application.approvals.find((s) =>
       sameId(s.approver, safeApproverId),
     );
     if (!currentStep)
@@ -865,7 +1045,7 @@ const rejectCtoApplicationService = async ({
     );
     if (unapprovedPrevious)
       throw createServiceError(
-        `Level ${unapprovedPrevious.level} must approve first.`,
+        "Level " + unapprovedPrevious.level + " must approve first.",
         400,
       );
 
@@ -884,7 +1064,9 @@ const rejectCtoApplicationService = async ({
           employees: {
             $elemMatch: {
               employee: employeeId,
-              reservedHours: { $gte: appliedHours }, // Concurrency protection
+              reservedHours: {
+                $gte: appliedHours,
+              },
             },
           },
         },
@@ -893,7 +1075,9 @@ const rejectCtoApplicationService = async ({
             "employees.$.reservedHours": -appliedHours,
             "employees.$.remainingHours": appliedHours,
           },
-          $set: { "employees.$.status": CTO_STATUS.ACTIVE },
+          $set: {
+            "employees.$.status": CTO_STATUS.ACTIVE,
+          },
         },
         { session },
       );
@@ -906,7 +1090,7 @@ const rejectCtoApplicationService = async ({
       }
     }
 
-    // Update current step to rejected securely via $set, injecting the full approverSnapshot
+    // Update current step to rejected securely, injecting the full approverSnapshot
     await ApprovalStep.findByIdAndUpdate(
       currentStep._id,
       {
@@ -921,14 +1105,19 @@ const rejectCtoApplicationService = async ({
       { session, runValidators: true },
     );
 
-    // Cancel future steps automatically securely via $set
+    // Cancel future steps automatically
     const futureStepIds = (application.approvals || [])
       .filter((s) => Number(s.level) > Number(currentStep.level))
       .map((s) => s._id);
 
     if (futureStepIds.length) {
       await ApprovalStep.updateMany(
-        { _id: { $in: futureStepIds }, status: CTO_STATUS.PENDING },
+        {
+          _id: {
+            $in: futureStepIds,
+          },
+          status: CTO_STATUS.PENDING,
+        },
         {
           $set: {
             status: CTO_STATUS.CANCELLED,
@@ -945,74 +1134,118 @@ const rejectCtoApplicationService = async ({
     await application.save({ session });
 
     await session.commitTransaction();
+  } catch (err) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    throw err;
+  } finally {
     session.endSession();
+  }
 
-    // Background Logging and Notifications (Post-Transaction)
-    const auditBody = {
-      approverId: safeApproverId,
-      applicationId: safeAppId,
-      level: currentStep.level,
-      approverName: `${approver?.email || "unknown"} (id: ${safeApproverId})`,
-      approverEmail: approver?.email || "unknown",
-      employeeName: `${application.employee.email} (id: ${application.employee._id})`,
-    };
+  // ==========================================
+  // SIDE EFFECTS (already committed — nothing below may fail the request)
+  // ==========================================
+  await writeAuditLog({
+    endpoint: "Reject Application",
+    urlSuffix: "reject",
+    approver,
+    approverId: safeApproverId,
+    application,
+    currentStep,
+    req,
+  });
 
-    const auditDetails = buildAuditDetails({
-      endpoint: "Reject Application",
-      actor: auditBody.approverName,
-      targetUser: auditBody.employeeName,
-      body: auditBody,
-      params: { id: application._id },
-      before: { status: currentStep.status },
+  const applicantName = fullNameOf(application.employee);
+
+  // 1. IN-APP NOTIFICATION TO APPLICANT
+  try {
+    await NotificationService.notifyEmployeeOnCtoRejection({
+      employeeId: application.employee._id,
+      employee: application.employee,
+      approver,
+      ctoApplication: application,
+      approvalStep: currentStep,
+      remarks: safeRemarks,
     });
+  } catch (e) {
+    console.error("Failed creating CTO rejection notification:", e?.message);
+  }
 
-    await auditLogService.createAuditLog({
-      userId: safeApproverId,
-      email: auditBody.approverEmail,
-      method: "POST",
-      endpoint: "Reject Application",
-      url: `/cto/applications/approver/${application._id}/reject`,
-      statusCode: 200,
-      ip: getClientIp(req),
-      summary: auditDetails.summary,
-      timestamp: new Date(),
-    });
+  const rejectionEmailEnabled = await canSend(EMAIL_KEYS.CTO_REJECTION);
 
-    // 1. IN-APP NOTIFICATION TO APPLICANT
-    try {
-      await NotificationService.notifyEmployeeOnCtoRejection({
-        employeeId: application.employee._id,
-        approver: approver || {
-          _id: safeApproverId,
-          firstName: "Approver",
-          lastName: "",
-        },
-        ctoApplication: application,
-        approvalStep: currentStep,
+  // 2. EMAIL NOTIFICATION TO APPLICANT
+  try {
+    if (application.employee.email && rejectionEmailEnabled) {
+      const tpl = ctoRejectionEmail({
+        employeeName: application.employee.firstName,
         remarks: safeRemarks,
       });
-    } catch (e) {
-      console.error("Failed creating CTO rejection notification:", e?.message);
+      await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
     }
+  } catch (e) {
+    console.error("Failed emailing applicant on CTO rejection:", e?.message);
+  }
 
-    // 2. EMAIL NOTIFICATION TO APPLICANT
-    if (application.employee.email) {
-      const enabled = await canSend(EMAIL_KEYS.CTO_REJECTION);
-      if (enabled) {
-        const tpl = ctoRejectionEmail({
-          employeeName: application.employee.firstName,
-          remarks: safeRemarks,
-        });
-        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+  // 3. NOTIFY TAGGED EMPLOYEES (notifiedEmployees) ON REJECTION
+  try {
+    const approverIds = (application.approvals || []).map((s) =>
+      String(s.approver),
+    );
+    const { ids: notifiedIds, docs: notifiedDocs } = await getNotifiedDocs(
+      application,
+      approverIds,
+    );
+
+    if (notifiedIds.length > 0) {
+      if (
+        typeof NotificationService.notifyTaggedEmployeesOnCtoRejection ===
+        "function"
+      ) {
+        try {
+          await NotificationService.notifyTaggedEmployeesOnCtoRejection({
+            notifiedIds,
+            notifiedEmployees: notifiedDocs,
+            employee: application.employee,
+            approver,
+            ctoApplication: application,
+            approvalStep: currentStep,
+            remarks: safeRemarks,
+          });
+        } catch (e) {
+          console.error(
+            "Failed in-app notify of tagged employees on CTO rejection:",
+            e?.message,
+          );
+        }
+      }
+
+      if (rejectionEmailEnabled) {
+        await Promise.all(
+          notifiedDocs
+            .filter((emp) => emp?.email)
+            .map((emp) => {
+              const tpl = ctoNotifiedRejectionEmail({
+                recipientName: fullNameOf(emp),
+                employeeName: applicantName,
+                requestedHours: application.requestedHours,
+                inclusiveDates: application.inclusiveDates,
+                rejectedBy: fullNameOf(approver),
+                remarks: safeRemarks,
+              });
+              return safeSendEmail(emp.email, tpl.subject, tpl.html);
+            }),
+        );
       }
     }
-
-    return getCtoApplicationByIdService(safeAppId);
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    throw err;
+  } catch (e) {
+    console.error(
+      "Failed notifying tagged employees on CTO rejection:",
+      e?.message,
+    );
   }
+
+  return getCtoApplicationByIdService(safeAppId);
 };
 
 module.exports = {
