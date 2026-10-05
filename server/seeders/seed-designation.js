@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
-require("./config/loadEnv");
+require("../config/loadEnv");
 
 // Adjust path depending on your folder structure
-const Designation = require("../models/Designation");
+const Designation = require("../models/designationModel");
 
 const designationsData = [
   { name: "Cagayan Provincial Office", status: "Active" },

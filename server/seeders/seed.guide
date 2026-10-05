@@ -1,0 +1,30 @@
+node --env-file=.env.production seeders/seed-designation.js
+
+node --env-file=.env.production seeders/seed-joEmployee.js
+
+node --env-file=.env.production seeders/seed-organicEmployee.js
+
+node --env-file=.env.production seeders/seed-projects.js
+
+node --env-file=.env.production seeders/seed-roles.js
+
+node --env-file=.env.production seeders/seed-salaryGrades.js
+
+node --env-file=.env.production seeders/seed-testEmployee.js
+
+node --env-file=.env.production seeders/seed-testEmployee.js --clean
+
+npx pm2 restart ecosystem.config.js
+
+# Seed (insert missing, update changed, skip the rest)
+node --env-file=.env.production seeders/seed-organicEmployee.js
+
+# Preview what would be deleted (deletes nothing)
+node --env-file=.env.production seeders/seed-organicEmployee.js
+ --clean
+
+# Actually delete them
+node --env-file=.env.production seeders/seed-organicEmployee.js
+ --clean --yes
+
+

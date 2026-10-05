@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
-require("./config/loadEnv");
+require("../config/loadEnv");
 
 // Adjust path depending on your folder structure
-const Project = require("../models/Project");
+const Project = require("../models/projectModel");
 
 const projectsData = [
   { name: "PNPKI", status: "Active" },

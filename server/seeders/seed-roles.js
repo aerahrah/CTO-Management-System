@@ -1,10 +1,10 @@
 const mongoose = require("mongoose");
 const dotenv = require("dotenv");
 
-require("./config/loadEnv");
+require("../config/loadEnv");
 
 // Adjust this path if your model is located elsewhere relative to the seeders folder
-const Role = require("../models/Role");
+const Role = require("../models/roleModel");
 
 const rolesData = [
   {

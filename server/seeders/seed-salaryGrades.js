@@ -3,7 +3,7 @@ const dotenv = require("dotenv");
 const path = require("path");
 
 // Resolve the absolute path to the .env file in the parent directory
-require("./config/loadEnv");
+require("../config/loadEnv");
 // Adjust this path if your model is named differently
 const SalaryGrade = require("../models/salaryGradeModel");
 
