@@ -250,11 +250,17 @@ function App() {
             element={<ProtectedRoute requiredPermission="cto.view_self" />}
           >
             <Route path="cto-apply" element={<MyCtoApplications />} />
-            <Route path="cto-apply/add" element={<AddCtoApplicationForm />} />
+
+            {/* ✅ Forms require cto.manage_self as well */}
             <Route
-              path="cto-apply/organic"
-              element={<AddOrganicLeaveApplicationForm />}
-            />
+              element={<ProtectedRoute requiredPermission="cto.manage_self" />}
+            >
+              <Route path="cto-apply/add" element={<AddCtoApplicationForm />} />
+              <Route
+                path="cto-apply/organic"
+                element={<AddOrganicLeaveApplicationForm />}
+              />
+            </Route>
           </Route>
 
           <Route
@@ -262,14 +268,22 @@ function App() {
           >
             <Route path="wellness-dashboard" element={<WellnessDashboard />} />
             <Route path="wellness-apply" element={<MyWellnessApplications />} />
+
+            {/* ✅ Forms require wellness.manage_self as well */}
             <Route
-              path="wellness-apply/add"
-              element={<AddWellnessApplicationForm />}
-            />
-            <Route
-              path="wellness-apply/organic"
-              element={<AddOrganicWellnessApplicationForm />}
-            />
+              element={
+                <ProtectedRoute requiredPermission="wellness.manage_self" />
+              }
+            >
+              <Route
+                path="wellness-apply/add"
+                element={<AddWellnessApplicationForm />}
+              />
+              <Route
+                path="wellness-apply/organic"
+                element={<AddOrganicWellnessApplicationForm />}
+              />
+            </Route>
           </Route>
 
           {/* ===================== */}

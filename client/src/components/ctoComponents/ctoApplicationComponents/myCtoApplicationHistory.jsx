@@ -922,6 +922,7 @@ const MyCtoApplications = () => {
   const isUserOrganic = user?.employeeType === "Organic";
 
   const canRevokeSelf = can("revocation.manage_self");
+  const canApplySelf = can("cto.manage_self");
   const { data: settingsData } = useQuery({
     queryKey: ["revocationSettings"],
     queryFn: fetchRevocationSettings,
@@ -1336,63 +1337,65 @@ const MyCtoApplications = () => {
                     borderColor={borderColor}
                   />
 
-                  <div className="flex flex-row items-center gap-2 w-full">
-                    {/* Late Filing Button */}
-                    <button
-                      onClick={() =>
-                        navigate(
-                          isUserOrganic
-                            ? "/app/cto-apply/organic?late=true"
-                            : "/app/cto-apply/add?late=true",
-                        )
-                      }
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1"
-                      type="button"
-                      style={{
-                        backgroundColor: "rgba(245,158,11,0.12)",
-                        color: "#d97706",
-                        border: "1px solid rgba(245,158,11,0.25)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor =
-                          "rgba(245,158,11,0.20)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor =
-                          "rgba(245,158,11,0.12)";
-                      }}
-                    >
-                      <Clock4 className="w-3.5 h-3.5 shrink-0" />
-                      Late Filing
-                    </button>
+                  {canApplySelf && (
+                    <div className="flex flex-row items-center gap-2 w-full">
+                      {/* Late Filing Button */}
+                      <button
+                        onClick={() =>
+                          navigate(
+                            isUserOrganic
+                              ? "/app/cto-apply/organic?late=true"
+                              : "/app/cto-apply/add?late=true",
+                          )
+                        }
+                        className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1"
+                        type="button"
+                        style={{
+                          backgroundColor: "rgba(245,158,11,0.12)",
+                          color: "#d97706",
+                          border: "1px solid rgba(245,158,11,0.25)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(245,158,11,0.20)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor =
+                            "rgba(245,158,11,0.12)";
+                        }}
+                      >
+                        <Clock4 className="w-3.5 h-3.5 shrink-0" />
+                        Late Filing
+                      </button>
 
-                    {/* New Application Button */}
-                    <button
-                      onClick={() =>
-                        navigate(
-                          isUserOrganic
-                            ? "/app/cto-apply/organic"
-                            : "/app/cto-apply/add",
-                        )
-                      }
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1"
-                      type="button"
-                      style={{
-                        backgroundColor: "var(--accent)",
-                        color: "#fff",
-                        border: "1px solid var(--accent)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.filter = "brightness(0.95)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.filter = "none";
-                      }}
-                    >
-                      <Plus className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:rotate-90" />
-                      File Leave
-                    </button>
-                  </div>
+                      {/* New Application Button */}
+                      <button
+                        onClick={() =>
+                          navigate(
+                            isUserOrganic
+                              ? "/app/cto-apply/organic"
+                              : "/app/cto-apply/add",
+                          )
+                        }
+                        className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1"
+                        type="button"
+                        style={{
+                          backgroundColor: "var(--accent)",
+                          color: "#fff",
+                          border: "1px solid var(--accent)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.filter = "brightness(0.95)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.filter = "none";
+                        }}
+                      >
+                        <Plus className="w-3.5 h-3.5 shrink-0 transition-transform group-hover:rotate-90" />
+                        File Leave
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

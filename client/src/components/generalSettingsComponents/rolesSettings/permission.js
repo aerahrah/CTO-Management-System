@@ -179,16 +179,6 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
-    name: "Leave Service",
-    permissions: [
-      {
-        id: "leave_credits.manage",
-        label: "Manage Leave Credits",
-        hint: "Add or manage regular leave credits for employees.",
-      },
-    ],
-  },
-  {
     name: "Calendar",
     permissions: [
       {
@@ -200,11 +190,6 @@ export const PERMISSION_GROUPS = [
         id: "calendar.view_all",
         label: "View Company Calendar",
         hint: "View leave dates for all employees.",
-      },
-      {
-        id: "calendar.view_department",
-        label: "View Department Calendar",
-        hint: "View leave dates specifically for the user's department.",
       },
       {
         id: "calendar.view_project",

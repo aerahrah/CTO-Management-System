@@ -1283,15 +1283,14 @@ const MyWellnessApplications = () => {
                   </p>
                 </div>
 
-                {canManageSelf && (
-                  <div className="w-full md:w-72 flex flex-col gap-3 shrink-0">
-                    {/* ✅ Added Balance Days Card here */}
-                    <BalanceDaysCard
-                      days={balanceDays}
-                      loading={isBalanceLoading}
-                      borderColor={borderColor}
-                    />
-
+                <div className="w-full md:w-72 flex flex-col gap-3 shrink-0">
+                  {/* ✅ Added Balance Days Card here */}
+                  <BalanceDaysCard
+                    days={balanceDays}
+                    loading={isBalanceLoading}
+                    borderColor={borderColor}
+                  />
+                  {canManageSelf && (
                     <div className="flex flex-row items-center gap-2 w-full">
                       <button
                         onClick={() =>
@@ -1347,8 +1346,8 @@ const MyWellnessApplications = () => {
                         File Leave
                       </button>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
 
