@@ -12,6 +12,7 @@ import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../../store/authStore";
+import { Layers, FileText, Mail, Briefcase } from "lucide-react";
 
 /* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
 function resolveTheme(prefTheme) {
@@ -98,113 +99,184 @@ function useIsXlUp() {
    SKELETON (theme-aware)
 ========================= */
 const EmployeeInfoSkeleton = ({ borderColor }) => (
-  <div className="space-y-4">
+  <div className="h-full min-h-0 flex flex-col gap-3">
     <div
-      className="rounded-xl border shadow-sm"
+      className="rounded-xl border shadow-sm p-3 md:p-4"
       style={{ borderColor, backgroundColor: "var(--app-surface)" }}
     >
-      <div className="p-4">
-        <Skeleton height={22} width={"42%"} />
-        <div className="mt-2">
-          <Skeleton height={14} width={"55%"} />
+      <div className="flex flex-col xl:flex-row xl:items-center gap-3">
+        <div className="flex items-center gap-3 xl:w-[32%]">
+          <Skeleton circle width={44} height={44} />
+          <div className="flex-1">
+            <Skeleton height={18} width={"70%"} />
+            <Skeleton height={12} width={"55%"} />
+          </div>
         </div>
-        <div className="mt-2">
-          <Skeleton height={14} width={"45%"} />
+        <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} height={54} borderRadius={12} />
+          ))}
         </div>
       </div>
     </div>
 
     <div
-      className="rounded-xl border shadow-sm overflow-hidden"
+      className="rounded-xl border shadow-sm overflow-hidden flex-1 min-h-0"
       style={{ borderColor, backgroundColor: "var(--app-surface)" }}
     >
-      <div className="p-4 border-b" style={{ borderColor }}>
+      <div className="px-4 py-3 border-b" style={{ borderColor }}>
         <Skeleton height={14} width={220} />
       </div>
-      <div className="p-4">
-        <Skeleton height={420} />
+      <div className="p-3 space-y-2">
+        {[...Array(6)].map((_, i) => (
+          <Skeleton key={i} height={40} />
+        ))}
       </div>
     </div>
   </div>
 );
 
 /* =========================
-   UI: StatCard + Tabs (theme-aware)
+   UI: StatCard, Utilization, Tabs (theme-aware)
 ========================= */
-const StatCard = ({ title, value, hint, tone = "neutral", borderColor }) => {
-  const valueColor = useMemo(() => {
-    switch (tone) {
-      case "blue":
-        return "var(--accent)";
-      case "green":
-        return "#16a34a";
-      case "red":
-        return "#ef4444";
-      case "amber":
-        return "#d97706";
-      default:
-        return "var(--app-text)";
-    }
-  }, [tone]);
+const toneColor = (tone) => {
+  switch (tone) {
+    case "blue":
+      return "var(--accent)";
+    case "green":
+      return "#16a34a";
+    case "red":
+      return "#ef4444";
+    case "amber":
+      return "#d97706";
+    default:
+      return "var(--app-text)";
+  }
+};
 
-  return (
+const StatCard = ({ title, value, hint, tone = "neutral", borderColor }) => (
+  <div
+    className="min-w-0 border rounded-xl px-3 py-2"
+    role="status"
+    style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
+  >
     <div
-      className="w-full flex-shrink-0 border rounded-xl shadow-sm p-3 flex items-start gap-3 h-full"
-      role="status"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor,
-      }}
+      className="text-[10px] uppercase font-bold tracking-wider truncate"
+      style={{ color: "var(--app-muted)" }}
     >
-      <div className="flex-1 min-w-0">
-        <div
-          className="text-[10px] uppercase font-bold tracking-wide truncate"
+      {title}
+    </div>
+    <div className="flex items-baseline gap-1.5 min-w-0">
+      <span
+        className="text-base md:text-lg font-extrabold leading-tight truncate"
+        style={{ color: toneColor(tone) }}
+      >
+        {value}
+      </span>
+      {hint && (
+        <span
+          className="text-[10px] truncate"
           style={{ color: "var(--app-muted)" }}
         >
-          {title}
-        </div>
+          {hint}
+        </span>
+      )}
+    </div>
+  </div>
+);
+
+const UtilizationBar = ({ credited, used, reserved, remaining, fmtHours }) => {
+  if (!credited || credited <= 0) return null;
+
+  const pct = (v) => Math.max(0, Math.min(100, (v / credited) * 100));
+  const usedPct = pct(used);
+  const reservedPct = pct(reserved);
+  const remainingPct = pct(remaining);
+
+  return (
+    <div className="mt-2.5">
+      <div
+        className="h-1.5 w-full rounded-full overflow-hidden flex"
+        style={{ backgroundColor: "var(--app-surface-2)" }}
+        aria-label="CTO utilization"
+      >
+        <div style={{ width: `${usedPct}%`, backgroundColor: "#ef4444" }} />
+        <div style={{ width: `${reservedPct}%`, backgroundColor: "#f59e0b" }} />
         <div
-          className="mt-0.5 text-lg font-bold truncate"
-          style={{ color: valueColor }}
-        >
-          {value}
-        </div>
-        {hint && (
-          <div
-            className="text-[11px] truncate"
-            style={{ color: "var(--app-muted)" }}
-          >
-            {hint}
-          </div>
+          style={{
+            width: `${remainingPct}%`,
+            backgroundColor: "var(--accent)",
+          }}
+        />
+      </div>
+      <div
+        className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] font-semibold"
+        style={{ color: "var(--app-muted)" }}
+      >
+        <span className="inline-flex items-center gap-1">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: "#ef4444" }}
+          />
+          Used {fmtHours(used)}h ({Math.round(usedPct)}%)
+        </span>
+        {reserved > 0 && (
+          <span className="inline-flex items-center gap-1">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ backgroundColor: "#f59e0b" }}
+            />
+            Reserved {fmtHours(reserved)}h ({Math.round(reservedPct)}%)
+          </span>
         )}
+        <span className="inline-flex items-center gap-1">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ backgroundColor: "var(--accent)" }}
+          />
+          Available {fmtHours(remaining)}h ({Math.round(remainingPct)}%)
+        </span>
       </div>
     </div>
   );
 };
 
-const TabButton = ({ active, onClick, label, borderColor }) => {
-  return (
-    <button
-      onClick={onClick}
-      className="px-4 sm:px-6 py-3 text-sm font-semibold transition border-b-2 whitespace-nowrap"
-      style={{
-        borderBottomColor: active ? "var(--accent)" : "transparent",
-        color: active ? "var(--accent)" : "var(--app-muted)",
-      }}
-      onMouseEnter={(e) => {
-        if (active) return;
-        e.currentTarget.style.color = "var(--app-text)";
-      }}
-      onMouseLeave={(e) => {
-        if (active) return;
-        e.currentTarget.style.color = "var(--app-muted)";
-      }}
-      type="button"
-    >
-      {label}
-    </button>
-  );
-};
+const TabButton = ({ active, onClick, label, icon: Icon, count }) => (
+  <button
+    onClick={onClick}
+    className="px-4 py-2.5 text-sm font-semibold transition border-b-2 whitespace-nowrap inline-flex items-center gap-2"
+    style={{
+      borderBottomColor: active ? "var(--accent)" : "transparent",
+      color: active ? "var(--accent)" : "var(--app-muted)",
+    }}
+    onMouseEnter={(e) => {
+      if (active) return;
+      e.currentTarget.style.color = "var(--app-text)";
+    }}
+    onMouseLeave={(e) => {
+      if (active) return;
+      e.currentTarget.style.color = "var(--app-muted)";
+    }}
+    type="button"
+    aria-pressed={active}
+  >
+    {Icon && <Icon className="w-4 h-4" />}
+    {label}
+    {typeof count === "number" && (
+      <span
+        className="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+        style={{
+          backgroundColor: active
+            ? "var(--accent-soft)"
+            : "var(--app-surface-2)",
+          color: active ? "var(--accent)" : "var(--app-muted)",
+        }}
+      >
+        {count}
+      </span>
+    )}
+  </button>
+);
 
 /* =========================
    MAIN COMPONENT
@@ -214,9 +286,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
   const { id: selectedId } = useParams();
   const isXlUp = useIsXlUp();
 
-  // ✅ Theme vars come from global ThemeSync in App.jsx, but we still compute:
-  // - borderColor (theme-aware)
-  // - skeleton colors (theme-aware + safe fallbacks)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -331,7 +400,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     creditPagination?.totalDocs ??
     creditData?.total;
 
-  // ✅ statusCounts + totals from API
   const creditStatusCounts = creditData?.statusCounts || {
     ACTIVE: 0,
     EXHAUSTED: 0,
@@ -357,6 +425,9 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     appPagination?.totalDocs ??
     applicationData?.total;
 
+  // ✅ Pass real status counts to the application table (previously missing)
+  const appStatusCounts = applicationData?.statusCounts;
+
   const totalMemosOverall = useMemo(() => {
     return (
       (creditStatusCounts.ACTIVE || 0) +
@@ -365,9 +436,16 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
     );
   }, [creditStatusCounts]);
 
+  const totalApplicationsOverall =
+    typeof appStatusCounts?.total === "number"
+      ? appStatusCounts.total
+      : typeof appTotal === "number"
+        ? appTotal
+        : undefined;
+
   const fmtHours = useCallback((h) => {
     const n = Number(h || 0);
-    return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
   }, []);
 
   const summary = useMemo(() => {
@@ -413,48 +491,86 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
   const fullName =
     `${employee.firstName || ""} ${employee.lastName || ""}`.trim();
 
+  const initials =
+    fullName
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "E";
+
+  const subtitle = [employee.position, employee.department]
+    .filter(Boolean)
+    .join(" • ");
+
   return (
     <SkeletonTheme
       baseColor={skeletonColors.baseColor}
       highlightColor={skeletonColors.highlightColor}
     >
       <div className="h-full min-h-0 flex flex-col gap-3 min-w-0">
-        {/* HEADER */}
+        {/* HEADER (compact) */}
         <div
-          className="border rounded-xl shadow-sm p-4"
+          className="flex-none border rounded-xl shadow-sm p-3 md:p-4"
           style={{
             backgroundColor: "var(--app-surface)",
             borderColor,
           }}
         >
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 min-w-0">
-            <div className="min-w-0 flex-1">
-              <h2
-                className="text-xl sm:text-2xl font-bold truncate"
-                style={{ color: "var(--app-text)" }}
+          <div className="flex flex-col xl:flex-row xl:items-center gap-3 min-w-0">
+            {/* Identity */}
+            <div className="flex items-center gap-3 min-w-0 xl:w-[32%] xl:flex-none">
+              <div
+                className="h-11 w-11 rounded-full flex items-center justify-center text-sm font-bold flex-none"
+                style={{
+                  backgroundColor: "var(--accent-soft)",
+                  color: "var(--accent)",
+                }}
               >
-                {fullName || "Employee"}
-              </h2>
-              <p
-                className="text-sm mt-1 truncate"
-                style={{ color: "var(--app-muted)" }}
-              >
-                {(employee.position || "—") +
-                  " • " +
-                  (employee.department || "—")}
-              </p>
-              <p
-                className="text-sm truncate"
-                style={{ color: "var(--app-muted)" }}
-              >
-                {employee.email || "—"}
-              </p>
+                {initials}
+              </div>
+              <div className="min-w-0">
+                <h2
+                  className="text-lg md:text-xl font-bold truncate leading-tight"
+                  style={{ color: "var(--app-text)" }}
+                  title={fullName}
+                >
+                  {fullName || "Employee"}
+                </h2>
+                {subtitle && (
+                  <p
+                    className="text-xs mt-0.5 truncate flex items-center gap-1.5"
+                    style={{ color: "var(--app-muted)" }}
+                    title={subtitle}
+                  >
+                    <Briefcase className="w-3.5 h-3.5 flex-none" />
+                    {subtitle}
+                  </p>
+                )}
+                {employee.email && (
+                  <p
+                    className="text-xs truncate flex items-center gap-1.5"
+                    style={{ color: "var(--app-muted)" }}
+                    title={employee.email}
+                  >
+                    <Mail className="w-3.5 h-3.5 flex-none" />
+                    {employee.email}
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Stats */}
-            <div className="flex-1 lg:flex-none w-full md:w-auto min-w-0">
-              {/* Desktop */}
-              <div className="hidden lg:grid md:grid-cols-2 xl:grid-cols-4 gap-3">
+            <div className="flex-1 min-w-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <StatCard
+                  title="Balance"
+                  value={`${fmtHours(summary.remainingHours)}h`}
+                  hint="available"
+                  tone="blue"
+                  borderColor={borderColor}
+                />
                 <StatCard
                   title="Total Credited"
                   value={`${fmtHours(summary.totalCredited)}h`}
@@ -463,106 +579,60 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                   borderColor={borderColor}
                 />
                 <StatCard
-                  title="Used Hours"
+                  title="Used"
                   value={`${fmtHours(summary.usedHours)}h`}
-                  hint="Total used"
                   tone="red"
                   borderColor={borderColor}
                 />
                 <StatCard
                   title="Reserved"
                   value={`${fmtHours(summary.reservedHours)}h`}
-                  hint="Reserved in apps"
+                  hint="pending apps"
                   tone="amber"
-                  borderColor={borderColor}
-                />
-                <StatCard
-                  title="Balance"
-                  value={`${fmtHours(summary.remainingHours)}h`}
-                  hint="Remaining hours"
-                  tone="blue"
                   borderColor={borderColor}
                 />
               </div>
 
-              {/* Mobile compact */}
-              <div className="lg:hidden grid grid-cols-2 gap-2">
-                {[
-                  {
-                    k: "Balance",
-                    v: `${fmtHours(summary.remainingHours)}h`,
-                    c: "var(--accent)",
-                  },
-                  {
-                    k: "Used",
-                    v: `${fmtHours(summary.usedHours)}h`,
-                    c: "#d97706",
-                  },
-                  {
-                    k: "Reserved",
-                    v: `${fmtHours(summary.reservedHours)}h`,
-                    c: "var(--app-text)",
-                  },
-                  {
-                    k: "Credited",
-                    v: `${fmtHours(summary.totalCredited)}h`,
-                    c: "var(--app-text)",
-                  },
-                ].map((x) => (
-                  <div
-                    key={x.k}
-                    className="border rounded-xl p-2 flex justify-between items-center min-w-0"
-                    style={{
-                      backgroundColor: "var(--app-surface)",
-                      borderColor,
-                    }}
-                  >
-                    <div
-                      className="text-[10px] uppercase font-bold truncate"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      {x.k}
-                    </div>
-                    <div
-                      className="text-sm font-bold truncate"
-                      style={{ color: x.c }}
-                    >
-                      {x.v}
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <UtilizationBar
+                credited={summary.totalCredited}
+                used={summary.usedHours}
+                reserved={summary.reservedHours}
+                remaining={summary.remainingHours}
+                fmtHours={fmtHours}
+              />
             </div>
           </div>
         </div>
 
-        {/* TABS + CONTENT */}
+        {/* TABS + CONTENT (takes all remaining height) */}
         <div
-          className="border rounded-xl shadow-sm flex-1 min-h-0 flex flex-col overflow-hidden min-w-0"
+          className="border rounded-xl shadow-sm flex-1 min-h-[420px] flex flex-col overflow-hidden min-w-0"
           style={{
             backgroundColor: "var(--app-surface)",
             borderColor,
           }}
         >
           <div
-            className="flex border-b overflow-x-auto no-scrollbar"
+            className="flex-none flex border-b overflow-x-auto no-scrollbar px-1"
             style={{ borderColor }}
           >
             <TabButton
               active={activeTab === "credit"}
               onClick={() => setActiveTab("credit")}
               label="Credit CTO"
-              borderColor={borderColor}
+              icon={Layers}
+              count={totalMemosOverall}
             />
             <TabButton
               active={activeTab === "application"}
               onClick={() => setActiveTab("application")}
               label="Application CTO"
-              borderColor={borderColor}
+              icon={FileText}
+              count={totalApplicationsOverall}
             />
           </div>
 
-          <div className="px-3 pb-3 flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 flex flex-col px-3 pt-1">
             {activeTab === "credit" ? (
               <CreditCtoTable
                 credits={credits}
@@ -599,6 +669,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
                 page={appPage}
                 limit={appLimit}
                 status={appStatus}
+                statusCounts={appStatusCounts}
                 search={appSearchInput}
                 totalPages={appPagination.totalPages || 1}
                 total={appTotal}

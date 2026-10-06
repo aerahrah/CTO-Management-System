@@ -7,7 +7,6 @@ import React, {
   useCallback,
 } from "react";
 import { StatusBadge } from "../../statusUtils";
-import FilterSelect from "../../filterSelect";
 import Modal from "../../modal";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -20,22 +19,19 @@ import {
   ChevronRight,
   RotateCcw,
   FileText,
-  MoreVertical,
   Eye,
   Calendar,
-  Clock,
-  LayoutGrid,
-  AlertCircle,
-  CheckCircle2,
-  XCircle,
   Filter,
-  Layers,
+  MoreVertical,
 } from "lucide-react";
 
 /* =========================
    CONSTANTS
 ========================= */
 const pageSizeOptions = [20, 50, 100];
+const MAX_VISIBLE_DATES = 2;
+const MENU_WIDTH = 176; // w-44
+const MENU_HEIGHT = 96; // 2 items + padding
 
 /* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
 function resolveTheme(prefTheme) {
@@ -95,25 +91,19 @@ const Chip = ({ children }) => (
   </span>
 );
 
-const formatSubmitted = (iso) =>
-  iso
-    ? new Date(iso).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "-";
+const fmtDate = (d) =>
+  new Date(d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
-const formatCoveredDates = (dates = []) =>
-  (dates || [])
-    .map((d) =>
-      new Date(d).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    )
-    .join(", ");
+const formatSubmitted = (iso) => (iso ? fmtDate(iso) : "-");
+
+const sortedDates = (dates = []) =>
+  [...(dates || [])]
+    .filter((d) => d && !isNaN(new Date(d).getTime()))
+    .sort((a, b) => new Date(a) - new Date(b));
 
 const memoLabelFromApp = (app) => {
   if (!Array.isArray(app?.memo) || app.memo.length === 0)
@@ -122,7 +112,8 @@ const memoLabelFromApp = (app) => {
   return labels.length ? labels.join(", ") : "No Memo Attached";
 };
 
-// ✅ Left status strip for cards (MyCtoApplications basis)
+const hasMemos = (app) => Array.isArray(app?.memo) && app.memo.length > 0;
+
 const getStatusColor = (status) => {
   switch (String(status || "").toUpperCase()) {
     case "APPROVED":
@@ -133,6 +124,10 @@ const getStatusColor = (status) => {
       return "border-l-4 border-l-amber-500";
     case "CANCELLED":
       return "border-l-4 border-l-slate-400";
+    case "REVOCATION_REQUESTED":
+      return "border-l-4 border-l-purple-500";
+    case "REVOKED":
+      return "border-l-4 border-l-slate-500";
     default:
       return "border-l-4 border-l-slate-300";
   }
@@ -162,47 +157,143 @@ const tabTone = {
     text: "#ef4444",
     br: "rgba(239,68,68,0.22)",
   },
+  purple: {
+    bg: "rgba(168,85,247,0.16)",
+    text: "#9333ea",
+    br: "rgba(168,85,247,0.26)",
+  },
+  slate: {
+    bg: "rgba(148,163,184,0.18)",
+    text: "var(--app-text)",
+    br: "rgba(148,163,184,0.24)",
+  },
 };
 
 const getStatusTabs = (statusCounts = {}) => [
   {
     id: "",
-    label: "All Status",
-    icon: LayoutGrid,
+    label: "All",
     count:
       typeof statusCounts.total === "number"
         ? statusCounts.total
         : (statusCounts.PENDING || 0) +
           (statusCounts.APPROVED || 0) +
           (statusCounts.REJECTED || 0) +
-          (statusCounts.CANCELLED || 0),
+          (statusCounts.CANCELLED || 0) +
+          (statusCounts.REVOCATION_REQUESTED || 0) +
+          (statusCounts.REVOKED || 0),
     tone: "all",
   },
   {
     id: "PENDING",
     label: "Pending",
-    icon: AlertCircle,
     count: statusCounts.PENDING || 0,
     tone: "pending",
   },
   {
     id: "APPROVED",
     label: "Approved",
-    icon: CheckCircle2,
     count: statusCounts.APPROVED || 0,
     tone: "approved",
   },
   {
     id: "REJECTED",
     label: "Rejected",
-    icon: XCircle,
     count: statusCounts.REJECTED || 0,
     tone: "rejected",
+  },
+  {
+    id: "CANCELLED",
+    label: "Cancelled",
+    count: statusCounts.CANCELLED || 0,
+    tone: "slate",
+  },
+  {
+    id: "REVOCATION_REQUESTED",
+    label: "Revoke Req.",
+    count: statusCounts.REVOCATION_REQUESTED || 0,
+    tone: "purple",
+  },
+  {
+    id: "REVOKED",
+    label: "Revoked",
+    count: statusCounts.REVOKED || 0,
+    tone: "slate",
   },
 ];
 
 /* =========================
+   SMALL UI
+========================= */
+const MiniStat = ({ label, value, borderColor, first, color }) => (
+  <div
+    className="px-2 py-1.5 min-w-0 text-center"
+    style={first ? undefined : { borderLeft: `1px solid ${borderColor}` }}
+  >
+    <div
+      className="text-[9px] font-bold uppercase tracking-wider"
+      style={{ color: "var(--app-muted)" }}
+    >
+      {label}
+    </div>
+    <div
+      className="text-sm font-bold truncate"
+      style={{ color: color || "var(--app-text)" }}
+      title={typeof value === "string" ? value : undefined}
+    >
+      {value}
+    </div>
+  </div>
+);
+
+const DatesCell = ({ dates, borderColor }) => {
+  const list = sortedDates(dates);
+  if (list.length === 0) {
+    return (
+      <span className="text-xs" style={{ color: "var(--app-muted)" }}>
+        -
+      </span>
+    );
+  }
+
+  const visible = list.slice(0, MAX_VISIBLE_DATES);
+  const hidden = list.length - visible.length;
+  const fullLabel = list.map(fmtDate).join(", ");
+
+  return (
+    <div className="flex flex-wrap items-center gap-1" title={fullLabel}>
+      {visible.map((d, i) => (
+        <span
+          key={`${d}-${i}`}
+          className="px-1.5 py-0.5 rounded-md border text-[11px] font-medium whitespace-nowrap"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            borderColor,
+            color: "var(--app-text)",
+          }}
+        >
+          {fmtDate(d)}
+        </span>
+      ))}
+      {hidden > 0 && (
+        <span
+          className="px-1.5 py-0.5 rounded-md text-[11px] font-bold"
+          style={{
+            backgroundColor: "var(--accent-soft)",
+            color: "var(--accent)",
+          }}
+        >
+          +{hidden}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/* =========================
    ACTION MENU (theme-aware)
+   Uses fixed positioning so it never gets clipped by the
+   scrollable table container, and flips upward near the bottom.
 ========================= */
 const ApplicationActionMenu = ({
   app,
@@ -211,45 +302,96 @@ const ApplicationActionMenu = ({
   borderColor,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const buttonRef = useRef(null);
   const menuRef = useRef(null);
 
+  const close = useCallback(() => setIsOpen(false), []);
+
+  const openMenu = () => {
+    const rect = buttonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const top =
+      spaceBelow < MENU_HEIGHT + 8
+        ? rect.top - MENU_HEIGHT - 4 // open upward
+        : rect.bottom + 4; // open downward
+    const left = Math.max(8, rect.right - MENU_WIDTH);
+
+    setPos({ top, left });
+    setIsOpen(true);
+  };
+
   useEffect(() => {
+    if (!isOpen) return;
+
     const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target))
-        setIsOpen(false);
+      if (
+        menuRef.current?.contains(e.target) ||
+        buttonRef.current?.contains(e.target)
+      )
+        return;
+      close();
     };
     const handleEsc = (e) => {
-      if (e.key === "Escape") setIsOpen(false);
+      if (e.key === "Escape") close();
     };
+
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleEsc);
+    // Close on any scroll (capture catches the table's own scroll container)
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEsc);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
-  }, []);
+  }, [isOpen, close]);
 
   const handle = (cb) => {
     cb?.();
-    setIsOpen(false);
+    close();
   };
 
-  const hasMemos = Array.isArray(app?.memo) && app.memo.length > 0;
+  const memosAvailable = hasMemos(app);
+
+  const itemClass =
+    "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left";
+
+  const itemHoverIn = (e) => {
+    if (e.currentTarget.disabled) return;
+    e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+    e.currentTarget.style.color = "var(--accent)";
+  };
+  const itemHoverOut = (e) => {
+    e.currentTarget.style.backgroundColor = "transparent";
+    e.currentTarget.style.color = "var(--app-muted)";
+  };
 
   return (
-    <div className="relative inline-flex justify-end" ref={menuRef}>
+    <div className="relative inline-flex justify-end">
       <button
+        ref={buttonRef}
         onClick={(e) => {
           e.stopPropagation();
-          setIsOpen((o) => !o);
+          if (isOpen) close();
+          else openMenu();
         }}
         className="p-1.5 rounded-md transition-colors duration-200 ease-out"
-        style={{ color: "var(--app-muted)" }}
+        style={{
+          color: isOpen ? "var(--accent)" : "var(--app-muted)",
+          backgroundColor: isOpen ? "var(--app-surface-2)" : "transparent",
+        }}
         onMouseEnter={(e) => {
           e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
           e.currentTarget.style.color = "var(--app-text)";
         }}
         onMouseLeave={(e) => {
+          if (isOpen) return;
           e.currentTarget.style.backgroundColor = "transparent";
           e.currentTarget.style.color = "var(--app-muted)";
         }}
@@ -263,45 +405,39 @@ const ApplicationActionMenu = ({
 
       {isOpen && (
         <div
-          className="absolute right-0 top-full mt-1 w-44 rounded-lg z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+          ref={menuRef}
+          role="menu"
+          className="fixed w-44 rounded-lg z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
           style={{
+            top: pos.top,
+            left: pos.left,
             backgroundColor: "var(--app-surface)",
             border: `1px solid ${borderColor}`,
             boxShadow: "0 12px 32px rgba(0,0,0,0.14)",
           }}
         >
           <button
+            role="menuitem"
             onClick={() => handle(onViewDetails)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left"
+            className={itemClass}
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-              e.currentTarget.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--app-muted)";
-            }}
+            onMouseEnter={itemHoverIn}
+            onMouseLeave={itemHoverOut}
             type="button"
           >
             <Eye size={14} /> View Details
           </button>
 
           <button
-            disabled={!hasMemos}
+            role="menuitem"
+            disabled={!memosAvailable}
             onClick={() => handle(onViewMemos)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left"
+            className={itemClass}
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-              e.currentTarget.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--app-muted)";
-            }}
+            onMouseEnter={itemHoverIn}
+            onMouseLeave={itemHoverOut}
             type="button"
+            title={memosAvailable ? "View memos" : "No memos attached"}
           >
             <FileText size={14} /> View Memos
           </button>
@@ -312,7 +448,7 @@ const ApplicationActionMenu = ({
 };
 
 /* =========================
-   APPLICATION CARD (theme-aware)
+   APPLICATION CARD (compact)
 ========================= */
 const ApplicationCard = ({
   app,
@@ -322,138 +458,88 @@ const ApplicationCard = ({
   borderColor,
 }) => {
   const memoLabel = memoLabelFromApp(app);
-
-  const submittedLabel = app?.createdAt
-    ? new Date(app.createdAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
+  const dates = sortedDates(app?.inclusiveDates);
+  const coveredLabel = dates.length
+    ? dates.length === 1
+      ? fmtDate(dates[0])
+      : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length - 1])}`
     : "-";
-
-  const coveredCount = Array.isArray(app?.inclusiveDates)
-    ? app.inclusiveDates.length
-    : 0;
 
   return (
     <div
       className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-colors duration-300 ease-out ${leftStripClassName}`}
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
-      }}
+      style={{ backgroundColor: "var(--app-surface)", borderColor }}
     >
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
+      <div className="p-3">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span
-                className="text-sm font-bold truncate"
-                style={{ color: "var(--app-text)" }}
-              >
-                {memoLabel || "No Memo Reference"}
-              </span>
-            </div>
-
             <div
-              className="mt-2 flex items-center gap-2 text-xs"
+              className="text-sm font-bold truncate"
+              style={{ color: "var(--app-text)" }}
+              title={memoLabel}
+            >
+              {memoLabel}
+            </div>
+            <div
+              className="mt-0.5 flex items-center gap-1.5 text-[11px] min-w-0"
               style={{ color: "var(--app-muted)" }}
             >
-              <Calendar
-                className="w-4 h-4"
-                style={{ color: "var(--app-muted)" }}
-              />
-              <span className="truncate">{submittedLabel}</span>
+              <Calendar className="w-3.5 h-3.5 flex-none" />
+              <span className="truncate" title={dates.map(fmtDate).join(", ")}>
+                {coveredLabel}
+              </span>
             </div>
           </div>
-
-          <div className="flex items-start gap-2 flex-none">
+          <div className="flex-none">
             <StatusBadge status={app?.overallStatus} />
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-            }}
-          >
-            <div
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
-              style={{ color: "var(--app-muted)" }}
-            >
-              <Clock className="w-3.5 h-3.5" /> Hours
-            </div>
-            <div
-              className="mt-1 text-sm font-semibold"
-              style={{ color: "var(--app-text)" }}
-            >
-              {typeof app?.requestedHours === "number"
-                ? `${app.requestedHours}h`
-                : `${Number(app?.requestedHours || 0)}h`}
-            </div>
-          </div>
-
-          <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-            }}
-          >
-            <div
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
-              style={{ color: "var(--app-muted)" }}
-            >
-              <Layers className="w-3.5 h-3.5" /> Covered
-            </div>
-            <div
-              className="mt-1 text-sm font-semibold"
-              style={{ color: "var(--app-text)" }}
-            >
-              {coveredCount} day(s)
-            </div>
-          </div>
+        <div
+          className="mt-2.5 grid grid-cols-3 rounded-lg border"
+          style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
+        >
+          <MiniStat
+            first
+            label="Hours"
+            value={`${Number(app?.requestedHours || 0)}h`}
+            color="var(--accent)"
+            borderColor={borderColor}
+          />
+          <MiniStat
+            label="Days"
+            value={String(dates.length)}
+            borderColor={borderColor}
+          />
+          <MiniStat
+            label="Submitted"
+            value={formatSubmitted(app?.createdAt)}
+            borderColor={borderColor}
+          />
         </div>
-      </div>
 
-      <div
-        className="border-t p-3 transition-colors duration-300 ease-out"
-        style={{
-          borderColor: borderColor,
-          backgroundColor: "var(--app-surface)",
-        }}
-      >
-        <div className="grid gap-2 grid-cols-2">
+        <div className="mt-2.5 grid grid-cols-2 gap-2">
           <button
             onClick={onViewMemos}
-            disabled={!app?.memo || app.memo.length === 0}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-            type="button"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-              color: "var(--app-text)",
-            }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.filter = "brightness(0.98)";
-            }}
-            onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
-          >
-            <FileText className="w-4 h-4" />
-            Memos
-          </button>
-
-          <button
-            onClick={onViewDetails}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border transition-colors duration-200 ease-out"
+            disabled={!hasMemos(app)}
+            className="h-8 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
             type="button"
             style={{
               backgroundColor: "var(--app-surface)",
-              borderColor: borderColor,
+              borderColor,
+              color: "var(--app-text)",
+            }}
+          >
+            <FileText className="w-3.5 h-3.5" />
+            Memos
+          </button>
+          <button
+            onClick={onViewDetails}
+            className="h-8 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold border transition-colors duration-200 ease-out"
+            type="button"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
               color: "var(--accent)",
             }}
             onMouseEnter={(e) =>
@@ -463,7 +549,7 @@ const ApplicationCard = ({
               (e.currentTarget.style.backgroundColor = "var(--app-surface)")
             }
           >
-            <Eye className="w-4 h-4" />
+            <Eye className="w-3.5 h-3.5" />
             Details
           </button>
         </div>
@@ -473,7 +559,7 @@ const ApplicationCard = ({
 };
 
 /* =========================
-   PAGINATION (theme-aware)
+   PAGINATION (compact footer, includes rows selector)
 ========================= */
 const CompactPagination = ({
   page,
@@ -483,131 +569,113 @@ const CompactPagination = ({
   endItem,
   onPrev,
   onNext,
+  limit,
+  onLimitChange,
   label = "items",
   disabled = false,
   borderColor,
-}) => (
-  <div
-    className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
-    style={{ backgroundColor: "var(--app-surface)", borderColor: borderColor }}
-  >
-    <div className="flex md:hidden items-center justify-between gap-3">
-      <button
-        onClick={onPrev}
-        disabled={disabled || page === 1 || total === 0}
-        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-        type="button"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          borderColor: borderColor,
-          color: "var(--app-text)",
-        }}
-      >
-        <ChevronLeft className="w-4 h-4" />
-        Prev
-      </button>
+}) => {
+  const navBtn = (onClick, isDisabled, icon, aria) => (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isDisabled}
+      aria-label={aria}
+      className="h-8 w-8 inline-flex items-center justify-center rounded-md border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor,
+        color: "var(--app-text)",
+      }}
+      onMouseEnter={(e) => {
+        if (e.currentTarget.disabled) return;
+        e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = "var(--app-surface)";
+      }}
+    >
+      {icon}
+    </button>
+  );
 
-      <div className="text-center min-w-0">
-        <div
-          className="text-xs font-mono font-semibold"
-          style={{ color: "var(--app-text)" }}
+  return (
+    <div
+      className="flex-none flex items-center justify-between gap-3 px-1 py-2 border-t transition-colors duration-300 ease-out"
+      style={{ backgroundColor: "var(--app-surface)", borderColor }}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <label
+          className="flex items-center gap-1.5 text-[11px] font-semibold flex-none"
+          style={{ color: "var(--app-muted)" }}
         >
-          {page} / {totalPages}
-        </div>
-        <div
+          <span className="hidden sm:inline">Rows</span>
+          <select
+            value={limit}
+            disabled={disabled}
+            onChange={(e) => onLimitChange?.(Number(e.target.value))}
+            className="h-8 border text-xs rounded-md px-1.5 font-semibold outline-none cursor-pointer transition-colors duration-200 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
+              color: "var(--app-text)",
+            }}
+          >
+            {pageSizeOptions.map((opt) => (
+              <option key={opt} value={opt}>
+                {opt}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <span
           className="text-[11px] truncate"
           style={{ color: "var(--app-muted)" }}
         >
-          {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
-        </div>
+          {total === 0 ? (
+            `0 ${label}`
+          ) : (
+            <>
+              <span className="font-bold" style={{ color: "var(--app-text)" }}>
+                {startItem}-{endItem}
+              </span>{" "}
+              of{" "}
+              <span className="font-bold" style={{ color: "var(--app-text)" }}>
+                {total}
+              </span>{" "}
+              <span className="hidden sm:inline">{label}</span>
+            </>
+          )}
+        </span>
       </div>
 
-      <button
-        onClick={onNext}
-        disabled={disabled || page >= totalPages || total === 0}
-        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-        type="button"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          borderColor: borderColor,
-          color: "var(--app-text)",
-        }}
-      >
-        Next
-        <ChevronRight className="w-4 h-4" />
-      </button>
-    </div>
-
-    <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
-      <div
-        className="text-xs font-medium"
-        style={{ color: "var(--app-muted)" }}
-      >
-        Showing{" "}
-        <span className="font-bold" style={{ color: "var(--app-text)" }}>
-          {total === 0 ? 0 : `${startItem}-${endItem}`}
-        </span>{" "}
-        of{" "}
-        <span className="font-bold" style={{ color: "var(--app-text)" }}>
-          {total}
-        </span>{" "}
-        {label}
-      </div>
-
-      <div
-        className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
-        style={{
-          backgroundColor: "var(--app-surface-2)",
-          borderColor: borderColor,
-        }}
-      >
-        <button
-          onClick={onPrev}
-          disabled={disabled || page === 1 || total === 0}
-          className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
-          type="button"
-          style={{ color: "var(--app-muted)" }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
-          }}
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "transparent")
-          }
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-
+      <div className="flex items-center gap-1.5 flex-none">
+        {navBtn(
+          onPrev,
+          disabled || page <= 1 || total === 0,
+          <ChevronLeft className="w-4 h-4" />,
+          "Previous page",
+        )}
         <span
-          className="text-xs font-mono font-medium px-3"
+          className="text-xs font-mono font-semibold px-1.5"
           style={{ color: "var(--app-muted)" }}
         >
           {page} / {totalPages}
         </span>
-
-        <button
-          onClick={onNext}
-          disabled={disabled || page >= totalPages || total === 0}
-          className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
-          type="button"
-          style={{ color: "var(--app-muted)" }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
-          }}
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.backgroundColor = "transparent")
-          }
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
+        {navBtn(
+          onNext,
+          disabled || page >= totalPages || total === 0,
+          <ChevronRight className="w-4 h-4" />,
+          "Next page",
+        )}
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* =========================
-   MAIN COMPONENT (theme-aware)
+   MAIN COMPONENT
 ========================= */
 const ApplicationCtoTable = ({
   applications = [],
@@ -621,11 +689,10 @@ const ApplicationCtoTable = ({
   onNextPage,
   onPrevPage,
   totalPages = 1,
-  total, // from API
-  statusCounts, // optional from API
+  total,
+  statusCounts,
   isLoading,
 }) => {
-  // ✅ Theme-aware primitives (ThemeSync is mounted in App.jsx; we only need these for skeleton + borders)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -667,20 +734,25 @@ const ApplicationCtoTable = ({
   const filteredApps = useMemo(() => {
     return applications.filter((app) => {
       const matchesStatus = !status ? true : app?.overallStatus === status;
-
       const matchesSearch = !search
         ? true
         : String(memoLabelFromApp(app) || "")
             .toLowerCase()
             .includes(String(search || "").toLowerCase());
-
       return matchesStatus && matchesSearch;
     });
   }, [applications, status, search]);
 
   const computedCounts = useMemo(() => {
     if (statusCounts) return statusCounts;
-    const c = { PENDING: 0, APPROVED: 0, REJECTED: 0, CANCELLED: 0 };
+    const c = {
+      PENDING: 0,
+      APPROVED: 0,
+      REJECTED: 0,
+      CANCELLED: 0,
+      REVOCATION_REQUESTED: 0,
+      REVOKED: 0,
+    };
     for (const app of applications) {
       const s = String(app?.overallStatus || "").toUpperCase();
       if (s in c) c[s] += 1;
@@ -688,16 +760,24 @@ const ApplicationCtoTable = ({
     c.total =
       typeof total === "number"
         ? total
-        : c.PENDING + c.APPROVED + c.REJECTED + c.CANCELLED;
+        : Object.values(c).reduce((a, b) => a + b, 0);
     return c;
   }, [statusCounts, applications, total]);
 
-  const tabs = useMemo(() => getStatusTabs(computedCounts), [computedCounts]);
+  // Hide empty tabs (except "All" and the one currently selected)
+  const tabs = useMemo(
+    () =>
+      getStatusTabs(computedCounts).filter(
+        (t) => t.id === "" || t.count > 0 || t.id === status,
+      ),
+    [computedCounts, status],
+  );
 
   const safeTotal = typeof total === "number" ? total : 0;
   const safeTotalPages = Math.max(totalPages || 1, 1);
   const startItem = safeTotal === 0 ? 0 : (page - 1) * limit + 1;
   const endItem = safeTotal === 0 ? 0 : Math.min(page * limit, safeTotal);
+  const skeletonRows = Math.min(limit, 8);
 
   return (
     <SkeletonTheme
@@ -705,41 +785,27 @@ const ApplicationCtoTable = ({
       highlightColor={skeletonColors.highlightColor}
     >
       <div
-        className="w-full flex-1 flex h-full flex-col overflow-hidden transition-colors duration-300 ease-out"
+        className="w-full h-full flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden transition-colors duration-300 ease-out"
         style={{
           backgroundColor: "var(--app-surface)",
           color: "var(--app-text)",
         }}
       >
-        {/* TOOLBAR */}
+        {/* TOOLBAR (single compact row) */}
         <div
-          className="py-2 border-b space-y-4 transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
-          }}
+          className="flex-none border-b px-1 py-2 space-y-2 transition-colors duration-300 ease-out"
+          style={{ backgroundColor: "var(--app-surface)", borderColor }}
         >
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-1">
-            {/* Status Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <div className="flex flex-col md:flex-row md:items-center gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
               {tabs.map((tab) => {
                 const isActive = status === tab.id;
-                const t =
-                  tabTone[
-                    tab.tone === "pending"
-                      ? "pending"
-                      : tab.tone === "approved"
-                        ? "approved"
-                        : tab.tone === "rejected"
-                          ? "rejected"
-                          : "all"
-                  ] || tabTone.all;
-
+                const t = tabTone[tab.tone] || tabTone.all;
                 return (
                   <button
                     key={tab.id || "all"}
                     onClick={() => onStatusChange?.(tab.id)}
-                    className="px-3 py-1.5 text-xs font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2"
+                    className="px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-1.5"
                     aria-pressed={isActive}
                     type="button"
                     style={{
@@ -758,12 +824,12 @@ const ApplicationCtoTable = ({
                         "var(--app-surface)";
                     }}
                   >
-                    <span>{tab.label}</span>
+                    {tab.label}
                     <span
-                      className="px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors duration-200 ease-out"
+                      className="px-1.5 rounded-full text-[10px] font-bold"
                       style={{
                         backgroundColor: isActive
-                          ? "rgba(255,255,255,0.35)"
+                          ? "var(--app-surface)"
                           : "var(--app-surface-2)",
                         color: isActive
                           ? "var(--app-text)"
@@ -777,99 +843,42 @@ const ApplicationCtoTable = ({
               })}
             </div>
 
-            {/* Search + Rows */}
-            <div className="flex items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 md:w-56">
-                <Search
-                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+            <div className="relative w-full md:w-60 flex-none">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
+                style={{ color: "var(--app-muted)" }}
+              />
+              <input
+                type="text"
+                placeholder="Search memo..."
+                value={search}
+                maxLength={100}
+                onChange={(e) => onSearchChange?.(e.target.value)}
+                className="w-full h-9 pl-9 pr-8 rounded-lg text-sm outline-none border transition-colors duration-200 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor,
+                  color: "var(--app-text)",
+                }}
+              />
+              {search && (
+                <button
+                  onClick={() => onSearchChange?.("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
                   style={{ color: "var(--app-muted)" }}
-                />
-                <input
-                  type="text"
-                  placeholder="Search memo..."
-                  value={search}
-                  maxLength={100}
-                  onChange={(e) => onSearchChange?.(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none border transition-colors duration-200 ease-out"
-                  style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
-                    color: "var(--app-text)",
-                  }}
-                />
-                {search && (
-                  <button
-                    onClick={() => onSearchChange?.("")}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
-                    style={{ color: "var(--app-muted)" }}
-                    aria-label="Clear search"
-                    title="Clear"
-                    type="button"
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = "var(--app-text)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = "var(--app-muted)";
-                    }}
-                  >
-                    <RotateCcw size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div
-                className="hidden md:flex items-center gap-2 pl-3 border-l"
-                style={{ borderColor: borderColor }}
-              >
-                <span
-                  className="text-[10px] font-bold uppercase tracking-wider"
-                  style={{ color: "var(--app-muted)" }}
+                  aria-label="Clear search"
+                  title="Clear"
+                  type="button"
                 >
-                  Show
-                </span>
-                <select
-                  value={limit}
-                  onChange={(e) => onLimitChange?.(Number(e.target.value))}
-                  className="border text-xs rounded-lg focus:ring-0 block p-1.5 font-medium outline-none cursor-pointer transition-colors duration-200 ease-out"
-                  style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
-                    color: "var(--app-text)",
-                  }}
-                >
-                  {pageSizeOptions.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div
-                className="md:hidden flex items-center gap-1.5 px-2 border-l ml-1"
-                style={{ borderColor: borderColor }}
-              >
-                <span
-                  className="text-xs font-medium uppercase tracking-wider"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  Rows
-                </span>
-                <FilterSelect
-                  label=""
-                  value={limit}
-                  onChange={(v) => onLimitChange?.(Number(v))}
-                  options={pageSizeOptions}
-                  className="!mb-0 w-20 text-xs"
-                />
-              </div>
+                  <RotateCcw size={14} />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Active Filters */}
           {isFiltered && (
-            <div className="flex items-center justify-between px-2">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2 min-w-0">
                 <span
                   className="text-[10px] font-bold uppercase"
                   style={{ color: "var(--app-muted)" }}
@@ -881,7 +890,7 @@ const ApplicationCtoTable = ({
               </div>
               <button
                 onClick={handleResetFilters}
-                className="flex items-center gap-1 text-[10px] font-bold uppercase transition-colors duration-200 ease-out"
+                className="flex items-center gap-1 text-[10px] font-bold uppercase"
                 style={{ color: "var(--accent)" }}
                 type="button"
               >
@@ -891,27 +900,24 @@ const ApplicationCtoTable = ({
           )}
         </div>
 
-        {/* DATA */}
+        {/* CONTENT — the ONLY scroll area, fills all remaining height */}
         <div
-          className="flex-1 overflow-y-auto min-h-[300px] cto-scrollbar transition-colors duration-300 ease-out"
+          className="flex-1 min-h-0 overflow-auto cto-scrollbar"
           style={{ backgroundColor: "var(--app-bg)" }}
         >
           {!isLoading && filteredApps.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
+            <div className="flex flex-col items-center justify-center h-full py-12 px-4 text-center">
               <div
-                className="p-6 rounded-full mb-4 ring-1"
-                style={{
-                  backgroundColor: "var(--app-surface)",
-                  borderColor: borderColor,
-                }}
+                className="p-4 rounded-full mb-3 ring-1"
+                style={{ backgroundColor: "var(--app-surface)", borderColor }}
               >
                 <Filter
-                  className="w-10 h-10"
+                  className="w-8 h-8"
                   style={{ color: "var(--app-muted)", opacity: 0.6 }}
                 />
               </div>
               <h3
-                className="text-lg font-bold"
+                className="text-base font-bold"
                 style={{ color: "var(--app-text)" }}
               >
                 No Results Found
@@ -920,27 +926,20 @@ const ApplicationCtoTable = ({
                 className="text-sm max-w-xs mt-1"
                 style={{ color: "var(--app-muted)" }}
               >
-                Try adjusting your search or filters to find what you're looking
-                for.
+                {isFiltered
+                  ? "Try adjusting your search or filters."
+                  : "This employee has no CTO applications yet."}
               </p>
               {isFiltered && (
                 <button
                   onClick={handleResetFilters}
-                  className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out"
+                  className="mt-4 flex items-center gap-2 px-3 h-8 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out"
                   type="button"
                   style={{
                     backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
+                    borderColor,
                     color: "var(--app-text)",
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.backgroundColor =
-                      "var(--app-surface-2)")
-                  }
-                  onMouseLeave={(e) =>
-                    (e.currentTarget.style.backgroundColor =
-                      "var(--app-surface)")
-                  }
                 >
                   <RotateCcw size={12} /> Clear Filters
                 </button>
@@ -948,219 +947,171 @@ const ApplicationCtoTable = ({
             </div>
           ) : (
             <>
-              {/* ✅ Mobile: cards */}
-              <div className="block md:hidden p-4">
-                <div className="space-y-3">
-                  {isLoading
-                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                        <div
-                          key={i}
-                          className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
-                          style={{
-                            backgroundColor: "var(--app-surface)",
-                            borderColor: borderColor,
-                          }}
-                        >
-                          <Skeleton height={18} />
-                          <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
-                          </div>
+              {/* Mobile + Tablet: cards */}
+              <div className="lg:hidden p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {isLoading
+                  ? [...Array(Math.min(limit, 6))].map((_, i) => (
+                      <div
+                        key={`sk-c-${i}`}
+                        className="rounded-xl p-3 border"
+                        style={{
+                          backgroundColor: "var(--app-surface)",
+                          borderColor,
+                        }}
+                      >
+                        <Skeleton height={16} />
+                        <Skeleton height={10} width="45%" />
+                        <div className="mt-2.5">
+                          <Skeleton height={46} />
                         </div>
-                      ))
-                    : filteredApps.map((app) => (
-                        <ApplicationCard
-                          key={app._id}
-                          app={app}
-                          borderColor={borderColor}
-                          leftStripClassName={getStatusColor(
-                            app?.overallStatus,
-                          )}
-                          onViewDetails={() => setSelectedApp(app)}
-                          onViewMemos={() => openMemoModal(app?.memo || [])}
-                        />
-                      ))}
-                </div>
+                        <div className="mt-2.5">
+                          <Skeleton height={32} />
+                        </div>
+                      </div>
+                    ))
+                  : filteredApps.map((app) => (
+                      <ApplicationCard
+                        key={app._id}
+                        app={app}
+                        borderColor={borderColor}
+                        leftStripClassName={getStatusColor(app?.overallStatus)}
+                        onViewDetails={() => setSelectedApp(app)}
+                        onViewMemos={() => openMemoModal(app?.memo || [])}
+                      />
+                    ))}
               </div>
 
-              {/* ✅ Tablet: 2 cards per row */}
-              <div className="hidden md:block lg:hidden p-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {isLoading
-                    ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                        <div
-                          key={i}
-                          className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
-                          style={{
-                            backgroundColor: "var(--app-surface)",
-                            borderColor: borderColor,
-                          }}
-                        >
-                          <Skeleton height={18} />
-                          <div className="mt-3">
-                            <Skeleton height={12} count={2} />
-                          </div>
-                          <div className="mt-4 grid grid-cols-2 gap-2">
-                            <Skeleton height={52} />
-                            <Skeleton height={52} />
-                          </div>
-                          <div className="mt-4">
-                            <Skeleton height={40} />
-                          </div>
-                        </div>
-                      ))
-                    : filteredApps.map((app) => (
-                        <ApplicationCard
-                          key={app._id}
-                          app={app}
-                          borderColor={borderColor}
-                          leftStripClassName={getStatusColor(
-                            app?.overallStatus,
-                          )}
-                          onViewDetails={() => setSelectedApp(app)}
-                          onViewMemos={() => openMemoModal(app?.memo || [])}
-                        />
-                      ))}
-                </div>
-              </div>
-
-              {/* ✅ Desktop: table ONLY at lg+ */}
-              <div className="hidden lg:block w-full align-middle">
-                <table className="w-full text-left">
-                  <thead
-                    className="sticky top-0 z-10 border-b transition-colors duration-300 ease-out"
-                    style={{
-                      backgroundColor: "var(--app-surface)",
-                      borderColor: borderColor,
-                    }}
+              {/* Desktop: table */}
+              <table className="hidden lg:table w-full text-left table-fixed">
+                <colgroup>
+                  <col style={{ width: "31%" }} />
+                  <col style={{ width: "28%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "6%" }} />
+                </colgroup>
+                <thead
+                  className="sticky top-0 z-10"
+                  style={{
+                    backgroundColor: "var(--app-surface)",
+                    boxShadow: `inset 0 -1px 0 ${borderColor}`,
+                  }}
+                >
+                  <tr
+                    className="text-[10px] uppercase tracking-[0.12em] font-bold"
+                    style={{ color: "var(--app-muted)" }}
                   >
-                    <tr
-                      className="text-[10px] uppercase tracking-[0.12em] font-bold"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      <th className="px-6 py-4 font-bold">Reference / Memo</th>
-                      <th className="px-6 py-4 text-center">Hours</th>
-                      <th className="px-6 py-4 text-center">Status</th>
-                      <th className="px-6 py-4 text-center">Submitted</th>
-                      <th className="px-6 py-4">Dates Covered</th>
-                      <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
+                    <th className="px-4 py-2.5">Reference / Memo</th>
+                    <th className="px-4 py-2.5">Dates Covered</th>
+                    <th className="px-4 py-2.5 text-center">Hours</th>
+                    <th className="px-4 py-2.5 text-center">Status</th>
+                    <th className="px-4 py-2.5 text-center">Submitted</th>
+                    <th className="px-4 py-2.5 text-right">
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
 
-                  <tbody>
-                    {isLoading
-                      ? [...Array(8)].map((_, i) => (
-                          <tr key={i}>
-                            {[...Array(6)].map((__, j) => (
-                              <td key={j} className="px-6 py-4">
-                                <Skeleton />
-                              </td>
-                            ))}
-                          </tr>
-                        ))
-                      : filteredApps.map((app, i) => {
-                          const memoLabel = memoLabelFromApp(app);
-                          const bg =
-                            i % 2 === 0
-                              ? "var(--app-surface)"
-                              : "var(--app-surface-2)";
+                <tbody>
+                  {isLoading
+                    ? [...Array(skeletonRows)].map((_, i) => (
+                        <tr key={i}>
+                          {[...Array(6)].map((__, j) => (
+                            <td key={j} className="px-4 py-3">
+                              <Skeleton />
+                            </td>
+                          ))}
+                        </tr>
+                      ))
+                    : filteredApps.map((app, i) => {
+                        const memoLabel = memoLabelFromApp(app);
+                        const bg =
+                          i % 2 === 0
+                            ? "var(--app-surface)"
+                            : "var(--app-surface-2)";
 
-                          return (
-                            <tr
-                              key={app._id || i}
-                              className="transition-colors duration-200 ease-out"
-                              style={{ backgroundColor: bg }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor =
-                                  "var(--accent-soft)";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor = bg;
-                              }}
+                        return (
+                          <tr
+                            key={app._id || i}
+                            className="transition-colors duration-200 ease-out"
+                            style={{
+                              backgroundColor: bg,
+                              boxShadow: `inset 0 -1px 0 ${borderColor}`,
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.backgroundColor =
+                                "var(--accent-soft)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.backgroundColor = bg;
+                            }}
+                          >
+                            <td className="px-4 py-2.5">
+                              <div
+                                className="text-sm font-semibold truncate"
+                                style={{ color: "var(--app-text)" }}
+                                title={memoLabel}
+                              >
+                                {memoLabel}
+                              </div>
+                              <div
+                                className="text-[10px] font-mono mt-0.5"
+                                style={{ color: "var(--app-muted)" }}
+                              >
+                                ID:{" "}
+                                {app?._id
+                                  ? app._id.slice(-6).toUpperCase()
+                                  : "-"}
+                              </div>
+                            </td>
+
+                            <td className="px-4 py-2.5">
+                              <DatesCell
+                                dates={app?.inclusiveDates}
+                                borderColor={borderColor}
+                              />
+                            </td>
+
+                            <td className="px-4 py-2.5 text-center whitespace-nowrap">
+                              <span
+                                className="inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-bold"
+                                style={{
+                                  backgroundColor: "var(--app-surface)",
+                                  borderColor,
+                                  color: "var(--app-text)",
+                                }}
+                              >
+                                {Number(app?.requestedHours || 0)}h
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-2.5 text-center">
+                              <StatusBadge status={app?.overallStatus} />
+                            </td>
+
+                            <td
+                              className="px-4 py-2.5 text-center text-xs whitespace-nowrap"
+                              style={{ color: "var(--app-muted)" }}
                             >
-                              <td className="px-6 py-4">
-                                <div className="flex flex-col">
-                                  <span
-                                    className="font-semibold text-sm"
-                                    style={{ color: "var(--app-text)" }}
-                                  >
-                                    {memoLabel}
-                                  </span>
-                                  <span
-                                    className="text-[10px] font-mono mt-0.5"
-                                    style={{ color: "var(--app-muted)" }}
-                                  >
-                                    ID:{" "}
-                                    {app?._id
-                                      ? app._id.slice(-6).toUpperCase()
-                                      : "-"}
-                                  </span>
-                                </div>
-                              </td>
+                              {formatSubmitted(app?.createdAt)}
+                            </td>
 
-                              <td className="px-6 py-4 text-center">
-                                <span
-                                  className="inline-flex items-center px-2.5 py-0.5 rounded-md border text-xs font-bold"
-                                  style={{
-                                    backgroundColor: "var(--app-surface)",
-                                    borderColor: borderColor,
-                                    color: "var(--app-text)",
-                                  }}
-                                >
-                                  {app?.requestedHours ?? 0}h
-                                </span>
-                              </td>
-
-                              <td className="px-6 py-4 text-center">
-                                <StatusBadge status={app?.overallStatus} />
-                              </td>
-
-                              <td
-                                className="px-6 py-4 text-center text-sm"
-                                style={{ color: "var(--app-muted)" }}
-                              >
-                                {formatSubmitted(app?.createdAt)}
-                              </td>
-
-                              <td
-                                className="px-6 py-4 text-sm"
-                                style={{ color: "var(--app-muted)" }}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <Calendar
-                                    size={14}
-                                    style={{ color: "var(--app-muted)" }}
-                                  />
-                                  <span className="truncate">
-                                    {formatCoveredDates(
-                                      app?.inclusiveDates || [],
-                                    )}
-                                  </span>
-                                </div>
-                              </td>
-
-                              <td className="px-6 py-4 text-right">
-                                <ApplicationActionMenu
-                                  app={app}
-                                  borderColor={borderColor}
-                                  onViewDetails={() => setSelectedApp(app)}
-                                  onViewMemos={() =>
-                                    openMemoModal(app?.memo || [])
-                                  }
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                  </tbody>
-                </table>
-              </div>
+                            <td className="px-4 py-2.5 text-right">
+                              <ApplicationActionMenu
+                                app={app}
+                                borderColor={borderColor}
+                                onViewDetails={() => setSelectedApp(app)}
+                                onViewMemos={() =>
+                                  openMemoModal(app?.memo || [])
+                                }
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                </tbody>
+              </table>
             </>
           )}
         </div>
@@ -1172,6 +1123,8 @@ const ApplicationCtoTable = ({
           total={safeTotal}
           startItem={startItem}
           endItem={endItem}
+          limit={limit}
+          onLimitChange={onLimitChange}
           label="applications"
           disabled={isLoading}
           onPrev={onPrevPage}
