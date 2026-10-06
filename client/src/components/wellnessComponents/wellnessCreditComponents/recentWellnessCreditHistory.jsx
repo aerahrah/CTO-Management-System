@@ -179,6 +179,106 @@ const ActionMenu = ({
   );
 };
 
+/* ------------------ Employees cell (desktop table) ------------------ */
+const MAX_VISIBLE_EMPLOYEES = 3;
+
+const getInitials = (name) =>
+  String(name || "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+
+const EmployeesCell = ({ employees = [], borderColor }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const names = useMemo(
+    () =>
+      (employees || [])
+        .map((e) =>
+          `${e.employee?.firstName || ""} ${e.employee?.lastName || ""}`.trim(),
+        )
+        .filter(Boolean),
+    [employees],
+  );
+
+  if (names.length === 0) {
+    return (
+      <span className="text-sm" style={{ color: "var(--app-muted)" }}>
+        -
+      </span>
+    );
+  }
+
+  const hiddenCount = names.length - MAX_VISIBLE_EMPLOYEES;
+  const visibleNames = expanded ? names : names.slice(0, MAX_VISIBLE_EMPLOYEES);
+
+  return (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <div className="flex items-center gap-1.5">
+        <Users size={13} style={{ color: "var(--app-muted)" }} />
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {names.length} Employee{names.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {visibleNames.map((name, idx) => (
+          <span
+            key={`${name}-${idx}`}
+            title={name}
+            className="inline-flex items-center gap-1.5 max-w-[190px] pl-0.5 pr-2.5 py-0.5 rounded-full border text-xs font-medium transition-colors duration-200 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor: borderColor,
+              color: "var(--app-text)",
+            }}
+          >
+            <span
+              className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-none"
+              style={{
+                backgroundColor: "var(--accent-soft)",
+                color: "var(--accent)",
+              }}
+            >
+              {getInitials(name)}
+            </span>
+            <span className="truncate">{name}</span>
+          </span>
+        ))}
+
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((v) => !v);
+            }}
+            title={
+              expanded
+                ? "Show less"
+                : names.slice(MAX_VISIBLE_EMPLOYEES).join(", ")
+            }
+            className="inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-bold transition-colors duration-200 ease-out"
+            style={{
+              backgroundColor: "var(--accent-soft)",
+              borderColor: "var(--accent-soft2)",
+              color: "var(--accent)",
+            }}
+          >
+            {expanded ? "Show less" : `+${hiddenCount} more`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 /* ------------------ Mobile/Tablet Card ------------------ */
 const CreditCard = ({
   credit,
@@ -1011,7 +1111,26 @@ const WellnessCreditHistory = () => {
 
                     {/* Desktop table */}
                     <div className="hidden lg:block w-full align-middle">
-                      <table className="w-full text-left">
+                      <table className="w-full text-left table-fixed">
+                        {canManageCredits ? (
+                          <colgroup>
+                            <col style={{ width: "36%" }} />
+                            <col style={{ width: "20%" }} />
+                            <col style={{ width: "11%" }} />
+                            <col style={{ width: "13%" }} />
+                            <col style={{ width: "10%" }} />
+                            <col style={{ width: "10%" }} />
+                          </colgroup>
+                        ) : (
+                          <colgroup>
+                            <col style={{ width: "40%" }} />
+                            <col style={{ width: "22%" }} />
+                            <col style={{ width: "12%" }} />
+                            <col style={{ width: "14%" }} />
+                            <col style={{ width: "12%" }} />
+                          </colgroup>
+                        )}
+
                         <thead
                           className="sticky top-0 z-10 border-b transition-colors duration-300 ease-out"
                           style={{
@@ -1025,15 +1144,15 @@ const WellnessCreditHistory = () => {
                           >
                             <th className="px-6 py-4 font-bold">Employees</th>
                             <th className="px-6 py-4 font-bold">
-                              REFERENCE / Memo
+                              Reference / Memo
                             </th>
-                            <th className="px-6 py-4 text-center">
+                            <th className="px-4 py-4 text-center">
                               Days Credited
                             </th>
-                            <th className="px-6 py-4 text-center">
+                            <th className="px-4 py-4 text-center">
                               Date Approved
                             </th>
-                            <th className="px-6 py-4 text-center">Status</th>
+                            <th className="px-4 py-4 text-center">Status</th>
                             {canManageCredits && (
                               <th className="px-6 py-4 text-right">Actions</th>
                             )}
@@ -1062,8 +1181,11 @@ const WellnessCreditHistory = () => {
                                 return (
                                   <tr
                                     key={credit._id}
-                                    className="transition-colors duration-200 ease-out"
-                                    style={{ backgroundColor: bg }}
+                                    className="transition-colors duration-200 ease-out border-b"
+                                    style={{
+                                      backgroundColor: bg,
+                                      borderColor: borderColor,
+                                    }}
                                     onMouseEnter={(e) => {
                                       e.currentTarget.style.backgroundColor =
                                         "var(--accent-soft)";
@@ -1073,27 +1195,21 @@ const WellnessCreditHistory = () => {
                                         bg;
                                     }}
                                   >
-                                    <td className="px-6 py-4">
-                                      <span
-                                        className="font-semibold text-sm"
-                                        style={{ color: "var(--app-text)" }}
-                                      >
-                                        {credit.employees
-                                          .map((e) =>
-                                            `${e.employee?.firstName || ""} ${e.employee?.lastName || ""}`.trim(),
-                                          )
-                                          .filter(Boolean)
-                                          .join(", ")}
-                                      </span>
+                                    <td className="px-6 py-4 align-middle">
+                                      <EmployeesCell
+                                        employees={credit.employees}
+                                        borderColor={borderColor}
+                                      />
                                     </td>
 
-                                    <td className="px-6 py-4">
-                                      <div className="flex flex-col">
+                                    <td className="px-6 py-4 align-middle">
+                                      <div className="flex flex-col min-w-0">
                                         <span
-                                          className="font-medium"
+                                          className="font-semibold text-sm truncate"
                                           style={{ color: "var(--app-text)" }}
+                                          title={credit.memoNo || "-"}
                                         >
-                                          {credit.memoNo}
+                                          {credit.memoNo || "-"}
                                         </span>
                                         <span
                                           className="text-[10px] font-mono mt-0.5"
@@ -1107,26 +1223,36 @@ const WellnessCreditHistory = () => {
                                       </div>
                                     </td>
 
-                                    <td
-                                      className="px-6 py-4 text-center"
-                                      style={{ color: "var(--app-muted)" }}
-                                    >
-                                      {formatDays(credit.days)}
+                                    <td className="px-4 py-4 text-center align-middle whitespace-nowrap">
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md border text-xs font-bold"
+                                        style={{
+                                          backgroundColor: "var(--app-surface)",
+                                          borderColor: borderColor,
+                                          color: "var(--app-text)",
+                                        }}
+                                      >
+                                        <CalendarDays
+                                          size={12}
+                                          style={{ color: "var(--app-muted)" }}
+                                        />
+                                        {formatDays(credit.days)}
+                                      </span>
                                     </td>
 
                                     <td
-                                      className="px-6 py-4 text-center"
+                                      className="px-4 py-4 text-center align-middle whitespace-nowrap text-sm"
                                       style={{ color: "var(--app-muted)" }}
                                     >
                                       {formatDate(credit.dateApproved)}
                                     </td>
 
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-4 py-4 text-center align-middle whitespace-nowrap">
                                       <StatusBadge status={credit.status} />
                                     </td>
 
                                     {canManageCredits && (
-                                      <td className="px-6 py-4 text-right">
+                                      <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
                                         <ActionMenu
                                           credit={credit}
                                           borderColor={borderColor}
