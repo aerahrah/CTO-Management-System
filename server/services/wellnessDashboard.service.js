@@ -1,3 +1,4 @@
+// services/wellnessDashboard.service.js
 const mongoose = require("mongoose");
 const Employee = require("../models/employeeModel");
 const WellnessApplication = require("../models/wellnessApplicationModel");
@@ -27,25 +28,27 @@ function assertObjectId(id, fieldName = "ID") {
 
 // --- INTERNAL AGGREGATIONS ---
 
-async function sumApprovedDays(employeeId) {
+// ✅ UPDATED: Dynamic aggregation to sum days based on status (Handles both used and reserved days)
+async function sumDaysByStatus(employeeId, status) {
   const employeeObjId = new mongoose.Types.ObjectId(employeeId);
 
   const [agg] = await WellnessApplication.aggregate([
     {
       $match: {
         employee: employeeObjId,
-        overallStatus: WELLNESS_STATUS.APPROVED,
+        overallStatus: status,
       },
     },
     {
       $group: {
         _id: null,
-        usedDays: { $sum: "$requestedDays" },
+        // Uses totalDays if it exists, otherwise falls back to requestedDays for older records
+        total: { $sum: { $ifNull: ["$totalDays", "$requestedDays"] } },
       },
     },
   ]);
 
-  return agg?.usedDays || 0;
+  return agg?.total || 0;
 }
 
 // --- SERVICE METHODS ---
@@ -61,6 +64,7 @@ async function getPersonalWellnessSummary(employeeId) {
     return {
       balance: 0,
       used: 0,
+      reservedDays: 0,
       pending: 0,
       approved: 0,
       rejected: 0,
@@ -77,6 +81,7 @@ async function getPersonalWellnessSummary(employeeId) {
     cancelledCount,
     totalCount,
     usedDays,
+    reservedDays, // ✅ NEW: Fetch reserved days
     recentRequests,
   ] = await Promise.all([
     WellnessApplication.countDocuments({
@@ -96,17 +101,21 @@ async function getPersonalWellnessSummary(employeeId) {
       overallStatus: WELLNESS_STATUS.CANCELLED,
     }),
     WellnessApplication.countDocuments({ employee: employeeId }),
-    sumApprovedDays(employeeId),
+    sumDaysByStatus(employeeId, WELLNESS_STATUS.APPROVED), // Calculate Used Days
+    sumDaysByStatus(employeeId, WELLNESS_STATUS.PENDING), // ✅ Calculate Reserved Days
     WellnessApplication.find({ employee: employeeId })
       .sort({ createdAt: -1 })
       .limit(5)
-      .select("requestedDays overallStatus inclusiveDates reason createdAt")
+      .select(
+        "totalDays requestedDays overallStatus inclusiveDates reason createdAt",
+      )
       .lean(),
   ]);
 
   return {
     balance: employee.balances?.wellnessDays || 0,
     used: usedDays,
+    reservedDays: reservedDays, // ✅ NEW: Returned in the summary
     pending: pendingCount,
     approved: approvedCount,
     rejected: rejectedCount,
@@ -233,7 +242,7 @@ async function getSupervisorSummary(employeeId) {
       id: app._id,
       employeeId: app.employee._id,
       employeeName: `${app.employee.firstName} ${app.employee.lastName}`,
-      requestedDays: app.requestedDays,
+      requestedDays: app.totalDays || app.requestedDays, // ✅ Safely handle both
       inclusiveDates:
         app.inclusiveDates ||
         (app.startDate ? [app.startDate, app.endDate] : []),
@@ -262,13 +271,13 @@ async function getHrSummary(hrId) {
   assertObjectId(hrId, "HR ID");
   const myWellnessSummary = await getPersonalWellnessSummary(hrId);
 
-  // For Wellness, there are no "credits" to track like CTO.
-  // Instead, we pull recent company-wide wellness applications.
   const [recentApplications, totalPendingRequests] = await Promise.all([
     WellnessApplication.find()
       .sort({ createdAt: -1 })
       .limit(5)
-      .select("requestedDays overallStatus inclusiveDates reason createdAt")
+      .select(
+        "totalDays requestedDays overallStatus inclusiveDates reason createdAt",
+      )
       .populate("employee", "firstName lastName position")
       .lean(),
     WellnessApplication.countDocuments({

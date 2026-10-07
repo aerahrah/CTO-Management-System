@@ -76,7 +76,7 @@ const {
   requestRevocationWellnessController,
   processRevocationWellnessController,
   getRevocationRequestsController,
-  cancelRevocationWellnessController, // ✅ Imported the new controller
+  cancelRevocationWellnessController,
 } = require("../controllers/wellnessApplicationController.js");
 
 const {
@@ -86,6 +86,7 @@ const {
   getAllWellnessCreditRequests,
   getEmployeeDetails,
   getEmployeeWellnessCredits,
+  triggerYearEndReset, // ✅ Added this import
 } = require("../controllers/wellnessCreditController.js");
 
 // --- AUTH HELPERS ---
@@ -167,7 +168,7 @@ router.get(
 router.post(
   "/applications/apply",
   ...requirePerm("wellness.manage_self"),
-  uploadWellnessApplication.single("file"), // ✅ Uses updated storage for Late Filing
+  uploadWellnessApplication.single("file"),
   addWellnessApplicationRequest,
 );
 
@@ -189,7 +190,7 @@ router.post(
 router.post(
   "/revocation/applications/:id/revoke-request",
   ...requirePerm("revocation.manage_self"),
-  uploadWellnessRevocation.single("file"), // ✅ Uses updated storage for Revocation
+  uploadWellnessRevocation.single("file"),
   requestRevocationWellnessController,
 );
 
@@ -266,6 +267,13 @@ router.get(
   "/credits/employee/:employeeId",
   ...requirePerm("wellness.view_all"),
   getEmployeeWellnessCredits,
+);
+
+// ✅ NEW: Trigger year-end reset for previous year's credits
+router.post(
+  "/credits/expire-previous-year",
+  ...requirePerm("wellness.manage"),
+  triggerYearEndReset,
 );
 
 module.exports = router;

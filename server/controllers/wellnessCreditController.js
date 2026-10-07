@@ -144,10 +144,25 @@ const getEmployeeWellnessCredits = async (req, res) => {
   }
 };
 
+const triggerYearEndReset = async (req, res) => {
+  try {
+    const result = await wellnessCreditService.expirePreviousYearCredits();
+
+    return res.status(200).json({
+      message: `Successfully expired ${result.affectedBatches} credit batch(es) from previous years.`,
+      affectedBatches: result.affectedBatches,
+    });
+  } catch (error) {
+    console.error("Year-end reset failed:", error);
+    return sendError(res, error);
+  }
+};
+
 module.exports = {
   addWellnessCreditRequest,
   rollbackWellnessCreditRequest,
   getAllWellnessCreditRequests,
   getEmployeeDetails,
   getEmployeeWellnessCredits,
+  triggerYearEndReset,
 };

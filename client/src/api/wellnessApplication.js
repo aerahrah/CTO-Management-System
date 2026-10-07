@@ -324,6 +324,20 @@ export const fetchMyWellnessCredits = async (params = {}) => {
   }
 };
 
+// ✅ NEW: Trigger year-end reset for previous year's credits
+export const triggerYearEndWellnessCreditReset = async () => {
+  try {
+    const res = await API.post(
+      "/wellness/credits/expire-previous-year",
+      {},
+      withCreds(),
+    );
+    return unwrap(res);
+  } catch (err) {
+    safeError(err, "Failed to trigger year-end credit reset");
+  }
+};
+
 /* =========================
    DASHBOARD
 ========================= */

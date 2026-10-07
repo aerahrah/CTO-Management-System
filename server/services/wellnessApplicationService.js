@@ -10,6 +10,12 @@ const { resolveApproversFromRoute } = require("./approvalRoute.service");
 const NotificationService = require("./notificationService");
 const { APPROVAL_ROLE_VALUES } = require("../constants/approvalRoles");
 
+// NEW: Import the Credit Lifecycle functions
+const {
+  reserveWellnessDays,
+  revertReservedWellnessDays,
+} = require("./wellnessCredit.service");
+
 // Email Dependencies
 const sendEmail = require("../utils/sendEmail");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
@@ -216,8 +222,6 @@ const notifyApproversOfCancellation = async ({
     ),
   ].filter((id) => mongoose.isValidObjectId(id));
 
-  // Only email approvers who already saw the request:
-  // those who approved it + the one it was waiting on.
   const orderedSteps = [...approvalSteps].sort(
     (a, b) => Number(a.level || 0) - Number(b.level || 0),
   );
@@ -241,7 +245,7 @@ const notifyApproversOfCancellation = async ({
   );
   const employeeName = fullNameOf(employee);
 
-  // 1. Approvers (In-App + SMS to all, Email to those who saw it)
+  // 1. Approvers
   if (approverIds.length > 0) {
     let approvers = [];
     try {
@@ -286,7 +290,7 @@ const notifyApproversOfCancellation = async ({
     }
   }
 
-  // 2. Notified employees (In-App + SMS + Email). Skipped if none.
+  // 2. Notified employees
   const approverIdSet = new Set(approverIds);
   const notifiedIds = [
     ...new Set(
@@ -357,20 +361,17 @@ const notifyApproversOfCancellation = async ({
    Ledger Generator 
 ========================= */
 async function generateEmployeeLedger(employeeId, asOfDate = null) {
-  // 1. Fetch the employee's absolute real-time balance
   const employee = await Employee.findById(employeeId)
     .select("balances")
     .lean();
   const currentBalance = Number(employee?.balances?.wellnessDays || 0);
 
-  // 2. Determine the target year (either the year of the application, or current year)
   const targetYear = asOfDate
     ? new Date(asOfDate).getFullYear()
     : new Date().getFullYear();
   const startOfYear = new Date(targetYear + "-01-01T00:00:00.000Z");
   const endOfYear = new Date(targetYear + "-12-31T23:59:59.999Z");
 
-  // 3. Only fetch applications from that specific year
   const applications = await WellnessApplication.find({
     employee: employeeId,
     overallStatus: {
@@ -382,7 +383,6 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
     },
   }).lean();
 
-  // 4. Mathematically derive the Total Credited Days FOR THIS YEAR
   let totalUsedThisYear = 0;
   applications.forEach((app) => {
     if (
@@ -398,7 +398,6 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 
   let transactions = [];
 
-  // ADD APPLICATIONS (Usage & Revocations)
   applications.forEach((app) => {
     const datesCovered = formatLedgerDates(app.inclusiveDates);
     const descriptionBase = datesCovered
@@ -523,9 +522,6 @@ const addWellnessApplicationService = async ({
 
   const totalDays = inclusiveDates.length;
 
-  // ==========================================
-  // DYNAMIC LATE FILING & COMPUTATION MODE RULE
-  // ==========================================
   const settingsDoc = (await GeneralSetting.findOne()) || {};
   const workingDaysEnable = settingsDoc.workingDaysEnable ?? true;
   const workingDaysValue = settingsDoc.workingDaysValue ?? 5;
@@ -691,7 +687,6 @@ const addWellnessApplicationService = async ({
     }
   }
 
-  // Resolve and validate notifiedEmployees (payload first, otherwise route preset)
   let parsedNotifiedInput = notifiedEmployees;
   if (typeof parsedNotifiedInput === "string" && parsedNotifiedInput.trim()) {
     try {
@@ -714,7 +709,6 @@ const addWellnessApplicationService = async ({
     }
   }
 
-  // Exclude applicant and active approvers from passive notifiedEmployees
   const excludedIds = new Set([
     String(userId),
     ...finalApprovers.map((a) => String(a.approver)),
@@ -724,9 +718,6 @@ const addWellnessApplicationService = async ({
     ...new Set(candidateNotifiedIds.map((id) => String(id))),
   ].filter((id) => !excludedIds.has(id));
 
-  // ==========================================
-  // TRANSACTION (balance deduction + application + steps)
-  // ==========================================
   let newApplication;
   let approvalSteps = [];
   let approverMap = new Map();
@@ -766,6 +757,9 @@ const addWellnessApplicationService = async ({
         400,
       );
     }
+
+    // NEW: Trigger the exact batch deduction & reservation
+    await reserveWellnessDays(userId, totalDays, session);
 
     const applicationPayload = {
       employee: employee._id,
@@ -835,8 +829,6 @@ const addWellnessApplicationService = async ({
 
     approverMap = new Map(approverProfiles.map((a) => [String(a._id), a]));
 
-    // Build all steps first, then insert them in ONE call.
-    // (Parallel writes on a single transaction session are not supported by MongoDB.)
     const stepDocs = finalApprovers.map((approverObj, index) => {
       const approverProfile = approverMap.get(String(approverObj.approver));
 
@@ -878,9 +870,6 @@ const addWellnessApplicationService = async ({
     session.endSession();
   }
 
-  // ==========================================
-  // SIDE EFFECTS (already committed — nothing below may fail the request)
-  // ==========================================
   let populatedApp = null;
   try {
     populatedApp = await populateApplicationById(newApplication._id);
@@ -896,7 +885,6 @@ const addWellnessApplicationService = async ({
   const formattedDates = formatDatesList(inclusiveDates);
   const frontendUrl = process.env.FRONTEND_URL || "";
 
-  // 1. Notify Level 1 Approver (In-App + SMS + Email)
   const firstStep = approvalSteps.find((s) => s.level === 1);
   if (firstStep) {
     try {
@@ -936,8 +924,6 @@ const addWellnessApplicationService = async ({
     }
   }
 
-  // 2. Notify Tagged / Notified Employees (In-App + SMS + Email)
-  //    Skipped entirely when there are no notified employees.
   if (finalNotifiedIds.length > 0) {
     let notifiedDocs = [];
 
@@ -1495,6 +1481,9 @@ const cancelWellnessApplicationService = async ({
       { session },
     );
 
+    // NEW: Revert reserved days for this cancelled request
+    await revertReservedWellnessDays(userId, application.totalDays, session);
+
     application.overallStatus = "CANCELLED";
     await application.save({ session });
 
@@ -1616,7 +1605,6 @@ const requestRevocationWellnessApplicationService = async ({
 
   await app.save();
 
-  // Send System Notifications & Emails to HR
   try {
     const employee = await Employee.findById(userId).select(
       "firstName lastName phone",
@@ -1748,6 +1736,9 @@ const processRevocationWellnessRequestService = async ({
         );
       }
 
+      // NEW: If HR approves the revocation, refund the used days back to remainingDays
+      await revertReservedWellnessDays(employeeId, totalDays, session);
+
       application.overallStatus = "REVOKED";
       application.revokedBy = adminId;
       application.revokeReason = safeRemarks;
@@ -1786,7 +1777,6 @@ const processRevocationWellnessRequestService = async ({
     session.endSession();
   }
 
-  // Send System Notifications & Emails to Employee
   try {
     const emp = application.employee;
     if (emp && emp.email) {
@@ -2062,7 +2052,6 @@ const cancelRevocationWellnessRequestService = async ({
     session.endSession();
   }
 
-  // Send System Notifications & Emails to HR indicating the employee withdrew the request
   try {
     const employee = await Employee.findById(userId).select(
       "firstName lastName phone",

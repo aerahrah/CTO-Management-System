@@ -7,10 +7,12 @@ import "react-loading-skeleton/dist/skeleton.css";
 import {
   fetchAllWellnessCredits,
   rollbackWellnessCreditRequest,
+  triggerYearEndWellnessCreditReset, // ✅ Added the new API import
 } from "../../../api/wellnessApplication";
 
 import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
+import WellnessCreditDetails from "./wellnessCreditFullDetails";
 import { toast } from "react-toastify";
 import Breadcrumbs from "../../breadCrumbs";
 import FilterSelect from "../../filterSelect";
@@ -33,11 +35,12 @@ import {
   CalendarDays,
   ArrowUp,
   ChevronDown,
+  Info,
 } from "lucide-react";
 
 const pageSizeOptions = [20, 50, 100];
 
-/* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
+/* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
     const systemDark =
@@ -83,9 +86,10 @@ const getStatusTabs = (counts = {}) => [
   },
 ];
 
-/* ------------------ Action menu (themed) ------------------ */
+/* ------------------ Action menu ------------------ */
 const ActionMenu = ({
   credit,
+  onViewDetails,
   onRollback,
   isRollbackPending,
   borderColor,
@@ -114,9 +118,6 @@ const ActionMenu = ({
     cb?.();
     setIsOpen(false);
   };
-
-  // If user can't manage credits, there are no actions left to show in this menu
-  if (!canManageCredits) return null;
 
   return (
     <div className="relative inline-flex justify-end" ref={menuRef}>
@@ -158,28 +159,56 @@ const ActionMenu = ({
         >
           <button
             type="button"
-            disabled={credit.status !== "CREDITED" || isRollbackPending}
-            onClick={() => handle(onRollback)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ color: "#ef4444" }}
+            disabled={isRollbackPending}
+            onClick={() => handle(onViewDetails)}
+            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: "var(--app-muted)" }}
             onMouseEnter={(e) => {
-              if (credit.status !== "CREDITED" || isRollbackPending) return;
-              e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
+              if (isRollbackPending) return;
+              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
+              e.currentTarget.style.color = "var(--accent)";
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.color = "var(--app-muted)";
             }}
           >
-            <RotateCcw size={14} />{" "}
-            {isRollbackPending ? "Rolling back..." : "Rollback"}
+            <Info size={14} /> View Details
           </button>
+
+          {canManageCredits && (
+            <>
+              <div
+                className="my-1 h-px"
+                style={{ backgroundColor: borderColor }}
+              />
+              <button
+                type="button"
+                disabled={credit.status !== "CREDITED" || isRollbackPending}
+                onClick={() => handle(onRollback)}
+                className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ color: "#ef4444" }}
+                onMouseEnter={(e) => {
+                  if (credit.status !== "CREDITED" || isRollbackPending) return;
+                  e.currentTarget.style.backgroundColor =
+                    "rgba(239,68,68,0.10)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                <RotateCcw size={14} />{" "}
+                {isRollbackPending ? "Rolling back..." : "Rollback"}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-/* ------------------ Employees cell (desktop table) ------------------ */
+/* ------------------ Employees cell ------------------ */
 const MAX_VISIBLE_EMPLOYEES = 3;
 
 const getInitials = (name) =>
@@ -283,6 +312,7 @@ const EmployeesCell = ({ employees = [], borderColor }) => {
 const CreditCard = ({
   credit,
   isRollbackPending,
+  onViewDetails,
   onRollback,
   formatDays,
   formatDate,
@@ -346,6 +376,7 @@ const CreditCard = ({
               credit={credit}
               borderColor={borderColor}
               isRollbackPending={isRollbackPending}
+              onViewDetails={onViewDetails}
               onRollback={onRollback}
               canManageCredits={canManageCredits}
             />
@@ -397,15 +428,30 @@ const CreditCard = ({
         </div>
       </div>
 
-      {canManageCredits && (
-        <div
-          className="border-t p-3 transition-colors duration-300 ease-out"
-          style={{
-            borderColor: borderColor,
-            backgroundColor: "var(--app-surface)",
-          }}
-        >
-          <div className="flex items-center gap-2">
+      <div
+        className="border-t p-3 transition-colors duration-300 ease-out"
+        style={{
+          borderColor: borderColor,
+          backgroundColor: "var(--app-surface)",
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={isRollbackPending}
+            onClick={onViewDetails}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+            style={{
+              borderColor: "var(--accent-soft2)",
+              backgroundColor: "var(--accent-soft)",
+              color: "var(--accent)",
+            }}
+          >
+            <Info className="w-4 h-4" />
+            <span>View Details</span>
+          </button>
+
+          {canManageCredits && (
             <button
               type="button"
               disabled={credit.status !== "CREDITED" || isRollbackPending}
@@ -427,9 +473,9 @@ const CreditCard = ({
               <RotateCcw className="w-4 h-4" />
               <span>{isRollbackPending ? "Rolling..." : "Rollback"}</span>
             </button>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
@@ -604,8 +650,17 @@ const WellnessCreditHistory = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
+  // Rollback Modal State
   const [isConfirmRollback, setIsConfirmRollback] = useState(false);
   const [selectedCreditId, setSelectedCreditId] = useState(null);
+
+  // ✅ Expire Year-End Modal State
+  const [isConfirmExpire, setIsConfirmExpire] = useState(false);
+
+  const [detailsModal, setDetailsModal] = useState({
+    isOpen: false,
+    credit: null,
+  });
 
   const rollbackInFlightRef = useRef(false);
   const rollbackSuccessLatchRef = useRef(false);
@@ -680,6 +735,22 @@ const WellnessCreditHistory = () => {
       return p;
     });
   }, [pagination.totalPages]);
+
+  // ✅ New Mutation for Expiring Year-End Credits
+  const expireMutation = useMutation({
+    mutationFn: triggerYearEndWellnessCreditReset,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["allWellnessCredits"] });
+      toast.success(
+        res?.message || "Successfully reset previous year credits.",
+      );
+      setIsConfirmExpire(false);
+    },
+    onError: (error) => {
+      toast.error(error?.message || "Failed to reset credits.");
+      setIsConfirmExpire(false);
+    },
+  });
 
   const rollbackMutation = useMutation({
     mutationFn: rollbackWellnessCreditRequest,
@@ -805,21 +876,38 @@ const WellnessCreditHistory = () => {
                 </div>
 
                 {canManageCredits && (
-                  <button
-                    type="button"
-                    onClick={() => navigate("/app/wellness-credit/add")}
-                    className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
-                    style={{ backgroundColor: "var(--accent, #2563EB)" }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.filter = "brightness(0.95)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.filter = "none")
-                    }
-                  >
-                    <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
-                    Credit Wellness
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto mt-4 md:mt-0">
+                    {/* ✅ New Year-End Reset Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmExpire(true)}
+                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-4 py-2.5 text-sm font-semibold border shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        borderColor: "var(--accent)",
+                        color: "var(--accent)",
+                      }}
+                    >
+                      <CalendarDays className="w-4 h-4" />
+                      Year-End Reset
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate("/app/wellness-credit/add")}
+                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
+                      style={{ backgroundColor: "var(--accent, #2563EB)" }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.filter = "brightness(0.95)")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.filter = "none")
+                      }
+                    >
+                      <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
+                      Credit Wellness
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1098,6 +1186,9 @@ const WellnessCreditHistory = () => {
                               )}
                               borderColor={borderColor}
                               canManageCredits={canManageCredits}
+                              onViewDetails={() =>
+                                setDetailsModal({ isOpen: true, credit })
+                              }
                               onRollback={() => {
                                 if (isRollbackPending) return;
                                 setSelectedCreditId(credit._id);
@@ -1112,24 +1203,14 @@ const WellnessCreditHistory = () => {
                     {/* Desktop table */}
                     <div className="hidden lg:block w-full align-middle">
                       <table className="w-full text-left table-fixed">
-                        {canManageCredits ? (
-                          <colgroup>
-                            <col style={{ width: "36%" }} />
-                            <col style={{ width: "20%" }} />
-                            <col style={{ width: "11%" }} />
-                            <col style={{ width: "13%" }} />
-                            <col style={{ width: "10%" }} />
-                            <col style={{ width: "10%" }} />
-                          </colgroup>
-                        ) : (
-                          <colgroup>
-                            <col style={{ width: "40%" }} />
-                            <col style={{ width: "22%" }} />
-                            <col style={{ width: "12%" }} />
-                            <col style={{ width: "14%" }} />
-                            <col style={{ width: "12%" }} />
-                          </colgroup>
-                        )}
+                        <colgroup>
+                          <col style={{ width: "36%" }} />
+                          <col style={{ width: "20%" }} />
+                          <col style={{ width: "11%" }} />
+                          <col style={{ width: "13%" }} />
+                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "10%" }} />
+                        </colgroup>
 
                         <thead
                           className="sticky top-0 z-10 border-b transition-colors duration-300 ease-out"
@@ -1153,9 +1234,7 @@ const WellnessCreditHistory = () => {
                               Date Approved
                             </th>
                             <th className="px-4 py-4 text-center">Status</th>
-                            {canManageCredits && (
-                              <th className="px-6 py-4 text-right">Actions</th>
-                            )}
+                            <th className="px-6 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
 
@@ -1163,13 +1242,11 @@ const WellnessCreditHistory = () => {
                           {isLoading
                             ? [...Array(limit)].map((_, i) => (
                                 <tr key={i}>
-                                  {[...Array(canManageCredits ? 6 : 5)].map(
-                                    (__, j) => (
-                                      <td key={j} className="px-6 py-4">
-                                        <Skeleton />
-                                      </td>
-                                    ),
-                                  )}
+                                  {[...Array(6)].map((__, j) => (
+                                    <td key={j} className="px-6 py-4">
+                                      <Skeleton />
+                                    </td>
+                                  ))}
                                 </tr>
                               ))
                             : credits.map((credit, i) => {
@@ -1251,21 +1328,25 @@ const WellnessCreditHistory = () => {
                                       <StatusBadge status={credit.status} />
                                     </td>
 
-                                    {canManageCredits && (
-                                      <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
-                                        <ActionMenu
-                                          credit={credit}
-                                          borderColor={borderColor}
-                                          isRollbackPending={isRollbackPending}
-                                          canManageCredits={canManageCredits}
-                                          onRollback={() => {
-                                            if (isRollbackPending) return;
-                                            setSelectedCreditId(credit._id);
-                                            setIsConfirmRollback(true);
-                                          }}
-                                        />
-                                      </td>
-                                    )}
+                                    <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
+                                      <ActionMenu
+                                        credit={credit}
+                                        borderColor={borderColor}
+                                        isRollbackPending={isRollbackPending}
+                                        canManageCredits={canManageCredits}
+                                        onViewDetails={() =>
+                                          setDetailsModal({
+                                            isOpen: true,
+                                            credit,
+                                          })
+                                        }
+                                        onRollback={() => {
+                                          if (isRollbackPending) return;
+                                          setSelectedCreditId(credit._id);
+                                          setIsConfirmRollback(true);
+                                        }}
+                                      />
+                                    </td>
                                   </tr>
                                 );
                               })}
@@ -1307,6 +1388,75 @@ const WellnessCreditHistory = () => {
             </button>
           )}
 
+          {/* ✅ Added Year-End Reset Confirmation Modal */}
+          <Modal
+            isOpen={isConfirmExpire}
+            onClose={() => {
+              if (expireMutation.isPending) return;
+              setIsConfirmExpire(false);
+            }}
+            title="Year-End Credit Reset"
+            maxWidth="max-w-lg"
+            preventCloseWhenBusy={true}
+            isBusy={expireMutation.isPending}
+            action={{
+              show: true,
+              variant: "delete",
+              label: expireMutation.isPending
+                ? "Expiring..."
+                : "Yes, Expire Credits",
+              onClick: () => expireMutation.mutate(),
+              disabled: expireMutation.isPending,
+            }}
+          >
+            <div className="p-2">
+              <div className="text-center py-2">
+                <div
+                  className="mx-auto h-20 w-20 rounded-full flex items-center justify-center mb-4 border-4 shadow-inner"
+                  style={{
+                    backgroundColor: "rgba(245,158,11,0.10)",
+                    borderColor: "rgba(245,158,11,0.18)",
+                    color: "#f59e0b",
+                  }}
+                >
+                  <CalendarDays size={40} strokeWidth={3} />
+                </div>
+
+                <h2
+                  className="text-lg font-semibold"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  Expire Previous Year&apos;s Credits?
+                </h2>
+
+                <p
+                  className="text-sm mt-2"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  This will permanently expire all active wellness credits that
+                  were approved{" "}
+                  <strong>before January 1st of the current year</strong>.
+                </p>
+              </div>
+
+              <div
+                className="mt-4 rounded-xl border p-3 transition-colors duration-300 ease-out"
+                style={{
+                  borderColor: "rgba(239,68,68,0.35)",
+                  backgroundColor: "rgba(239,68,68,0.10)",
+                  color: "rgba(239,68,68,0.95)",
+                }}
+              >
+                <p className="text-xs leading-relaxed">
+                  <span className="font-bold">Warning:</span> Unused days from
+                  last year will be permanently deducted from employee balances.
+                  This action cannot be undone.
+                </p>
+              </div>
+            </div>
+          </Modal>
+
+          {/* Existing Rollback Modal */}
           <Modal
             isOpen={isConfirmRollback}
             onClose={() => {
@@ -1434,6 +1584,15 @@ const WellnessCreditHistory = () => {
                 </p>
               </div>
             </div>
+          </Modal>
+
+          <Modal
+            isOpen={detailsModal.isOpen}
+            onClose={() => setDetailsModal((p) => ({ ...p, isOpen: false }))}
+            title="Wellness Credit Details"
+            maxWidth="max-w-4xl"
+          >
+            <WellnessCreditDetails credit={detailsModal.credit} />
           </Modal>
         </SkeletonTheme>
       </div>

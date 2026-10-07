@@ -358,9 +358,17 @@ const MetricTile = ({
   );
 };
 
-const Progress = ({ usedPct = 0, borderColor }) => {
+const Progress = ({ usedPct = 0, reservedPct = 0, borderColor }) => {
   const clamp = (n) => Math.min(Math.max(Number(n) || 0, 0), 100);
   let u = clamp(usedPct);
+  let r = clamp(reservedPct);
+
+  // Prevent breaking the bar UI if math goes over 100%
+  if (u + r > 100) {
+    const scale = 100 / (u + r);
+    u *= scale;
+    r *= scale;
+  }
 
   return (
     <div
@@ -375,6 +383,11 @@ const Progress = ({ usedPct = 0, borderColor }) => {
           className="h-full transition-all duration-700"
           style={{ width: `${u}%`, backgroundColor: "#f43f5e" }}
           aria-label="Used"
+        />
+        <div
+          className="h-full transition-all duration-700"
+          style={{ width: `${r}%`, backgroundColor: "#f59e0b" }}
+          aria-label="Reserved"
         />
       </div>
     </div>
@@ -735,10 +748,15 @@ const WellnessDashboard = () => {
 
   const balance = Number(myWellnessSummary?.balance || 0);
   const used = Number(myWellnessSummary?.used || 0);
-  const totalDays = balance + used;
+  const reserved = Number(myWellnessSummary?.reservedDays || 0);
+
+  const totalDays = balance + used + reserved;
 
   const usedPct = totalDays > 0 ? (used / totalDays) * 100 : 0;
-  const utilizationPct = totalDays > 0 ? (used / totalDays) * 100 : 0;
+  const reservedPct = totalDays > 0 ? (reserved / totalDays) * 100 : 0;
+
+  const utilizationPct =
+    totalDays > 0 ? ((used + reserved) / totalDays) * 100 : 0;
 
   const formatDate = (dateString) => {
     if (!dateString) return "Date N/A";
@@ -939,6 +957,20 @@ const WellnessDashboard = () => {
                               {used.toFixed(1)}d
                             </span>
                           </div>
+                          {reserved > 0 && (
+                            <div
+                              className="text-xs font-semibold mt-0.5 transition-colors duration-300 ease-out"
+                              style={{ color: "var(--app-muted)" }}
+                            >
+                              Reserved:{" "}
+                              <span
+                                className="font-bold transition-colors duration-300 ease-out"
+                                style={{ color: "var(--app-text)" }}
+                              >
+                                {reserved.toFixed(1)}d
+                              </span>
+                            </div>
+                          )}
                           <div
                             className="text-xs mt-0.5 transition-colors duration-300 ease-out"
                             style={{ color: "var(--app-muted)" }}
@@ -955,7 +987,11 @@ const WellnessDashboard = () => {
                       </div>
 
                       <div className="mt-5 space-y-2">
-                        <Progress usedPct={usedPct} borderColor={borderColor} />
+                        <Progress
+                          usedPct={usedPct}
+                          reservedPct={reservedPct}
+                          borderColor={borderColor}
+                        />
 
                         <div
                           className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] transition-colors duration-300 ease-out"
@@ -972,7 +1008,7 @@ const WellnessDashboard = () => {
                             <span>Balance</span>
                           </div>
 
-                          {used > 0 ? (
+                          {used > 0 && (
                             <div className="inline-flex items-center gap-2">
                               <span
                                 className="w-2.5 h-2.5 rounded-full"
@@ -980,14 +1016,26 @@ const WellnessDashboard = () => {
                               />
                               <span>Used</span>
                             </div>
-                          ) : null}
+                          )}
+
+                          {/* ✅ UPDATED: Reserved legend item */}
+                          {reserved > 0 && (
+                            <div className="inline-flex items-center gap-2">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full"
+                                style={{ backgroundColor: "#f59e0b" }}
+                              />
+                              <span>Reserved</span>
+                            </div>
+                          )}
                         </div>
                       </div>
 
-                      <div className="mt-5 grid grid-cols-3 gap-2">
+                      <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {[
                           { k: "Total Granted", v: `${totalDays.toFixed(1)}d` },
                           { k: "Balance", v: `${balance.toFixed(1)}d` },
+                          { k: "Reserved", v: `${reserved.toFixed(1)}d` },
                           { k: "Used", v: `${used.toFixed(1)}d` },
                         ].map((t) => (
                           <div
@@ -1074,6 +1122,10 @@ const WellnessDashboard = () => {
                               myWellnessSummary.recentRequests.length - 1;
                             const st = getStatusStyle(request.overallStatus);
 
+                            // Handle older requestedDays vs newer totalDays
+                            const requestDays =
+                              request.totalDays || request.requestedDays;
+
                             return (
                               <div
                                 key={request._id}
@@ -1119,7 +1171,7 @@ const WellnessDashboard = () => {
                                           tone="blue"
                                           className="normal-case"
                                         >
-                                          {request.requestedDays}d
+                                          {requestDays}d
                                         </Pill>
                                       </div>
                                       <div
