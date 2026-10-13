@@ -443,16 +443,51 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 
   let transactions = [];
 
+  // 1. Calculate the exact amount of hours used by system applications per memo
+  const memoSystemUsage = {};
+  applications.forEach((app) => {
+    if (
+      ["APPROVED", "PENDING", "REVOCATION_REQUESTED"].includes(
+        app.overallStatus,
+      )
+    ) {
+      if (app.memo && Array.isArray(app.memo)) {
+        app.memo.forEach((m) => {
+          if (m.memoId) {
+            const mId = String(m.memoId._id || m.memoId);
+            memoSystemUsage[mId] =
+              (memoSystemUsage[mId] || 0) + strictNumber(m.appliedHours);
+          }
+        });
+      }
+    }
+  });
+
   credits.forEach((credit) => {
     const empRec = credit.employees?.find(
       (e) => String(e.employee) === String(employeeId),
     );
     if (empRec) {
+      const remaining = strictNumber(empRec.remainingHours);
+      const reserved = strictNumber(empRec.reservedHours);
+      const used = strictNumber(empRec.usedHours);
       const earned =
-        strictNumber(empRec.totalHours) ||
-        strictNumber(empRec.remainingHours) +
-          strictNumber(empRec.usedHours) +
-          strictNumber(empRec.reservedHours);
+        strictNumber(empRec.totalHours) || remaining + used + reserved;
+
+      const systemUsed = memoSystemUsage[String(credit._id)] || 0;
+
+      // Calculate how many hours were used prior to being tracked in this system
+      const priorUsage = Math.max(0, used + reserved - systemUsed);
+
+      // 2. If the credit is 100% exhausted from the old system and has no applications here, skip it
+      if (
+        remaining === 0 &&
+        reserved === 0 &&
+        systemUsed === 0 &&
+        priorUsage > 0
+      ) {
+        return;
+      }
 
       if (earned > 0) {
         const accrualDate =
@@ -484,6 +519,19 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
           referenceId: credit._id,
           sortPriority: 0,
         });
+
+        // 3. Insert a synthetic deduction for the prior usage so the ledger math balances perfectly
+        if (priorUsage > 0) {
+          transactions.push({
+            date: accrualDate,
+            displayDate: displayDate,
+            type: "APPLICATION", // Using APPLICATION so frontend styles it identically to a deduction
+            description: "Prior CTO Usage (Migrated Balance)",
+            amount: -priorUsage,
+            referenceId: credit._id,
+            sortPriority: 0.5,
+          });
+        }
       }
     }
   });

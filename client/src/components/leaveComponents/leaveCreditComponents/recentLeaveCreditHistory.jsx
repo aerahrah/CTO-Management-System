@@ -1,10 +1,18 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+// leaveCreditHistory.jsx
+import {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+} from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
 
-// ✅ Ensure these match your actual API file exports
 import {
   getAllLeaveCreditRequests as fetchAllLeaveCredits,
   rollbackLeaveCreditRequest,
@@ -22,6 +30,7 @@ import { usePermissions } from "../../../hooks/usePermissions";
 import {
   Clipboard,
   Search,
+  X,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -34,7 +43,6 @@ import {
   Calendar,
   CalendarDays,
   ArrowUp,
-  BriefcaseMedical,
 } from "lucide-react";
 
 const pageSizeOptions = [20, 50, 100];
@@ -85,6 +93,13 @@ const getStatusTabs = (counts = {}) => [
   },
 ];
 
+const STRIP_COLORS = {
+  CREDITED: "#10b981",
+  ROLLEDBACK: "#f43f5e",
+};
+
+const stripColorOf = (status) => STRIP_COLORS[status] || "#cbd5e1";
+
 /* ------------------ UI Components ------------------ */
 const LeaveTypeBadge = ({ type }) => {
   const isVL = type === "VL";
@@ -104,7 +119,109 @@ const LeaveTypeBadge = ({ type }) => {
   );
 };
 
-/* ------------------ Action menu (themed) ------------------ */
+/* ------------------ Employees cell (desktop table) ------------------ */
+const MAX_VISIBLE_EMPLOYEES = 3;
+
+const getInitials = (name) =>
+  String(name || "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join("")
+    .toUpperCase();
+
+const EmployeesCell = ({ employees = [], borderColor }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  const names = useMemo(
+    () =>
+      (employees || [])
+        .map((e) =>
+          `${e.employee?.firstName || ""} ${e.employee?.lastName || ""}`.trim(),
+        )
+        .filter(Boolean),
+    [employees],
+  );
+
+  if (names.length === 0) {
+    return (
+      <span className="text-sm" style={{ color: "var(--app-muted)" }}>
+        -
+      </span>
+    );
+  }
+
+  const hiddenCount = names.length - MAX_VISIBLE_EMPLOYEES;
+  const visibleNames = expanded ? names : names.slice(0, MAX_VISIBLE_EMPLOYEES);
+
+  return (
+    <div className="flex flex-col gap-1.5 min-w-0">
+      <div className="flex items-center gap-1.5">
+        <Users size={13} style={{ color: "var(--app-muted)" }} />
+        <span
+          className="text-[10px] font-bold uppercase tracking-wider"
+          style={{ color: "var(--app-muted)" }}
+        >
+          {names.length} Employee{names.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {visibleNames.map((name, idx) => (
+          <span
+            key={`${name}-${idx}`}
+            title={name}
+            className="inline-flex items-center gap-1.5 max-w-[190px] pl-0.5 pr-2.5 py-0.5 rounded-full border text-xs font-medium"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
+              color: "var(--app-text)",
+            }}
+          >
+            <span
+              className="h-5 w-5 rounded-full flex items-center justify-center text-[9px] font-bold flex-none"
+              style={{
+                backgroundColor: "var(--accent-soft)",
+                color: "var(--accent)",
+              }}
+            >
+              {getInitials(name)}
+            </span>
+            <span className="truncate">{name}</span>
+          </span>
+        ))}
+
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setExpanded((v) => !v);
+            }}
+            title={
+              expanded
+                ? "Show less"
+                : names.slice(MAX_VISIBLE_EMPLOYEES).join(", ")
+            }
+            className="inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-bold transition hover:brightness-95"
+            style={{
+              backgroundColor: "var(--accent-soft)",
+              borderColor: "var(--accent-soft2)",
+              color: "var(--accent)",
+            }}
+          >
+            {expanded ? "Show less" : `+${hiddenCount} more`}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ------------------ Action menu (portal, so the table can't clip it) ------------------ */
+const MENU_WIDTH = 176;
+
 const ActionMenu = ({
   credit,
   onRollback,
@@ -113,23 +230,57 @@ const ActionMenu = ({
   canManageCredits,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, visible: false });
+  const btnRef = useRef(null);
   const menuRef = useRef(null);
 
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const btn = btnRef.current?.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight || 48;
+    if (!btn) return;
+
+    const gap = 6;
+    const spaceBelow = window.innerHeight - btn.bottom;
+    const openUp = spaceBelow < menuH + gap + 8 && btn.top > menuH + gap;
+
+    setPos({
+      top: openUp ? btn.top - menuH - gap : btn.bottom + gap,
+      left: Math.min(
+        Math.max(8, btn.right - MENU_WIDTH),
+        window.innerWidth - MENU_WIDTH - 8,
+      ),
+      visible: true,
+    });
+  }, [isOpen]);
+
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target))
-        setIsOpen(false);
+    if (!isOpen) return;
+
+    const close = () => setIsOpen(false);
+    const onDown = (e) => {
+      if (
+        btnRef.current?.contains(e.target) ||
+        menuRef.current?.contains(e.target)
+      )
+        return;
+      close();
     };
-    const handleEsc = (e) => {
-      if (e.key === "Escape") setIsOpen(false);
+    const onKey = (e) => {
+      if (e.key === "Escape") close();
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEsc);
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEsc);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
-  }, []);
+  }, [isOpen]);
 
   const handle = (cb) => {
     cb?.();
@@ -138,27 +289,21 @@ const ActionMenu = ({
 
   if (!canManageCredits) return null;
 
+  const rollbackDisabled = credit.status !== "CREDITED" || isRollbackPending;
+
   return (
-    <div className="relative inline-flex justify-center" ref={menuRef}>
+    <>
       <button
+        ref={btnRef}
         type="button"
         disabled={isRollbackPending}
         onClick={(e) => {
           e.stopPropagation();
           if (isRollbackPending) return;
+          setPos((p) => ({ ...p, visible: false }));
           setIsOpen((o) => !o);
         }}
-        className="p-2 rounded-full disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-        style={{ color: "var(--app-muted)" }}
-        onMouseEnter={(e) => {
-          if (isRollbackPending) return;
-          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-          e.currentTarget.style.color = "var(--app-text)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
-          e.currentTarget.style.color = "var(--app-muted)";
-        }}
+        className="p-2 rounded-full disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out text-[color:var(--app-muted)] hover:bg-[color:var(--app-surface-2)] hover:text-[color:var(--app-text)]"
         aria-haspopup="true"
         aria-expanded={isOpen}
         title="Actions"
@@ -166,34 +311,38 @@ const ActionMenu = ({
         <MoreVertical size={18} />
       </button>
 
-      {isOpen && (
-        <div
-          className="absolute right-0 top-full mt-2 w-44 rounded-lg shadow-lg z-30 py-1 border transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor,
-          }}
-        >
-          <button
-            type="button"
-            disabled={credit.status !== "CREDITED" || isRollbackPending}
-            onClick={() => handle(onRollback)}
-            className="w-full px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-            style={{ color: "#ef4444" }}
-            onMouseEnter={(e) => {
-              if (credit.status !== "CREDITED" || isRollbackPending) return;
-              e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
+      {isOpen &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="rounded-lg shadow-lg py-1 border"
+            style={{
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              zIndex: 1000,
+              visibility: pos.visible ? "visible" : "hidden",
+              backgroundColor: "var(--app-surface)",
+              borderColor,
             }}
           >
-            <RotateCcw size={14} />{" "}
-            {isRollbackPending ? "Rolling back..." : "Rollback"}
-          </button>
-        </div>
-      )}
-    </div>
+            <button
+              type="button"
+              disabled={rollbackDisabled}
+              onClick={() => handle(onRollback)}
+              className={`w-full px-4 py-2 text-sm flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out ${
+                rollbackDisabled ? "" : "hover:bg-[rgba(239,68,68,0.10)]"
+              }`}
+              style={{ color: "#ef4444" }}
+            >
+              <RotateCcw size={14} />{" "}
+              {isRollbackPending ? "Rolling back..." : "Rollback"}
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 };
 
@@ -204,7 +353,6 @@ const CreditCard = ({
   onRollback,
   formatDays,
   formatDate,
-  leftStripClassName,
   borderColor,
   canManageCredits,
 }) => {
@@ -217,45 +365,51 @@ const CreditCard = ({
   }, [credit]);
 
   const shortId = credit?._id ? credit._id.slice(-6).toUpperCase() : "-";
+  const rollbackDisabled = credit.status !== "CREDITED" || isRollbackPending;
 
   return (
     <div
-      className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-colors duration-300 ease-out ${leftStripClassName}`}
+      className="rounded-xl shadow-sm overflow-hidden transition-colors duration-300 ease-out"
       style={{
         backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
+        border: `1px solid ${borderColor}`,
+        borderLeft: `4px solid ${stripColorOf(credit.status)}`,
       }}
     >
-      <div className="p-4 transition-colors duration-300 ease-out">
+      <div className="p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0">
               <span
-                className="text-sm font-bold truncate transition-colors duration-300 ease-out"
+                className="text-sm font-bold truncate"
                 style={{ color: "var(--app-text)" }}
+                title={credit.memoNo || "-"}
               >
                 {credit.memoNo || "-"}
               </span>
-              <LeaveTypeBadge type={credit.leaveType} />
+              <div className="flex-none">
+                <LeaveTypeBadge type={credit.leaveType} />
+              </div>
             </div>
 
-            <div className="mt-1 flex items-center gap-2">
+            <div className="mt-1">
               <span
-                className="text-[10px] font-mono transition-colors duration-300 ease-out"
+                className="text-[10px] font-mono"
                 style={{ color: "var(--app-muted)" }}
               >
                 #{shortId}
               </span>
             </div>
 
-            <div className="mt-2 flex items-start gap-2">
+            <div className="mt-2 flex items-start gap-2 min-w-0">
               <Users
                 className="w-4 h-4 mt-[2px] flex-none"
                 style={{ color: "var(--app-muted)" }}
               />
               <div
-                className="text-xs leading-snug line-clamp-2 transition-colors duration-300 ease-out"
+                className="text-xs leading-snug line-clamp-2"
                 style={{ color: "var(--app-text)" }}
+                title={employeesLabel}
               >
                 {employeesLabel}
               </div>
@@ -276,20 +430,17 @@ const CreditCard = ({
 
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-            }}
+            className="rounded-lg border p-2"
+            style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
           >
             <div
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors duration-300 ease-out"
+              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
               style={{ color: "var(--app-muted)" }}
             >
               <CalendarDays className="w-3.5 h-3.5" /> Days
             </div>
             <div
-              className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out"
+              className="mt-1 text-sm font-semibold"
               style={{ color: "var(--app-text)" }}
             >
               {formatDays(credit.days)}
@@ -297,20 +448,17 @@ const CreditCard = ({
           </div>
 
           <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-            }}
+            className="rounded-lg border p-2"
+            style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
           >
             <div
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors duration-300 ease-out"
+              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
               style={{ color: "var(--app-muted)" }}
             >
               <Calendar className="w-3.5 h-3.5" /> Approved
             </div>
             <div
-              className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out"
+              className="mt-1 text-sm font-semibold"
               style={{ color: "var(--app-text)" }}
             >
               {formatDate(credit.dateApproved)}
@@ -320,36 +468,19 @@ const CreditCard = ({
       </div>
 
       {canManageCredits && (
-        <div
-          className="border-t p-3 transition-colors duration-300 ease-out"
-          style={{
-            borderColor: borderColor,
-            backgroundColor: "var(--app-surface)",
-          }}
-        >
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={credit.status !== "CREDITED" || isRollbackPending}
-              onClick={onRollback}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-              style={{
-                borderColor: "rgba(239,68,68,0.25)",
-                backgroundColor: "rgba(239,68,68,0.10)",
-                color: "#ef4444",
-              }}
-              onMouseEnter={(e) => {
-                if (credit.status !== "CREDITED" || isRollbackPending) return;
-                e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.16)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
-              }}
-            >
-              <RotateCcw className="w-4 h-4" />
-              <span>{isRollbackPending ? "Rolling..." : "Rollback"}</span>
-            </button>
-          </div>
+        <div className="border-t p-3" style={{ borderColor }}>
+          <button
+            type="button"
+            disabled={rollbackDisabled}
+            onClick={onRollback}
+            className={`w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out bg-[rgba(239,68,68,0.10)] ${
+              rollbackDisabled ? "" : "hover:bg-[rgba(239,68,68,0.16)]"
+            }`}
+            style={{ borderColor: "rgba(239,68,68,0.25)", color: "#ef4444" }}
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>{isRollbackPending ? "Rolling..." : "Rollback"}</span>
+          </button>
         </div>
       )}
     </div>
@@ -370,10 +501,7 @@ const CompactPagination = ({
   return (
     <div
       className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
-      }}
+      style={{ backgroundColor: "var(--app-surface)", borderColor }}
     >
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
@@ -382,7 +510,7 @@ const CompactPagination = ({
           disabled={page === 1 || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
           style={{
-            borderColor: borderColor,
+            borderColor,
             backgroundColor: "var(--app-surface)",
             color: "var(--app-text)",
           }}
@@ -393,13 +521,13 @@ const CompactPagination = ({
 
         <div className="text-center min-w-0">
           <div
-            className="text-xs font-mono font-semibold transition-colors duration-300 ease-out"
+            className="text-xs font-mono font-semibold"
             style={{ color: "var(--app-text)" }}
           >
             {page} / {totalPages}
           </div>
           <div
-            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            className="text-[11px] truncate"
             style={{ color: "var(--app-muted)" }}
           >
             {total === 0 ? "0 results" : `${startItem}-${endItem} of ${total}`}
@@ -412,7 +540,7 @@ const CompactPagination = ({
           disabled={page >= totalPages || total === 0}
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
           style={{
-            borderColor: borderColor,
+            borderColor,
             backgroundColor: "var(--app-surface)",
             color: "var(--app-text)",
           }}
@@ -439,25 +567,16 @@ const CompactPagination = ({
         </div>
 
         <div
-          className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor: borderColor,
-          }}
+          className="flex items-center gap-1 p-1 rounded-lg border"
+          style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
         >
           <button
             type="button"
             onClick={onPrev}
             disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (page === 1 || total === 0) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -473,15 +592,9 @@ const CompactPagination = ({
             type="button"
             onClick={onNext}
             disabled={page >= totalPages || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (page >= totalPages || total === 0) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -554,17 +667,6 @@ const LeaveCreditHistory = () => {
     if (!el) return;
     el.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  const getStatusStripClass = useCallback((status) => {
-    switch (status) {
-      case "CREDITED":
-        return "border-l-4 border-l-emerald-500";
-      case "ROLLEDBACK":
-        return "border-l-4 border-l-rose-500";
-      default:
-        return "border-l-4 border-l-slate-300";
-    }
-  }, []);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -696,6 +798,18 @@ const LeaveCreditHistory = () => {
     [rollbackMutation],
   );
 
+  const requestRollback = (credit) => {
+    if (isRollbackPending) return;
+    setSelectedCreditId(credit._id);
+    setIsConfirmRollback(true);
+  };
+
+  const chipStyle = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent)",
+    borderColor: "var(--accent-soft2)",
+  };
+
   return (
     <FullHeightCardContainer>
       <div
@@ -721,7 +835,7 @@ const LeaveCreditHistory = () => {
                     Leave Credit History
                   </h1>
                   <p
-                    className="text-sm mt-1 max-w-2xl transition-colors duration-300 ease-out"
+                    className="text-sm mt-1 max-w-2xl"
                     style={{ color: "var(--app-muted)" }}
                   >
                     Manage and monitor Vacation and Sick Leave credits issued to
@@ -733,14 +847,8 @@ const LeaveCreditHistory = () => {
                   <button
                     type="button"
                     onClick={() => navigate("/app/leave-credit/add")}
-                    className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
+                    className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 hover:brightness-95 active:translate-y-0 w-full md:w-auto"
                     style={{ backgroundColor: "var(--accent, #2563EB)" }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.filter = "brightness(0.95)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.filter = "none")
-                    }
                   >
                     <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
                     Credit Leave
@@ -758,10 +866,7 @@ const LeaveCreditHistory = () => {
             >
               <div
                 className="p-4 border-b space-y-4 sticky top-0 z-[1] backdrop-blur md:static md:z-auto transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "var(--app-surface-2)",
-                  borderColor: borderColor,
-                }}
+                style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
               >
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
@@ -772,7 +877,7 @@ const LeaveCreditHistory = () => {
                       return (
                         <button
                           type="button"
-                          key={tab.id}
+                          key={tab.id || "all"}
                           onClick={() => {
                             setStatusFilter(tab.id);
                             setPage(1);
@@ -784,7 +889,7 @@ const LeaveCreditHistory = () => {
                               : {
                                   backgroundColor: "var(--app-surface)",
                                   color: "var(--app-muted)",
-                                  borderColor: borderColor,
+                                  borderColor,
                                 }
                           }
                           aria-pressed={isActive}
@@ -792,7 +897,7 @@ const LeaveCreditHistory = () => {
                           <Icon className="w-3.5 h-3.5" />
                           <span>{tab.label}</span>
                           <span
-                            className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors duration-200 ease-out"
+                            className="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold"
                             style={{
                               backgroundColor: isActive
                                 ? "rgba(255,255,255,0.65)"
@@ -822,7 +927,7 @@ const LeaveCreditHistory = () => {
                         className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors duration-200 ease-out border"
                         style={{
                           backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
+                          borderColor,
                           color: "var(--app-text)",
                         }}
                       />
@@ -830,19 +935,19 @@ const LeaveCreditHistory = () => {
                         <button
                           type="button"
                           onClick={() => setSearchInput("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full transition hover:bg-[color:var(--app-surface-2)]"
                           style={{ color: "var(--app-muted)" }}
                           aria-label="Clear search"
                           title="Clear"
                         >
-                          <RotateCcw size={14} />
+                          <X size={14} />
                         </button>
                       )}
                     </div>
 
                     <div
                       className="hidden lg:flex items-center gap-2 pl-3 border-l"
-                      style={{ borderColor: borderColor }}
+                      style={{ borderColor }}
                     >
                       <span
                         className="text-[10px] font-bold uppercase tracking-wider"
@@ -856,10 +961,10 @@ const LeaveCreditHistory = () => {
                           setLimit(Number(e.target.value));
                           setPage(1);
                         }}
-                        className="border text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer transition-colors duration-200 ease-out"
+                        className="border text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer"
                         style={{
                           backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
+                          borderColor,
                           color: "var(--app-text)",
                         }}
                       >
@@ -873,7 +978,7 @@ const LeaveCreditHistory = () => {
 
                     <div
                       className="lg:hidden flex items-center gap-1.5 px-2 border-l ml-1"
-                      style={{ borderColor: borderColor }}
+                      style={{ borderColor }}
                     >
                       <span
                         className="text-xs font-medium uppercase tracking-wider"
@@ -896,8 +1001,8 @@ const LeaveCreditHistory = () => {
                 </div>
 
                 {isFiltered && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                       <span
                         className="text-[10px] font-bold uppercase"
                         style={{ color: "var(--app-muted)" }}
@@ -906,12 +1011,9 @@ const LeaveCreditHistory = () => {
                       </span>
                       {searchFilter && (
                         <span
-                          className="px-2 py-0.5 rounded border text-[10px] font-medium"
-                          style={{
-                            backgroundColor: "var(--accent-soft)",
-                            color: "var(--accent)",
-                            borderColor: "var(--accent-soft2)",
-                          }}
+                          className="px-2 py-0.5 rounded border text-[10px] font-medium max-w-[200px] truncate"
+                          style={chipStyle}
+                          title={searchFilter}
                         >
                           "{searchFilter}"
                         </span>
@@ -919,11 +1021,7 @@ const LeaveCreditHistory = () => {
                       {statusFilter && (
                         <span
                           className="px-2 py-0.5 rounded border text-[10px] font-medium"
-                          style={{
-                            backgroundColor: "var(--accent-soft)",
-                            color: "var(--accent)",
-                            borderColor: "var(--accent-soft2)",
-                          }}
+                          style={chipStyle}
                         >
                           {statusFilter}
                         </span>
@@ -933,7 +1031,7 @@ const LeaveCreditHistory = () => {
                     <button
                       type="button"
                       onClick={handleResetFilters}
-                      className="flex items-center gap-1 text-[10px] font-bold uppercase"
+                      className="flex-none flex items-center gap-1 text-[10px] font-bold uppercase"
                       style={{ color: "var(--accent)" }}
                     >
                       <RotateCcw size={10} /> Reset
@@ -949,10 +1047,10 @@ const LeaveCreditHistory = () => {
                 {!isLoading && credits.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
                     <div
-                      className="p-6 rounded-full mb-4 ring-1 transition-colors duration-300 ease-out"
+                      className="p-6 rounded-full mb-4 border"
                       style={{
                         backgroundColor: "var(--app-surface)",
-                        borderColor: borderColor,
+                        borderColor,
                       }}
                     >
                       <Inbox
@@ -981,7 +1079,7 @@ const LeaveCreditHistory = () => {
                   <>
                     {/* Mobile/Tablet cards */}
                     <div className="block lg:hidden p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
                         {(isLoading || isRollbackPending
                           ? [...Array(Math.min(limit, 6))]
                           : credits
@@ -990,10 +1088,10 @@ const LeaveCreditHistory = () => {
                             return (
                               <div
                                 key={`sk-${idx}`}
-                                className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
+                                className="rounded-xl shadow-sm p-4 border"
                                 style={{
                                   backgroundColor: "var(--app-surface)",
-                                  borderColor: borderColor,
+                                  borderColor,
                                 }}
                               >
                                 <Skeleton height={18} />
@@ -1018,16 +1116,9 @@ const LeaveCreditHistory = () => {
                               isRollbackPending={isRollbackPending}
                               formatDays={formatDays}
                               formatDate={formatDate}
-                              leftStripClassName={getStatusStripClass(
-                                credit.status,
-                              )}
                               borderColor={borderColor}
                               canManageCredits={canManageCredits}
-                              onRollback={() => {
-                                if (isRollbackPending) return;
-                                setSelectedCreditId(credit._id);
-                                setIsConfirmRollback(true);
-                              }}
+                              onRollback={() => requestRollback(credit)}
                             />
                           );
                         })}
@@ -1036,30 +1127,38 @@ const LeaveCreditHistory = () => {
 
                     {/* Desktop table */}
                     <div className="hidden lg:block w-full align-middle">
-                      <table className="w-full text-left">
+                      <table className="w-full text-left table-fixed">
+                        <colgroup>
+                          <col style={{ width: "32%" }} />
+                          <col style={{ width: "18%" }} />
+                          <col style={{ width: "8%" }} />
+                          <col style={{ width: "11%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "11%" }} />
+                          {canManageCredits && <col style={{ width: "8%" }} />}
+                        </colgroup>
+
                         <thead
-                          className="sticky top-0 z-10 border-b transition-colors duration-300 ease-out"
+                          className="sticky top-0 z-10 border-b"
                           style={{
                             backgroundColor: "var(--app-surface)",
-                            borderColor: borderColor,
+                            borderColor,
                           }}
                         >
                           <tr
                             className="text-[10px] uppercase tracking-[0.12em] font-bold"
                             style={{ color: "var(--app-muted)" }}
                           >
-                            <th className="px-6 py-4 font-bold">Employees</th>
-                            <th className="px-6 py-4 font-bold">
-                              REFERENCE / Memo
-                            </th>
-                            <th className="px-6 py-4 font-bold">Type</th>
-                            <th className="px-6 py-4 text-center">
+                            <th className="px-6 py-4">Employees</th>
+                            <th className="px-4 py-4">Reference / Memo</th>
+                            <th className="px-3 py-4">Type</th>
+                            <th className="px-3 py-4 text-center">
                               Days Credited
                             </th>
-                            <th className="px-6 py-4 text-center">
+                            <th className="px-3 py-4 text-center">
                               Date Approved
                             </th>
-                            <th className="px-6 py-4 text-center">Status</th>
+                            <th className="px-3 py-4 text-center">Status</th>
                             {canManageCredits && (
                               <th className="px-6 py-4 text-right">Actions</th>
                             )}
@@ -1072,7 +1171,7 @@ const LeaveCreditHistory = () => {
                                 <tr key={i}>
                                   {[...Array(canManageCredits ? 7 : 6)].map(
                                     (__, j) => (
-                                      <td key={j} className="px-6 py-4">
+                                      <td key={j} className="px-4 py-4">
                                         <Skeleton />
                                       </td>
                                     ),
@@ -1088,8 +1187,8 @@ const LeaveCreditHistory = () => {
                                 return (
                                   <tr
                                     key={credit._id}
-                                    className="transition-colors duration-200 ease-out"
-                                    style={{ backgroundColor: bg }}
+                                    className="border-b transition-colors duration-200 ease-out"
+                                    style={{ backgroundColor: bg, borderColor }}
                                     onMouseEnter={(e) => {
                                       e.currentTarget.style.backgroundColor =
                                         "var(--accent-soft)";
@@ -1099,27 +1198,21 @@ const LeaveCreditHistory = () => {
                                         bg;
                                     }}
                                   >
-                                    <td className="px-6 py-4">
-                                      <span
-                                        className="font-semibold text-sm"
-                                        style={{ color: "var(--app-text)" }}
-                                      >
-                                        {credit.employees
-                                          .map((e) =>
-                                            `${e.employee?.firstName || ""} ${e.employee?.lastName || ""}`.trim(),
-                                          )
-                                          .filter(Boolean)
-                                          .join(", ")}
-                                      </span>
+                                    <td className="px-6 py-4 align-middle">
+                                      <EmployeesCell
+                                        employees={credit.employees}
+                                        borderColor={borderColor}
+                                      />
                                     </td>
 
-                                    <td className="px-6 py-4">
-                                      <div className="flex flex-col">
+                                    <td className="px-4 py-4 align-middle">
+                                      <div className="flex flex-col min-w-0">
                                         <span
-                                          className="font-medium"
+                                          className="font-semibold text-sm truncate"
                                           style={{ color: "var(--app-text)" }}
+                                          title={credit.memoNo || "-"}
                                         >
-                                          {credit.memoNo}
+                                          {credit.memoNo || "-"}
                                         </span>
                                         <span
                                           className="text-[10px] font-mono mt-0.5"
@@ -1133,40 +1226,48 @@ const LeaveCreditHistory = () => {
                                       </div>
                                     </td>
 
-                                    <td className="px-6 py-4">
+                                    <td className="px-3 py-4 align-middle whitespace-nowrap">
                                       <LeaveTypeBadge type={credit.leaveType} />
                                     </td>
 
-                                    <td
-                                      className="px-6 py-4 text-center"
-                                      style={{ color: "var(--app-muted)" }}
-                                    >
-                                      {formatDays(credit.days)}
+                                    <td className="px-3 py-4 text-center align-middle whitespace-nowrap">
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md border text-xs font-bold"
+                                        style={{
+                                          backgroundColor: "var(--app-surface)",
+                                          borderColor,
+                                          color: "var(--app-text)",
+                                        }}
+                                      >
+                                        <CalendarDays
+                                          size={12}
+                                          style={{ color: "var(--app-muted)" }}
+                                        />
+                                        {formatDays(credit.days)}
+                                      </span>
                                     </td>
 
                                     <td
-                                      className="px-6 py-4 text-center"
+                                      className="px-3 py-4 text-center align-middle whitespace-nowrap text-sm"
                                       style={{ color: "var(--app-muted)" }}
                                     >
                                       {formatDate(credit.dateApproved)}
                                     </td>
 
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-3 py-4 text-center align-middle whitespace-nowrap">
                                       <StatusBadge status={credit.status} />
                                     </td>
 
                                     {canManageCredits && (
-                                      <td className="px-6 py-4 text-right">
+                                      <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
                                         <ActionMenu
                                           credit={credit}
                                           borderColor={borderColor}
                                           isRollbackPending={isRollbackPending}
                                           canManageCredits={canManageCredits}
-                                          onRollback={() => {
-                                            if (isRollbackPending) return;
-                                            setSelectedCreditId(credit._id);
-                                            setIsConfirmRollback(true);
-                                          }}
+                                          onRollback={() =>
+                                            requestRollback(credit)
+                                          }
                                         />
                                       </td>
                                     )}
@@ -1199,7 +1300,7 @@ const LeaveCreditHistory = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className="md:hidden fixed bottom-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition-colors duration-200 ease-out flex items-center justify-center"
+              className="md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition flex items-center justify-center"
               style={{
                 backgroundColor: "var(--accent, #2563EB)",
                 color: "#fff",
@@ -1243,17 +1344,14 @@ const LeaveCreditHistory = () => {
           >
             <div className="p-2">
               <div
-                className="mb-5 flex items-start gap-3 p-3 rounded-xl border transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "var(--app-surface-2)",
-                  borderColor: borderColor,
-                }}
+                className="mb-5 flex items-start gap-3 p-3 rounded-xl border"
+                style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
               >
                 <div
-                  className="mt-0.5 p-1.5 rounded-lg border shadow-sm transition-colors duration-300 ease-out"
+                  className="mt-0.5 p-1.5 rounded-lg border shadow-sm"
                   style={{
                     backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
+                    borderColor,
                     color: "var(--app-muted)",
                   }}
                 >
@@ -1324,7 +1422,7 @@ const LeaveCreditHistory = () => {
               </div>
 
               <div
-                className="mt-4 rounded-xl border p-3 transition-colors duration-300 ease-out"
+                className="mt-4 rounded-xl border p-3"
                 style={{
                   borderColor: "rgba(245,158,11,0.35)",
                   backgroundColor: "rgba(245,158,11,0.10)",

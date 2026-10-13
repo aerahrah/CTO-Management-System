@@ -1,9 +1,18 @@
-import { useState, useRef, useMemo, useEffect, useCallback } from "react";
+// allWellnessApplicationsHistory.jsx
+import {
+  useState,
+  useRef,
+  useMemo,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+} from "react";
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { StatusBadge } from "../../statusUtils";
 import {
   fetchAllWellnessApplications,
-  fetchWellnessApplicationById, // ✅ Added import
+  fetchWellnessApplicationById,
 } from "../../../api/wellnessApplication";
 import Modal from "../../modal";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
@@ -11,31 +20,31 @@ import "react-loading-skeleton/dist/skeleton.css";
 import Breadcrumbs from "../../breadCrumbs";
 import {
   Search,
+  X,
   ChevronLeft,
   ChevronRight,
   RotateCcw,
   CalendarDays,
+  Calendar,
   Inbox,
   LayoutGrid,
   AlertCircle,
   CheckCircle2,
   XCircle,
   Eye,
-  User,
   ArrowUp,
   HeartPulse,
   FileDown,
   FileBadge,
   ChevronDown,
+  Loader2,
 } from "lucide-react";
 import WellnessApplicationDetails from "./myWellnessApplicationFullDetails";
 import FullHeightCardContainer from "../../pageContainer";
 import { useAuth } from "../../../store/authStore";
-
-// ✅ Import Reusable Status Tabs
 import StatusTabs from "../../statusTabs";
 
-// ✅ PDF Modals
+// PDF Modals
 import WellnessLeavePdfModal from "./wellnessApplicationModal";
 import OrganicWellnessLeavePdfModal from "./organicWellnessApplicationPDFModal";
 
@@ -61,7 +70,6 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
-/* ✅ Reactive resolved theme for system mode */
 function useResolvedTheme(prefTheme) {
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined")
@@ -94,6 +102,50 @@ function useResolvedTheme(prefTheme) {
 }
 
 /* =========================
+   Data helpers
+========================= */
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+const fmtDate = (v) => {
+  if (!v) return "-";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "-" : DATE_FMT.format(d);
+};
+
+const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
+
+const fullNameOf = (emp) =>
+  `${emp?.firstName || ""} ${emp?.lastName || ""}`.replace(/\s+/g, " ").trim();
+
+const employeeTypeOf = (app) => app?.category || app?.employeeType || "Unknown";
+
+const isOrganicApp = (app) =>
+  app?.employeeType === "Organic" || app?.category === "Organic";
+
+const shortIdOf = (app) => (app?._id ? app._id.slice(-6).toUpperCase() : "-");
+
+// Copies before sorting so the query data is never mutated
+const sortedDatesOf = (dates = []) =>
+  (Array.isArray(dates) ? dates : [])
+    .map((d) => new Date(d))
+    .filter((d) => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a - b);
+
+const STRIP_COLORS = {
+  APPROVED: "#10b981",
+  REJECTED: "#f43f5e",
+  PENDING: "#f59e0b",
+  CANCELLED: "#94a3b8",
+};
+
+const stripColorOf = (status) =>
+  STRIP_COLORS[String(status || "").toUpperCase()] || "#cbd5e1";
+
+/* =========================
    StatCard
 ========================= */
 const StatCard = ({
@@ -124,32 +176,28 @@ const StatCard = ({
       role="status"
     >
       <div
-        className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border transition-colors duration-300 ease-out"
-        style={{
-          backgroundColor: t.chipBg,
-          borderColor,
-          color: t.chipText,
-        }}
+        className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
+        style={{ backgroundColor: t.chipBg, borderColor, color: t.chipText }}
       >
         <Icon className="w-5 h-5" />
       </div>
 
       <div className="flex-1 min-w-0">
         <div
-          className="text-[10px] uppercase font-bold tracking-wide truncate transition-colors duration-300 ease-out"
+          className="text-[10px] uppercase font-bold tracking-wide truncate"
           style={{ color: "var(--app-muted)" }}
         >
           {title}
         </div>
         <div
-          className="mt-0.5 text-lg font-black truncate transition-colors duration-300 ease-out"
+          className="mt-0.5 text-lg font-black truncate"
           style={{ color: "var(--app-text)" }}
         >
           {value}
         </div>
         {hint && (
           <div
-            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            className="text-[11px] truncate"
             style={{ color: "var(--app-muted)" }}
           >
             {hint}
@@ -161,61 +209,187 @@ const StatCard = ({
 };
 
 /* =========================
-   Per-row action menu
+   Cells (shared by table + cards)
 ========================= */
+const RequestorCell = ({ app, borderColor }) => {
+  const name = fullNameOf(app?.employee) || "-";
+  const position = app?.employee?.position || "-";
+  const type = employeeTypeOf(app);
+
+  return (
+    <div className="min-w-0 flex-1">
+      <p
+        className="text-sm font-semibold truncate"
+        style={{ color: "var(--app-text)" }}
+        title={name}
+      >
+        {name}
+      </p>
+      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+        <span
+          className="text-[11px] truncate"
+          style={{ color: "var(--app-muted)" }}
+          title={position}
+        >
+          {position}
+        </span>
+        <span
+          className="flex-none text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            color: "var(--app-muted)",
+            borderColor,
+          }}
+        >
+          {type}
+        </span>
+      </div>
+    </div>
+  );
+};
+
+const DatesCell = ({ dates, maxVisible = 1 }) => {
+  const sorted = sortedDatesOf(dates);
+  if (!sorted.length) {
+    return (
+      <span className="text-sm" style={{ color: "var(--app-muted)" }}>
+        -
+      </span>
+    );
+  }
+
+  const visible = sorted.slice(0, maxVisible).map((d) => DATE_FMT.format(d));
+  const rest = sorted.length - visible.length;
+  const all = sorted.map((d) => DATE_FMT.format(d)).join(", ");
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-0" title={all}>
+      <Calendar
+        size={14}
+        className="flex-none"
+        style={{ color: "var(--app-muted)" }}
+      />
+      <span className="text-sm truncate" style={{ color: "var(--app-muted)" }}>
+        {visible.join(", ")}
+      </span>
+      {rest > 0 && (
+        <span
+          className="flex-none inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-bold"
+          style={{
+            backgroundColor: "var(--app-surface-2)",
+            borderColor: "var(--app-border)",
+            color: "var(--app-muted)",
+          }}
+        >
+          +{rest}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/* =========================
+   Per-row action menu (portal, so the table can't clip it)
+========================= */
+const MENU_WIDTH = 200;
+
 const ApplicationActionMenu = ({
-  app,
   onViewDetails,
   onViewPdf,
   onViewCscForm6,
-  isOrganicApp,
+  isOrganic,
   borderColor,
+  isPdfLoading,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, visible: false });
+  const btnRef = useRef(null);
   const menuRef = useRef(null);
 
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const btn = btnRef.current?.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight || 130;
+    if (!btn) return;
+
+    const gap = 6;
+    const spaceBelow = window.innerHeight - btn.bottom;
+    const openUp = spaceBelow < menuH + gap + 8 && btn.top > menuH + gap;
+
+    setPos({
+      top: openUp ? btn.top - menuH - gap : btn.bottom + gap,
+      left: Math.min(
+        Math.max(8, btn.right - MENU_WIDTH),
+        window.innerWidth - MENU_WIDTH - 8,
+      ),
+      visible: true,
+    });
+  }, [isOpen]);
+
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setIsOpen(false);
+    if (!isOpen) return;
+
+    const close = () => setIsOpen(false);
+    const onDown = (e) => {
+      if (
+        btnRef.current?.contains(e.target) ||
+        menuRef.current?.contains(e.target)
+      )
+        return;
+      close();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        close();
+        btnRef.current?.focus();
       }
     };
-    const handleEsc = (e) => {
-      if (e.key === "Escape") setIsOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEsc);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEsc);
-    };
-  }, []);
 
-  const handle = (cb) => {
-    cb?.();
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [isOpen]);
+
+  const run = (cb) => {
     setIsOpen(false);
+    cb?.();
   };
 
+  const itemClass =
+    "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left transition-colors " +
+    "text-[color:var(--app-muted)] hover:bg-[color:var(--app-surface-2)] hover:text-[color:var(--accent)] " +
+    "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-muted)]";
+
   return (
-    <div className="relative inline-flex justify-end" ref={menuRef}>
+    <>
       <button
-        aria-haspopup="true"
+        ref={btnRef}
+        type="button"
+        aria-haspopup="menu"
         aria-expanded={isOpen}
         onClick={(e) => {
           e.stopPropagation();
+          setPos((p) => ({ ...p, visible: false }));
           setIsOpen((o) => !o);
         }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm text-xs cursor-pointer font-bold transition-all duration-200 ease-out active:scale-95"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm text-xs font-bold transition-all duration-200 ease-out active:scale-95"
         style={{
           backgroundColor: isOpen
             ? "var(--app-surface-2)"
             : "var(--app-surface)",
-          borderColor: borderColor,
+          borderColor,
           color: isOpen ? "var(--accent)" : "var(--app-text)",
         }}
         title="Actions"
-        type="button"
       >
+        {isPdfLoading ? <Loader2 size={14} className="animate-spin" /> : null}
         <span>Actions</span>
         <ChevronDown
           size={14}
@@ -223,253 +397,168 @@ const ApplicationActionMenu = ({
         />
       </button>
 
-      {isOpen && (
-        <div
-          className="absolute right-0 top-full mt-1 w-48 rounded-lg shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            border: `1px solid ${borderColor}`,
-            boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => handle(onViewDetails)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left"
-            style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-              e.currentTarget.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--app-muted)";
+      {isOpen &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            className="rounded-lg py-1 overflow-hidden"
+            style={{
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              zIndex: 1000,
+              visibility: pos.visible ? "visible" : "hidden",
+              backgroundColor: "var(--app-surface)",
+              border: `1px solid ${borderColor}`,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
             }}
           >
-            <Eye size={14} /> View Details
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handle(onViewPdf)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left"
-            style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-              e.currentTarget.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--app-muted)";
-            }}
-          >
-            <FileDown size={14} /> View General PDF
-          </button>
-
-          {isOrganicApp && (
             <button
               type="button"
-              onClick={() => handle(onViewCscForm6)}
-              className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left"
-              style={{ color: "var(--app-muted)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-                e.currentTarget.style.color = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "var(--app-muted)";
-              }}
+              role="menuitem"
+              onClick={() => run(onViewDetails)}
+              className={itemClass}
             >
-              <FileBadge size={14} /> View CSC Form 6
+              <Eye size={14} /> View Details
             </button>
-          )}
-        </div>
-      )}
-    </div>
+
+            <button
+              type="button"
+              role="menuitem"
+              disabled={isPdfLoading}
+              onClick={() => run(onViewPdf)}
+              className={itemClass}
+            >
+              {isPdfLoading ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <FileDown size={14} />
+              )}
+              {isPdfLoading ? "Loading PDF..." : "View General PDF"}
+            </button>
+
+            {isOrganic && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => run(onViewCscForm6)}
+                className={itemClass}
+              >
+                <FileBadge size={14} /> View CSC Form 6
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 };
 
 /* =========================
-   Date Formatter
-========================= */
-const formatCoveredDates = (dates = []) => {
-  if (!dates || dates.length === 0) return "-";
-  return dates
-    .sort()
-    .map((d) =>
-      new Date(d).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
-    )
-    .join(", ");
-};
-
-/* =========================
-   Cards (Mobile/Tablet)
+   Mobile / Tablet Card
 ========================= */
 const ApplicationCard = ({
   app,
-  leftStripClassName,
   onViewDetails,
   onViewPdf,
   onViewCscForm6,
-  isOrganicApp,
+  isOrganic,
   borderColor,
+  isPdfLoading,
 }) => {
-  const shortId = app?._id ? app._id.slice(-6).toUpperCase() : "-";
-
-  const submittedLabel = app?.createdAt
-    ? new Date(app.createdAt).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : "-";
-
-  const requestorName = `${app?.employee?.firstName || ""} ${
-    app?.employee?.lastName || ""
-  }`.trim();
-
-  const requestorRole = app?.employee?.position || "-";
-  const employeeType = app?.category || app?.employeeType || "Unknown";
+  const btn =
+    "flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out disabled:opacity-40 disabled:cursor-not-allowed";
 
   return (
     <div
-      className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-colors duration-300 ease-out ${leftStripClassName}`}
+      className="rounded-xl shadow-sm overflow-hidden transition-colors duration-300 ease-out"
       style={{
         backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
+        border: `1px solid ${borderColor}`,
+        borderLeft: `4px solid ${stripColorOf(app?.overallStatus)}`,
       }}
     >
-      <div className="p-4 transition-colors duration-300 ease-out">
+      <div className="p-4">
+        {/* Requestor + status */}
         <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                className="text-sm font-bold truncate transition-colors duration-300 ease-out flex items-center gap-1.5"
-                style={{ color: "var(--app-text)" }}
-              >
-                <HeartPulse size={16} style={{ color: "var(--accent)" }} />
-                Wellness Request
-              </span>
-              <span
-                className="text-[10px] font-mono flex-none transition-colors duration-300 ease-out"
-                style={{ color: "var(--app-muted)" }}
-              >
-                #{shortId}
-              </span>
-            </div>
-
-            <div className="mt-2 flex items-start gap-2">
-              <User
-                className="w-4 h-4 mt-[2px] flex-none"
-                style={{ color: "var(--app-muted)" }}
-              />
-              <div className="min-w-0 flex flex-col">
-                <div
-                  className="text-xs font-semibold truncate transition-colors duration-300 ease-out"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {requestorName || "-"}
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <div
-                    className="text-[11px] truncate transition-colors duration-300 ease-out"
-                    style={{ color: "var(--app-muted)" }}
-                  >
-                    {requestorRole}
-                  </div>
-                  <div
-                    className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border transition-colors duration-300 ease-out"
-                    style={{
-                      backgroundColor: "var(--app-surface-2)",
-                      borderColor: borderColor,
-                      color: "var(--app-muted)",
-                    }}
-                  >
-                    {employeeType}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-2 flex-none">
+          <RequestorCell app={app} borderColor={borderColor} />
+          <div className="flex-none">
             <StatusBadge status={app?.overallStatus} />
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2">
+        {/* Request label + ID */}
+        <div className="mt-3 flex items-center gap-2 min-w-0 text-xs">
+          <HeartPulse
+            size={14}
+            className="flex-none"
+            style={{ color: "var(--accent)" }}
+          />
+          <span className="font-semibold" style={{ color: "var(--app-text)" }}>
+            Wellness Request
+          </span>
+          <span
+            className="ml-auto flex-none text-[10px] font-mono"
+            style={{ color: "var(--app-muted)" }}
+          >
+            #{shortIdOf(app)}
+          </span>
+        </div>
+
+        {/* Days + submitted */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
           <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-            }}
+            className="rounded-lg border p-2"
+            style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
           >
             <div
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors duration-300 ease-out"
+              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
               style={{ color: "var(--app-muted)" }}
             >
               <CalendarDays className="w-3.5 h-3.5" /> Total Days
             </div>
             <div
-              className="mt-1 text-sm font-semibold transition-colors duration-300 ease-out"
+              className="mt-1 text-sm font-semibold"
               style={{ color: "var(--app-text)" }}
             >
-              {Number(app?.totalDays || 0)} Days
+              {plural(Number(app?.totalDays || 0), "Day")}
             </div>
           </div>
 
           <div
-            className="rounded-lg border p-2 transition-colors duration-300 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: borderColor,
-            }}
+            className="rounded-lg border p-2"
+            style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
           >
             <div
-              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors duration-300 ease-out"
+              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide"
               style={{ color: "var(--app-muted)" }}
             >
-              <CalendarDays className="w-3.5 h-3.5" /> Submitted
+              <Calendar className="w-3.5 h-3.5" /> Submitted
             </div>
             <div
-              className="mt-1 text-sm font-semibold truncate transition-colors duration-300 ease-out"
+              className="mt-1 text-sm font-semibold truncate"
               style={{ color: "var(--app-text)" }}
             >
-              {submittedLabel}
+              {fmtDate(app?.createdAt)}
             </div>
           </div>
         </div>
+
+        {/* Dates covered */}
+        <div className="mt-3 min-w-0">
+          <DatesCell dates={app?.inclusiveDates} maxVisible={2} />
+        </div>
       </div>
 
-      <div
-        className="border-t p-3 transition-colors duration-300 ease-out"
-        style={{
-          borderColor: borderColor,
-          backgroundColor: "var(--app-surface)",
-        }}
-      >
+      <div className="border-t p-3" style={{ borderColor }}>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onViewDetails}
-            className="flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface)",
-              borderColor: borderColor,
-              color: "var(--accent)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--accent-soft)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
+            className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--accent-soft)]`}
+            style={{ borderColor, color: "var(--accent)" }}
           >
             <Eye className="w-4 h-4" />
             Details
@@ -477,41 +566,26 @@ const ApplicationCard = ({
 
           <button
             type="button"
+            disabled={isPdfLoading}
             onClick={onViewPdf}
-            className="flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface)",
-              borderColor: borderColor,
-              color: "var(--app-text)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
+            className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]`}
+            style={{ borderColor, color: "var(--app-text)" }}
           >
-            <FileDown className="w-4 h-4" />
-            Gen PDF
+            {isPdfLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <FileDown className="w-4 h-4" />
+            )}
+            {isPdfLoading ? "Loading" : "Gen PDF"}
           </button>
 
-          {isOrganicApp && (
+          {isOrganic && (
             <button
-              onClick={onViewCscForm6}
-              className="flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out"
               type="button"
+              onClick={onViewCscForm6}
               title="View CSC Form 6"
-              style={{
-                backgroundColor: "var(--app-surface)",
-                borderColor: borderColor,
-                color: "var(--app-text)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--app-surface)";
-              }}
+              className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]`}
+              style={{ borderColor, color: "var(--app-text)" }}
             >
               <FileBadge className="w-4 h-4" />
               Form 6
@@ -595,10 +669,7 @@ const CompactPagination = ({
   return (
     <div
       className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor: borderColor,
-      }}
+      style={{ backgroundColor: "var(--app-surface)", borderColor }}
     >
       <div className="flex md:hidden items-center justify-between gap-3">
         <button
@@ -608,7 +679,7 @@ const CompactPagination = ({
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
           style={{
             backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
+            borderColor,
             color: "var(--app-text)",
           }}
         >
@@ -618,13 +689,13 @@ const CompactPagination = ({
 
         <div className="text-center min-w-0">
           <div
-            className="text-xs font-mono font-semibold transition-colors duration-300 ease-out"
+            className="text-xs font-mono font-semibold"
             style={{ color: "var(--app-text)" }}
           >
             {page} / {safeTotalPages}
           </div>
           <div
-            className="text-[11px] truncate transition-colors duration-300 ease-out"
+            className="text-[11px] truncate"
             style={{ color: "var(--app-muted)" }}
           >
             {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
@@ -638,7 +709,7 @@ const CompactPagination = ({
           className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
           style={{
             backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
+            borderColor,
             color: "var(--app-text)",
           }}
         >
@@ -664,25 +735,16 @@ const CompactPagination = ({
         </div>
 
         <div
-          className="flex items-center gap-1 p-1 rounded-lg border transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor: borderColor,
-          }}
+          className="flex items-center gap-1 p-1 rounded-lg border"
+          style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
         >
           <button
             type="button"
             onClick={onPrev}
             disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -696,15 +758,9 @@ const CompactPagination = ({
             type="button"
             onClick={onNext}
             disabled={page >= safeTotalPages || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -714,6 +770,9 @@ const CompactPagination = ({
   );
 };
 
+/* =========================
+   Page
+========================= */
 const AllWellnessApplicationsHistory = () => {
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
@@ -739,14 +798,15 @@ const AllWellnessApplicationsHistory = () => {
     };
   }, [resolvedTheme]);
 
-  // ---- Selected app ----
+  // Selected app
   const [selectedApp, setSelectedApp] = useState(null);
 
-  // ✅ PDF modal state
+  // PDF modals + loading
   const [pdfApp, setPdfApp] = useState(null);
   const [organicPdfApp, setOrganicPdfApp] = useState(null);
+  const [pdfLoadingId, setPdfLoadingId] = useState(null);
 
-  // ---- Filters / pagination ----
+  // Filters / pagination
   const [statusFilter, setStatusFilter] = useState("");
   const [employeeTypeFilter, setEmployeeTypeFilter] = useState("");
   const [searchInput, setSearchInput] = useState("");
@@ -755,7 +815,7 @@ const AllWellnessApplicationsHistory = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
 
-  // ✅ Scroll container (mobile) + scroll-to-top
+  // Scroll container (mobile) + back-to-top
   const scrollRef = useRef(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -764,24 +824,19 @@ const AllWellnessApplicationsHistory = () => {
     if (!el) return;
 
     const onScroll = () => setShowScrollTop(el.scrollTop > 240);
-
     onScroll();
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
   }, []);
 
-  const scrollToTop = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  const scrollToTop = () =>
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
 
-  // reset to page 1 when filters change
+  // Back to page 1 when filters change
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, statusFilter, employeeTypeFilter, limit]);
 
-  // ---- Data fetching ----
   const { data, isLoading } = useQuery({
     queryKey: [
       "wellnessAllApplications",
@@ -799,7 +854,7 @@ const AllWellnessApplicationsHistory = () => {
         search: debouncedSearch || undefined,
         employeeType: employeeTypeFilter || undefined,
       }),
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const applications = useMemo(
@@ -819,7 +874,7 @@ const AllWellnessApplicationsHistory = () => {
     [data],
   );
 
-  // keep page within range if totalPages changes
+  // Keep page in range if totalPages changes
   useEffect(() => {
     setPage((p) => {
       if (p > pagination.totalPages) return pagination.totalPages;
@@ -845,34 +900,17 @@ const AllWellnessApplicationsHistory = () => {
   const isFiltered =
     statusFilter !== "" || debouncedSearch !== "" || employeeTypeFilter !== "";
 
-  // ✅ left strip class
-  const getStatusStripClass = useCallback((status) => {
-    switch (String(status || "").toUpperCase()) {
-      case "APPROVED":
-        return "border-l-4 border-l-emerald-500";
-      case "REJECTED":
-        return "border-l-4 border-l-rose-500";
-      case "PENDING":
-        return "border-l-4 border-l-amber-500";
-      case "CANCELLED":
-        return "border-l-4 border-l-slate-400";
-      default:
-        return "border-l-4 border-l-slate-300";
-    }
-  }, []);
-
-  // ✅ NEW: Fetch the full application (with ledger) before opening the PDF
+  // Fetch the full application (with ledger) before opening the general PDF
   const handleViewPdf = async (app) => {
     try {
-      // Fetch full details using the specific ID
+      setPdfLoadingId(app._id);
       const fullAppDetails = await fetchWellnessApplicationById(app._id);
-
-      // Set the modal state with the full data containing the ledger
       setPdfApp(fullAppDetails);
     } catch (error) {
       console.error("Failed to fetch full application details for PDF:", error);
-      // Fallback to the shallow app just in case
-      setPdfApp(app);
+      setPdfApp(app); // fall back to the row data
+    } finally {
+      setPdfLoadingId(null);
     }
   };
 
@@ -891,14 +929,38 @@ const AllWellnessApplicationsHistory = () => {
   const statApproved = statusCounts.APPROVED || 0;
   const statRejected = statusCounts.REJECTED || 0;
 
-  const formatSubmitted = (iso) =>
-    iso
-      ? new Date(iso).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : "-";
+  const rowHandlers = (app) => ({
+    onViewDetails: () => setSelectedApp(app),
+    onViewPdf: () => handleViewPdf(app),
+    onViewCscForm6: () => setOrganicPdfApp(app),
+  });
+
+  const cardSkeleton = (key) => (
+    <div
+      key={key}
+      className="rounded-xl shadow-sm p-4 border"
+      style={{ backgroundColor: "var(--app-surface)", borderColor }}
+    >
+      <Skeleton height={14} width="70%" />
+      <Skeleton height={10} width="45%" />
+      <div className="mt-3">
+        <Skeleton height={12} width="40%" />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Skeleton height={52} />
+        <Skeleton height={52} />
+      </div>
+      <div className="mt-4">
+        <Skeleton height={36} />
+      </div>
+    </div>
+  );
+
+  const chipStyle = {
+    backgroundColor: "var(--accent-soft)",
+    color: "var(--accent)",
+    borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+  };
 
   return (
     <FullHeightCardContainer>
@@ -913,7 +975,6 @@ const AllWellnessApplicationsHistory = () => {
           baseColor={skeletonColors.baseColor}
           highlightColor={skeletonColors.highlightColor}
         >
-          {/* 1. THE WRAPPER: Handles mobile scrolling, disappears on desktop */}
           <div
             ref={scrollRef}
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents cto-scrollbar"
@@ -921,26 +982,23 @@ const AllWellnessApplicationsHistory = () => {
             {/* HEADER */}
             <div className="pt-2 pb-3 md:pb-6 px-1">
               <div className="flex flex-col 2xl:flex-row 2xl:items-start justify-between gap-4">
-                <div className="flex items-start gap-4 flex-1 min-w-0">
-                  <div className="min-w-0">
-                    <Breadcrumbs rootLabel="home" rootTo="/app" />
-                    <h1
-                      className="text-2xl md:text-3xl font-bold tracking-tight font-sans"
-                      style={{ color: "var(--app-text)" }}
-                    >
-                      All Wellness Applications
-                    </h1>
-                    <p
-                      className="text-sm mt-1 max-w-2xl"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      View and manage all employee wellness leave applications
-                    </p>
-                  </div>
+                <div className="min-w-0">
+                  <Breadcrumbs rootLabel="home" rootTo="/app" />
+                  <h1
+                    className="text-2xl md:text-3xl font-bold tracking-tight font-sans"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    All Wellness Applications
+                  </h1>
+                  <p
+                    className="text-sm mt-1 max-w-2xl"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    View and manage all employee wellness leave applications
+                  </p>
                 </div>
 
-                {/* Stat Cards Layout Update */}
-                <div className="w-full lg:w-auto">
+                <div className="w-full 2xl:w-auto">
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 items-stretch">
                     <StatCard
                       title="Total Requests"
@@ -952,7 +1010,7 @@ const AllWellnessApplicationsHistory = () => {
                     />
                     <StatCard
                       title="Total Pending"
-                      value={String(statPending || 0)}
+                      value={String(statPending)}
                       icon={AlertCircle}
                       hint="Awaiting action"
                       tone="amber"
@@ -960,7 +1018,7 @@ const AllWellnessApplicationsHistory = () => {
                     />
                     <StatCard
                       title="Total Approved"
-                      value={String(statApproved || 0)}
+                      value={String(statApproved)}
                       icon={CheckCircle2}
                       hint="Approved requests"
                       tone="green"
@@ -968,7 +1026,7 @@ const AllWellnessApplicationsHistory = () => {
                     />
                     <StatCard
                       title="Total Rejected"
-                      value={String(statRejected || 0)}
+                      value={String(statRejected)}
                       icon={XCircle}
                       hint="Rejected requests"
                       tone="red"
@@ -979,7 +1037,7 @@ const AllWellnessApplicationsHistory = () => {
               </div>
             </div>
 
-            {/* 2. MAIN SURFACE: Expands on mobile, locks to screen height on desktop */}
+            {/* MAIN surface */}
             <div
               className="flex flex-col rounded-xl shadow-sm overflow-visible md:flex-1 md:min-h-0 md:overflow-hidden transition-colors duration-300 ease-out"
               style={{
@@ -987,16 +1045,12 @@ const AllWellnessApplicationsHistory = () => {
                 border: `1px solid ${borderColor}`,
               }}
             >
-              {/* 3. TOOLBAR: Sticky on mobile, Static on desktop */}
+              {/* Toolbar */}
               <div
                 className="p-4 border-b space-y-4 sticky top-0 z-[1] backdrop-blur md:static md:z-auto transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "var(--app-surface-2)",
-                  borderColor: borderColor,
-                }}
+                style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
               >
                 <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                  {/* Tabs */}
                   <StatusTabs
                     tabs={getTabsConfig(statusCounts, pagination.total)}
                     activeStatus={statusFilter}
@@ -1006,7 +1060,6 @@ const AllWellnessApplicationsHistory = () => {
                     }}
                   />
 
-                  {/* Search + limits/filters */}
                   <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
                     <div className="relative flex-1 min-w-[200px]">
                       <Search
@@ -1022,27 +1075,27 @@ const AllWellnessApplicationsHistory = () => {
                         className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none transition-colors duration-200 ease-out border"
                         style={{
                           backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
+                          borderColor,
                           color: "var(--app-text)",
                         }}
                       />
                       {searchInput && (
                         <button
+                          type="button"
                           onClick={() => setSearchInput("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full transition hover:bg-[color:var(--app-surface-2)]"
                           style={{ color: "var(--app-muted)" }}
                           aria-label="Clear search"
                           title="Clear"
-                          type="button"
                         >
-                          <RotateCcw size={14} />
+                          <X size={14} />
                         </button>
                       )}
                     </div>
 
                     <div
                       className="flex items-center gap-2 pl-3 border-l"
-                      style={{ borderColor: borderColor }}
+                      style={{ borderColor }}
                     >
                       <span
                         className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider"
@@ -1056,10 +1109,10 @@ const AllWellnessApplicationsHistory = () => {
                           setEmployeeTypeFilter(e.target.value);
                           setPage(1);
                         }}
-                        className="border text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer transition-colors duration-200 ease-out"
+                        className="border text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer"
                         style={{
                           backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
+                          borderColor,
                           color: "var(--app-text)",
                         }}
                       >
@@ -1071,7 +1124,7 @@ const AllWellnessApplicationsHistory = () => {
 
                     <div
                       className="flex items-center gap-2 pl-3 border-l"
-                      style={{ borderColor: borderColor }}
+                      style={{ borderColor }}
                     >
                       <span
                         className="hidden sm:inline text-[10px] font-bold uppercase tracking-wider"
@@ -1085,10 +1138,10 @@ const AllWellnessApplicationsHistory = () => {
                           setLimit(Number(e.target.value));
                           setPage(1);
                         }}
-                        className="border text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer transition-colors duration-200 ease-out"
+                        className="border text-xs rounded-lg block p-1.5 font-medium outline-none cursor-pointer"
                         style={{
                           backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
+                          borderColor,
                           color: "var(--app-text)",
                         }}
                       >
@@ -1102,10 +1155,10 @@ const AllWellnessApplicationsHistory = () => {
                   </div>
                 </div>
 
-                {/* Active chips + reset */}
+                {/* Active filters + reset */}
                 {isFiltered && (
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2 min-w-0">
                       <span
                         className="text-[10px] font-bold uppercase"
                         style={{ color: "var(--app-muted)" }}
@@ -1114,13 +1167,9 @@ const AllWellnessApplicationsHistory = () => {
                       </span>
                       {debouncedSearch && (
                         <span
-                          className="px-2 py-0.5 rounded border text-[10px] font-medium"
-                          style={{
-                            backgroundColor: "var(--accent-soft)",
-                            color: "var(--accent)",
-                            borderColor:
-                              "var(--accent-soft2, rgba(37,99,235,0.18))",
-                          }}
+                          className="px-2 py-0.5 rounded border text-[10px] font-medium max-w-[200px] truncate"
+                          style={chipStyle}
+                          title={debouncedSearch}
                         >
                           "{debouncedSearch}"
                         </span>
@@ -1128,12 +1177,7 @@ const AllWellnessApplicationsHistory = () => {
                       {statusFilter && (
                         <span
                           className="px-2 py-0.5 rounded border text-[10px] font-medium"
-                          style={{
-                            backgroundColor: "var(--accent-soft)",
-                            color: "var(--accent)",
-                            borderColor:
-                              "var(--accent-soft2, rgba(37,99,235,0.18))",
-                          }}
+                          style={chipStyle}
                         >
                           {statusFilter}
                         </span>
@@ -1141,22 +1185,17 @@ const AllWellnessApplicationsHistory = () => {
                       {employeeTypeFilter && (
                         <span
                           className="px-2 py-0.5 rounded border text-[10px] font-medium"
-                          style={{
-                            backgroundColor: "var(--accent-soft)",
-                            color: "var(--accent)",
-                            borderColor:
-                              "var(--accent-soft2, rgba(37,99,235,0.18))",
-                          }}
+                          style={chipStyle}
                         >
                           {employeeTypeFilter}
                         </span>
                       )}
                     </div>
                     <button
-                      onClick={handleResetFilters}
-                      className="flex items-center gap-1 text-[10px] font-bold uppercase"
-                      style={{ color: "var(--accent)" }}
                       type="button"
+                      onClick={handleResetFilters}
+                      className="flex-none flex items-center gap-1 text-[10px] font-bold uppercase"
+                      style={{ color: "var(--accent)" }}
                     >
                       <RotateCcw size={10} /> Reset
                     </button>
@@ -1164,7 +1203,7 @@ const AllWellnessApplicationsHistory = () => {
                 )}
               </div>
 
-              {/* 4. DATA REGION: Expands on mobile, handles all scrolling on desktop */}
+              {/* Data region */}
               <div
                 className="min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto transition-colors duration-300 ease-out cto-scrollbar"
                 style={{ backgroundColor: "var(--app-bg)" }}
@@ -1172,10 +1211,10 @@ const AllWellnessApplicationsHistory = () => {
                 {!isLoading && applications.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full py-20 px-4 text-center">
                     <div
-                      className="p-6 rounded-full mb-4 ring-1"
+                      className="p-6 rounded-full mb-4 border"
                       style={{
                         backgroundColor: "var(--app-surface)",
-                        borderColor: borderColor,
+                        borderColor,
                       }}
                     >
                       <Inbox
@@ -1200,20 +1239,8 @@ const AllWellnessApplicationsHistory = () => {
                       <button
                         type="button"
                         onClick={handleResetFilters}
-                        className="mt-6 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out"
-                        style={{
-                          backgroundColor: "var(--app-surface)",
-                          borderColor: borderColor,
-                          color: "var(--app-text)",
-                        }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.backgroundColor =
-                            "var(--app-surface-2)")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.backgroundColor =
-                            "var(--app-surface)")
-                        }
+                        className="mt-6 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]"
+                        style={{ borderColor, color: "var(--app-text)" }}
                       >
                         <RotateCcw size={12} /> Clear Filters
                       </button>
@@ -1221,127 +1248,59 @@ const AllWellnessApplicationsHistory = () => {
                   </div>
                 ) : (
                   <>
-                    {/* Mobile: cards */}
-                    <div className="block md:hidden p-4">
-                      <div className="space-y-3">
+                    {/* Mobile (1 col) / Tablet (2 cols): cards */}
+                    <div className="block lg:hidden p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-start">
                         {isLoading
-                          ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                              <div
-                                key={`sk-m-${i}`}
-                                className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
-                                style={{
-                                  backgroundColor: "var(--app-surface)",
-                                  borderColor: borderColor,
-                                }}
-                              >
-                                <Skeleton height={18} />
-                                <div className="mt-3">
-                                  <Skeleton height={12} count={2} />
-                                </div>
-                                <div className="mt-4 grid grid-cols-2 gap-2">
-                                  <Skeleton height={52} />
-                                  <Skeleton height={52} />
-                                </div>
-                                <div className="mt-4">
-                                  <Skeleton height={40} />
-                                </div>
-                              </div>
-                            ))
-                          : applications.map((app) => {
-                              const isAppOrganic =
-                                app?.employeeType === "Organic" ||
-                                app?.category === "Organic";
-
-                              return (
-                                <ApplicationCard
-                                  key={app._id}
-                                  app={app}
-                                  borderColor={borderColor}
-                                  isOrganicApp={isAppOrganic}
-                                  leftStripClassName={getStatusStripClass(
-                                    app.overallStatus,
-                                  )}
-                                  onViewDetails={() => setSelectedApp(app)}
-                                  onViewPdf={() => handleViewPdf(app)} // ✅ Updated
-                                  onViewCscForm6={() => setOrganicPdfApp(app)}
-                                />
-                              );
-                            })}
-                      </div>
-                    </div>
-
-                    {/* Tablet: 2 cards */}
-                    <div className="hidden md:block lg:hidden p-4">
-                      <div className="grid grid-cols-2 gap-3">
-                        {isLoading
-                          ? [...Array(Math.min(limit, 6))].map((_, i) => (
-                              <div
-                                key={`sk-t-${i}`}
-                                className="rounded-xl shadow-sm p-4 border transition-colors duration-300 ease-out"
-                                style={{
-                                  backgroundColor: "var(--app-surface)",
-                                  borderColor: borderColor,
-                                }}
-                              >
-                                <Skeleton height={18} />
-                                <div className="mt-3">
-                                  <Skeleton height={12} count={2} />
-                                </div>
-                                <div className="mt-4 grid grid-cols-2 gap-2">
-                                  <Skeleton height={52} />
-                                  <Skeleton height={52} />
-                                </div>
-                                <div className="mt-4">
-                                  <Skeleton height={40} />
-                                </div>
-                              </div>
-                            ))
-                          : applications.map((app) => {
-                              const isAppOrganic =
-                                app?.employeeType === "Organic" ||
-                                app?.category === "Organic";
-
-                              return (
-                                <ApplicationCard
-                                  key={app._id}
-                                  app={app}
-                                  borderColor={borderColor}
-                                  isOrganicApp={isAppOrganic}
-                                  leftStripClassName={getStatusStripClass(
-                                    app.overallStatus,
-                                  )}
-                                  onViewDetails={() => setSelectedApp(app)}
-                                  onViewPdf={() => handleViewPdf(app)} // ✅ Updated
-                                  onViewCscForm6={() => setOrganicPdfApp(app)}
-                                />
-                              );
-                            })}
+                          ? [...Array(Math.min(limit, 6))].map((_, i) =>
+                              cardSkeleton(`sk-${i}`),
+                            )
+                          : applications.map((app) => (
+                              <ApplicationCard
+                                key={app._id}
+                                app={app}
+                                borderColor={borderColor}
+                                isOrganic={isOrganicApp(app)}
+                                isPdfLoading={pdfLoadingId === app._id}
+                                {...rowHandlers(app)}
+                              />
+                            ))}
                       </div>
                     </div>
 
                     {/* Desktop: table */}
-                    <div className="hidden lg:block w-full align-middle overflow-x-auto md:min-w-0">
-                      <table className="w-full text-left min-w-[800px]">
+                    <div className="hidden lg:block w-full align-middle">
+                      <table className="w-full text-left table-fixed">
+                        <colgroup>
+                          <col style={{ width: "26%" }} />
+                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "9%" }} />
+                          <col style={{ width: "13%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "18%" }} />
+                          <col style={{ width: "12%" }} />
+                        </colgroup>
+
                         <thead
-                          className="sticky top-0 z-10 border-b transition-colors duration-300 ease-out"
+                          className="sticky top-0 z-10 border-b"
                           style={{
                             backgroundColor: "var(--app-surface)",
-                            borderColor: borderColor,
+                            borderColor,
                           }}
                         >
                           <tr
                             className="text-[10px] uppercase tracking-[0.12em] font-bold"
                             style={{ color: "var(--app-muted)" }}
                           >
-                            <th className="px-6 py-4 font-bold">Requestor</th>
-                            <th className="px-6 py-4 font-bold">Request ID</th>
-                            <th className="px-6 py-4 text-center">
+                            <th className="px-5 py-4">Requestor</th>
+                            <th className="px-3 py-4">Request ID</th>
+                            <th className="px-2 py-4 text-center">
                               Total Days
                             </th>
-                            <th className="px-6 py-4 text-center">Status</th>
-                            <th className="px-6 py-4 text-center">Submitted</th>
-                            <th className="px-6 py-4">Dates Covered</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
+                            <th className="px-2 py-4 text-center">Status</th>
+                            <th className="px-2 py-4 text-center">Submitted</th>
+                            <th className="px-4 py-4">Dates Covered</th>
+                            <th className="px-5 py-4 text-right">Actions</th>
                           </tr>
                         </thead>
 
@@ -1350,17 +1309,13 @@ const AllWellnessApplicationsHistory = () => {
                             ? [...Array(8)].map((_, i) => (
                                 <tr key={i}>
                                   {[...Array(7)].map((__, j) => (
-                                    <td key={j} className="px-6 py-4">
+                                    <td key={j} className="px-4 py-4">
                                       <Skeleton />
                                     </td>
                                   ))}
                                 </tr>
                               ))
                             : applications.map((app, i) => {
-                                const employeeType =
-                                  app.category || app.employeeType || "Unknown";
-                                const isAppOrganic = employeeType === "Organic";
-
                                 const bg =
                                   i % 2 === 0
                                     ? "var(--app-surface)"
@@ -1369,8 +1324,8 @@ const AllWellnessApplicationsHistory = () => {
                                 return (
                                   <tr
                                     key={app._id}
-                                    className="transition-colors duration-200 ease-out"
-                                    style={{ backgroundColor: bg }}
+                                    className="border-b transition-colors duration-200 ease-out"
+                                    style={{ backgroundColor: bg, borderColor }}
                                     onMouseEnter={(e) => {
                                       e.currentTarget.style.backgroundColor =
                                         "var(--accent-soft)";
@@ -1380,106 +1335,60 @@ const AllWellnessApplicationsHistory = () => {
                                         bg;
                                     }}
                                   >
-                                    <td className="px-6 py-4">
-                                      <div className="flex flex-col items-start">
-                                        <span
-                                          className="font-semibold text-sm"
-                                          style={{ color: "var(--app-text)" }}
-                                        >
-                                          {app?.employee?.firstName || ""}{" "}
-                                          {app?.employee?.lastName || ""}
-                                        </span>
-                                        <div className="flex items-center gap-2 mt-0.5">
-                                          <span
-                                            className="text-[10px] font-mono"
-                                            style={{
-                                              color: "var(--app-muted)",
-                                            }}
-                                          >
-                                            {app?.employee?.position || "-"}
-                                          </span>
-                                          <span
-                                            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border"
-                                            style={{
-                                              backgroundColor:
-                                                "var(--app-surface-2)",
-                                              color: "var(--app-muted)",
-                                              borderColor: borderColor,
-                                            }}
-                                          >
-                                            {employeeType}
-                                          </span>
-                                        </div>
-                                      </div>
+                                    <td className="px-5 py-3.5 align-middle">
+                                      <RequestorCell
+                                        app={app}
+                                        borderColor={borderColor}
+                                      />
                                     </td>
 
-                                    <td className="px-6 py-4">
-                                      <div className="flex flex-col">
-                                        <span
-                                          className="text-xs font-mono mt-0.5"
-                                          style={{ color: "var(--app-muted)" }}
-                                        >
-                                          ID:{" "}
-                                          {app._id
-                                            ? app._id.slice(-6).toUpperCase()
-                                            : "-"}
-                                        </span>
-                                      </div>
+                                    <td
+                                      className="px-3 py-3.5 align-middle whitespace-nowrap text-xs font-mono"
+                                      style={{ color: "var(--app-muted)" }}
+                                    >
+                                      #{shortIdOf(app)}
                                     </td>
 
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-2 py-3.5 text-center align-middle whitespace-nowrap">
                                       <span
-                                        className="inline-flex items-center px-2.5 py-0.5 rounded-md border text-xs font-bold"
+                                        className="inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-bold"
                                         style={{
                                           backgroundColor: "var(--app-surface)",
-                                          borderColor: borderColor,
+                                          borderColor,
                                           color: "var(--app-text)",
                                         }}
                                       >
-                                        {Number(app?.totalDays || 0)}
+                                        {plural(
+                                          Number(app?.totalDays || 0),
+                                          "Day",
+                                        )}
                                       </span>
                                     </td>
 
-                                    <td className="px-6 py-4 text-center">
+                                    <td className="px-2 py-3.5 text-center align-middle whitespace-nowrap">
                                       <StatusBadge status={app.overallStatus} />
                                     </td>
 
                                     <td
-                                      className="px-6 py-4 text-center text-sm"
+                                      className="px-2 py-3.5 text-center align-middle whitespace-nowrap text-sm"
                                       style={{ color: "var(--app-muted)" }}
                                     >
-                                      {formatSubmitted(app.createdAt)}
+                                      {fmtDate(app.createdAt)}
                                     </td>
 
-                                    <td
-                                      className="px-6 py-4 text-sm"
-                                      style={{ color: "var(--app-muted)" }}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <CalendarDays
-                                          size={14}
-                                          style={{ color: "var(--app-muted)" }}
-                                        />
-                                        <span className="truncate max-w-[250px]">
-                                          {formatCoveredDates(
-                                            app.inclusiveDates,
-                                          )}
-                                        </span>
-                                      </div>
+                                    <td className="px-4 py-3.5 align-middle">
+                                      <DatesCell
+                                        dates={app.inclusiveDates}
+                                        maxVisible={1}
+                                      />
                                     </td>
 
-                                    <td className="px-6 py-4 text-right">
+                                    <td className="px-5 py-3.5 text-right align-middle whitespace-nowrap">
                                       <ApplicationActionMenu
-                                        app={app}
                                         borderColor={borderColor}
-                                        isOrganicApp={isAppOrganic}
-                                        onViewDetails={() =>
-                                          setSelectedApp(app)
-                                        }
-                                        onViewPdf={() => handleViewPdf(app)} // ✅ Updated
-                                        onViewCscForm6={() =>
-                                          setOrganicPdfApp(app)
-                                        }
+                                        isOrganic={isOrganicApp(app)}
+                                        isPdfLoading={pdfLoadingId === app._id}
+                                        {...rowHandlers(app)}
                                       />
                                     </td>
                                   </tr>
@@ -1514,7 +1423,7 @@ const AllWellnessApplicationsHistory = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className="md:hidden fixed bottom-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition-colors duration-200 ease-out flex items-center justify-center"
+              className="md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition flex items-center justify-center"
               style={{
                 backgroundColor: "var(--accent, #2563EB)",
                 color: "#fff",

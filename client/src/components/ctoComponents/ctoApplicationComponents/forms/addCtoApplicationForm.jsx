@@ -1231,7 +1231,7 @@ const AddCtoApplicationForm = () => {
                             "transparent")
                         }
                       >
-                        Select Memos
+                        View Memos
                       </button>
                     </div>
                     {selectedMemos.length === 0 ? (

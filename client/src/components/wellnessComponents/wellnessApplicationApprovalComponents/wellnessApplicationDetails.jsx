@@ -1,5 +1,9 @@
+// wellnessApplicationDetails.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  Clock,
+  FileText,
+  BadgeCheck,
   CalendarDays,
   Check,
   MessageCircle,
@@ -13,12 +17,10 @@ import {
   ChevronLeft,
   ChevronRight,
   RotateCcw,
-  BadgeCheck,
-  PenTool,
-  Clock,
   FileBadge,
-  FileText, // Added FileText for the General PDF icon
-  Paperclip, // Added Paperclip for attachments
+  PenTool,
+  Paperclip,
+  Hourglass,
 } from "lucide-react";
 import { StatusIcon, StatusBadge } from "../../statusUtils";
 import { useAuth } from "../../../store/authStore";
@@ -41,6 +43,7 @@ import { toast } from "react-toastify";
 import WellnessApplicationPdfModal from "../wellnessApplicationComponents/wellnessApplicationModal";
 import OrganicWellnessApplicationPdfModal from "../wellnessApplicationComponents/organicWellnessApplicationPDFModal";
 
+/* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
   if (prefTheme === "system") {
     const systemDark =
@@ -81,6 +84,16 @@ function useResolvedTheme(prefTheme) {
   return theme;
 }
 
+/* =========================
+   Small helpers
+========================= */
+const upper = (v) => String(v || "").toUpperCase();
+const idOf = (v) => String(v?._id || v || "");
+const plural = (n, word) => `${n} ${word}${Number(n) === 1 ? "" : "s"}`;
+
+/* =========================
+   Theme-aware icon chip styles
+========================= */
 function getIconChipStyle(kind, borderColor) {
   const map = {
     accent: {
@@ -119,13 +132,65 @@ function getIconChipStyle(kind, borderColor) {
 }
 
 function getOverallIconChipKind(overallStatus) {
-  const s = String(overallStatus || "").toUpperCase();
+  const s = upper(overallStatus);
   if (s === "APPROVED") return "green";
   if (s === "REJECTED") return "red";
   if (s === "CANCELLED") return "slate";
   return "amber";
 }
 
+/* =========================
+   Section title (shared)
+========================= */
+const SectionTitle = ({
+  icon: Icon,
+  kind = "accent",
+  title,
+  subtitle,
+  right,
+  borderColor,
+  titleColor,
+  subtitleColor,
+}) => {
+  const chip = getIconChipStyle(kind, borderColor);
+  return (
+    <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex items-center gap-3 min-w-0">
+        <span
+          className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
+          style={{
+            backgroundColor: chip.bg,
+            color: chip.fg,
+            borderColor: chip.br,
+          }}
+        >
+          <Icon size={18} />
+        </span>
+        <div className="min-w-0">
+          <h3
+            className="text-xs font-bold uppercase tracking-widest"
+            style={{ color: titleColor || "var(--app-muted)" }}
+          >
+            {title}
+          </h3>
+          {subtitle ? (
+            <p
+              className="text-xs font-medium mt-0.5"
+              style={{ color: subtitleColor || "var(--app-muted)" }}
+            >
+              {subtitle}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {right ? <div className="flex-none">{right}</div> : null}
+    </div>
+  );
+};
+
+/* =========================
+   LOADING SKELETON
+========================= */
 const WellnessApplicationDetailsSkeleton = ({ borderColor, resolvedTheme }) => {
   const skeletonBase =
     resolvedTheme === "dark" ? "rgba(255,255,255,0.06)" : "rgba(15,23,42,0.06)";
@@ -134,80 +199,154 @@ const WellnessApplicationDetailsSkeleton = ({ borderColor, resolvedTheme }) => {
 
   const baseColor = `var(--skeleton-base, ${skeletonBase})`;
   const highlightColor = `var(--skeleton-highlight, ${skeletonHighlight})`;
-  const bgFallback =
-    resolvedTheme === "dark" ? "rgba(2,6,23,0.96)" : "rgba(245,245,245,0.80)";
+
+  const border = borderColor || "var(--app-border, rgba(15,23,42,0.10))";
+  const cardStyle = {
+    backgroundColor: "var(--app-surface, rgba(255,255,255,0.9))",
+    borderColor: border,
+  };
 
   return (
     <div
-      className="flex-1 h-full rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border"
+      className="flex-1 h-full rounded-xl shadow-md w-full flex flex-col min-w-0 border overflow-hidden"
+      aria-busy="true"
+      aria-label="Loading application details"
       style={{
-        backgroundColor: `var(--app-bg, ${bgFallback})`,
-        borderColor: borderColor || "var(--app-border)",
+        backgroundColor: "var(--app-bg)",
+        color: "var(--app-text, #0f172a)",
+        borderColor: border,
       }}
     >
       <SkeletonTheme baseColor={baseColor} highlightColor={highlightColor}>
         <header
-          className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b px-3 sm:px-4 py-2 z-10"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
-          }}
+          className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b px-3 py-3"
+          style={cardStyle}
         >
-          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
             <Skeleton height={48} width={48} borderRadius={12} />
             <div className="min-w-0 flex-1">
               <Skeleton height={18} width={"55%"} />
-              <div className="mt-2 flex gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Skeleton height={18} width={110} borderRadius={999} />
+                <Skeleton height={18} width={80} borderRadius={999} />
+                <Skeleton height={18} width={120} borderRadius={999} />
+                <Skeleton height={18} width={90} borderRadius={999} />
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            <Skeleton height={40} width={110} borderRadius={12} />
-            <Skeleton height={40} width={160} borderRadius={12} />
+
+          <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto">
+            <Skeleton height={40} width={110} borderRadius={10} />
+            <Skeleton height={40} width={160} borderRadius={10} />
           </div>
         </header>
 
-        <div
-          className="flex h-full flex-1 min-h-0 overflow-y-auto app-scrollbar flex-col gap-4 px-3 sm:px-4 py-2"
-          style={{ backgroundColor: "transparent" }}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar flex flex-col gap-4 px-2 sm:px-3 py-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
             <div
-              className="md:col-span-2 rounded-xl p-4 sm:p-6"
-              style={{ background: "var(--app-surface-2)" }}
+              className="md:col-span-2 rounded-xl p-4 sm:p-6 relative overflow-hidden shadow-sm min-w-0"
+              style={{
+                background:
+                  "linear-gradient(135deg, var(--accent, #2563eb) 0%, rgba(255,255,255,0.16) 140%)",
+              }}
             >
-              <Skeleton height={26} width={"85%"} />
+              <div className="relative z-10 flex gap-3 justify-between items-center min-w-0">
+                <div className="min-w-0 flex-1">
+                  <Skeleton height={12} width={140} borderRadius={8} />
+                  <div className="mt-2">
+                    <Skeleton height={26} width={"75%"} borderRadius={10} />
+                  </div>
+                </div>
+                <div
+                  className="backdrop-blur-md px-4 py-2 rounded-xl flex-none"
+                  style={{ backgroundColor: "rgba(255,255,255,0.20)" }}
+                >
+                  <Skeleton height={10} width={90} borderRadius={8} />
+                  <div className="mt-2">
+                    <Skeleton height={22} width={70} borderRadius={10} />
+                  </div>
+                </div>
+              </div>
             </div>
+
             <div
-              className="border rounded-xl p-4 flex justify-between items-center"
-              style={{ backgroundColor: "var(--app-surface)", borderColor }}
+              className="border rounded-xl p-4 flex justify-between items-center gap-4 min-w-0"
+              style={cardStyle}
             >
-              <Skeleton height={56} width={56} borderRadius={18} />
-              <Skeleton height={22} width={140} borderRadius={10} />
+              <Skeleton height={56} width={56} borderRadius={16} />
+              <div className="min-w-0 flex-1 text-end">
+                <Skeleton height={12} width={120} borderRadius={8} />
+                <div className="mt-2">
+                  <Skeleton height={22} width={110} borderRadius={10} />
+                </div>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <div className="lg:col-span-2 space-y-4">
-              <div
-                className="border rounded-xl p-3"
-                style={{ backgroundColor: "var(--app-surface)", borderColor }}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
+            <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
+              <section
+                className="border rounded-xl p-4 sm:p-5 shadow-sm"
+                style={cardStyle}
               >
-                <Skeleton height={100} />
-              </div>
-              <div
-                className="border rounded-xl p-3"
-                style={{ backgroundColor: "var(--app-surface)", borderColor }}
+                <div className="flex items-center gap-3 mb-4">
+                  <Skeleton height={40} width={40} borderRadius={12} />
+                  <Skeleton height={12} width={170} borderRadius={8} />
+                </div>
+                <Skeleton height={80} borderRadius={16} />
+              </section>
+
+              <section
+                className="border rounded-xl p-4 sm:p-5 shadow-sm"
+                style={cardStyle}
               >
-                <Skeleton height={200} />
-              </div>
+                <div className="flex items-center gap-3 mb-4">
+                  <Skeleton height={40} width={40} borderRadius={12} />
+                  <div className="flex-1">
+                    <Skeleton height={12} width={170} borderRadius={8} />
+                    <div className="mt-2">
+                      <Skeleton height={10} width={120} borderRadius={8} />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3">
+                  {Array.from({ length: 3 }).map((_, idx) => (
+                    <div key={idx} className="flex gap-3 sm:gap-4 items-start">
+                      <Skeleton circle height={40} width={40} />
+                      <div className="flex-1">
+                        <Skeleton height={76} borderRadius={12} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
-            <aside className="space-y-4">
+
+            <aside className="flex flex-col gap-4 min-w-0">
               <div
-                className="border rounded-xl p-3"
-                style={{ backgroundColor: "var(--app-surface)", borderColor }}
+                className="border rounded-xl p-4 shadow-sm"
+                style={cardStyle}
               >
-                <Skeleton height={250} />
+                <Skeleton height={12} width={120} borderRadius={8} />
+                <div className="mt-3 flex flex-col gap-2">
+                  <Skeleton height={48} borderRadius={12} />
+                  <Skeleton height={48} borderRadius={12} />
+                </div>
+              </div>
+
+              <div
+                className="border rounded-xl p-4 shadow-sm"
+                style={cardStyle}
+              >
+                <div className="flex items-center justify-between">
+                  <Skeleton height={12} width={120} borderRadius={8} />
+                  <Skeleton height={28} width={90} borderRadius={10} />
+                </div>
+                <div className="mt-4 grid grid-cols-7 gap-1.5">
+                  {Array.from({ length: 35 }).map((_, i) => (
+                    <Skeleton key={i} height={34} borderRadius={10} />
+                  ))}
+                </div>
               </div>
             </aside>
           </div>
@@ -215,6 +354,16 @@ const WellnessApplicationDetailsSkeleton = ({ borderColor, resolvedTheme }) => {
       </SkeletonTheme>
     </div>
   );
+};
+
+/* =========================
+   Status helpers
+========================= */
+const STATUS_META = {
+  APPROVED: { label: "APPROVED", tone: "green" },
+  REJECTED: { label: "REJECTED", tone: "red" },
+  PENDING: { label: "PENDING", tone: "amber" },
+  CANCELLED: { label: "CANCELLED", tone: "slate" },
 };
 
 const getTonePillStyle = (tone, borderColor) => {
@@ -226,108 +375,166 @@ const getTonePillStyle = (tone, borderColor) => {
   };
 };
 
-const StepDotIcon = ({ status }) => {
-  const s = String(status || "").toUpperCase();
-  if (s === "APPROVED")
-    return <CheckCircle2 size={16} className="text-white" />;
-  if (s === "REJECTED") return <XCircle size={16} className="text-white" />;
-  if (s === "CANCELLED") return <Ban size={16} className="text-white" />;
-  return <Users size={16} className="text-white" />;
+/* =========================
+   Processing workflow step
+========================= */
+const STEP_DOT = {
+  APPROVED: { bg: "#10b981", icon: CheckCircle2 },
+  REJECTED: { bg: "#ef4444", icon: XCircle },
+  CANCELLED: { bg: "#94a3b8", icon: Ban },
 };
 
-const StepDotClass = (status) => {
-  const s = String(status || "").toUpperCase();
-  if (s === "APPROVED") return "bg-emerald-500";
-  if (s === "REJECTED") return "bg-red-500";
-  if (s === "CANCELLED") return "bg-slate-400";
-  return "bg-[color:var(--app-border)]";
-};
-
-const TimelineCard = ({ approval, index, isLast }) => {
-  const status = String(approval?.status || "").toUpperCase();
-  const isDenied = status === "REJECTED";
-  const isPending = status === "PENDING";
+const TimelineStep = ({
+  approval,
+  index,
+  isLast,
+  isMine,
+  isActive, // pending and it's this approver's turn
+  isQueued, // pending but the approver before hasn't acted yet
+  borderColor,
+}) => {
+  const status = upper(approval?.status);
+  const isRejected = status === "REJECTED";
   const isCancelled = status === "CANCELLED";
 
-  const noteStyle = isDenied
-    ? { bg: "rgba(239,68,68,0.10)", br: "rgba(239,68,68,0.20)", fg: "#ef4444" }
-    : isCancelled
-      ? {
-          bg: "rgba(148,163,184,0.14)",
-          br: "rgba(148,163,184,0.22)",
-          fg: "var(--app-text)",
-        }
-      : {
-          bg: "var(--app-surface-2)",
-          br: "var(--app-border)",
-          fg: "var(--app-text)",
-        };
+  const dot = STEP_DOT[status];
+  const DotIcon = dot?.icon || (isActive ? Hourglass : Users);
+  const dotBg = dot?.bg || (isActive ? "#f59e0b" : "var(--app-surface-2)");
+  const dotFg = dot || isActive ? "#fff" : "var(--app-muted)";
 
-  const approverFName =
-    approval.approverSnapshot?.firstName || approval.approver?.firstName;
-  const approverLName =
-    approval.approverSnapshot?.lastName || approval.approver?.lastName;
-  const approverPosition =
-    approval.approverSnapshot?.position ||
-    approval.approver?.position ||
-    "Approver";
-  const signatureUrl = approval.approverSnapshot?.signatureUrl;
-  const signedAt = approval.approverSnapshot?.signedAt;
+  // Prefer the historical snapshot, fall back to the live approver
+  const snap = approval?.approverSnapshot || {};
+  const live = approval?.approver || {};
+  const name =
+    [snap.firstName || live.firstName, snap.lastName || live.lastName]
+      .filter(Boolean)
+      .join(" ") || "Unassigned approver";
+  const position = snap.position || live.position || "Approver";
+  const signedAt = snap.signedAt || approval?.approverSignature?.signedAt;
+  const remarks = String(approval?.remarks || "").trim();
+
+  const note = isRejected
+    ? getIconChipStyle("red", borderColor)
+    : isCancelled
+      ? getIconChipStyle("slate", borderColor)
+      : getIconChipStyle("neutral", borderColor);
+  const amber = getIconChipStyle("amber", borderColor);
 
   return (
-    <div className="relative flex gap-2 sm:gap-4 items-start min-w-0">
+    <li className="relative flex gap-3 sm:gap-4 min-w-0">
       {!isLast && (
-        <div
-          className="absolute left-5 top-10 bottom-0 w-0.5"
+        <span
+          aria-hidden="true"
+          className="absolute left-[19px] top-11 -bottom-3 w-0.5"
           style={{ backgroundColor: "var(--app-border)" }}
         />
       )}
+
       <div
-        className={`relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 shadow-md transition-transform hover:scale-110 flex-none ${StepDotClass(
-          status,
-        )}`}
-        style={{ borderColor: "var(--app-surface)" }}
-        title={status}
+        className="relative z-10 h-10 w-10 rounded-full flex items-center justify-center flex-none border-4 shadow-sm"
+        style={{
+          backgroundColor: dotBg,
+          color: dotFg,
+          borderColor: "var(--app-surface)",
+        }}
+        title={isQueued ? "UPCOMING" : status}
       >
-        <StepDotIcon status={status} />
+        <DotIcon size={16} />
       </div>
 
       <div
-        className={`flex-1 border rounded-2xl p-4 sm:p-5 shadow-xs min-w-0 transition-all ${isPending ? "opacity-90" : ""}`}
+        className="flex-1 min-w-0 rounded-xl border p-3 sm:p-4"
         style={{
           backgroundColor: "var(--app-surface)",
-          borderColor: "var(--app-border)",
+          borderColor: isActive ? "rgba(245,158,11,0.45)" : borderColor,
+          borderStyle: isQueued ? "dashed" : "solid",
+          opacity: isQueued ? 0.85 : 1,
         }}
       >
         <div className="flex items-start justify-between gap-3 min-w-0">
           <div className="min-w-0">
-            <span
-              className="text-xs font-bold uppercase tracking-wider"
-              style={{ color: "var(--app-muted)" }}
-            >
-              Approver {index + 1}
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className="text-[11px] font-bold uppercase tracking-wider"
+                style={{ color: "var(--app-muted)" }}
+              >
+                Approver {index + 1}
+              </span>
+              {isMine && (
+                <span
+                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded border"
+                  style={{
+                    backgroundColor: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+                  }}
+                >
+                  You
+                </span>
+              )}
+              {isActive && (
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
+                  style={{
+                    backgroundColor: amber.bg,
+                    color: amber.fg,
+                    borderColor: amber.br,
+                  }}
+                >
+                  Awaiting action
+                </span>
+              )}
+            </div>
+
             <p
               className="text-sm font-semibold break-words mt-1"
               style={{ color: "var(--app-text)" }}
             >
-              {approverFName} {approverLName}
+              {name}
             </p>
             <p
               className="text-xs font-medium break-words"
               style={{ color: "var(--accent)" }}
             >
-              {approverPosition}
+              {position}
             </p>
           </div>
+
           <div className="flex-none">
-            <StatusBadge status={status} size="sm" />
+            {isQueued ? (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider"
+                style={{
+                  backgroundColor: "var(--app-surface-2)",
+                  color: "var(--app-muted)",
+                  borderColor,
+                }}
+              >
+                <Hourglass size={11} />
+                Upcoming
+              </span>
+            ) : (
+              <StatusBadge status={status} size="sm" />
+            )}
           </div>
         </div>
 
-        {isCancelled && !approval?.remarks ? (
+        {/* Each queued step waits for the approver right before it */}
+        {isQueued && index > 0 ? (
+          <p className="mt-2 text-[11px]" style={{ color: "var(--app-muted)" }}>
+            Waits for Approver {index} to act first
+          </p>
+        ) : null}
+
+        {signedAt && status !== "PENDING" ? (
+          <p className="mt-2 text-[11px]" style={{ color: "var(--app-muted)" }}>
+            Signed on {new Date(signedAt).toLocaleString()}
+          </p>
+        ) : null}
+
+        {isCancelled && !remarks ? (
           <div
-            className="mt-4 rounded-xl text-xs flex items-start gap-2 min-w-0 border p-3"
+            className="mt-3 rounded-lg text-xs flex items-start gap-2 border p-2.5"
             style={{
               backgroundColor: "rgba(148,163,184,0.14)",
               borderColor: "rgba(148,163,184,0.22)",
@@ -342,48 +549,41 @@ const TimelineCard = ({ approval, index, isLast }) => {
           </div>
         ) : null}
 
-        {approval?.remarks && String(approval.remarks).trim() !== "" && (
+        {remarks ? (
           <div
-            className="mt-4 rounded-xl p-3 text-xs leading-relaxed border flex items-start gap-2 min-w-0"
+            className="mt-3 rounded-lg p-2.5 text-xs leading-relaxed border flex items-start gap-2"
             style={{
-              backgroundColor: noteStyle.bg,
-              borderColor: noteStyle.br,
-              color: noteStyle.fg,
+              backgroundColor: note.bg,
+              borderColor: note.br,
+              color: isRejected ? "#ef4444" : "var(--app-text)",
             }}
           >
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
-            <p className="break-words">
-              <strong>Note:</strong> {approval.remarks}
+            <p className="break-words whitespace-pre-wrap">
+              <strong>Note:</strong> {remarks}
             </p>
           </div>
-        )}
-
-        {signatureUrl && (
-          <div
-            className="mt-4 border-t border-dashed"
-            style={{ borderColor: "var(--app-border)" }}
-          >
-            {signedAt && (
-              <p className="text-[10px] text-slate-500 mt-1">
-                Signed on: {new Date(signedAt).toLocaleString()}
-              </p>
-            )}
-          </div>
-        )}
+        ) : null}
       </div>
-    </div>
+    </li>
   );
 };
 
+/* =========================
+   Calendar helpers
+========================= */
 const pad2 = (n) => String(n).padStart(2, "0");
+
 const toDateKeyLocal = (dateLike) => {
   const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
   if (Number.isNaN(d.getTime())) return null;
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 };
+
 const startOfMonth = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
 const endOfMonth = (d) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
 const addMonths = (d, n) => new Date(d.getFullYear(), d.getMonth() + n, 1);
+
 const isSameDay = (a, b) =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
@@ -415,23 +615,26 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
     if (earliestRequested) setViewMonth(startOfMonth(earliestRequested));
   }, [earliestRequested]);
 
-  const monthLabel = useMemo(
-    () =>
-      viewMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" }),
-    [viewMonth],
-  );
+  const monthLabel = useMemo(() => {
+    return viewMonth.toLocaleDateString("en-US", {
+      month: "long",
+      year: "numeric",
+    });
+  }, [viewMonth]);
+
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   const grid = useMemo(() => {
     const first = startOfMonth(viewMonth);
     const last = endOfMonth(viewMonth);
-    const leadingBlanks = first.getDay();
-    const daysInMonth = last.getDate();
+    const today = new Date();
     const cells = [];
 
-    for (let i = 0; i < leadingBlanks; i++)
+    for (let i = 0; i < first.getDay(); i++) {
       cells.push({ type: "blank", key: `b-${i}` });
-    for (let day = 1; day <= daysInMonth; day++) {
+    }
+
+    for (let day = 1; day <= last.getDate(); day++) {
       const d = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), day);
       const key = toDateKeyLocal(d);
       cells.push({
@@ -440,18 +643,20 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
         day,
         date: d,
         isRequested: key ? requestedKeys.has(key) : false,
-        isToday: isSameDay(d, new Date()),
+        isToday: isSameDay(d, today),
       });
     }
+
     const remainder = cells.length % 7;
     if (remainder !== 0) {
-      for (let i = 0; i < 7 - remainder; i++)
+      for (let i = 0; i < 7 - remainder; i++) {
         cells.push({ type: "blank", key: `t-${i}` });
+      }
     }
+
     return cells;
   }, [viewMonth, requestedKeys]);
 
-  // Added logic to count requested days in the currently viewed month
   const requestedCountThisMonth = useMemo(() => {
     const y = viewMonth.getFullYear();
     const m = viewMonth.getMonth();
@@ -459,17 +664,21 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
     requestedKeys.forEach((k) => {
       const [yy, mm] = k.split("-").map((x) => Number(x));
       if (!yy || !mm) return;
-      const monthIdx = mm - 1;
-      if (yy === y && monthIdx === m) count += 1;
+      if (yy === y && mm - 1 === m) count += 1;
     });
     return count;
   }, [requestedKeys, viewMonth]);
 
   const hasAnyDates = requestedKeys.size > 0;
 
+  const navBtn =
+    "h-9 w-9 rounded-xl border flex items-center justify-center transition " +
+    "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] " +
+    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
   return (
     <div
-      className="border rounded-xl p-2 sm:p-3 shadow-sm min-w-0"
+      className="border rounded-xl p-4 shadow-sm min-w-0"
       style={{
         backgroundColor: "var(--app-surface)",
         borderColor: "var(--app-border)",
@@ -485,39 +694,41 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
             Calendar
           </h4>
           <p
-            className="text-[11px] font-medium"
+            className="text-[11px] font-medium mt-0.5"
             style={{ color: "var(--app-muted)" }}
           >
             Requested dates highlighted
           </p>
         </div>
+
         <div className="flex items-center gap-1.5 flex-none">
           <button
+            type="button"
             onClick={() => setViewMonth((d) => addMonths(d, -1))}
-            className="h-9 w-9 rounded-xl border bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2"
+            className={navBtn}
             style={{ borderColor: "var(--app-border)" }}
             title="Previous month"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={16} style={{ color: "var(--app-text)" }} />
           </button>
+
           <button
+            type="button"
             onClick={() => setViewMonth((d) => addMonths(d, 1))}
-            className="h-9 w-9 rounded-xl border bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] flex items-center justify-center transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2"
+            className={navBtn}
             style={{ borderColor: "var(--app-border)" }}
             title="Next month"
           >
-            <ChevronRight size={16} />
+            <ChevronRight size={16} style={{ color: "var(--app-text)" }} />
           </button>
+
           <button
+            type="button"
             disabled={!earliestRequested}
             onClick={() =>
               earliestRequested && setViewMonth(startOfMonth(earliestRequested))
             }
-            className={`h-9 px-2.5 rounded-xl border transition focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 inline-flex items-center gap-1.5 ${
-              earliestRequested
-                ? "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]"
-                : "bg-[color:var(--app-surface-2)] opacity-60 cursor-not-allowed"
-            }`}
+            className={`${navBtn} w-auto px-2.5 gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed`}
             style={{
               borderColor: "var(--app-border)",
               color: earliestRequested ? "var(--app-text)" : "var(--app-muted)",
@@ -530,8 +741,7 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
         </div>
       </div>
 
-      {/* Added the flex structure back to support the dynamic subtext and legend */}
-      <div className="mt-3 flex md:flex-col items-center md:items-start justify-between gap-2">
+      <div className="mt-4 flex items-center justify-between gap-2">
         <div className="inline-flex items-center gap-2 min-w-0">
           <span
             className="h-9 w-9 rounded-xl flex items-center justify-center border flex-none"
@@ -550,40 +760,34 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
             >
               {monthLabel}
             </p>
-            {/* Added monthly requested dates count */}
             <p
               className="text-[11px] font-medium"
               style={{ color: "var(--app-muted)" }}
             >
               {hasAnyDates
-                ? `${requestedCountThisMonth} requested day${
-                    requestedCountThisMonth === 1 ? "" : "s"
-                  } this month`
+                ? `${plural(requestedCountThisMonth, "requested day")} this month`
                 : "No requested dates"}
             </p>
           </div>
         </div>
 
-        {/* Added legend pill */}
-        <div className="flex items-center gap-2 flex-none">
+        <span
+          className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg border flex-none"
+          style={{
+            color: "var(--app-muted)",
+            backgroundColor: "var(--app-surface-2)",
+            borderColor: "var(--app-border)",
+          }}
+        >
           <span
-            className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-1 rounded-lg border"
-            style={{
-              color: "var(--app-muted)",
-              backgroundColor: "var(--app-surface-2)",
-              borderColor: "var(--app-border)",
-            }}
-          >
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: "var(--accent)" }}
-            />
-            Requested
-          </span>
-        </div>
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: "var(--accent)" }}
+          />
+          Requested
+        </span>
       </div>
 
-      <div className="mt-3">
+      <div className="mt-4">
         <div className="grid grid-cols-7 gap-1.5">
           {dayNames.map((dn) => (
             <div
@@ -595,17 +799,19 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
             </div>
           ))}
         </div>
+
         <div className="mt-1.5 grid grid-cols-7 gap-1.5">
-          {grid.map((cell, idx) =>
-            cell.type === "blank" ? (
+          {grid.map((cell, idx) => {
+            if (cell.type === "blank") {
+              return <div key={cell.key || `blank-${idx}`} className="h-9" />;
+            }
+
+            return (
               <div
-                key={`blank-${idx}`}
-                className="h-9 rounded-xl bg-transparent"
-              />
-            ) : (
-              <div
-                key={`d-${idx}`}
-                className={`h-9 rounded-xl border text-sm font-semibold flex items-center justify-center transition select-none ${cell.isRequested ? "shadow-sm" : ""} ${cell.isToday ? "ring-2 ring-blue-200 ring-offset-2" : ""}`}
+                key={cell.key || `d-${idx}`}
+                className={`h-9 rounded-xl border text-sm font-semibold flex items-center justify-center transition select-none ${
+                  cell.isRequested ? "shadow-sm" : ""
+                }`}
                 style={{
                   backgroundColor: cell.isRequested
                     ? "var(--accent)"
@@ -614,6 +820,9 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
                   borderColor: cell.isRequested
                     ? "var(--accent)"
                     : "var(--app-border)",
+                  boxShadow: cell.isToday
+                    ? "0 0 0 2px var(--app-surface), 0 0 0 4px var(--accent-soft2, rgba(37,99,235,0.35))"
+                    : undefined,
                 }}
                 title={
                   cell.isRequested
@@ -623,7 +832,6 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
                       : ""
                 }
               >
-                {/* Re-added the white absolute dot for requested dates */}
                 <span className="relative">
                   {cell.day}
                   {cell.isRequested ? (
@@ -631,11 +839,10 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
                   ) : null}
                 </span>
               </div>
-            ),
-          )}
+            );
+          })}
         </div>
 
-        {/* Re-added the empty state styling when there are no dates */}
         {!hasAnyDates ? (
           <div
             className="mt-3 rounded-xl border border-dashed px-3 py-3 text-center"
@@ -657,13 +864,17 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
   );
 };
 
-const STATUS_META = {
-  APPROVED: { label: "APPROVED", tone: "green" },
-  REJECTED: { label: "REJECTED", tone: "red" },
-  PENDING: { label: "PENDING", tone: "amber" },
-  CANCELLED: { label: "CANCELLED", tone: "slate" },
-};
+/* =========================
+   Document button style
+========================= */
+const DOC_BTN =
+  "w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition " +
+  "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] " +
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
 
+/* =========================
+   WELLNESS APPLICATION DETAILS
+========================= */
 const WellnessApplicationDetails = () => {
   const { admin } = useAuth();
   const adminId = admin?.id || admin?._id;
@@ -676,22 +887,21 @@ const WellnessApplicationDetails = () => {
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
-  const borderColor = useMemo(
-    () =>
-      resolvedTheme === "dark"
-        ? "rgba(255,255,255,0.07)"
-        : "rgba(15,23,42,0.10)",
-    [resolvedTheme],
-  );
+
+  const borderColor = useMemo(() => {
+    return resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.07)"
+      : "rgba(15,23,42,0.10)";
+  }, [resolvedTheme]);
 
   const [isProcessed, setIsProcessed] = useState(false);
   const [remarks, setRemarks] = useState("");
   const [modalType, setModalType] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isPdfOpen, setIsPdfOpen] = useState(false); // Added PDF Modal state for General Form
-  const [isCsc6PdfOpen, setIsCsc6PdfOpen] = useState(false); // PDF Modal state for CSC Form 6
+  const [isPdfOpen, setIsPdfOpen] = useState(false);
+  const [isCsc6PdfOpen, setIsCsc6PdfOpen] = useState(false);
 
-  // Fetch current user's profile to check for signature
+  // Current user's profile, to check for a signature
   const { data: profileData, isLoading: isProfileLoading } = useQuery({
     queryKey: ["myProfile"],
     queryFn: getMyProfile,
@@ -700,7 +910,6 @@ const WellnessApplicationDetails = () => {
 
   const hasSignature = Boolean(profileData?.signature || admin?.signature);
 
-  // Fetch the data
   const {
     data: rawData,
     isLoading,
@@ -717,9 +926,12 @@ const WellnessApplicationDetails = () => {
   const requestedDatesLabel = useMemo(() => {
     const dates = application?.inclusiveDates || [];
     if (!dates.length) return "No dates set";
-    return dates
+    return [...dates]
+      .map((d) => new Date(d))
+      .filter((d) => !Number.isNaN(d.getTime()))
+      .sort((a, b) => a - b)
       .map((d) =>
-        new Date(d).toLocaleDateString("en-US", {
+        d.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
@@ -735,6 +947,14 @@ const WellnessApplicationDetails = () => {
     );
   }, [application?.approvals]);
 
+  const invalidateApprovalQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ["wellnessApplication"] });
+    queryClient.invalidateQueries({
+      queryKey: ["wellnessApplicationsApprovals"],
+    });
+    queryClient.invalidateQueries({ queryKey: ["wellnessPendingCount"] });
+  };
+
   const approveMutation = useMutation({
     mutationFn: (applicationId) =>
       approveWellnessApplicationRequest(applicationId),
@@ -742,9 +962,7 @@ const WellnessApplicationDetails = () => {
       setIsProcessed(true);
       setIsModalOpen(false);
       toast.success("Wellness Leave approved successfully.");
-      queryClient.invalidateQueries(["wellnessApplication", id]);
-      queryClient.invalidateQueries(["wellnessApplicationsApprovals"]);
-      queryClient.invalidateQueries(["wellnessPendingCount"]);
+      invalidateApprovalQueries();
     },
     onError: (err) => toast.error(err.message || "Failed to approve."),
   });
@@ -757,9 +975,7 @@ const WellnessApplicationDetails = () => {
       setIsProcessed(true);
       setIsModalOpen(false);
       toast.success("Wellness Leave rejected.");
-      queryClient.invalidateQueries(["wellnessApplication", id]);
-      queryClient.invalidateQueries(["wellnessApplicationsApprovals"]);
-      queryClient.invalidateQueries(["wellnessPendingCount"]);
+      invalidateApprovalQueries();
     },
     onError: (err) => toast.error(err.message || "Failed to reject."),
   });
@@ -768,17 +984,28 @@ const WellnessApplicationDetails = () => {
 
   const handleAction = () => {
     if (!application || isMutating) return;
+
     if (modalType === "approve") {
       approveMutation.mutate(application._id);
     } else {
       if (!remarks.trim()) return toast.error("Please provide a reason.");
-      rejectMutation.mutate({ applicationId: application._id, remarks });
+      rejectMutation.mutate({
+        applicationId: application._id,
+        remarks: remarks.trim(),
+      });
     }
   };
 
+  // Reset when switching to a different application
+  useEffect(() => {
+    setRemarks("");
+    setIsPdfOpen(false);
+    setIsCsc6PdfOpen(false);
+  }, [id]);
+
+  // Fresh server data replaces the local "processed" flag
   useEffect(() => {
     setIsProcessed(false);
-    setRemarks("");
   }, [application]);
 
   if (isLoading)
@@ -788,42 +1015,63 @@ const WellnessApplicationDetails = () => {
         resolvedTheme={resolvedTheme}
       />
     );
+
   if (isError)
-    return <p style={{ color: "var(--app-muted)" }}>Error: {error?.message}</p>;
+    return (
+      <p className="p-4" style={{ color: "var(--app-muted)" }}>
+        Error: {error?.message}
+      </p>
+    );
+
   if (!application || !application._id)
     return (
       <div
-        className="flex flex-col items-center justify-center py-40 rounded-xl border-2 border-dashed m-4"
+        className="flex flex-col items-center justify-center py-40 rounded-xl border-2 border-dashed m-2 sm:m-3"
         style={{
           backgroundColor: "var(--app-surface-2)",
           borderColor: "var(--app-border)",
+          color: "var(--app-text)",
         }}
       >
-        <h3 className="font-semibold" style={{ color: "var(--app-text)" }}>
+        <FileText className="h-10 w-10" style={{ color: "var(--app-muted)" }} />
+        <h3 className="font-semibold mt-2" style={{ color: "var(--app-text)" }}>
           No Application Found
         </h3>
       </div>
     );
 
-  const initials = `${application.employee?.firstName?.[0] || ""}${application.employee?.lastName?.[0] || ""}`;
+  const initials = `${application.employee?.firstName?.[0] || ""}${
+    application.employee?.lastName?.[0] || ""
+  }`;
 
-  const currentStep = application.approvals?.find(
-    (step) => String(step.approver?._id || step.approver) === String(adminId),
+  const overall = upper(application.overallStatus);
+
+  // Workflow position
+  const myIndex = sortedApprovals.findIndex(
+    (step) => idOf(step?.approver) === String(adminId),
   );
+  const currentStep = myIndex >= 0 ? sortedApprovals[myIndex] : null;
+  const myStatus = upper(currentStep?.status);
+
+  // The step whose turn it is = first PENDING step while the request is pending
+  const activeIndex =
+    overall === "PENDING"
+      ? sortedApprovals.findIndex((s) => upper(s?.status) === "PENDING")
+      : -1;
+  const waitingForLevel = activeIndex >= 0 ? activeIndex + 1 : null;
+
+  const isMyTurn = myIndex >= 0 && myIndex === activeIndex;
+  const isWaitingMyTurn =
+    myStatus === "PENDING" &&
+    overall === "PENDING" &&
+    activeIndex >= 0 &&
+    myIndex > activeIndex;
 
   const canApproveOrReject =
-    currentStep?.status === "PENDING" &&
-    application.overallStatus === "PENDING" &&
-    !isProcessed;
+    myStatus === "PENDING" && overall === "PENDING" && isMyTurn && !isProcessed;
 
-  const overallPillStyle = getTonePillStyle(
-    (
-      STATUS_META[String(application.overallStatus).toUpperCase()] ||
-      STATUS_META.PENDING
-    ).tone,
-    borderColor,
-  );
-
+  const overallMeta = STATUS_META[overall] || STATUS_META.PENDING;
+  const overallPillStyle = getTonePillStyle(overallMeta.tone, borderColor);
   const overallIconChip = getIconChipStyle(
     getOverallIconChipKind(application.overallStatus),
     borderColor,
@@ -834,17 +1082,20 @@ const WellnessApplicationDetails = () => {
     application.category === "Organic" ||
     application.employee?.employeeType === "Organic";
 
+  const durationLabel = plural(application.totalDays ?? 0, "Day");
+
   return (
     <div
-      className="flex-1 h-full rounded-xl shadow-md w-full flex flex-col gap-2 max-w-6xl mx-auto min-w-0 border"
+      className="flex-1 h-full rounded-xl shadow-md w-full flex flex-col min-w-0 border overflow-hidden"
       style={{
         backgroundColor: "var(--app-bg)",
         color: "var(--app-text)",
         borderColor: borderColor,
       }}
     >
+      {/* HEADER */}
       <header
-        className="flex md:rounded-t-xl flex-col md:flex-row md:items-center justify-between gap-3 border-b px-3 sm:px-4 py-2 z-10"
+        className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b backdrop-blur px-3 py-3 z-10"
         style={{
           backgroundColor: "var(--app-surface)",
           borderColor: borderColor,
@@ -855,8 +1106,9 @@ const WellnessApplicationDetails = () => {
             className="h-12 w-12 rounded-xl text-white flex items-center justify-center font-bold text-lg flex-none"
             style={{ backgroundColor: "var(--accent)" }}
           >
-            {initials}
+            {initials || "?"}
           </div>
+
           <div className="min-w-0">
             <h2
               className="text-lg font-bold leading-tight truncate"
@@ -864,8 +1116,9 @@ const WellnessApplicationDetails = () => {
             >
               {application.employee?.firstName} {application.employee?.lastName}
             </h2>
+
             <div
-              className="flex flex-wrap items-center gap-2 text-xs font-medium mt-0.5"
+              className="flex flex-wrap items-center gap-2 text-xs font-medium mt-1"
               style={{ color: "var(--app-muted)" }}
             >
               <span
@@ -873,7 +1126,7 @@ const WellnessApplicationDetails = () => {
                 style={{
                   backgroundColor: "var(--accent-soft)",
                   color: "var(--accent)",
-                  borderColor: "var(--accent-soft2)",
+                  borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
                 }}
               >
                 ID: {application.employee?.employeeId || "N/A"}
@@ -891,7 +1144,7 @@ const WellnessApplicationDetails = () => {
               </span>
 
               <span className="flex items-center gap-1">
-                <Clock size={12} />{" "}
+                <Clock size={12} />
                 {new Date(application.createdAt).toLocaleDateString()}
               </span>
 
@@ -900,17 +1153,15 @@ const WellnessApplicationDetails = () => {
                 style={overallPillStyle}
                 title="Overall Status"
               >
-                {String(application.overallStatus || "").toUpperCase() ===
-                "CANCELLED" ? (
-                  <Ban size={12} />
-                ) : null}
+                {overall === "CANCELLED" ? <Ban size={12} /> : null}
                 {application.overallStatus}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-row items-center gap-2 sm:gap-3 w-full md:w-auto">
+        {/* ACTION BUTTONS */}
+        <div className="flex items-center gap-2 sm:gap-3 w-full md:w-auto">
           {canApproveOrReject ? (
             canManageApplication &&
             (isProfileLoading ? (
@@ -922,7 +1173,7 @@ const WellnessApplicationDetails = () => {
               </span>
             ) : !hasSignature ? (
               <div
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold border"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold border"
                 style={{
                   backgroundColor: "rgba(239,68,68,0.1)",
                   borderColor: "rgba(239,68,68,0.2)",
@@ -934,42 +1185,35 @@ const WellnessApplicationDetails = () => {
             ) : (
               <>
                 <button
+                  type="button"
                   onClick={() => {
                     setModalType("reject");
                     setIsModalOpen(true);
                   }}
-                  className="w-full sm:w-auto flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold"
+                  disabled={isMutating}
+                  className="flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold transition hover:brightness-95 disabled:opacity-60"
                   style={{
                     backgroundColor: "var(--app-surface-2)",
                     color: "var(--app-text)",
                     border: `1px solid ${borderColor}`,
                   }}
-                  onMouseEnter={(e) =>
-                    (e.currentTarget.style.filter = "brightness(0.98)")
-                  }
-                  onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
                 >
                   Reject
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setModalType("approve");
                     setIsModalOpen(true);
                   }}
-                  disabled={approveMutation.isPending}
-                  className="w-full sm:w-auto rounded-lg px-4 py-2 transition shadow-sm font-medium flex items-center justify-center gap-2"
+                  disabled={isMutating}
+                  className="flex-1 md:flex-none rounded-lg px-4 py-2 transition shadow-sm font-medium flex items-center justify-center gap-2 hover:brightness-95 disabled:opacity-80"
                   style={{
                     backgroundColor: "var(--accent)",
                     border: "1px solid var(--accent)",
                     color: "#fff",
-                    opacity: approveMutation.isPending ? 0.8 : 1,
                   }}
-                  onMouseEnter={(e) => {
-                    if (approveMutation.isPending) return;
-                    e.currentTarget.style.filter = "brightness(0.95)";
-                  }}
-                  onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
                 >
                   {approveMutation.isPending
                     ? "Processing..."
@@ -977,9 +1221,21 @@ const WellnessApplicationDetails = () => {
                 </button>
               </>
             ))
+          ) : isWaitingMyTurn ? (
+            <div
+              className="px-4 py-2 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border w-full md:w-auto"
+              style={{
+                backgroundColor: "var(--app-surface-2)",
+                color: "var(--app-muted)",
+                borderColor: borderColor,
+              }}
+              title="You can act once the earlier approver has approved"
+            >
+              <Hourglass size={16} /> Waiting for Approver {waitingForLevel}
+            </div>
           ) : (
             <div
-              className="px-4 py-2 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border"
+              className="px-4 py-2 rounded-xl flex items-center justify-center gap-2 text-sm font-bold border w-full md:w-auto"
               style={{
                 backgroundColor: "rgba(34,197,94,0.14)",
                 color: "#16a34a",
@@ -992,14 +1248,34 @@ const WellnessApplicationDetails = () => {
         </div>
       </header>
 
-      <div className="flex h-full flex-1 min-h-0 overflow-y-auto app-scrollbar flex-col gap-4 px-3 sm:px-4 py-2">
+      {/* CONTENT */}
+      <div className="flex-1 min-h-0 overflow-y-auto app-scrollbar flex flex-col gap-4 px-2 sm:px-3 py-3">
+        {/* Missing Signature Banner */}
         {canApproveOrReject && !isProfileLoading && !hasSignature && (
-          <div className="mb-2 p-4 bg-orange-50 border-l-4 border-orange-500 rounded flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
-            <div className="flex items-center gap-3 text-orange-800">
-              <AlertCircle className="w-5 h-5 shrink-0" />
+          <div
+            className="p-4 border border-l-4 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm"
+            style={{
+              backgroundColor: "rgba(249,115,22,0.08)",
+              borderColor: "rgba(249,115,22,0.30)",
+              borderLeftColor: "#f97316",
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle
+                className="w-5 h-5 shrink-0 mt-0.5"
+                style={{ color: "#f97316" }}
+              />
               <div>
-                <h4 className="font-bold text-sm">E-Signature Required</h4>
-                <p className="text-xs">
+                <h4
+                  className="font-bold text-sm"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  E-Signature Required
+                </h4>
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: "var(--app-muted)" }}
+                >
                   You do not currently have a digital signature configured. A
                   signature is required to process leave applications.
                 </p>
@@ -1008,23 +1284,24 @@ const WellnessApplicationDetails = () => {
             <button
               type="button"
               onClick={() => navigate("/app/my-profile")}
-              className="flex items-center gap-2 whitespace-nowrap px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded shadow transition-colors"
+              className="flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-lg shadow transition-colors"
             >
               <PenTool size={14} /> Upload Signature
             </button>
           </div>
         )}
 
+        {/* QUICK STATS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-w-0">
           <div
-            className="md:col-span-2 rounded-xl p-4 sm:p-6 text-white flex gap-3 justify-between items-center relative overflow-hidden min-w-0"
+            className="md:col-span-2 rounded-xl p-4 sm:p-6 text-white flex gap-4 justify-between items-center relative overflow-hidden min-w-0"
             style={{
               background:
                 "linear-gradient(135deg, var(--accent) 80%, rgba(255,255,255,0.16) 140%)",
             }}
           >
             <CalendarDays className="absolute right-[-20px] top-[-20px] h-40 w-40 text-white/10 rotate-12" />
-            <div className="min-w-0">
+            <div className="min-w-0 relative">
               <p className="text-white/90 text-xs font-bold uppercase tracking-widest mb-1">
                 Requested Dates
               </p>
@@ -1032,36 +1309,44 @@ const WellnessApplicationDetails = () => {
                 {requestedDatesLabel}
               </h3>
             </div>
-            <div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl flex-none">
-              <p className="text-[10px] text-white/90 uppercase font-bold">
-                Total Duration
-              </p>
-              <p className="text-xl font-bold">{application.totalDays} Days</p>
+
+            <div className="flex items-center flex-none relative">
+              <div className="bg-white/20 backdrop-blur-md px-4 py-2 rounded-xl">
+                <p className="text-[10px] text-white/90 uppercase font-bold">
+                  Total Duration
+                </p>
+                <p className="text-xl font-bold">{durationLabel}</p>
+              </div>
             </div>
           </div>
 
           <div
-            className="border rounded-xl p-4 flex justify-between items-center text-center gap-4 min-w-0"
+            className="border rounded-xl p-4 flex justify-between items-center gap-4 min-w-0"
             style={{
               backgroundColor: "var(--app-surface)",
               borderColor: borderColor,
             }}
           >
             <div
-              className="p-4 rounded-2xl border"
+              className="p-4 rounded-2xl border flex-none"
               style={{
                 backgroundColor: overallIconChip.bg,
                 borderColor: overallIconChip.br,
                 color: overallIconChip.fg,
               }}
             >
-              <StatusIcon
-                status={application.overallStatus}
-                size={32}
-                className="h-6 w-6"
-              />
+              {overall === "CANCELLED" ? (
+                <Ban size={28} className="h-6 w-6" />
+              ) : (
+                <StatusIcon
+                  status={application.overallStatus}
+                  size={32}
+                  className="h-6 w-6"
+                />
+              )}
             </div>
-            <div className="text-start min-w-0">
+
+            <div className="text-end min-w-0">
               <p
                 className="text-xs font-bold uppercase tracking-widest"
                 style={{ color: "var(--app-muted)" }}
@@ -1069,7 +1354,7 @@ const WellnessApplicationDetails = () => {
                 Global Status
               </p>
               <p
-                className="text-xl font-black break-words"
+                className="text-xl font-black break-words mt-0.5"
                 style={{ color: "var(--app-text)" }}
               >
                 {application.overallStatus}
@@ -1079,192 +1364,145 @@ const WellnessApplicationDetails = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-w-0">
-          <div className="lg:col-span-2 space-y-4 min-w-0">
+          {/* MAIN */}
+          <div className="lg:col-span-2 flex flex-col gap-4 min-w-0">
+            {/* Purpose */}
             <section
-              className="border rounded-xl p-3 shadow-sm min-w-0"
+              className="border rounded-xl p-4 sm:p-5 shadow-sm min-w-0"
               style={{
                 backgroundColor: "var(--app-surface)",
                 borderColor: borderColor,
               }}
             >
-              <div className="flex items-center gap-3 mb-6">
-                {(() => {
-                  const chip = getIconChipStyle("accent", borderColor);
-                  return (
-                    <span
-                      className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
-                      style={{
-                        backgroundColor: chip.bg,
-                        color: chip.fg,
-                        borderColor: chip.br,
-                      }}
-                    >
-                      <MessageCircle size={20} />
-                    </span>
-                  );
-                })()}
-                <h3
-                  className="text-xs font-bold uppercase tracking-widest"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  Purpose of Leave
-                </h3>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  {/* <p
-                    className="text-[10px] font-bold uppercase mb-1"
+              <SectionTitle
+                icon={MessageCircle}
+                kind="accent"
+                title="Purpose of Leave"
+                borderColor={borderColor}
+              />
+
+              <p
+                className="leading-relaxed italic p-4 rounded-2xl border break-words"
+                style={{
+                  color: "var(--app-text)",
+                  backgroundColor: "var(--app-surface-2)",
+                  borderColor: borderColor,
+                }}
+              >
+                "
+                {application.reason ||
+                  "No specific reason provided by the applicant."}
+                "
+              </p>
+
+              {isOrganicApp && (
+                <div className="mt-4 px-1">
+                  <p
+                    className="text-[10px] font-bold uppercase tracking-wider mb-1"
                     style={{ color: "var(--app-muted)" }}
                   >
-                    Purpose / Reason
-                  </p> */}
+                    Commutation Status
+                  </p>
                   <p
-                    className="leading-relaxed italic p-4 rounded-2xl border break-words"
-                    style={{
-                      color: "var(--app-text)",
-                      backgroundColor: "var(--app-surface-2)",
-                      borderColor: borderColor,
-                    }}
+                    className="font-semibold text-sm"
+                    style={{ color: "var(--app-text)" }}
                   >
-                    "
-                    {application.reason ||
-                      "No specific reason provided by the applicant."}
-                    "
+                    {application.commutation || "Not Requested"}
                   </p>
                 </div>
-
-                {isOrganicApp && (
-                  <div className="px-2">
-                    <p
-                      className="text-[10px] font-bold uppercase mb-1"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      Commutation Status
-                    </p>
-                    <p
-                      className="font-semibold text-sm"
-                      style={{ color: "var(--app-text)" }}
-                    >
-                      {application.commutation || "Not Requested"}
-                    </p>
-                  </div>
-                )}
-              </div>
+              )}
             </section>
 
-            {/* ✅ LATE FILING JUSTIFICATION BLOCK */}
+            {/* Late filing justification */}
             {application.lateFiling?.isLateFiling && (
               <section
-                className="border rounded-xl p-3 shadow-sm min-w-0 mt-4"
+                className="border rounded-xl p-4 sm:p-5 shadow-sm min-w-0"
                 style={{
                   backgroundColor: "rgba(245,158,11,0.05)",
                   borderColor: "rgba(245,158,11,0.30)",
                 }}
               >
-                <div className="flex items-center gap-3 mb-4">
-                  <span
-                    className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
-                    style={{
-                      backgroundColor: "rgba(245,158,11,0.15)",
-                      color: "#d97706",
-                      borderColor: "rgba(245,158,11,0.25)",
-                    }}
-                  >
-                    <Clock size={20} />
-                  </span>
-                  <div className="min-w-0">
-                    <h3
-                      className="text-xs font-bold uppercase tracking-widest"
-                      style={{ color: "#d97706" }}
-                    >
-                      Late Filing Justification
-                    </h3>
-                    <p
-                      className="text-[11px] font-medium"
-                      style={{ color: "#b45309" }}
-                    >
-                      Filed with insufficient lead time notice.
-                    </p>
-                  </div>
-                </div>
-                <div>
-                  <p
-                    className="leading-relaxed italic p-4 rounded-2xl border break-words"
-                    style={{
-                      color: "var(--app-text)",
-                      backgroundColor: "var(--app-surface)",
-                      borderColor: borderColor,
-                    }}
-                  >
-                    "
-                    {application.lateFiling.justification ||
-                      "No justification provided."}
-                    "
-                  </p>
-                </div>
+                <SectionTitle
+                  icon={Clock}
+                  kind="amber"
+                  title="Late Filing Justification"
+                  subtitle="Filed with insufficient lead time notice."
+                  titleColor="#d97706"
+                  subtitleColor="#b45309"
+                  borderColor={borderColor}
+                />
+                <p
+                  className="leading-relaxed italic p-4 rounded-2xl border break-words"
+                  style={{
+                    color: "var(--app-text)",
+                    backgroundColor: "var(--app-surface)",
+                    borderColor: borderColor,
+                  }}
+                >
+                  "
+                  {application.lateFiling.justification ||
+                    "No justification provided."}
+                  "
+                </p>
               </section>
             )}
 
+            {/* Processing workflow */}
             <section
-              className="border rounded-xl p-3 shadow-sm min-w-0"
+              className="border rounded-xl p-4 sm:p-5 shadow-sm min-w-0"
               style={{
                 backgroundColor: "var(--app-surface)",
                 borderColor: borderColor,
               }}
             >
-              <div className="flex items-center gap-3 mb-6">
-                {(() => {
-                  const chip = getIconChipStyle("green", borderColor);
-                  return (
-                    <span
-                      className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border"
-                      style={{
-                        backgroundColor: chip.bg,
-                        color: chip.fg,
-                        borderColor: chip.br,
-                      }}
-                    >
-                      <History size={18} />
-                    </span>
-                  );
-                })()}
-                <div className="min-w-0">
-                  <h3
-                    className="text-xs font-bold uppercase tracking-widest"
-                    style={{ color: "var(--app-muted)" }}
-                  >
-                    Processing Timeline
-                  </h3>
-                  <p
-                    className="text-xs font-medium"
-                    style={{ color: "var(--app-muted)" }}
-                  >
-                    Step-by-step approval progress
-                  </p>
-                </div>
-              </div>
+              <SectionTitle
+                icon={History}
+                kind="green"
+                title="Processing Timeline"
+                subtitle="Step-by-step approval progress"
+                borderColor={borderColor}
+              />
+
               {sortedApprovals.length > 0 ? (
-                <div className="relative space-y-6 sm:space-y-8 t-1 min-w-0">
-                  <div
-                    className="absolute left-5 top-2 bottom-2 w-0.5"
-                    style={{ backgroundColor: "var(--app-border)" }}
-                  />
-                  {sortedApprovals.map((approval, idx) => (
-                    <TimelineCard
-                      key={approval?._id || idx}
-                      approval={approval}
-                      index={idx}
-                      isLast={idx === sortedApprovals.length - 1}
-                    />
-                  ))}
-                  {String(application.overallStatus || "").toUpperCase() ===
-                    "APPROVED" && (
-                    <div className="relative flex gap-2 sm:gap-4 items-start">
-                      <div className="relative z-10 h-10 w-10 rounded-full bg-emerald-500 flex items-center justify-center border-4 border-white shadow-md flex-none">
-                        <CheckCircle2 size={18} className="text-white" />
+                <ol className="flex flex-col gap-3">
+                  {sortedApprovals.map((approval, idx) => {
+                    const stepStatus = upper(approval?.status);
+                    const isQueued =
+                      overall === "PENDING" &&
+                      stepStatus === "PENDING" &&
+                      activeIndex >= 0 &&
+                      idx > activeIndex;
+
+                    return (
+                      <TimelineStep
+                        key={approval?._id || idx}
+                        approval={approval}
+                        index={idx}
+                        isLast={
+                          idx === sortedApprovals.length - 1 &&
+                          overall !== "APPROVED"
+                        }
+                        isMine={idx === myIndex}
+                        isActive={idx === activeIndex}
+                        isQueued={isQueued}
+                        borderColor={borderColor}
+                      />
+                    );
+                  })}
+
+                  {overall === "APPROVED" && (
+                    <li className="relative flex gap-3 sm:gap-4 items-start">
+                      <div
+                        className="relative z-10 h-10 w-10 rounded-full flex items-center justify-center border-4 shadow-sm flex-none"
+                        style={{
+                          backgroundColor: "#10b981",
+                          borderColor: "var(--app-surface)",
+                        }}
+                      >
+                        <BadgeCheck size={18} className="text-white" />
                       </div>
                       <div
-                        className="flex-1 rounded-2xl p-4 shadow-sm border"
+                        className="flex-1 rounded-xl p-3 sm:p-4 border"
                         style={{
                           backgroundColor: "rgba(34,197,94,0.14)",
                           borderColor: "rgba(34,197,94,0.22)",
@@ -1276,13 +1514,19 @@ const WellnessApplicationDetails = () => {
                         >
                           Application Fully Approved
                         </p>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          The Wellness Leave request has been finalized.
+                        </p>
                       </div>
-                    </div>
+                    </li>
                   )}
-                </div>
+                </ol>
               ) : (
                 <div
-                  className="flex flex-col items-center justify-center p-12 border border-dashed rounded-xl text-center"
+                  className="flex flex-col items-center justify-center p-10 border border-dashed rounded-xl text-center"
                   style={{
                     backgroundColor: "var(--app-surface)",
                     borderColor: "var(--app-border)",
@@ -1299,92 +1543,54 @@ const WellnessApplicationDetails = () => {
                   >
                     Waiting for workflow initiation
                   </p>
+                  <p
+                    style={{ color: "var(--app-muted)" }}
+                    className="text-sm mt-0.5"
+                  >
+                    No approvers have acted on this request yet.
+                  </p>
                 </div>
               )}
             </section>
           </div>
 
-          <aside className="space-y-4 min-w-0">
+          {/* SIDEBAR */}
+          <aside className="flex flex-col gap-4 min-w-0">
             <div
-              className="border rounded-xl p-2 sm:p-3 shadow-sm min-w-0"
+              className="border rounded-xl p-4 shadow-sm min-w-0"
               style={{
                 backgroundColor: "var(--app-surface)",
                 borderColor: borderColor,
               }}
             >
-              <div className="flex items-center justify-between gap-3">
-                <h4
-                  className="text-xs font-bold uppercase tracking-widest"
-                  style={{ color: "var(--app-muted)" }}
-                >
-                  Documents
-                </h4>
-              </div>
-
-              {/* General Form PDF Button */}
-              <button
-                type="button"
-                onClick={() => setIsPdfOpen(true)}
-                className="mt-3 w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-[color:var(--app-surface-2)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 transition"
-                style={{
-                  borderColor: borderColor,
-                  backgroundColor: "var(--app-surface)",
-                  color: "var(--app-text)",
-                }}
-                title="View General PDF"
+              <h4
+                className="text-xs font-bold uppercase tracking-widest"
+                style={{ color: "var(--app-muted)" }}
               >
-                <span className="inline-flex items-center gap-2 min-w-0">
-                  <span
-                    className="h-8 w-8 rounded-lg flex items-center justify-center flex-none border"
-                    style={{
-                      backgroundColor: "rgba(239,68,68,0.12)",
-                      color: "#ef4444",
-                      borderColor: "rgba(239,68,68,0.20)",
-                    }}
-                  >
-                    <FileText size={16} />
-                  </span>
-                  <span className="truncate">General Form</span>
-                </span>
-                <span
-                  className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
-                  style={{
-                    color: "var(--app-muted)",
-                    borderColor: "var(--app-border)",
-                    backgroundColor: "var(--app-surface-2)",
-                  }}
-                >
-                  PDF
-                </span>
-              </button>
+                Documents
+              </h4>
 
-              {/* CSC Form 6 PDF Button */}
-              {isOrganicApp && (
+              <div className="mt-3 flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsCsc6PdfOpen(true)}
-                  className="mt-2 w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-[color:var(--app-surface-2)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 transition"
-                  style={{
-                    borderColor: borderColor,
-                    backgroundColor: "var(--app-surface)",
-                    color: "var(--app-text)",
-                  }}
-                  title="View CSC Form 6"
+                  onClick={() => setIsPdfOpen(true)}
+                  className={DOC_BTN}
+                  style={{ borderColor, color: "var(--app-text)" }}
+                  title="View General PDF"
                 >
-                  <span className="inline-flex items-center gap-2 min-w-0">
+                  <span className="inline-flex items-center gap-2.5 min-w-0">
                     <span
                       className="h-8 w-8 rounded-lg flex items-center justify-center flex-none border"
                       style={{
-                        backgroundColor: "rgba(59,130,246,0.12)",
-                        color: "#3b82f6",
-                        borderColor: "rgba(59,130,246,0.20)",
+                        backgroundColor: "rgba(239,68,68,0.12)",
+                        color: "#ef4444",
+                        borderColor: "rgba(239,68,68,0.20)",
                       }}
                     >
-                      <FileBadge size={16} />
+                      <FileText size={16} />
                     </span>
-                    <span className="truncate">CSC Form 6</span>
+                    <span className="truncate">General Form</span>
                   </span>
-
                   <span
                     className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
                     style={{
@@ -1396,52 +1602,85 @@ const WellnessApplicationDetails = () => {
                     PDF
                   </span>
                 </button>
-              )}
 
-              {/* ✅ LATE FILING ATTACHMENT BUTTON */}
-              {application.lateFiling?.isLateFiling &&
-                application.lateFiling?.attachment?.fileUrl && (
-                  <a
-                    href={buildApiUrl(
-                      application.lateFiling.attachment.fileUrl,
-                    )}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold hover:bg-[color:var(--app-surface-2)] focus:outline-none focus:ring-2 focus:ring-[color:var(--accent)] focus:ring-offset-2 transition"
-                    style={{
-                      borderColor: "rgba(245,158,11,0.3)",
-                      backgroundColor: "rgba(245,158,11,0.05)",
-                      color: "var(--app-text)",
-                    }}
-                    title="View Late Filing Attachment"
+                {isOrganicApp && (
+                  <button
+                    type="button"
+                    onClick={() => setIsCsc6PdfOpen(true)}
+                    className={DOC_BTN}
+                    style={{ borderColor, color: "var(--app-text)" }}
+                    title="View CSC Form 6"
                   >
-                    <span className="inline-flex items-center gap-2 min-w-0">
+                    <span className="inline-flex items-center gap-2.5 min-w-0">
                       <span
                         className="h-8 w-8 rounded-lg flex items-center justify-center flex-none border"
                         style={{
-                          backgroundColor: "rgba(245,158,11,0.15)",
-                          color: "#d97706",
-                          borderColor: "rgba(245,158,11,0.25)",
+                          backgroundColor: "rgba(59,130,246,0.12)",
+                          color: "#3b82f6",
+                          borderColor: "rgba(59,130,246,0.20)",
                         }}
                       >
-                        <Paperclip size={16} />
+                        <FileBadge size={16} />
                       </span>
-                      <span className="truncate">Late Filing Doc</span>
+                      <span className="truncate">CSC Form 6</span>
                     </span>
-
                     <span
                       className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
                       style={{
-                        color: "#d97706",
-                        borderColor: "rgba(245,158,11,0.3)",
-                        backgroundColor: "rgba(245,158,11,0.1)",
+                        color: "var(--app-muted)",
+                        borderColor: "var(--app-border)",
+                        backgroundColor: "var(--app-surface-2)",
                       }}
                     >
                       PDF
                     </span>
-                  </a>
+                  </button>
                 )}
+
+                {application.lateFiling?.isLateFiling &&
+                  application.lateFiling?.attachment?.fileUrl && (
+                    <a
+                      href={buildApiUrl(
+                        application.lateFiling.attachment.fileUrl,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition hover:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                      style={{
+                        borderColor: "rgba(245,158,11,0.3)",
+                        backgroundColor: "rgba(245,158,11,0.05)",
+                        color: "var(--app-text)",
+                      }}
+                      title="View Late Filing Attachment"
+                    >
+                      <span className="inline-flex items-center gap-2.5 min-w-0">
+                        <span
+                          className="h-8 w-8 rounded-lg flex items-center justify-center flex-none border"
+                          style={{
+                            backgroundColor: "rgba(245,158,11,0.15)",
+                            color: "#d97706",
+                            borderColor: "rgba(245,158,11,0.25)",
+                          }}
+                        >
+                          <Paperclip size={16} />
+                        </span>
+                        <span className="truncate">Late Filing Doc</span>
+                      </span>
+                      <span
+                        className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
+                        style={{
+                          color: "#d97706",
+                          borderColor: "rgba(245,158,11,0.3)",
+                          backgroundColor: "rgba(245,158,11,0.1)",
+                        }}
+                      >
+                        PDF
+                      </span>
+                    </a>
+                  )}
+              </div>
             </div>
+
             <RequestedDatesCalendar dates={application?.inclusiveDates || []} />
           </aside>
         </div>
@@ -1477,7 +1716,7 @@ const WellnessApplicationDetails = () => {
               }}
             >
               <div
-                className="mt-0.5 p-1.5 rounded-lg border shadow-sm transition-colors duration-300 ease-out"
+                className="mt-0.5 p-1.5 rounded-lg border shadow-sm"
                 style={{
                   backgroundColor: "var(--app-surface)",
                   borderColor: borderColor,
@@ -1488,13 +1727,13 @@ const WellnessApplicationDetails = () => {
               </div>
               <div className="min-w-0">
                 <p
-                  className="text-[10px] font-bold uppercase tracking-wider transition-colors duration-300 ease-out"
+                  className="text-[10px] font-bold uppercase tracking-wider"
                   style={{ color: "var(--app-muted)" }}
                 >
                   Reviewing Request For
                 </p>
                 <p
-                  className="text-sm font-bold break-words transition-colors duration-300 ease-out"
+                  className="text-sm font-bold break-words"
                   style={{ color: "var(--app-text)" }}
                 >
                   {application.employee?.firstName}{" "}
@@ -1506,7 +1745,7 @@ const WellnessApplicationDetails = () => {
             {modalType === "approve" ? (
               <div className="text-center py-4 max-w-sm mx-auto">
                 <div
-                  className="mx-auto h-20 w-20 rounded-full flex items-center justify-center mb-4 border-4 shadow-inner transition-colors duration-300 ease-out"
+                  className="mx-auto h-20 w-20 rounded-full flex items-center justify-center mb-4 border-4 shadow-inner"
                   style={{
                     backgroundColor: "rgba(16, 185, 129, 0.1)",
                     color: "#10b981",
@@ -1516,7 +1755,7 @@ const WellnessApplicationDetails = () => {
                   <Check size={40} strokeWidth={3} />
                 </div>
                 <h2
-                  className="text-lg font-semibold transition-colors duration-300 ease-out"
+                  className="text-lg font-semibold"
                   style={{ color: "var(--app-text)" }}
                 >
                   Are you sure you want to approve this Wellness Leave?
@@ -1525,7 +1764,7 @@ const WellnessApplicationDetails = () => {
             ) : (
               <div className="space-y-4">
                 <div
-                  className="flex items-center gap-2 transition-colors duration-300 ease-out"
+                  className="flex items-center gap-2"
                   style={{ color: "#ef4444" }}
                 >
                   <AlertCircle size={18} />
@@ -1537,7 +1776,7 @@ const WellnessApplicationDetails = () => {
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
                     placeholder="Please explain why this request is being declined..."
-                    className="w-full p-4 border-2 rounded-2xl outline-none min-h-[140px] text-sm transition-all duration-300 ease-out bg-transparent"
+                    className="w-full p-4 pb-8 border-2 rounded-2xl outline-none min-h-[140px] text-sm transition-all duration-300 ease-out"
                     style={{
                       backgroundColor: "var(--app-surface)",
                       color: "var(--app-text)",
@@ -1546,26 +1785,50 @@ const WellnessApplicationDetails = () => {
                         : "rgba(239, 68, 68, 0.4)",
                     }}
                   />
+                  <div className="absolute bottom-3 right-4 flex items-center gap-1.5">
+                    <span
+                      className="text-[10px] font-bold uppercase"
+                      style={{
+                        color: remarks.trim() ? "var(--app-muted)" : "#ef4444",
+                      }}
+                    >
+                      {remarks.length > 0
+                        ? `${remarks.length} chars`
+                        : "Required"}
+                    </span>
+                  </div>
                 </div>
+
+                <p
+                  className="text-[11px] p-2.5 rounded-lg border italic"
+                  style={{
+                    color: "var(--app-muted)",
+                    backgroundColor: "var(--app-surface-2)",
+                    borderColor: borderColor,
+                  }}
+                >
+                  Tip: Providing a clear reason helps employees correct future
+                  applications.
+                </p>
               </div>
             )}
           </div>
         </Modal>
-
-        {/* General Form PDF Modal */}
-        <WellnessApplicationPdfModal
-          app={application}
-          isOpen={isPdfOpen}
-          onClose={() => setIsPdfOpen(false)}
-        />
-
-        {/* CSC Form 6 PDF Modal */}
-        <OrganicWellnessApplicationPdfModal
-          app={application}
-          isOpen={isCsc6PdfOpen}
-          onClose={() => setIsCsc6PdfOpen(false)}
-        />
       </div>
+
+      {/* General Form PDF Modal */}
+      <WellnessApplicationPdfModal
+        app={application}
+        isOpen={isPdfOpen}
+        onClose={() => setIsPdfOpen(false)}
+      />
+
+      {/* CSC Form 6 PDF Modal */}
+      <OrganicWellnessApplicationPdfModal
+        app={application}
+        isOpen={isCsc6PdfOpen}
+        onClose={() => setIsCsc6PdfOpen(false)}
+      />
     </div>
   );
 };

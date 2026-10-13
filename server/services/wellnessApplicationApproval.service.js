@@ -732,9 +732,12 @@ const approveWellnessApplicationService = async ({
     } else {
       // Intermediate Step: DO NOT notify notifiedEmployees here.
       // Only alert the next approver and the applicant.
+
+      // FIX APPLIED HERE: Number() casting for safe level comparison
       const nextStep = updatedSteps.find(
-        (s) => s.level === currentStep.level + 1,
+        (s) => Number(s.level) === Number(currentStep.level) + 1,
       );
+
       if (nextStep) {
         const nextApproverUser = await Employee.findById(nextStep.approver)
           .select("firstName lastName email phone")

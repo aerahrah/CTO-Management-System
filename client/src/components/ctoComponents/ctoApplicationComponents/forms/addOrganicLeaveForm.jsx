@@ -1335,7 +1335,7 @@ const AddOrganicCtoApplicationForm = () => {
                               "transparent")
                           }
                         >
-                          Select Memos
+                          View Memos
                         </button>
                       </div>
                       {selectedMemos.length === 0 ? (

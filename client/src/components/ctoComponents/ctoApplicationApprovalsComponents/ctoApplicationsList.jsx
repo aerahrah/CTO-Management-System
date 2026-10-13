@@ -13,7 +13,8 @@ import {
   AlertCircle,
   LayoutGrid,
   Ban,
-  Clock4, // ✅ Imported Clock4 for Late Filing icon
+  Clock4,
+  CalendarDays,
 } from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
@@ -43,7 +44,7 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
-/* ✅ Reactive resolved theme (fixes "system" switching + skeleton mismatch) */
+/* Reactive resolved theme */
 function useResolvedTheme(prefTheme) {
   const [theme, setTheme] = useState(() => {
     if (typeof window === "undefined")
@@ -100,6 +101,46 @@ function useIsXlUp() {
   }, []);
 
   return isXlUp;
+}
+
+/* ================================
+   DATE HELPERS
+================================ */
+const DATE_FMT = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+const DATE_TIME_FMT = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+// Pending requests older than this get their age highlighted
+const STALE_PENDING_DAYS = 3;
+
+function getSubmittedDate(app) {
+  const raw = app?.dateSubmitted || app?.submittedAt || app?.createdAt;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Whole calendar days between the date and today (local time)
+function daysSince(date) {
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(Math.round((today - start) / 86400000), 0);
+}
+
+function relativeDay(days) {
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
 }
 
 /* ================================
@@ -310,13 +351,62 @@ const tabTone = {
   },
 };
 
+// Pending first, since that's what an approver works on
+const TABS = [
+  { id: "PENDING", label: "Pending", icon: AlertCircle, tone: "amber" },
+  { id: "APPROVED", label: "Approved", icon: CheckCircle2, tone: "green" },
+  { id: "REJECTED", label: "Rejected", icon: XCircle, tone: "red" },
+  { id: "CANCELLED", label: "Cancelled", icon: Ban, tone: "slate" },
+  { id: "", label: "All", icon: LayoutGrid, tone: "accent" },
+];
+
+const EMPTY_TEXT = {
+  PENDING: "No pending requests — you're all caught up",
+  APPROVED: "No approved requests yet",
+  REJECTED: "No rejected requests",
+  CANCELLED: "No cancelled requests",
+  "": "No requests yet",
+};
+
+// Frontend logic matching backend getEffectiveStatusForApprover
+function getDisplayStatus(app, adminId) {
+  const myStep = app.approvals?.find(
+    (step) =>
+      String(step?.approver?._id || step?.approver || "") ===
+      String(adminId || ""),
+  );
+
+  const myStatus = String(myStep?.status || "").toUpperCase();
+  const overallStatus = String(app?.overallStatus || "").toUpperCase();
+
+  if (myStatus === "APPROVED") {
+    // Approved by me, but cancelled afterwards
+    return {
+      displayStatus: "APPROVED",
+      showCancelledTag: overallStatus === "CANCELLED",
+    };
+  }
+  if (myStatus === "REJECTED") {
+    return { displayStatus: "REJECTED", showCancelledTag: false };
+  }
+  if (myStatus === "CANCELLED" || overallStatus === "CANCELLED") {
+    return { displayStatus: "CANCELLED", showCancelledTag: false };
+  }
+  if (overallStatus === "REJECTED") {
+    return { displayStatus: "CANCELLED", showCancelledTag: false };
+  }
+  return {
+    displayStatus: myStatus || overallStatus,
+    showCancelledTag: false,
+  };
+}
+
 const CtoApplicationsList = () => {
   const { admin } = useAuth();
   const navigate = useNavigate();
   const { id: selectedId } = useParams();
   const isXlUp = useIsXlUp();
 
-  // ✅ Theme vars (same concept as MyCtoCreditHistory)
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
 
@@ -327,7 +417,6 @@ const CtoApplicationsList = () => {
   }, [resolvedTheme]);
 
   const skeletonColors = useMemo(() => {
-    // ✅ uses var fallbacks so skeleton never flashes white
     const base =
       resolvedTheme === "dark"
         ? "rgba(255,255,255,0.06)"
@@ -344,13 +433,13 @@ const CtoApplicationsList = () => {
   }, [resolvedTheme]);
 
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("PENDING"); // default: Pending
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
 
   const debouncedSearch = useDebounce(searchTerm, 450);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isFetching, isError } = useQuery({
     queryKey: [
       "ctoApplicationsApprovals",
       String(admin?.id || ""),
@@ -379,11 +468,14 @@ const CtoApplicationsList = () => {
     );
   }, [statusCounts]);
 
+  const pendingCount = Number(statusCounts?.PENDING) || 0;
+
   const getCountForTab = (id) => {
     if (id === "") return computedTotalCount;
     return Number(statusCounts?.[id]) || 0;
   };
 
+  // Auto-open the first request on wide screens
   const hasNavigatedRef = useRef(false);
   useEffect(() => {
     if (!isXlUp) return;
@@ -393,9 +485,15 @@ const CtoApplicationsList = () => {
     }
   }, [data, selectedId, navigate, isXlUp]);
 
+  // Back to page 1 when the search changes
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter, limit]);
+  }, [debouncedSearch]);
+
+  const changeTab = (id) => {
+    setStatusFilter(id);
+    setPage(1);
+  };
 
   const apps = data?.data || [];
   const totalPages = Math.max(
@@ -425,14 +523,6 @@ const CtoApplicationsList = () => {
         ? 0
         : Math.min(page * limit, total)
       : null;
-
-  const tabs = [
-    { id: "", label: "All", icon: LayoutGrid, tone: "accent" },
-    { id: "PENDING", label: "Pending", icon: AlertCircle, tone: "amber" },
-    { id: "APPROVED", label: "Approved", icon: CheckCircle2, tone: "green" },
-    { id: "REJECTED", label: "Rejected", icon: XCircle, tone: "red" },
-    { id: "CANCELLED", label: "Cancelled", icon: Ban, tone: "slate" },
-  ];
 
   if (isError) {
     return (
@@ -484,13 +574,15 @@ const CtoApplicationsList = () => {
                 className="text-[10px] font-bold uppercase tracking-wider"
                 style={{ color: "var(--app-muted)" }}
               >
-                Total
+                Needs action
               </div>
               <div
                 className="text-sm font-extrabold"
-                style={{ color: "var(--app-text)" }}
+                style={{
+                  color: pendingCount > 0 ? "#d97706" : "var(--app-text)",
+                }}
               >
-                {isLoading ? <Skeleton width={40} /> : computedTotalCount}
+                {isLoading ? <Skeleton width={40} /> : pendingCount}
               </div>
             </div>
           </div>
@@ -502,16 +594,17 @@ const CtoApplicationsList = () => {
           style={{ backgroundColor: "var(--app-surface)" }}
         >
           <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide no-scrollbar">
-            {tabs.map((tab) => {
+            {TABS.map((tab) => {
               const isActive = statusFilter === tab.id;
               const count = getCountForTab(tab.id);
               const t = tabTone[tab.tone] || tabTone.accent;
+              const Icon = tab.icon;
 
               return (
                 <button
-                  key={tab.id}
+                  key={tab.id || "ALL"}
                   type="button"
-                  onClick={() => setStatusFilter(tab.id)}
+                  onClick={() => changeTab(tab.id)}
                   className="flex items-center gap-1 p-1.5 rounded-lg border transition-colors duration-200 whitespace-nowrap"
                   style={{
                     backgroundColor: isActive ? t.bg : "var(--app-surface)",
@@ -530,6 +623,7 @@ const CtoApplicationsList = () => {
                   }}
                   aria-pressed={isActive}
                 >
+                  <Icon className="w-3 h-3" />
                   <span className="text-[10px] font-bold uppercase tracking-wider">
                     {tab.label}
                   </span>
@@ -632,60 +726,53 @@ const CtoApplicationsList = () => {
 
         {/* List */}
         <div
-          className="flex-1 min-h-0 overflow-y-auto px-2 py-2"
-          style={{ backgroundColor: "var(--app-surface)" }}
+          className="flex-1 min-h-0 overflow-y-auto px-2 py-2 transition-opacity duration-200"
+          style={{
+            backgroundColor: "var(--app-surface)",
+            opacity: isFetching && !isLoading ? 0.6 : 1,
+          }}
         >
           <ul className="flex flex-col gap-1">
             {isLoading ? (
               Array.from({ length: 6 }).map((_, i) => (
                 <li key={i} className="p-3">
-                  <Skeleton height={60} borderRadius={12} />
+                  <Skeleton height={72} borderRadius={12} />
                 </li>
               ))
-            ) : apps?.length > 0 ? (
+            ) : apps.length > 0 ? (
               apps.map((app) => {
                 const isActive = selectedId === app._id;
                 const initials = `${app.employee?.firstName?.[0] || ""}${
                   app.employee?.lastName?.[0] || ""
                 }`;
 
-                // ✅ Frontend logic matching backend getEffectiveStatusForApprover
-                const myStep = app.approvals?.find(
-                  (step) =>
-                    String(step?.approver?._id || step?.approver || "") ===
-                    String(admin?.id || ""),
+                const { displayStatus, showCancelledTag } = getDisplayStatus(
+                  app,
+                  admin?.id,
                 );
 
-                const myStatus = String(myStep?.status || "").toUpperCase();
-                const overallStatus = String(
-                  app?.overallStatus || "",
-                ).toUpperCase();
+                const submitted = getSubmittedDate(app);
+                const age = submitted ? daysSince(submitted) : null;
+                const isStale =
+                  displayStatus === "PENDING" &&
+                  age !== null &&
+                  age >= STALE_PENDING_DAYS;
 
-                let displayStatus = myStatus;
-                let showCancelledTag = false;
-
-                if (myStatus === "APPROVED") {
-                  displayStatus = "APPROVED";
-                  // Flag if the approver approved it, but it was later cancelled
-                  if (overallStatus === "CANCELLED") showCancelledTag = true;
-                } else if (myStatus === "REJECTED") {
-                  displayStatus = "REJECTED";
-                } else if (
-                  myStatus === "CANCELLED" ||
-                  overallStatus === "CANCELLED"
-                ) {
-                  displayStatus = "CANCELLED";
-                } else if (overallStatus === "REJECTED") {
-                  displayStatus = "CANCELLED";
-                } else {
-                  displayStatus = myStatus || overallStatus;
-                }
+                const open = () => navigate(`/app/cto-approvals/${app._id}`);
 
                 return (
                   <li
                     key={app._id}
-                    onClick={() => navigate(`/app/cto-approvals/${app._id}`)}
-                    className="group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors duration-200"
+                    role="button"
+                    tabIndex={0}
+                    onClick={open}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        open();
+                      }
+                    }}
+                    className="group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                     style={{
                       backgroundColor: isActive
                         ? "var(--accent-soft)"
@@ -723,11 +810,7 @@ const CtoApplicationsList = () => {
                       <div className="flex justify-between items-start gap-2">
                         <span
                           className="text-sm font-semibold truncate"
-                          style={{
-                            color: isActive
-                              ? "var(--app-text)"
-                              : "var(--app-text)",
-                          }}
+                          style={{ color: "var(--app-text)" }}
                         >
                           {app.employee?.firstName} {app.employee?.lastName}
                         </span>
@@ -736,7 +819,6 @@ const CtoApplicationsList = () => {
                           <div className="transform scale-[0.85] origin-top-right flex-none">
                             <StatusBadge status={displayStatus} />
                           </div>
-                          {/* ✅ Dual-Status UX: Sub-tag for Approved but Cancelled */}
                           {showCancelledTag && (
                             <span
                               className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
@@ -759,6 +841,30 @@ const CtoApplicationsList = () => {
                         {app.employee?.position || "No position"}
                       </span>
 
+                      {/* Date submitted */}
+                      {submitted && (
+                        <div
+                          className="flex items-center gap-1 mt-1 text-[11px] min-w-0"
+                          style={{ color: "var(--app-muted)" }}
+                          title={`Submitted ${DATE_TIME_FMT.format(submitted)}`}
+                        >
+                          <CalendarDays className="h-3 w-3 flex-none" />
+                          <span className="truncate">
+                            Filed {DATE_FMT.format(submitted)}
+                          </span>
+                          <span className="flex-none">·</span>
+                          <span
+                            className="flex-none"
+                            style={{
+                              color: isStale ? "#d97706" : "var(--app-muted)",
+                              fontWeight: isStale ? 700 : 400,
+                            }}
+                          >
+                            {relativeDay(age)}
+                          </span>
+                        </div>
+                      )}
+
                       <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                         <div
                           className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-md border"
@@ -780,7 +886,6 @@ const CtoApplicationsList = () => {
                           </span>
                         </div>
 
-                        {/* ✅ NEW: LATE FILING INDICATOR */}
                         {app.lateFiling?.isLateFiling && (
                           <div
                             className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border"
@@ -801,15 +906,29 @@ const CtoApplicationsList = () => {
                 );
               })
             ) : (
-              <div
-                className="flex flex-col items-center justify-center py-12"
+              <li
+                className="flex flex-col items-center justify-center py-12 text-center px-4"
                 style={{ color: "var(--app-muted)" }}
               >
-                <Search className="h-6 w-6 mb-2" style={{ opacity: 0.25 }} />
-                <p className="text-xs font-medium uppercase tracking-tighter">
-                  No results found
+                {debouncedSearch ? (
+                  <Search className="h-6 w-6 mb-2" style={{ opacity: 0.25 }} />
+                ) : statusFilter === "PENDING" ? (
+                  <CheckCircle2
+                    className="h-6 w-6 mb-2"
+                    style={{ opacity: 0.4 }}
+                  />
+                ) : (
+                  <LayoutGrid
+                    className="h-6 w-6 mb-2"
+                    style={{ opacity: 0.25 }}
+                  />
+                )}
+                <p className="text-xs font-medium">
+                  {debouncedSearch
+                    ? `No results for "${debouncedSearch}"`
+                    : EMPTY_TEXT[statusFilter] || "No results found"}
                 </p>
-              </div>
+              </li>
             )}
           </ul>
         </div>

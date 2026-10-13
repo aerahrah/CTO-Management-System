@@ -40,7 +40,7 @@ export default function NotifiedEmployeesModal({
   }, [isOpen, myRoute]);
 
   const approverIds = useMemo(
-    () => new Set(steps.map((s) => String(s.approver))),
+    () => new Set((steps || []).map((s) => String(s.approver))),
     [steps],
   );
 
@@ -73,7 +73,6 @@ export default function NotifiedEmployeesModal({
   });
 
   const isBusy = mutation.isPending;
-  const hasSteps = steps.length > 0;
 
   const addEmployee = (opt) => {
     if (!opt) return;
@@ -88,20 +87,17 @@ export default function NotifiedEmployeesModal({
 
   const handleSave = () => {
     if (isBusy) return;
-    if (!hasSteps) {
-      toast.error("Add at least one approver step first.");
-      return;
-    }
 
     mutation.mutate({
       name: myRoute?.name || `${admin?.firstName || "Personal"}'s Workflow`,
       isPublic: false,
-      steps: steps.map((s, i) => ({
+      steps: (steps || []).map((s, i) => ({
         level: i + 1,
         approver: s.approver,
         role: s.role || "",
         isEnabled: s.isEnabled !== false,
       })),
+      // selectedOptions naturally filters out anyone who was moved to steps
       notifiedEmployees: selectedOptions.map((o) => o.value),
     });
   };
@@ -149,7 +145,7 @@ export default function NotifiedEmployeesModal({
         show: true,
         label: isBusy ? "Saving..." : "Save Recipients",
         variant: "save",
-        disabled: isBusy || !hasSteps,
+        disabled: isBusy,
         onClick: handleSave,
       }}
     >
@@ -190,139 +186,123 @@ export default function NotifiedEmployeesModal({
           </div>
         </div>
 
-        {!hasSteps ? (
-          <div
-            className="p-4 rounded-xl border text-center text-sm"
-            style={{
-              borderColor,
-              color: "var(--app-muted)",
-              backgroundColor: "var(--app-surface-2)",
-            }}
+        {/* Picker */}
+        <div className="space-y-2">
+          <label
+            className="text-xs font-bold uppercase tracking-wider"
+            style={{ color: "var(--app-muted)" }}
           >
-            Add at least one approver step to your workflow before adding
-            notified employees.
-          </div>
-        ) : (
-          <>
-            {/* Picker */}
-            <div className="space-y-2">
-              <label
-                className="text-xs font-bold uppercase tracking-wider"
-                style={{ color: "var(--app-muted)" }}
-              >
-                Add an employee to notify
-              </label>
-              <Select
-                components={{ Input: CustomInput }}
-                options={availableOptions}
-                value={null}
-                onChange={addEmployee}
-                styles={selectStyles}
-                maxMenuHeight={260}
-                menuPlacement="auto"
-                placeholder="Search by name (e.g. your focal person or provincial officer)..."
-                noOptionsMessage={() => "No more employees available"}
-                formatOptionLabel={(opt) => (
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold">{opt.label}</span>
-                    <span
-                      className="text-[11px]"
-                      style={{ color: "var(--app-muted)" }}
-                    >
-                      {opt.position}
-                    </span>
-                  </div>
-                )}
-                isDisabled={isBusy}
-              />
-            </div>
-
-            {/* Selected list */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+            Add an employee to notify
+          </label>
+          <Select
+            components={{ Input: CustomInput }}
+            options={availableOptions}
+            value={null}
+            onChange={addEmployee}
+            styles={selectStyles}
+            maxMenuHeight={260}
+            menuPlacement="auto"
+            placeholder="Search by name (e.g. your focal person or provincial officer)..."
+            noOptionsMessage={() => "No more employees available"}
+            formatOptionLabel={(opt) => (
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold">{opt.label}</span>
                 <span
-                  className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5"
+                  className="text-[11px]"
                   style={{ color: "var(--app-muted)" }}
                 >
-                  <Users size={14} /> Will be notified
-                </span>
-                <span
-                  className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{
-                    backgroundColor: "var(--accent-soft)",
-                    color: "var(--accent)",
-                  }}
-                >
-                  {selectedOptions.length}
+                  {opt.position}
                 </span>
               </div>
+            )}
+            isDisabled={isBusy}
+          />
+        </div>
 
-              {selectedOptions.length === 0 ? (
-                <div
-                  className="rounded-xl border border-dashed p-5 text-center text-xs"
-                  style={{ borderColor, color: "var(--app-muted)" }}
-                >
-                  No one added yet. Use the search box above to add people.
-                </div>
-              ) : (
-                <ul
-                  className="rounded-xl border divide-y max-h-64 overflow-y-auto cto-scrollbar"
+        {/* Selected list */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span
+              className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5"
+              style={{ color: "var(--app-muted)" }}
+            >
+              <Users size={14} /> Will be notified
+            </span>
+            <span
+              className="text-[11px] font-semibold px-2 py-0.5 rounded-full"
+              style={{
+                backgroundColor: "var(--accent-soft)",
+                color: "var(--accent)",
+              }}
+            >
+              {selectedOptions.length}
+            </span>
+          </div>
+
+          {selectedOptions.length === 0 ? (
+            <div
+              className="rounded-xl border border-dashed p-5 text-center text-xs"
+              style={{ borderColor, color: "var(--app-muted)" }}
+            >
+              No one added yet. Use the search box above to add people.
+            </div>
+          ) : (
+            <ul
+              className="rounded-xl border divide-y max-h-64 overflow-y-auto cto-scrollbar"
+              style={{ borderColor }}
+            >
+              {selectedOptions.map((emp) => (
+                <li
+                  key={emp.value}
+                  className="flex items-center gap-3 px-3 py-2.5"
                   style={{ borderColor }}
                 >
-                  {selectedOptions.map((emp) => (
-                    <li
-                      key={emp.value}
-                      className="flex items-center gap-3 px-3 py-2.5"
-                      style={{ borderColor }}
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                    style={{
+                      backgroundColor: "var(--accent-soft)",
+                      color: "var(--accent)",
+                    }}
+                  >
+                    {getInitials(emp.label) || <UserCheck size={14} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="text-sm font-semibold truncate"
+                      style={{ color: "var(--app-text)" }}
                     >
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                        style={{
-                          backgroundColor: "var(--accent-soft)",
-                          color: "var(--accent)",
-                        }}
-                      >
-                        {getInitials(emp.label) || <UserCheck size={14} />}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className="text-sm font-semibold truncate"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          {emp.label}
-                        </p>
-                        <p
-                          className="text-[11px] truncate"
-                          style={{ color: "var(--app-muted)" }}
-                        >
-                          {emp.position}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeEmployee(emp.value)}
-                        disabled={isBusy}
-                        className="p-1.5 rounded-md transition-colors disabled:opacity-50"
-                        style={{ color: "#ef4444" }}
-                        title="Remove"
-                        onMouseEnter={(e) => {
-                          if (isBusy) return;
-                          e.currentTarget.style.backgroundColor =
-                            "rgba(239,68,68,0.10)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.backgroundColor = "transparent";
-                        }}
-                      >
-                        <X size={16} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </>
-        )}
+                      {emp.label}
+                    </p>
+                    <p
+                      className="text-[11px] truncate"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      {emp.position}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeEmployee(emp.value)}
+                    disabled={isBusy}
+                    className="p-1.5 rounded-md transition-colors disabled:opacity-50"
+                    style={{ color: "#ef4444" }}
+                    title="Remove"
+                    onMouseEnter={(e) => {
+                      if (isBusy) return;
+                      e.currentTarget.style.backgroundColor =
+                        "rgba(239,68,68,0.10)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                  >
+                    <X size={16} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </Modal>
   );

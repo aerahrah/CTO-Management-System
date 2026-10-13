@@ -457,7 +457,6 @@ export default function OrganicApplicationPdf({ app, logoSrc, signatureSrc }) {
 
   // HR Approvals
   const hrInitial = approvals.find((a) => a.role === "HR Initial");
-  const hrSignature = approvals.find((a) => a.role === "HR Signature");
 
   // AFD Approvals
   const afdInitial = approvals.find((a) => a.role === "AFD Chief Initial");
@@ -989,8 +988,7 @@ export default function OrganicApplicationPdf({ app, logoSrc, signatureSrc }) {
 
               {/* 7.A Approvers -> Map HR Variables */}
               <SlotSignatures
-                mainApprover={hrSignature}
-                initialApprovers={[hrInitial]}
+                mainApprover={hrInitial}
                 fallbackName="JAYFER T. AMMASI"
                 fallbackRole="HRMO II"
                 marginTop={40}

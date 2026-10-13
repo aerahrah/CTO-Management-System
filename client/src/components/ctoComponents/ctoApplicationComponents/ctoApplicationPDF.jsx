@@ -511,7 +511,7 @@ export default function CtoApplicationPdf({
   );
   const afdInitial = approvals.find((a) => a.role === "AFD Chief Initial");
   const afdSignature = approvals.find((a) => a.role === "AFD Chief Signature");
-  const hrSignature = approvals.find((a) => a.role === "HR Signature");
+  const hrInitial = approvals.find((a) => a.role === "HR Initial");
   const ardSignature = approvals.find((a) => a.role === "ARD Signature");
   const rdSignature = approvals.find(
     (a) => a.role === "Regional Director Signature",
@@ -542,8 +542,9 @@ export default function CtoApplicationPdf({
       ? sig?.actionDate || sig?.updatedAt || sig?.createdAt
       : null;
 
-  // ✅ Prioritizes the action date of the Final Approver (RD or ARD)
+  // ✅ Prioritizes the action date of the AFD Chief, falling back to final approvers
   const rawApprovalDate =
+    getSigDate(afdSignature) ||
     getSigDate(rdSignature) ||
     getSigDate(ardSignature) ||
     app?.approvedAt ||
@@ -841,7 +842,7 @@ export default function CtoApplicationPdf({
             <View style={styles.footerBlock}>
               <SlotSignatures
                 mainApprover={afdSignature}
-                initialApprovers={[hrSignature]}
+                initialApprovers={[hrInitial]}
                 fallbackName=""
                 fallbackRole={adminFinanceLabel}
                 marginTop={30}
