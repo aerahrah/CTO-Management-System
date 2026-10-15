@@ -292,6 +292,56 @@ function employeeWelcomeEmail({
 }
 
 // ───────────────────────────────────────────────────────────────
+// PASSWORD RESET (by Admin/HR)
+// ───────────────────────────────────────────────────────────────
+function passwordResetByAdminEmail({
+  firstName,
+  email,
+  tempPassword,
+  loginUrl,
+  brandName = BRAND.name,
+}) {
+  const safeFirstName = escapeHtml(firstName || "there");
+  const safeEmail = escapeHtml(email || "");
+  const safeTempPass = escapeHtml(tempPassword || "");
+  const safeLoginUrl = sanitizeUrl(loginUrl);
+
+  const details = `
+    ${detailRow("Status", "Password Reset", false, BRAND.warning)}
+    ${detailRow("Email Address", safeEmail || "<em>(not provided)</em>")}
+    ${detailRow(
+      "Temporary Password",
+      safeTempPass
+        ? `<code style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; color: ${BRAND.text};">${safeTempPass}</code>`
+        : "<em>(not provided)</em>",
+      true,
+    )}
+  `;
+
+  return {
+    subject: `Security Notice: Your ${brandName} Password Has Been Reset`,
+    html: emailLayout({
+      title: "Your password has been reset",
+      preheader: `An administrator reset the password for your ${brandName} account`,
+      greeting: `Hi <strong>${safeFirstName}</strong>,`,
+      intro:
+        "An administrator has reset the password for your account. Please use the temporary password below to sign in. You will be asked to set a new password right after signing in, and any devices that were signed in have been logged out.",
+      detailsRowsHtml: details,
+      cta:
+        safeLoginUrl !== "#"
+          ? { label: "Sign In to Portal", url: `${safeLoginUrl}` }
+          : null,
+      outro:
+        "If you did not request this reset, please contact your HR or IT administrator immediately.",
+      brandName,
+      footerNote:
+        "If the button above does not work, copy and paste this link into your browser: " +
+        safeLoginUrl,
+    }),
+  };
+}
+
+// ───────────────────────────────────────────────────────────────
 // CTO APPROVALS
 // ───────────────────────────────────────────────────────────────
 function ctoApprovalEmail({
@@ -1609,6 +1659,9 @@ function leaveCreditRolledBackEmail({
 }
 module.exports = {
   employeeWelcomeEmail,
+
+  // Account security
+  passwordResetByAdminEmail,
 
   // CTO workflow
   ctoApprovalEmail,

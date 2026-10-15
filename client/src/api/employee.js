@@ -83,3 +83,11 @@ export const getMyWellnessBalance = async () => {
   const res = await API.get(`/employee/my-wellness-balance`);
   return res.data;
 };
+
+// ==========================================
+// Admin: Reset Another Employee's Password
+// ==========================================
+export const adminResetEmployeePassword = async (email, notify = true) => {
+  const res = await API.post(`/employee/reset-password`, { email, notify });
+  return res.data;
+};

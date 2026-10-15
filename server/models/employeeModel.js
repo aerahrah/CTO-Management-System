@@ -39,6 +39,30 @@ const employeeSchema = new mongoose.Schema(
       },
     },
 
+    // ✅ NEW: set to true after an admin reset; cleared when the user changes it
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
+
+    // ✅ NEW: tokens issued before this time are rejected by the auth middleware
+    passwordChangedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ✅ NEW: audit fields for admin-initiated resets
+    passwordResetBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
+    },
+
+    passwordResetAt: {
+      type: Date,
+      default: null,
+    },
+
     role: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Role",
@@ -264,6 +288,12 @@ employeeSchema.pre("save", async function (next) {
 // ✅ Compare password method
 employeeSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
+};
+
+// ✅ NEW: true if the JWT was issued before the last password change
+employeeSchema.methods.changedPasswordAfter = function (jwtIssuedAtSeconds) {
+  if (!this.passwordChangedAt) return false;
+  return jwtIssuedAtSeconds * 1000 < new Date(this.passwordChangedAt).getTime();
 };
 
 // ✅ Hide sensitive fields from API responses

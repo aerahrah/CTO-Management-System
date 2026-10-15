@@ -12,7 +12,10 @@ const CtoCredit = require("../models/ctoCreditModel");
 
 const { getSessionSettings } = require("./generalSettings.service");
 const sendEmail = require("../utils/sendEmail");
-const { employeeWelcomeEmail } = require("../utils/emailTemplates");
+const {
+  employeeWelcomeEmail,
+  passwordResetByAdminEmail,
+} = require("../utils/emailTemplates");
 const { sendNotificationSms } = require("./smsService"); // ✅ Imported SMS service
 
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
@@ -517,6 +520,8 @@ const signInEmployeeService = async (email, password) => {
       theme: employee.preferences?.theme ?? "system",
       accent: employee.preferences?.accent ?? "blue",
     },
+    // ✅ Frontend should redirect to "change password" when true
+    mustChangePassword: Boolean(employee.mustChangePassword),
     sessionExpiresAt,
   };
 
@@ -758,13 +763,178 @@ const resetPassword = async (employeeId, oldPassword, newPassword) => {
   const isMatch = await employee.comparePassword(safeOldPassword);
   if (!isMatch) throw httpError("Old password is incorrect", 400);
 
+  if (safeOldPassword === safeNewPassword) {
+    throw httpError(
+      "New password must be different from the old password",
+      400,
+    );
+  }
+
   employee.password = safeNewPassword;
   employee.loginAttempts = 0;
   employee.lockUntil = undefined;
+  employee.mustChangePassword = false; // ✅ clears the flag set by an admin reset
+  employee.passwordChangedAt = new Date(Date.now() - 1000);
 
-  await employee.save();
+  await employee.save({ validateModifiedOnly: true });
 
   return { message: "Password updated successfully" };
+};
+
+/**
+ * Admin-initiated password reset by email.
+ *
+ * Permission ("employees.reset_password") is checked in the route via requirePerm.
+ *
+ * Rules:
+ *  - Actor cannot reset their own password here (use resetPassword instead).
+ *  - Only an Administrator ("*") can reset the password of another
+ *    Administrator. Same idea as preventRoleEscalation in employeeRoutes.
+ *  - A new random temp password is generated, the account is unlocked,
+ *    mustChangePassword is set, and existing sessions are invalidated via
+ *    passwordChangedAt.
+ *  - The temp password is sent by email (and SMS if a phone exists). It is only
+ *    returned in the API response if it could not be delivered, or if the
+ *    caller asked for notify=false.
+ *
+ * @param {Object} params
+ * @param {string} params.actorId  ID of the logged-in admin (from req.user.id)
+ * @param {string} params.email    Email of the employee whose password is reset
+ * @param {boolean} [params.notify=true] Send the temp password by email/SMS
+ */
+const adminResetPasswordService = async ({ actorId, email, notify = true }) => {
+  if (!actorId || !mongoose.isValidObjectId(String(actorId))) {
+    throw httpError("Unauthorized", 401);
+  }
+
+  const safeEmail = String(email || "")
+    .trim()
+    .toLowerCase();
+  if (!safeEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeEmail)) {
+    throw httpError("A valid email is required", 400);
+  }
+
+  // 1. Load the admin doing the reset (for the admin guard and audit log)
+  const actor = await Employee.findById(actorId)
+    .select("_id email role")
+    .populate("role", "name permissions")
+    .lean();
+
+  if (!actor) throw httpError("Unauthorized", 401);
+
+  // 2. Find the target employee
+  const target = await Employee.findOne({ email: safeEmail })
+    .select("+password +loginAttempts +lockUntil")
+    .populate("role", "name permissions");
+
+  if (!target) throw httpError("Employee not found", 404);
+
+  if (String(target._id) === String(actor._id)) {
+    throw httpError(
+      "Use the change password option in your profile to change your own password",
+      400,
+    );
+  }
+
+  // 3. Admin guard: only an Administrator can reset another Administrator
+  const actorIsAdmin = actor.role?.permissions?.includes("*");
+  const targetIsAdmin = target.role?.permissions?.includes("*");
+
+  if (targetIsAdmin && !actorIsAdmin) {
+    throw httpError(
+      "Forbidden: Only an Administrator can reset an Administrator's password.",
+      403,
+    );
+  }
+
+  // 4. Apply the reset
+  const tempPassword = generateSecureTempPassword();
+  const changedAt = new Date(Date.now() - 1000);
+
+  target.password = tempPassword; // hashed by the pre("save") hook
+  target.loginAttempts = 0;
+  target.lockUntil = undefined;
+  target.mustChangePassword = true;
+  target.passwordChangedAt = changedAt;
+  target.passwordResetBy = actor._id;
+  target.passwordResetAt = new Date();
+
+  // Only validate what changed, so old records missing other fields still save
+  await target.save({ validateModifiedOnly: true });
+
+  // 5. Deliver the temp password
+  const delivered = { email: false, sms: false };
+  const frontendUrl = process.env.FRONTEND_URL || "https://cto.dictr2.cloud";
+
+  if (notify) {
+    // Security notice: always sent, not gated by notification settings.
+    // Wrapped so a template/email problem never loses the temp password:
+    // if nothing is delivered, it is returned to the admin instead.
+    try {
+      if (typeof passwordResetByAdminEmail !== "function") {
+        throw new Error(
+          "passwordResetByAdminEmail is not exported from utils/emailTemplates.js",
+        );
+      }
+      const tpl = passwordResetByAdminEmail({
+        firstName: target.firstName,
+        email: target.email,
+        tempPassword,
+        loginUrl: frontendUrl,
+      });
+      const emailResult = await safeSendEmail(
+        target.email,
+        tpl.subject,
+        tpl.html,
+      );
+      delivered.email = emailResult !== null;
+    } catch (err) {
+      console.error("[EMAIL] Password reset email failed:", err?.message);
+    }
+
+    if (target.phone) {
+      const smsMessage = `DICT R2 HRMS: Your password was reset by an administrator. Temp password: ${tempPassword}. Login at ${frontendUrl} and change it immediately.`;
+      try {
+        await sendNotificationSms(
+          target.phone,
+          smsMessage,
+          `pwreset-${target._id}-${changedAt.getTime()}`,
+        );
+        delivered.sms = true;
+      } catch (err) {
+        console.error(
+          `[SMS Dispatch Failed] Password reset SMS for ${target._id}`,
+          err?.message,
+        );
+      }
+    }
+  }
+
+  // 6. Audit trail (never log the password itself)
+  console.info("[AUDIT] Admin password reset", {
+    actorId: String(actor._id),
+    actorEmail: actor.email,
+    targetId: String(target._id),
+    targetEmail: target.email,
+    delivered,
+    at: new Date().toISOString(),
+  });
+
+  const wasDelivered = delivered.email || delivered.sms;
+
+  return {
+    message: wasDelivered
+      ? "Password reset. A temporary password was sent to the employee."
+      : "Password reset. Give this temporary password to the employee securely.",
+    employee: {
+      id: target._id,
+      email: target.email,
+      firstName: target.firstName,
+      lastName: target.lastName,
+    },
+    delivered,
+    ...(wasDelivered ? {} : { tempPassword }),
+  };
 };
 
 const getEmployeeWellnessBalanceService = async (employeeId) => {
@@ -784,6 +954,7 @@ module.exports = {
   getProfile,
   updateProfile,
   resetPassword,
+  adminResetPasswordService,
   changeEmployeeRole,
   updateEmployeeService,
   createEmployeeService,

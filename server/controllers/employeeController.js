@@ -10,6 +10,7 @@ const {
   getProfile,
   updateProfile,
   resetPassword,
+  adminResetPasswordService,
   getEmployeeWellnessBalanceService,
   uploadSignatureService,
 } = require("../services/employeeService");
@@ -254,6 +255,43 @@ const resetMyPassword = async (req, res) => {
   }
 };
 
+// ✅ Admin/HR: reset another employee's password by email
+// Body: { email: string, notify?: boolean }  (notify defaults to true)
+const adminResetEmployeePassword = async (req, res) => {
+  try {
+    const actorId = req.user?.id;
+    if (!actorId) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+
+    const { email, notify } = req.body || {};
+    if (!email || typeof email !== "string") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Employee email is required" });
+    }
+
+    const result = await adminResetPasswordService({
+      actorId,
+      email,
+      notify: notify !== false,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: {
+        employee: result.employee,
+        delivered: result.delivered,
+        // Only present when the temp password could not be emailed/texted
+        ...(result.tempPassword ? { tempPassword: result.tempPassword } : {}),
+      },
+    });
+  } catch (err) {
+    return sendError(res, err);
+  }
+};
+
 const getEmployeeWellnessBalanceById = async (req, res) => {
   try {
     const employeeId = req.params.id;
@@ -290,6 +328,7 @@ module.exports = {
   updateMyProfile,
   uploadSignature,
   resetMyPassword,
+  adminResetEmployeePassword,
   getEmployeeWellnessBalanceById,
   getMyWellnessBalance,
 };

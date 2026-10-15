@@ -22,6 +22,7 @@ const {
   getMyProfile,
   updateMyProfile,
   resetMyPassword,
+  adminResetEmployeePassword,
   getEmployeeWellnessBalanceById,
   getMyWellnessBalance,
   uploadSignature,
@@ -162,6 +163,25 @@ const loginLimiter = rateLimit({
 });
 
 // =============================
+// ADMIN PASSWORD RESET RATE LIMITER
+// =============================
+// Runs after authentication, so it is keyed per admin account.
+const adminResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => `admin-reset-${req.user?.id}`,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message:
+        "Too many password resets. Please wait a few minutes and try again.",
+    });
+  },
+});
+
+// =============================
 // HELPERS
 // =============================
 const requirePerm = (perm) => [authenticateToken, authorize(perm)];
@@ -216,6 +236,15 @@ router.post(
   ...requirePerm("employees.create"),
   preventRoleEscalation,
   createEmployee,
+);
+
+// ✅ Reset another employee's password by email (must be above /:id routes)
+// Body: { "email": "employee@example.com", "notify": true }
+router.post(
+  "/reset-password",
+  ...requirePerm("employees.reset_password"),
+  adminResetLimiter,
+  adminResetEmployeePassword,
 );
 
 // ==========================================

@@ -16,6 +16,7 @@ const validPermissions = [
   "employees.upload_signature",
   "employees.delete",
   "employees.reset_password_self",
+  "employees.reset_password", // ✅ Reset another employee's password by email
   "employees.change_role",
 
   // -------------------------

@@ -7,6 +7,7 @@ import Breadcrumbs from "../breadCrumbs";
 import { toast } from "react-toastify";
 import { useAuth } from "../../store/authStore";
 import { usePermissions } from "../../hooks/usePermissions";
+import EmployeeResetPassword from "./employeeResetPassword";
 import {
   User,
   Mail,
@@ -23,6 +24,7 @@ import {
   Layers,
   AlertCircle,
   HeartPulse, // Good icon for wellness leave
+  KeyRound,
 } from "lucide-react";
 
 /* =========================
@@ -268,6 +270,9 @@ const EmployeeInformation = () => {
   // Permissions integration
   const { can } = usePermissions();
   const canEditEmployee = can("employees.edit");
+  const canResetPassword = can("employees.reset_password");
+
+  const [resetOpen, setResetOpen] = useState(false);
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useMemo(() => resolveTheme(prefTheme), [prefTheme]);
@@ -293,7 +298,6 @@ const EmployeeInformation = () => {
 
   const emp = data?.data;
 
-  console.log(emp);
   const onRetry = () =>
     queryClient.refetchQueries({ queryKey: ["employee", id] });
 
@@ -444,6 +448,30 @@ const EmployeeInformation = () => {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3 sm:items-center">
+                {canResetPassword && (
+                  <button
+                    type="button"
+                    onClick={() => setResetOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition"
+                    style={{
+                      backgroundColor: "var(--app-surface)",
+                      borderColor,
+                      color: "var(--app-text)",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.backgroundColor =
+                        "var(--app-surface-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor =
+                        "var(--app-surface)";
+                    }}
+                  >
+                    <KeyRound size={16} />
+                    Reset Password
+                  </button>
+                )}
+
                 {canEditEmployee && (
                   <button
                     type="button"
@@ -752,6 +780,20 @@ const EmployeeInformation = () => {
           </div>
         </div>
       </div>
+
+      {canResetPassword && (
+        <EmployeeResetPassword
+          open={resetOpen}
+          onClose={() => setResetOpen(false)}
+          employee={{
+            name: fullName,
+            email: emp?.email,
+            phone: emp?.phone,
+          }}
+          borderColor={borderColor}
+          resolvedTheme={resolvedTheme}
+        />
+      )}
     </div>
   );
 };

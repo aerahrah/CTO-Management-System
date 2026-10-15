@@ -31,6 +31,11 @@ export const PERMISSION_GROUPS = [
         label: "Change Roles",
         hint: "Assign new roles to employees.",
       },
+      {
+        id: "employees.reset_password",
+        label: "Reset Employee Passwords",
+        hint: "Reset another employee's password by email and send them a temporary one. Only Administrators can reset an Administrator's password.",
+      },
     ],
   },
   {
