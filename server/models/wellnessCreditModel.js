@@ -1,6 +1,18 @@
 // models/wellnessCreditModel.js
 const mongoose = require("mongoose");
 
+// Audit trail for admin edits (written by services/adminWellnessCredit.service.js).
+// Hidden from normal queries (select: false) so existing endpoints are unaffected.
+const editHistorySchema = new mongoose.Schema(
+  {
+    editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+    editedAt: { type: Date, default: Date.now },
+    reason: { type: String, trim: true, maxlength: 500 },
+    changes: { type: mongoose.Schema.Types.Mixed },
+  },
+  { _id: true },
+);
+
 const wellnessCreditSchema = new mongoose.Schema(
   {
     // General info (shared by all employees in this batch)
@@ -45,6 +57,9 @@ const wellnessCreditSchema = new mongoose.Schema(
 
     creditedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     rolledBackBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+
+    // ✅ NEW: admin edit log (optional — the admin service works without it)
+    editHistory: { type: [editHistorySchema], default: [], select: false },
   },
   { timestamps: true },
 );

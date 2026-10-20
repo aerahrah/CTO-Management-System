@@ -50,6 +50,10 @@ const validPermissions = [
   "wellness.manage_application", // Approve or reject assigned wellness applications
   "wellness.dashboard.self_view",
 
+  // Wellness Credit Admin Tools (admin only)
+  "wellness.admin_view", // Search employees, list/open credit batches, check balances
+  "wellness.admin_edit", // Edit any credit batch detail, recalculate employee balances
+
   // -------------------------
   // WELLNESS LEAVES
   // -------------------------

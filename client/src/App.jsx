@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import React, { useEffect, useState, lazy, Suspense } from "react";
+import { Routes, Route, Outlet, useLocation } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { CalendarDays, ShieldCheck } from "lucide-react";
@@ -10,6 +10,7 @@ import SessionGuard from "./components/sessionExpiredModal";
 import ThemeSync from "./components/themeSync";
 import ScrollbarsSync from "./components/scrollbarSync";
 import { useAuth } from "./store/authStore";
+import { usePermissions } from "./hooks/usePermissions";
 
 /* Pages */
 import Login from "./pages/loginPage";
@@ -52,6 +53,16 @@ import WellnessCreditHistory from "./components/wellnessComponents/wellnessCredi
 import AddWellnessCreditForm from "./components/wellnessComponents/wellnessCreditComponents/forms/addWellnessCreditForm";
 import AddWellnessApplicationForm from "./components/wellnessComponents/wellnessApplicationComponents/forms/addWellnessApplicationForm";
 import AddOrganicWellnessApplicationForm from "./components/wellnessComponents/wellnessApplicationComponents/forms/addOrganicWellnessApplicationForm";
+
+// 🔒 Hidden admin pages — lazy-loaded, so their code is only downloaded when an admin opens them
+const loadWellnessCreditAdmin = () =>
+  import("./components/wellnessComponents/wellnessCreditComponents/wellnessCreditAdmin");
+const WellnessCreditAdmin = lazy(loadWellnessCreditAdmin);
+const WellnessCreditAdminEditPage = lazy(() =>
+  loadWellnessCreditAdmin().then((m) => ({
+    default: m.WellnessCreditAdminEditPage,
+  })),
+);
 
 /* Leave Credit Components */
 import LeaveCreditHistory from "./components/leaveComponents/leaveCreditComponents/recentLeaveCreditHistory";
@@ -147,6 +158,21 @@ function useResolvedTheme(prefTheme) {
   }, [prefTheme]);
 
   return theme;
+}
+
+/* ------------------ 🔒 Hidden route guard ------------------
+   Users without the permission get the normal 404 page, so the page
+   looks like it doesn't exist (instead of an "access denied" message).
+   It sits inside <ProtectedRoute />, so login/session checks have
+   already run before this decides. */
+function SecretRoute({ permission }) {
+  const { can } = usePermissions();
+  if (!can(permission)) return <NotFoundPage />;
+  return (
+    <Suspense fallback={null}>
+      <Outlet />
+    </Suspense>
+  );
 }
 
 function App() {
@@ -414,6 +440,20 @@ function App() {
               path="wellness-credit/add"
               element={<AddWellnessCreditForm />}
             />
+          </Route>
+
+          {/* 🔒 HIDDEN: Wellness credit admin — no sidebar link, open by URL only */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<SecretRoute permission="wellness.admin_view" />}>
+              <Route
+                path="wellness-credit/maintenance"
+                element={<WellnessCreditAdmin />}
+              />
+              <Route
+                path="wellness-credit/maintenance/:creditId"
+                element={<WellnessCreditAdminEditPage />}
+              />
+            </Route>
           </Route>
 
           <Route
