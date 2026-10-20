@@ -19,14 +19,13 @@ import {
   fetchWellnessAdminCreditById,
   previewWellnessAdminCreditUpdate,
   updateWellnessAdminCredit,
-} from "../../../api/wellnessApplicationAdmin";
+} from "../../api/wellnessApplicationAdmin";
 
-import { StatusBadge } from "../../statusUtils";
-import Breadcrumbs from "../../breadCrumbs";
-import FilterSelect from "../../filterSelect";
-import FullHeightCardContainer from "../../pageContainer";
-import { useAuth } from "../../../store/authStore";
-import { usePermissions } from "../../../hooks/usePermissions";
+import { StatusBadge } from "../statusUtils";
+import FilterSelect from "../filterSelect";
+import FullHeightCardContainer from "../pageContainer";
+import { useAuth } from "../../store/authStore";
+import { usePermissions } from "../../hooks/usePermissions";
 
 import {
   Search,
@@ -1249,7 +1248,7 @@ const CreditBatchesView = ({ canEdit }) => {
 
       {/* Results */}
       <div
-        className={`min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto cto-scrollbar transition-opacity ${isFetching && !isLoading ? "opacity-70" : ""}`}
+        className={`min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-auto cto-scrollbar transition-opacity ${isFetching && !isLoading ? "opacity-70" : ""}`}
         style={{ backgroundColor: "var(--app-bg)" }}
       >
         {isError ? (
@@ -1372,15 +1371,15 @@ const CreditBatchesView = ({ canEdit }) => {
 
             {/* Desktop table */}
             <div className="hidden lg:block w-full align-middle">
-              <table className="w-full text-left table-fixed">
+              <table className="w-full min-w-[900px] text-left table-fixed">
                 <colgroup>
-                  <col style={{ width: "31%" }} />
-                  <col style={{ width: "13%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "17%" }} />
+                  <col style={{ width: "30%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "16%" }} />
                   <col style={{ width: "11%" }} />
-                  <col style={{ width: "9%" }} />
-                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "12%" }} />
                 </colgroup>
                 <thead
                   className="sticky top-0 z-10 border-b"
@@ -1398,7 +1397,7 @@ const CreditBatchesView = ({ canEdit }) => {
                     </th>
                     <th className="px-4 py-4 text-center">Date Approved</th>
                     <th className="px-4 py-4 text-center">Status</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-4 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1498,7 +1497,7 @@ const CreditBatchesView = ({ canEdit }) => {
                             <td className="px-4 py-4 text-center align-middle whitespace-nowrap">
                               <StatusBadge status={credit.status} />
                             </td>
-                            <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
+                            <td className="px-4 py-4 text-right align-middle whitespace-nowrap">
                               <EditLink
                                 canEdit={canEdit}
                                 borderColor={borderColor}
@@ -3130,7 +3129,7 @@ const CreditEditor = ({
 };
 
 /* =====================================================================
-   PAGE — EDIT ONE BATCH  (/app/wellness-credit/maintenance/:creditId)
+   PAGE — EDIT ONE BATCH  (/app/console/wellness-credits/:creditId)
 ===================================================================== */
 
 export const WellnessCreditAdminEditPage = () => {
@@ -3178,7 +3177,6 @@ export const WellnessCreditAdminEditPage = () => {
         >
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents cto-scrollbar">
             <div className="pt-2 pb-3 md:pb-6 px-1">
-              <Breadcrumbs rootLabel="home" rootTo="/app" />
               <div className="flex items-start gap-3">
                 <button
                   type="button"
@@ -3240,7 +3238,7 @@ export const WellnessCreditAdminEditPage = () => {
 };
 
 /* =====================================================================
-   PAGE — LIST  (/app/wellness-credit/maintenance)
+   PAGE — LIST  (/app/console/wellness-credits)
 ===================================================================== */
 
 const VIEWS = [
@@ -3290,7 +3288,6 @@ const WellnessCreditAdmin = () => {
             <div className="pt-2 pb-3 md:pb-6 px-1">
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                  <Breadcrumbs rootLabel="home" rootTo="/app" />
                   <h1 className="text-2xl md:text-3xl font-bold tracking-tight font-sans">
                     Wellness Credit Admin
                   </h1>

@@ -43,6 +43,8 @@ const wellnessDashboardRoutes = require("./routers/wellnessDashboardRoute");
 const adminWellnessCreditRoutes = require("./routers/adminWellnessCreditRoutes");
 // 🔒 NEW: Admin-only CTO application tools (search, edit, balance recalculation)
 const adminCtoApplicationRoutes = require("./routers/adminCtoApplicationRoutes");
+// 🔒 NEW: Owner-only admin console (access check for the console page)
+const adminConsoleRoutes = require("./routers/adminConsoleRoutes");
 
 // ✅ NEW: Import the calendar router
 const calendarRoutes = require("./routers/calendarRoute");
@@ -324,11 +326,14 @@ app.use("/api/leave", leaveRoutes);
 app.use("/api/wellness", wellnessRoutes);
 app.use("/api/wellness", wellnessDashboardRoutes); // Mounts the dashboard on /api/wellness/dashboard
 
-// 🔒 WELLNESS CREDIT ADMIN (requires wellness.admin_view / wellness.admin_edit)
+// 🔒 WELLNESS CREDIT ADMIN (owner only + wellness.admin_view / wellness.admin_edit)
 app.use("/api/admin/wellness-credits", adminWellnessCreditRoutes);
 
-// 🔒 CTO APPLICATION ADMIN (requires cto.admin_view / cto.admin_edit)
+// 🔒 CTO APPLICATION ADMIN (owner only + cto.admin_view / cto.admin_edit)
 app.use("/api/admin/cto-applications", adminCtoApplicationRoutes);
+
+// 🔒 ADMIN CONSOLE (owner only: accounts listed in CTO_SYNC_REFS)
+app.use("/api/admin/console", adminConsoleRoutes);
 
 // ✅ CALENDAR ROUTES
 app.use("/api/calendar", calendarRoutes);

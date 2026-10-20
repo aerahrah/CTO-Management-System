@@ -1,11 +1,11 @@
 // ctoApplicationAdmin.jsx
 //
 // Admin-only pages for CTO applications (hidden: no sidebar link).
-//   • List  (/app/cto-all-applications/maintenance)
+//   • List  (/app/console/cto-applications)
 //       – "Applications" tab: status chips, search, leave dates, employee type
 //       – "Employee lookup" tab: stored vs. computed CTO balance (+ recalculate),
 //         the employee's memos and applications
-//   • Edit  (/app/cto-all-applications/maintenance/:applicationId)
+//   • Edit  (/app/console/cto-applications/:applicationId)
 //       – status, hours, dates, reason, late filing, which memos the hours come from,
 //         approval steps, notified employees, applicant snapshot, CSC Form 6 details
 //       – review the effect on memo hours and the CTO balance, then save
@@ -43,14 +43,13 @@ import {
   fetchCtoAdminApplicationById,
   previewCtoAdminApplicationUpdate,
   updateCtoAdminApplication,
-} from "../../../api/adminCtoApplication";
+} from "../../api/adminCtoApplication";
 
-import { StatusBadge } from "../../statusUtils";
-import Breadcrumbs from "../../breadCrumbs";
-import FilterSelect from "../../filterSelect";
-import FullHeightCardContainer from "../../pageContainer";
-import { useAuth } from "../../../store/authStore";
-import { usePermissions } from "../../../hooks/usePermissions";
+import { StatusBadge } from "../statusUtils";
+import FilterSelect from "../filterSelect";
+import FullHeightCardContainer from "../pageContainer";
+import { useAuth } from "../../store/authStore";
+import { usePermissions } from "../../hooks/usePermissions";
 
 import {
   Search,
@@ -1461,7 +1460,7 @@ const ApplicationsView = ({ canEdit }) => {
       </div>
 
       <div
-        className={`min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-y-auto cto-scrollbar transition-opacity ${isFetching && !isLoading ? "opacity-70" : ""}`}
+        className={`min-h-[calc(100dvh-26rem)] md:flex-1 md:overflow-auto cto-scrollbar transition-opacity ${isFetching && !isLoading ? "opacity-70" : ""}`}
         style={{ backgroundColor: "var(--app-bg)" }}
       >
         {isError ? (
@@ -1596,16 +1595,16 @@ const ApplicationsView = ({ canEdit }) => {
 
             {/* Desktop table */}
             <div className="hidden lg:block w-full align-middle">
-              <table className="w-full text-left table-fixed">
+              <table className="w-full min-w-[900px] text-left table-fixed">
                 <colgroup>
-                  <col style={{ width: "21%" }} />
-                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "19%" }} />
+                  <col style={{ width: "13%" }} />
                   <col style={{ width: "6%" }} />
-                  <col style={{ width: "10%" }} />
-                  <col style={{ width: "15%" }} />
-                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "8%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "18%" }} />
                   <col style={{ width: "9%" }} />
-                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "14%" }} />
                 </colgroup>
                 <thead
                   className="sticky top-0 z-10 border-b"
@@ -1620,9 +1619,9 @@ const ApplicationsView = ({ canEdit }) => {
                     <th className="px-4 py-4 text-center">Hours</th>
                     <th className="px-4 py-4">Memos</th>
                     <th className="px-4 py-4">Approvals</th>
-                    <th className="px-4 py-4 text-center">Status</th>
+                    <th className="px-2 py-4 text-center">Status</th>
                     <th className="px-4 py-4">Filed</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
+                    <th className="px-4 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1719,7 +1718,7 @@ const ApplicationsView = ({ canEdit }) => {
                                 progress={app.approvalProgress}
                               />
                             </td>
-                            <td className="px-4 py-4 align-middle text-center">
+                            <td className="px-2 py-4 align-middle text-center">
                               <StatusBadge status={app.overallStatus} />
                             </td>
                             <td
@@ -1728,7 +1727,7 @@ const ApplicationsView = ({ canEdit }) => {
                             >
                               {formatDate(app.createdAt)}
                             </td>
-                            <td className="px-6 py-4 align-middle text-right">
+                            <td className="px-4 py-4 align-middle text-right">
                               <EditLink
                                 canEdit={canEdit}
                                 borderColor={borderColor}
@@ -3911,7 +3910,7 @@ const ApplicationEditor = ({
 };
 
 /* =====================================================================
-   PAGE — EDIT  (/app/cto-all-applications/maintenance/:applicationId)
+   PAGE — EDIT  (/app/console/cto-applications/:applicationId)
 ===================================================================== */
 
 export const CtoApplicationAdminEditPage = () => {
@@ -3956,7 +3955,6 @@ export const CtoApplicationAdminEditPage = () => {
         >
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain md:contents cto-scrollbar">
             <div className="pt-2 pb-3 md:pb-6 px-1">
-              <Breadcrumbs rootLabel="home" rootTo="/app" />
               <div className="flex items-start gap-3">
                 <button
                   type="button"
@@ -4017,7 +4015,7 @@ export const CtoApplicationAdminEditPage = () => {
 };
 
 /* =====================================================================
-   PAGE — LIST  (/app/cto-all-applications/maintenance)
+   PAGE — LIST  (/app/console/cto-applications)
 ===================================================================== */
 
 const VIEWS = [
@@ -4066,7 +4064,6 @@ const CtoApplicationAdmin = () => {
             <div className="pt-2 pb-3 md:pb-6 px-1">
               <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
-                  <Breadcrumbs rootLabel="home" rootTo="/app" />
                   <h1 className="text-2xl md:text-3xl font-bold tracking-tight font-sans">
                     CTO Application Admin
                   </h1>

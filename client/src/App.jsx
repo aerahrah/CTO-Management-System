@@ -54,9 +54,22 @@ import AddWellnessCreditForm from "./components/wellnessComponents/wellnessCredi
 import AddWellnessApplicationForm from "./components/wellnessComponents/wellnessApplicationComponents/forms/addWellnessApplicationForm";
 import AddOrganicWellnessApplicationForm from "./components/wellnessComponents/wellnessApplicationComponents/forms/addOrganicWellnessApplicationForm";
 
-// 🔒 Hidden admin pages — lazy-loaded, so their code is only downloaded when an admin opens them
+// 🔒 Secret address of the admin console: /<ADMIN_CONSOLE_PATH> (its own page, outside /app)
+// Change it any time; nothing else needs updating (all console links are relative).
+const ADMIN_CONSOLE_PATH = "1f9kt-35s3s-1jqyu";
+
+// 🔒 Hidden admin console — lazy-loaded, so its code is only downloaded when you open it
+const loadAdminConsole = () =>
+  import("./components/adminComponents/adminConsole");
+const AdminConsoleLayout = lazy(loadAdminConsole);
+const AdminConsoleHome = lazy(() =>
+  loadAdminConsole().then((m) => ({
+    default: m.AdminConsoleHome,
+  })),
+);
+
 const loadWellnessCreditAdmin = () =>
-  import("./components/wellnessComponents/wellnessCreditComponents/wellnessCreditAdmin");
+  import("./components/adminComponents/wellnessCreditAdmin");
 const WellnessCreditAdmin = lazy(loadWellnessCreditAdmin);
 const WellnessCreditAdminEditPage = lazy(() =>
   loadWellnessCreditAdmin().then((m) => ({
@@ -65,7 +78,7 @@ const WellnessCreditAdminEditPage = lazy(() =>
 );
 
 const loadCtoApplicationAdmin = () =>
-  import("./components/ctoComponents/ctoApplicationComponents/ctoApplicationAdmin");
+  import("./components/adminComponents/ctoApplicationAdmin");
 const CtoApplicationAdmin = lazy(loadCtoApplicationAdmin);
 const CtoApplicationAdminEditPage = lazy(() =>
   loadCtoApplicationAdmin().then((m) => ({
@@ -432,20 +445,6 @@ function App() {
             />
           </Route>
 
-          {/* 🔒 HIDDEN: CTO application admin — no sidebar link, open by URL only */}
-          <Route element={<ProtectedRoute />}>
-            <Route element={<SecretRoute permission="cto.admin_view" />}>
-              <Route
-                path="cto-all-applications/maintenance"
-                element={<CtoApplicationAdmin />}
-              />
-              <Route
-                path="cto-all-applications/maintenance/:applicationId"
-                element={<CtoApplicationAdminEditPage />}
-              />
-            </Route>
-          </Route>
-
           <Route
             element={<ProtectedRoute requiredPermission="cto.records_view" />}
           >
@@ -463,20 +462,6 @@ function App() {
               path="wellness-credit/add"
               element={<AddWellnessCreditForm />}
             />
-          </Route>
-
-          {/* 🔒 HIDDEN: Wellness credit admin — no sidebar link, open by URL only */}
-          <Route element={<ProtectedRoute />}>
-            <Route element={<SecretRoute permission="wellness.admin_view" />}>
-              <Route
-                path="wellness-credit/maintenance"
-                element={<WellnessCreditAdmin />}
-              />
-              <Route
-                path="wellness-credit/maintenance/:creditId"
-                element={<WellnessCreditAdminEditPage />}
-              />
-            </Route>
           </Route>
 
           <Route
@@ -653,6 +638,42 @@ function App() {
             <Route path="leave-revocations" element={<RevocationApprovals />}>
               <Route index element={<RevocationPlaceholder />} />
               <Route path=":id" element={<RevocationDetails />} />
+            </Route>
+          </Route>
+        </Route>
+
+        {/* 🔒 HIDDEN: Admin console — its own full-screen page with its own sidebar (not inside /app).
+            No link anywhere; open /<ADMIN_CONSOLE_PATH> by URL. Only accounts in
+            CTO_SYNC_REFS (.env) get in; everyone else sees the 404 page. */}
+        <Route element={<ProtectedRoute />}>
+          <Route
+            path={ADMIN_CONSOLE_PATH}
+            element={
+              <Suspense fallback={null}>
+                <AdminConsoleLayout notFound={<NotFoundPage />} />
+              </Suspense>
+            }
+          >
+            <Route index element={<AdminConsoleHome />} />
+            <Route element={<SecretRoute permission="cto.admin_view" />}>
+              <Route
+                path="cto-applications"
+                element={<CtoApplicationAdmin />}
+              />
+              <Route
+                path="cto-applications/:applicationId"
+                element={<CtoApplicationAdminEditPage />}
+              />
+            </Route>
+            <Route element={<SecretRoute permission="wellness.admin_view" />}>
+              <Route
+                path="wellness-credits"
+                element={<WellnessCreditAdmin />}
+              />
+              <Route
+                path="wellness-credits/:creditId"
+                element={<WellnessCreditAdminEditPage />}
+              />
             </Route>
           </Route>
         </Route>
