@@ -16,6 +16,8 @@ import {
   fetchAllApprovalRoutes,
   upsertMyApprovalRoute,
   fetchApprovalRoles,
+  fetchMyWorkflow,
+  resetMyWorkflow,
 } from "../../../api/approvalRoute";
 import { fetchApprovers } from "../../../api/cto";
 import {
@@ -33,11 +35,17 @@ import {
   MoreVertical,
   Bell,
   AlertTriangle,
+  RotateCcw,
+  Copy,
+  User,
+  Layers,
 } from "lucide-react";
 
 import Breadcrumbs from "../../breadCrumbs";
 import Modal from "../../modal";
-import NotifiedEmployeesModal from "./NotifiedEmployeeModal";
+import MyNotifiedEmployeesModal, {
+  myNotifiedPeople,
+} from "./MyNotifiedEmployeesModal";
 
 /* =========================
    Helpers & Theme
@@ -455,6 +463,100 @@ const SkeletonRow = ({ theme }) => (
 );
 
 /* =========================
+   Which workflow applies to me (personal / default / none)
+========================= */
+const MATCHED_BY_TEXT = {
+  employee: "assigned to you by HR",
+  project: "set for your project",
+  designation: "set for your designation",
+  global: "the company default",
+};
+
+const WorkflowSourceBanner = ({
+  my,
+  isLoading,
+  theme,
+  borderColor,
+  isBusy,
+  onUseDefault,
+}) => {
+  if (isLoading || !my) return null;
+
+  const tones = {
+    personal: { tone: "violet", icon: User },
+    assigned: { tone: "blue", icon: Layers },
+    none: { tone: "amber", icon: AlertTriangle },
+  };
+  const { tone, icon: Icon } = tones[my.source] || tones.none;
+  const t = CHIP_TONES[tone];
+
+  const chain = (route) =>
+    [...(route?.steps || [])]
+      .filter((s) => s.isEnabled !== false)
+      .sort((a, b) => a.level - b.level)
+      .map((s) => formatFullName(s.approver))
+      .join("  →  ");
+
+  let title;
+  let body;
+  const personalOnly = my.sharedWorkflowsEnabled === false; // HR turned shared workflows off
+  if (my.source === "personal") {
+    title = "You're using your personal workflow";
+    body = personalOnly
+      ? "HR uses each employee's own workflow, so this is the one your CTO/Wellness requests go through."
+      : my.defaultWorkflow
+        ? `Your default is "${my.defaultWorkflow.name}" (${MATCHED_BY_TEXT[my.defaultMatchedBy?.scope] || "set by HR"}). Click "Use Default" to switch back to it.`
+        : "There's no default workflow set for you, so your personal workflow is the only one you have.";
+  } else if (my.source === "assigned") {
+    title = `You're using the default workflow: ${my.workflow?.name}`;
+    body = `${MATCHED_BY_TEXT[my.defaultMatchedBy?.scope] ? `It's ${MATCHED_BY_TEXT[my.defaultMatchedBy.scope]}. ` : ""}Requests go to: ${chain(my.workflow) || "—"}. Its steps are shown below. Click "Customize" to make your own copy that you can edit.`;
+  } else {
+    title = "You don't have an approval workflow yet";
+    body = personalOnly
+      ? "HR uses each employee's own workflow, so set up your steps below before filing a CTO/Wellness request."
+      : "Create steps below to set up your own, or ask HR to assign you one.";
+  }
+
+  return (
+    <div
+      className="rounded-xl px-4 py-3 mb-4 flex flex-col md:flex-row md:items-center gap-3"
+      style={{ backgroundColor: t.bg, border: `1px solid ${t.br}` }}
+    >
+      <div className="flex items-start gap-3 min-w-0 flex-1">
+        <Icon className="w-5 h-5 flex-none mt-0.5" style={{ color: t.fg }} />
+        <div className="min-w-0">
+          <div
+            className="text-sm font-bold"
+            style={{ color: "var(--app-text)" }}
+          >
+            {title}
+          </div>
+          <div
+            className="text-xs leading-relaxed mt-0.5"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {body}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-2 md:flex-none">
+        {my.source === "personal" && my.canResetToDefault && (
+          <OutlineButton
+            onClick={onUseDefault}
+            disabled={isBusy}
+            borderColor={borderColor}
+            theme={theme}
+          >
+            <RotateCcw className="w-4 h-4" /> Use Default
+          </OutlineButton>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* =========================
    Action Menu (rendered in a portal so no container can clip it)
 ========================= */
 const MENU_WIDTH = 168;
@@ -611,6 +713,7 @@ const StepCard = ({
   onDelete,
   borderColor,
   theme,
+  readOnly = false, // default workflow: shown, but not editable here
 }) => {
   const enabled = step.isEnabled !== false;
 
@@ -652,16 +755,18 @@ const StepCard = ({
               </div>
             </div>
           </div>
-          <div className="flex-none pt-1">
-            <Toggle
-              checked={enabled}
-              disabled={isBusy}
-              onChange={onToggle}
-              borderColor={borderColor}
-              theme={theme}
-              label={`Turn Level ${step.level} ${enabled ? "off" : "on"}`}
-            />
-          </div>
+          {!readOnly && (
+            <div className="flex-none pt-1">
+              <Toggle
+                checked={enabled}
+                disabled={isBusy}
+                onChange={onToggle}
+                borderColor={borderColor}
+                theme={theme}
+                label={`Turn Level ${step.level} ${enabled ? "off" : "on"}`}
+              />
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex items-center gap-2 min-w-0">
@@ -675,31 +780,33 @@ const StepCard = ({
         </div>
       </div>
 
-      <div
-        className="border-t px-3 py-2.5 flex items-center gap-2"
-        style={{ borderColor }}
-      >
-        <button
-          type="button"
-          onClick={onEdit}
-          disabled={isBusy}
-          className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border py-2 text-xs font-bold transition bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] disabled:opacity-50"
-          style={{ borderColor, color: "var(--app-text)" }}
+      {!readOnly && (
+        <div
+          className="border-t px-3 py-2.5 flex items-center gap-2"
+          style={{ borderColor }}
         >
-          <Edit2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
-          Edit
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={isBusy}
-          className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border py-2 text-xs font-bold transition bg-[color:var(--app-surface)] hover:bg-[rgba(239,68,68,0.08)] disabled:opacity-50"
-          style={{ borderColor, color: "#ef4444" }}
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-          Delete
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={isBusy}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border py-2 text-xs font-bold transition bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] disabled:opacity-50"
+            style={{ borderColor, color: "var(--app-text)" }}
+          >
+            <Edit2 className="w-3.5 h-3.5" style={{ color: "var(--accent)" }} />
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={isBusy}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg border py-2 text-xs font-bold transition bg-[color:var(--app-surface)] hover:bg-[rgba(239,68,68,0.08)] disabled:opacity-50"
+            style={{ borderColor, color: "#ef4444" }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete
+          </button>
+        </div>
+      )}
     </Card>
   );
 };
@@ -755,9 +862,20 @@ export default function ApprovalRoutesList() {
     queryFn: fetchAllApprovalRoutes,
   });
 
+  // The workflow that actually applies to me (personal or assigned by HR)
+  const { data: my, isLoading: myLoading } = useQuery({
+    queryKey: ["myWorkflow"],
+    queryFn: fetchMyWorkflow,
+  });
+
+  // My PERSONAL route only: private + CTO/Wellness. Without the isPublic check,
+  // HR would see the shared workflows they created as their own.
   const myRoute = useMemo(() => {
     return routes.find(
-      (r) => String(r.createdBy?._id || r.createdBy) === String(currentUserId),
+      (r) =>
+        String(r.createdBy?._id || r.createdBy) === String(currentUserId) &&
+        r.isPublic === false &&
+        (r.category || "cto_wellness") === "cto_wellness",
     );
   }, [routes, currentUserId]);
 
@@ -765,7 +883,8 @@ export default function ApprovalRoutesList() {
     setSteps(buildStepsFromRoute(myRoute));
   }, [myRoute]);
 
-  const notifiedCount = myRoute?.notifiedEmployees?.length || 0;
+  // Everyone notified for me, one list: set by HR + my workflow's own (no duplicates)
+  const notifiedPeople = useMemo(() => myNotifiedPeople(my), [my]);
 
   const { data: approversRaw = [], isLoading: approversLoading } = useQuery({
     queryKey: ["approvers"],
@@ -815,6 +934,7 @@ export default function ApprovalRoutesList() {
     mutationFn: (payload) => upsertMyApprovalRoute(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["approvalRoutes"] });
+      queryClient.invalidateQueries({ queryKey: ["myWorkflow"] });
       toast.success("Workflow updated successfully!");
     },
     onError: (err) => {
@@ -842,6 +962,39 @@ export default function ApprovalRoutesList() {
     },
     [admin, mutation],
   );
+
+  // "Use Default": deletes my personal workflow so the one HR set applies
+  const [isResetOpen, setIsResetOpen] = useState(false);
+  const resetMutation = useMutation({
+    mutationFn: resetMyWorkflow,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ["approvalRoutes"] });
+      queryClient.invalidateQueries({ queryKey: ["myWorkflow"] });
+      toast.success(res?.message || "Switched back to the default workflow.");
+      setIsResetOpen(false);
+    },
+    onError: (err) =>
+      toast.error(getErrMsg(err, "Failed to switch to the default workflow")),
+  });
+
+  // "Customize": copy the default workflow into a personal one I can edit
+  const customizeFromDefault = () => {
+    const source = my?.defaultWorkflow;
+    if (!source) return;
+    mutation.mutate({
+      name: `${admin?.firstName || "Personal"}'s Workflow`,
+      isPublic: false,
+      steps: reindexSteps(buildStepsFromRoute(source)).map((s) => ({
+        level: s.level,
+        approver: s.approver,
+        role: s.role || "",
+        isEnabled: s.isEnabled !== false,
+      })),
+      notifiedEmployees: (source.notifiedEmployees || []).map((n) =>
+        String(n?._id || n),
+      ),
+    });
+  };
 
   const requestDelete = (step) => {
     if (steps.length <= 1) {
@@ -871,26 +1024,56 @@ export default function ApprovalRoutesList() {
     saveRoute(newSteps);
   };
 
+  // On the default workflow (no personal one): show its steps, read-only
+  const usingDefault = my?.source === "assigned";
+  const defaultSteps = useMemo(() => {
+    if (!usingDefault) return [];
+    return [...(my?.workflow?.steps || [])]
+      .sort((a, b) => a.level - b.level)
+      .map((s) => ({
+        id: `default-${s.level}`,
+        level: s.level,
+        approver: String(s.approver?._id || s.approver),
+        role: s.role || "",
+        isEnabled: s.isEnabled !== false,
+        // the default's approvers come populated, in case they aren't in the approvers list
+        approverInfo:
+          s.approver && typeof s.approver === "object"
+            ? {
+                value: String(s.approver._id),
+                label: formatFullName(s.approver),
+                initials: initialsOf(s.approver),
+                position: s.approver.position || "Staff",
+              }
+            : null,
+      }));
+  }, [usingDefault, my]);
+  const displaySteps = usingDefault ? defaultSteps : steps;
+
+  const approverFor = (step) =>
+    approverOptions.find((o) => o.value === String(step.approver)) ||
+    step.approverInfo ||
+    null;
+
   const filteredSteps = useMemo(() => {
     const q = searchInput.toLowerCase().trim();
-    if (!q) return steps;
-    return steps.filter((step) => {
-      const approver = approverOptions.find(
-        (o) => o.value === String(step.approver),
-      );
+    if (!q) return displaySteps;
+    return displaySteps.filter((step) => {
+      const approver = approverFor(step);
       const role = normalizedRoles.find((r) => r.id === step.role);
       const hay =
         `${approver?.label || ""} ${approver?.position || ""} ${role?.label || ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [steps, searchInput, approverOptions, normalizedRoles]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displaySteps, searchInput, approverOptions, normalizedRoles]);
 
   const activeApproversCount = useMemo(
-    () => steps.filter((s) => s.isEnabled !== false).length,
-    [steps],
+    () => displaySteps.filter((s) => s.isEnabled !== false).length,
+    [displaySteps],
   );
 
-  const isBusy = mutation.isPending;
+  const isBusy = mutation.isPending || resetMutation.isPending;
   const isLoading = routesLoading || approversLoading || rolesLoading;
 
   const deleteApprover = deleteTarget
@@ -904,28 +1087,40 @@ export default function ApprovalRoutesList() {
     {
       label: "Approvers",
       value: activeApproversCount,
-      sub: `${steps.length - activeApproversCount} turned off`,
+      sub: `${displaySteps.length - activeApproversCount} turned off`,
       icon: CheckCircle2,
       tone: "blue",
     },
     {
       label: "Role Maps",
-      value: steps.filter((s) => s.role).length,
+      value: displaySteps.filter((s) => s.role).length,
       sub: "Mapped to specific roles",
       icon: FileSignature,
       tone: "violet",
     },
     {
       label: "Notified",
-      value: notifiedCount,
-      sub: "Employees kept informed",
+      value: notifiedPeople.count,
+      sub: notifiedPeople.hr.length
+        ? `Incl. ${notifiedPeople.hr.length} set by HR`
+        : "Employees kept informed",
       icon: Bell,
       tone: "amber",
     },
     {
-      label: "Active Routes",
-      value: myRoute ? 1 : 0,
-      sub: myRoute ? "Your workflow is live" : "No workflow yet",
+      label: "Workflow in use",
+      value:
+        my?.source === "personal"
+          ? "Personal"
+          : my?.source === "assigned"
+            ? "Default"
+            : "None",
+      sub:
+        my?.source === "personal"
+          ? "Your own workflow is live"
+          : my?.source === "assigned"
+            ? my?.workflow?.name || "Set by HR"
+            : "No workflow yet",
       icon: Zap,
       tone: "green",
     },
@@ -970,7 +1165,7 @@ export default function ApprovalRoutesList() {
             <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
               <OutlineButton
                 onClick={() => setIsNotifiedOpen(true)}
-                disabled={isBusy || isLoading}
+                disabled={isBusy || isLoading || !my}
                 borderColor={borderColor}
                 theme={resolvedTheme}
                 className="w-full md:w-auto"
@@ -980,21 +1175,45 @@ export default function ApprovalRoutesList() {
                   className="text-[11px] px-1.5 py-0.5 rounded-full"
                   style={{ backgroundColor: "var(--accent-soft)" }}
                 >
-                  {notifiedCount}
+                  {notifiedPeople.count}
                 </span>
               </OutlineButton>
 
-              <PrimaryButton
-                onClick={() => navigate("step/new")}
-                disabled={isBusy}
-                borderColor={borderColor}
-                theme={resolvedTheme}
-                className="w-full md:w-auto"
-              >
-                <Plus className="w-4 h-4" /> Create Step
-              </PrimaryButton>
+              {usingDefault ? (
+                // On the default: copy it into a personal workflow first, then edit
+                <PrimaryButton
+                  onClick={customizeFromDefault}
+                  disabled={isBusy}
+                  borderColor={borderColor}
+                  theme={resolvedTheme}
+                  className="w-full md:w-auto"
+                >
+                  <Copy className="w-4 h-4" />{" "}
+                  {mutation.isPending ? "Copying..." : "Customize"}
+                </PrimaryButton>
+              ) : (
+                <PrimaryButton
+                  onClick={() => navigate("step/new")}
+                  disabled={isBusy}
+                  borderColor={borderColor}
+                  theme={resolvedTheme}
+                  className="w-full md:w-auto"
+                >
+                  <Plus className="w-4 h-4" /> Create Step
+                </PrimaryButton>
+              )}
             </div>
           </div>
+
+          {/* Which workflow applies + Use Default */}
+          <WorkflowSourceBanner
+            my={my}
+            isLoading={myLoading}
+            theme={resolvedTheme}
+            borderColor={borderColor}
+            isBusy={isBusy}
+            onUseDefault={() => setIsResetOpen(true)}
+          />
 
           {/* Stats */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-4">
@@ -1059,9 +1278,11 @@ export default function ApprovalRoutesList() {
                 icon={RouteIcon}
                 title="Routing Hierarchy"
                 subtitle={
-                  steps.length
-                    ? `${plural(steps.length, "step")} · requests go through them in level order`
-                    : "No steps yet"
+                  usingDefault
+                    ? `Default workflow "${my?.workflow?.name}" · read-only. Click Customize to edit your own copy.`
+                    : displaySteps.length
+                      ? `${plural(displaySteps.length, "step")} · requests go through them in level order`
+                      : "No steps yet"
                 }
                 right={
                   <div className="relative w-full sm:w-64">
@@ -1099,7 +1320,7 @@ export default function ApprovalRoutesList() {
             </div>
 
             <div className="w-full">
-              {!isLoading && steps.length === 0 ? (
+              {!isLoading && displaySteps.length === 0 ? (
                 <div className="p-4 sm:p-6">
                   <SoftNotice
                     icon={Info}
@@ -1135,9 +1356,7 @@ export default function ApprovalRoutesList() {
                           <StepCard
                             key={step.id}
                             step={step}
-                            approver={approverOptions.find(
-                              (o) => o.value === String(step.approver),
-                            )}
+                            approver={approverFor(step)}
                             roleObj={normalizedRoles.find(
                               (r) => r.id === step.role,
                             )}
@@ -1147,6 +1366,7 @@ export default function ApprovalRoutesList() {
                             onDelete={() => requestDelete(step)}
                             borderColor={borderColor}
                             theme={resolvedTheme}
+                            readOnly={usingDefault}
                           />
                         ))}
                   </div>
@@ -1180,9 +1400,7 @@ export default function ApprovalRoutesList() {
                             ))
                           : filteredSteps.map((step, i) => {
                               const enabled = step.isEnabled !== false;
-                              const approver = approverOptions.find(
-                                (o) => o.value === String(step.approver),
-                              );
+                              const approver = approverFor(step);
                               const roleObj = normalizedRoles.find(
                                 (r) => r.id === step.role,
                               );
@@ -1250,16 +1468,18 @@ export default function ApprovalRoutesList() {
 
                                   <td className="px-5 py-3.5">
                                     <div className="flex items-center gap-2.5">
-                                      <Toggle
-                                        checked={enabled}
-                                        disabled={isBusy}
-                                        onChange={() =>
-                                          toggleStepEnabled(step.id)
-                                        }
-                                        borderColor={borderColor}
-                                        theme={resolvedTheme}
-                                        label={`Turn Level ${step.level} ${enabled ? "off" : "on"}`}
-                                      />
+                                      {!usingDefault && (
+                                        <Toggle
+                                          checked={enabled}
+                                          disabled={isBusy}
+                                          onChange={() =>
+                                            toggleStepEnabled(step.id)
+                                          }
+                                          borderColor={borderColor}
+                                          theme={resolvedTheme}
+                                          label={`Turn Level ${step.level} ${enabled ? "off" : "on"}`}
+                                        />
+                                      )}
                                       <StatusPill
                                         enabled={enabled}
                                         borderColor={borderColor}
@@ -1268,14 +1488,23 @@ export default function ApprovalRoutesList() {
                                   </td>
 
                                   <td className="px-5 py-3.5 text-right">
-                                    <ActionMenu
-                                      onEdit={() =>
-                                        navigate(`step/${step.approver}`)
-                                      }
-                                      onDelete={() => requestDelete(step)}
-                                      isBusy={isBusy}
-                                      borderColor={borderColor}
-                                    />
+                                    {usingDefault ? (
+                                      <span
+                                        className="text-[11px] font-semibold"
+                                        style={{ color: "var(--app-muted)" }}
+                                      >
+                                        Default · read-only
+                                      </span>
+                                    ) : (
+                                      <ActionMenu
+                                        onEdit={() =>
+                                          navigate(`step/${step.approver}`)
+                                        }
+                                        onDelete={() => requestDelete(step)}
+                                        isBusy={isBusy}
+                                        borderColor={borderColor}
+                                      />
+                                    )}
                                   </td>
                                 </tr>
                               );
@@ -1348,15 +1577,50 @@ export default function ApprovalRoutesList() {
         </div>
       </Modal>
 
-      {/* Notified Employees Modal */}
-      <NotifiedEmployeesModal
+      {/* Use Default confirmation */}
+      <Modal
+        isOpen={isResetOpen}
+        onClose={() => !resetMutation.isPending && setIsResetOpen(false)}
+        title="Use Default Workflow"
+        maxWidth="max-w-md"
+        action={{
+          show: true,
+          label: resetMutation.isPending ? "Switching..." : "Use Default",
+          variant: "delete",
+          onClick: () => resetMutation.mutate(),
+          disabled: resetMutation.isPending,
+        }}
+      >
+        <div
+          className="p-2 space-y-3 text-sm"
+          style={{ color: "var(--app-text)" }}
+        >
+          <p>
+            Your personal workflow will be deleted and your requests will follow{" "}
+            <b>{my?.defaultWorkflow?.name || "the default workflow"}</b>{" "}
+            instead.
+          </p>
+          <div
+            className="flex items-start gap-2 text-xs"
+            style={{ color: "var(--app-muted)" }}
+          >
+            <AlertTriangle
+              size={14}
+              className="flex-none mt-0.5"
+              style={{ color: "#d97706" }}
+            />
+            You can build a personal workflow again at any time.
+          </div>
+        </div>
+      </Modal>
+
+      {/* Notified Employees: set by HR + my own, one list */}
+      <MyNotifiedEmployeesModal
         isOpen={isNotifiedOpen}
         onClose={() => setIsNotifiedOpen(false)}
-        myRoute={myRoute}
-        steps={steps}
+        my={my}
         employeeOptions={approverOptions}
-        admin={admin}
-        borderColor={borderColor}
+        currentUserId={currentUserId}
       />
 
       {/* Back to top */}

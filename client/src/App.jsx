@@ -94,6 +94,12 @@ import EmailNotificationSettings from "./components/generalSettingsComponents/em
 // Approval Routes (Separated into List and Form)
 import ApprovalRoutesList from "./components/generalSettingsComponents/approvalRoutes/approvalRoutesList";
 import ApprovalRouteStepForm from "./components/generalSettingsComponents/approvalRoutes/approvalRouteStepForm";
+import SharedWorkflowsPage from "./components/generalSettingsComponents/approvalRoutes/sharedWorkflowsPage";
+import WorkflowEditorPage from "./components/generalSettingsComponents/approvalRoutes/workflowEditorPage";
+import WorkflowEmployeesPage from "./components/generalSettingsComponents/approvalRoutes/WorkflowEmployeesPage";
+import WorkflowNotifiedPage from "./components/generalSettingsComponents/approvalRoutes/WorkflowNotifiedPage";
+import NotifyGroupEditorPage from "./components/generalSettingsComponents/approvalRoutes/NotifyGroupEditorPage";
+import NotifyGroupMembersPage from "./components/generalSettingsComponents/approvalRoutes/NotifyGroupMembersPage";
 
 // User Preferences Settings (theme + accent)
 import UserPreferencesSettings from "./components/generalSettingsComponents/userPreferencesSetting";
@@ -310,6 +316,44 @@ function App() {
             <Route
               path="approval-routes/step/:approverId"
               element={<ApprovalRouteStepForm />}
+            />
+          </Route>
+
+          {/* ✅ Shared workflows: create workflows and assign them to employees */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="settings.cto_workflow_assign" />
+            }
+          >
+            <Route path="shared-workflows" element={<SharedWorkflowsPage />} />
+            <Route
+              path="shared-workflows/new"
+              element={<WorkflowEditorPage />}
+            />
+            <Route
+              path="shared-workflows/:id/edit"
+              element={<WorkflowEditorPage />}
+            />
+            <Route
+              path="shared-workflows/:id/employees"
+              element={<WorkflowEmployeesPage />}
+            />
+            <Route
+              path="shared-workflows/:id/notified"
+              element={<WorkflowNotifiedPage />}
+            />
+            {/* Notify groups: who gets notified, per employee */}
+            <Route
+              path="shared-workflows/notify/new"
+              element={<NotifyGroupEditorPage />}
+            />
+            <Route
+              path="shared-workflows/notify/:id/edit"
+              element={<NotifyGroupEditorPage />}
+            />
+            <Route
+              path="shared-workflows/notify/:id/employees"
+              element={<NotifyGroupMembersPage />}
             />
           </Route>
 

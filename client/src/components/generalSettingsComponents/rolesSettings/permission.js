@@ -253,8 +253,13 @@ export const PERMISSION_GROUPS = [
       },
       {
         id: "settings.cto_workflow",
-        label: "Workflow Routes",
-        hint: "Manage approval route templates.",
+        label: "My Approval Workflow",
+        hint: "Set up their own CTO/Wellness approval workflow.",
+      },
+      {
+        id: "settings.cto_workflow_assign",
+        label: "Assign Approval Workflows",
+        hint: "Create shared CTO/Wellness workflows and assign them to employees, designations, projects, or as the company default.",
       },
       {
         id: "settings.revocation_workflow",

@@ -9,7 +9,6 @@ const APPROVAL_ROLES = {
   ARD_SIGNATURE: "ARD Signature",
   RD_SIGNATURE: "Regional Director Signature",
   HR_INITIAL: "HR Initial",
-  HR_SIGNATURE: "HR Signature",
 };
 
 // Extracted array of just the string values for Mongoose enum validation
@@ -27,7 +26,6 @@ const APPROVAL_ROLE_DESCRIPTIONS = {
     "Final signature  by the Assistant Regional Director.",
   [APPROVAL_ROLES.RD_SIGNATURE]: "Final signature  by the Regional Director.",
   [APPROVAL_ROLES.HR_INITIAL]: "Initial check by Human Resources.",
-  [APPROVAL_ROLES.HR_SIGNATURE]: "Signature of the  Human Resources.",
 };
 
 module.exports = {

@@ -1,4 +1,12 @@
 // services/approvalRoute.service.js
+//
+// CHANGED (marked below):
+//  - upsertMyApprovalRouteService only touches the user's own PRIVATE
+//    CTO/Wellness route. Before, it loaded every route the user created and
+//    deleted all but the newest, which would wipe out HR's shared workflows.
+//  - A personal workflow is always saved private + cto_wellness, because that's
+//    how approvalWorkflow.service.js recognizes it as "personal".
+//  - Fixed the "Steps must be sequential" message (the numbers didn't show).
 const mongoose = require("mongoose");
 const ApprovalRoute = require("../models/approvalRouteModel");
 const Employee = require("../models/employeeModel");
@@ -65,6 +73,9 @@ async function normalizeAndValidateNotifiedIds(notifiedEmployees) {
 
   return uniqueIds;
 }
+
+// CHANGED: personal workflows are CTO/Wellness only (one per employee)
+const PERSONAL_CATEGORY = "cto_wellness";
 
 const POPULATE_STEPS = {
   path: "steps.approver",
@@ -156,7 +167,7 @@ async function createApprovalRouteService({ data, createdBy }) {
 
     if (s.level !== i + 1) {
       throw httpError(
-        `Steps must be sequential starting at 1. Got level \({s.level} at position\){i + 1}.`,
+        `Steps must be sequential starting at 1. Got level ${s.level} at position ${i + 1}.`,
         400,
       );
     }
@@ -261,7 +272,7 @@ async function updateApprovalRouteService({ id, data, requesterId, isAdmin }) {
 
       if (s.level !== i + 1) {
         throw httpError(
-          `Steps must be sequential starting at 1. Got level \({s.level} at position\){i + 1}.`,
+          `Steps must be sequential starting at 1. Got level ${s.level} at position ${i + 1}.`,
           400,
         );
       }
@@ -359,7 +370,9 @@ async function resolveApproversFromRoute(routeId) {
 async function upsertMyApprovalRouteService({ data, requesterId }) {
   assertObjectId(requesterId, "requesterId");
 
-  const { name, steps, isPublic, category, notifiedEmployees } = data || {};
+  // CHANGED: isPublic and category are no longer read from the request.
+  // A personal workflow is always private + cto_wellness.
+  const { name, steps, notifiedEmployees } = data || {};
 
   if (!Array.isArray(steps) || steps.length === 0) {
     throw httpError("At least one approver step is required.", 400);
@@ -410,7 +423,13 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
 
   const routeName = name || "Personal Workflow";
 
-  const userRoutes = await ApprovalRoute.find({ createdBy: requesterId }).sort({
+  // CHANGED: only this user's own private CTO/Wellness route(s).
+  // Shared workflows (public) and any other routes they created are left alone.
+  const userRoutes = await ApprovalRoute.find({
+    createdBy: requesterId,
+    isPublic: false,
+    category: PERSONAL_CATEGORY,
+  }).sort({
     createdAt: -1,
   });
   let targetRouteId;
@@ -427,10 +446,10 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
   if (targetRouteId) {
     const updateFields = {
       name: String(routeName).trim(),
-      isPublic: isPublic === true,
+      isPublic: false, // CHANGED
+      category: PERSONAL_CATEGORY, // CHANGED
       steps: normalizedSteps,
     };
-    if (category !== undefined) updateFields.category = category;
     if (validatedNotifiedIds !== undefined) {
       updateFields.notifiedEmployees = validatedNotifiedIds;
     }
@@ -444,8 +463,8 @@ async function upsertMyApprovalRouteService({ data, requesterId }) {
     route = await ApprovalRoute.create({
       createdBy: requesterId,
       name: String(routeName).trim(),
-      isPublic: isPublic === true,
-      ...(category ? { category } : {}),
+      isPublic: false, // CHANGED
+      category: PERSONAL_CATEGORY, // CHANGED
       steps: normalizedSteps,
       notifiedEmployees: validatedNotifiedIds || [],
     });

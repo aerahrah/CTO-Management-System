@@ -843,7 +843,7 @@ const approveCtoApplicationService = async ({
     // ---------- INTERMEDIATE STEP ----------
     // Notified employees are NOT informed on intermediate steps.
     const nextStep = updatedSteps.find(
-      (s) => s.level === currentStep.level + 1,
+      (s) => Number(s.level) === Number(currentStep.level) + 1,
     );
 
     if (nextStep) {

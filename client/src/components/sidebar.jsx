@@ -40,6 +40,7 @@ import {
   Banknote,
   BriefcaseMedical,
   Undo,
+  Layers,
 } from "lucide-react";
 
 /* =========================
@@ -334,10 +335,16 @@ const Sidebar = ({
         icon: <Settings size={18} />,
         subItems: [
           {
-            name: "Approval Routes",
+            name: "My Approval Workflow",
             path: "/app/approval-routes",
             icon: <Route size={14} />,
             requiredPermission: "settings.cto_workflow",
+          },
+          {
+            name: "Shared Workflows",
+            path: "/app/shared-workflows",
+            icon: <Layers size={14} />,
+            requiredPermission: "settings.cto_workflow_assign",
           },
           {
             name: "Revocation Settings",
