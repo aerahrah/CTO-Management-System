@@ -33,6 +33,10 @@ const validPermissions = [
   "cto.view_application", // View specific applications assigned for approval
   "cto.manage_application", // Approve or reject assigned CTO applications
 
+  // CTO Application Admin Tools (admin only)
+  "cto.admin_view", // Search employees, list/open any CTO application, check balances
+  "cto.admin_edit", // Edit any CTO application detail, recalculate employee CTO balances
+
   // Dashboard View Permissions
   "cto.dashboard.self_view", // Personal dashboard view
   "cto.dashboard.hr_view", // HR dashboard view (credits & records summary)

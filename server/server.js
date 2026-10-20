@@ -41,6 +41,8 @@ const wellnessRoutes = require("./routers/wellnessRoutes");
 const wellnessDashboardRoutes = require("./routers/wellnessDashboardRoute");
 // 🔒 NEW: Admin-only wellness credit tools (search, edit, balance recalculation)
 const adminWellnessCreditRoutes = require("./routers/adminWellnessCreditRoutes");
+// 🔒 NEW: Admin-only CTO application tools (search, edit, balance recalculation)
+const adminCtoApplicationRoutes = require("./routers/adminCtoApplicationRoutes");
 
 // ✅ NEW: Import the calendar router
 const calendarRoutes = require("./routers/calendarRoute");
@@ -324,6 +326,9 @@ app.use("/api/wellness", wellnessDashboardRoutes); // Mounts the dashboard on /a
 
 // 🔒 WELLNESS CREDIT ADMIN (requires wellness.admin_view / wellness.admin_edit)
 app.use("/api/admin/wellness-credits", adminWellnessCreditRoutes);
+
+// 🔒 CTO APPLICATION ADMIN (requires cto.admin_view / cto.admin_edit)
+app.use("/api/admin/cto-applications", adminCtoApplicationRoutes);
 
 // ✅ CALENDAR ROUTES
 app.use("/api/calendar", calendarRoutes);

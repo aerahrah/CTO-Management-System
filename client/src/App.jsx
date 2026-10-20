@@ -64,6 +64,15 @@ const WellnessCreditAdminEditPage = lazy(() =>
   })),
 );
 
+const loadCtoApplicationAdmin = () =>
+  import("./components/ctoComponents/ctoApplicationComponents/ctoApplicationAdmin");
+const CtoApplicationAdmin = lazy(loadCtoApplicationAdmin);
+const CtoApplicationAdminEditPage = lazy(() =>
+  loadCtoApplicationAdmin().then((m) => ({
+    default: m.CtoApplicationAdminEditPage,
+  })),
+);
+
 /* Leave Credit Components */
 import LeaveCreditHistory from "./components/leaveComponents/leaveCreditComponents/recentLeaveCreditHistory";
 import AddLeaveCreditForm from "./components/leaveComponents/leaveCreditComponents/forms/addLeaveCreditForm";
@@ -107,9 +116,9 @@ import ApprovalRoutesList from "./components/generalSettingsComponents/approvalR
 import ApprovalRouteStepForm from "./components/generalSettingsComponents/approvalRoutes/approvalRouteStepForm";
 import SharedWorkflowsPage from "./components/generalSettingsComponents/approvalRoutes/sharedWorkflowsPage";
 import WorkflowEditorPage from "./components/generalSettingsComponents/approvalRoutes/workflowEditorPage";
-import WorkflowEmployeesPage from "./components/generalSettingsComponents/approvalRoutes/WorkflowEmployeesPage";
+import WorkflowEmployeesPage from "./components/generalSettingsComponents/approvalRoutes/workflowEmployeespage";
 import WorkflowNotifiedPage from "./components/generalSettingsComponents/approvalRoutes/WorkflowNotifiedPage";
-import NotifyGroupEditorPage from "./components/generalSettingsComponents/approvalRoutes/NotifyGroupEditorPage";
+import NotifyGroupEditorPage from "./components/generalSettingsComponents/approvalRoutes/notifygroupeditorpage";
 import NotifyGroupMembersPage from "./components/generalSettingsComponents/approvalRoutes/NotifyGroupMembersPage";
 
 // User Preferences Settings (theme + accent)
@@ -421,6 +430,20 @@ function App() {
               path="cto-all-applications"
               element={<AllCtoApplicationsHistory />}
             />
+          </Route>
+
+          {/* 🔒 HIDDEN: CTO application admin — no sidebar link, open by URL only */}
+          <Route element={<ProtectedRoute />}>
+            <Route element={<SecretRoute permission="cto.admin_view" />}>
+              <Route
+                path="cto-all-applications/maintenance"
+                element={<CtoApplicationAdmin />}
+              />
+              <Route
+                path="cto-all-applications/maintenance/:applicationId"
+                element={<CtoApplicationAdminEditPage />}
+              />
+            </Route>
           </Route>
 
           <Route
