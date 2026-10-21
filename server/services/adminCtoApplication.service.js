@@ -437,7 +437,11 @@ function rowHours(row) {
     remaining,
     reserved,
     used,
-    total: round2(Number(row?.totalHours) || remaining + reserved + used),
+    // ctoCreditModel stores this as creditedHours (totalHours kept for older data)
+    total: round2(
+      Number(row?.creditedHours ?? row?.totalHours) ||
+        remaining + reserved + used,
+    ),
     status: row?.status || null,
   };
 }
@@ -511,7 +515,12 @@ async function computeCtoLedger(employeeId, session) {
         remaining: { $ifNull: ["$employees.remainingHours", 0] },
         reserved: { $ifNull: ["$employees.reservedHours", 0] },
         used: { $ifNull: ["$employees.usedHours", 0] },
-        total: { $ifNull: ["$employees.totalHours", 0] },
+        total: {
+          $ifNull: [
+            "$employees.creditedHours",
+            { $ifNull: ["$employees.totalHours", 0] },
+          ],
+        },
       },
     },
     {

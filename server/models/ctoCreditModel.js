@@ -1,5 +1,18 @@
 const mongoose = require("mongoose");
 
+// 🔒 OPTIONAL: log of admin-console edits (adminCtoCredit.service.js).
+// Hidden from normal queries (select: false). The admin tools work without it;
+// leave it out if you don't want an edit log on the memo itself.
+const adminEditHistorySchema = new mongoose.Schema(
+  {
+    editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+    editedAt: { type: Date, default: Date.now },
+    reason: { type: String, maxlength: 500 },
+    changes: { type: mongoose.Schema.Types.Mixed },
+  },
+  { _id: true },
+);
+
 const ctoCreditSchema = new mongoose.Schema(
   {
     // Memo-level info (shared by all employees)
@@ -80,6 +93,13 @@ const ctoCreditSchema = new mongoose.Schema(
 
     creditedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
     rolledBackBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+
+    // 🔒 OPTIONAL (see top of file)
+    adminEditHistory: {
+      type: [adminEditHistorySchema],
+      default: [],
+      select: false,
+    },
   },
   { timestamps: true },
 );

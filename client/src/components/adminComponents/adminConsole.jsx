@@ -34,6 +34,10 @@ import {
   fetchWellnessAdminCredits,
   searchWellnessAdminEmployees,
 } from "../../api/wellnessApplicationAdmin";
+import {
+  fetchCtoCreditAdminCredits,
+  searchCtoCreditAdminEmployees,
+} from "../../api/adminCtoCredit";
 
 import { useAuth } from "../../store/authStore";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -47,6 +51,7 @@ import {
   Timer,
   Activity,
   Files,
+  FileClock,
   ChevronsLeft,
   ChevronsRight,
   ChevronRight,
@@ -78,6 +83,15 @@ const TOOLS = [
       "Find any CTO application and correct its status, hours, dates, memos, approvers and more. Check and fix CTO balances.",
   },
   {
+    id: "ctoCredit",
+    to: "cto-credits",
+    label: "CTO Credit Memos",
+    icon: FileClock,
+    permission: "cto.credits_admin_view",
+    description:
+      "Correct any CTO credit memo: memo details and file, who got how many hours, rollbacks. Every change is checked against CSC limits.",
+  },
+  {
     id: "wellness",
     to: "wellness-credits",
     label: "Wellness Credits",
@@ -93,6 +107,11 @@ const STAT_TILES = {
     { key: "PENDING", label: "Pending", tone: "amber" },
     { key: "REVOCATION_REQUESTED", label: "Revocation", tone: "violet" },
     { key: "APPROVED", label: "Approved", tone: "green" },
+    { key: "ALL", label: "All", tone: null },
+  ],
+  ctoCredit: [
+    { key: "CREDITED", label: "Credited", tone: "green" },
+    { key: "ROLLEDBACK", label: "Rolled back", tone: "red" },
     { key: "ALL", label: "All", tone: null },
   ],
   wellness: [
@@ -219,18 +238,27 @@ function useAllowedTools() {
   return TOOLS.filter((t) => can(t.permission));
 }
 
-/** Status counts for a tool. Shares the tools' query keys, so saves there refresh these. */
+/** Where each tool's status counts come from (same query keys as the tools, so saves refresh them). */
+const STATS_SOURCES = {
+  cto: {
+    key: "ctoAdminApplications",
+    fetch: () => fetchCtoAdminApplications({ limit: 1 }),
+  },
+  ctoCredit: {
+    key: "ctoCreditAdminCredits",
+    fetch: () => fetchCtoCreditAdminCredits({ limit: 1 }),
+  },
+  wellness: {
+    key: "wellnessAdminCredits",
+    fetch: () => fetchWellnessAdminCredits({ limit: 1 }),
+  },
+};
+
 function useToolStats(toolId, enabled = true) {
-  const isCto = toolId === "cto";
+  const source = STATS_SOURCES[toolId];
   return useQuery({
-    queryKey: [
-      isCto ? "ctoAdminApplications" : "wellnessAdminCredits",
-      "consoleStats",
-    ],
-    queryFn: () =>
-      isCto
-        ? fetchCtoAdminApplications({ limit: 1 })
-        : fetchWellnessAdminCredits({ limit: 1 }),
+    queryKey: [source.key, "consoleStats"],
+    queryFn: source.fetch,
     select: (data) => data?.statusCounts || {},
     enabled,
     staleTime: 60_000,
@@ -435,26 +463,34 @@ function buildMenu(base, tools, pendingCto) {
   const items = [
     { name: "Main Menu", icon: LayoutGrid, path: base, exact: true },
   ];
+  const ctoSubItems = [];
   if (has("cto")) {
-    items.push({
-      name: "CTO Admin",
-      icon: Timer,
-      subItems: [
-        {
-          name: "Applications",
-          icon: Files,
-          path: `${base}/cto-applications`,
-          view: "",
-          badge: pendingCto > 0 ? pendingCto : null,
-        },
-        {
-          name: "Employee Lookup",
-          icon: UserSearch,
-          path: `${base}/cto-applications`,
-          view: "employees",
-        },
-      ],
+    ctoSubItems.push({
+      name: "Applications",
+      icon: Files,
+      path: `${base}/cto-applications`,
+      view: "",
+      badge: pendingCto > 0 ? pendingCto : null,
     });
+  }
+  if (has("ctoCredit")) {
+    // no `view`: stays highlighted on both of its tabs and on the edit page
+    ctoSubItems.push({
+      name: "Credit Memos",
+      icon: FileClock,
+      path: `${base}/cto-credits`,
+    });
+  }
+  if (has("cto")) {
+    ctoSubItems.push({
+      name: "Employee Lookup",
+      icon: UserSearch,
+      path: `${base}/cto-applications`,
+      view: "employees",
+    });
+  }
+  if (ctoSubItems.length) {
+    items.push({ name: "CTO Admin", icon: Timer, subItems: ctoSubItems });
   }
   if (has("wellness")) {
     items.push({
@@ -1141,7 +1177,13 @@ const ToolCard = ({ tool, borderColor }) => {
         </div>
       </div>
 
-      <div className="px-4 md:px-5 grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div
+        className={`px-4 md:px-5 grid gap-2 ${
+          STAT_TILES[tool.id].length === 3
+            ? "grid-cols-3"
+            : "grid-cols-2 sm:grid-cols-4"
+        }`}
+      >
         {STAT_TILES[tool.id].map((tile) => {
           const value = counts[tile.key] ?? 0;
           const toned = tile.tone && value > 0;
@@ -1209,14 +1251,20 @@ const EmployeeJump = ({ tools, borderColor }) => {
   const [query, setQuery] = useState("");
   const q = useDebounced(query.trim(), 300);
   const hasCto = tools.some((t) => t.id === "cto");
+  const hasCtoCredit = tools.some((t) => t.id === "ctoCredit");
   const hasWellness = tools.some((t) => t.id === "wellness");
+  // any CTO tool → show CTO balances; otherwise wellness
+  const searchWith = hasCto ? "cto" : hasCtoCredit ? "ctoCredit" : "wellness";
+  const showsCto = searchWith !== "wellness";
 
   const { data, isFetching, isError, error } = useQuery({
-    queryKey: ["adminConsoleEmployeeJump", hasCto ? "cto" : "wellness", q],
+    queryKey: ["adminConsoleEmployeeJump", searchWith, q],
     queryFn: () =>
-      hasCto
+      searchWith === "cto"
         ? searchCtoAdminEmployees({ q, limit: 8 })
-        : searchWellnessAdminEmployees({ q, limit: 8 }),
+        : searchWith === "ctoCredit"
+          ? searchCtoCreditAdminEmployees({ q, limit: 8 })
+          : searchWellnessAdminEmployees({ q, limit: 8 }),
     enabled: q.length > 0,
     staleTime: 30_000,
     placeholderData: (prev) => prev,
@@ -1297,7 +1345,7 @@ const EmployeeJump = ({ tools, borderColor }) => {
           )}
           {results.map((emp) => {
             const id = encodeURIComponent(String(emp._id));
-            const balance = hasCto ? emp.ctoBalance : emp.wellnessBalance;
+            const balance = showsCto ? emp.ctoBalance : emp.wellnessBalance;
             return (
               <li
                 key={emp._id}
@@ -1329,7 +1377,7 @@ const EmployeeJump = ({ tools, borderColor }) => {
                         <>
                           {" "}
                           ·{" "}
-                          {hasCto
+                          {showsCto
                             ? `CTO ${round2(balance)}h`
                             : `Wellness ${round2(balance)}d`}
                         </>
@@ -1349,6 +1397,19 @@ const EmployeeJump = ({ tools, borderColor }) => {
                       }}
                     >
                       <Clock3 size={13} /> CTO
+                    </Link>
+                  )}
+                  {hasCtoCredit && (
+                    <Link
+                      to={`cto-credits?view=employees&employee=${id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold"
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        borderColor,
+                        color: "var(--app-text)",
+                      }}
+                    >
+                      <FileClock size={13} /> Memos
                     </Link>
                   )}
                   {hasWellness && (

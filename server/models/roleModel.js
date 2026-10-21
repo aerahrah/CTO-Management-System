@@ -37,6 +37,10 @@ const validPermissions = [
   "cto.admin_view", // Search employees, list/open any CTO application, check balances
   "cto.admin_edit", // Edit any CTO application detail, recalculate employee CTO balances
 
+  // CTO Credit Memo Admin Tools (admin only)
+  "cto.credits_admin_view", // Search employees, list/open any CTO credit memo, check balances
+  "cto.credits_admin_edit", // Edit any CTO credit memo detail (memo, file, employee rows), recalculate CTO balances
+
   // Dashboard View Permissions
   "cto.dashboard.self_view", // Personal dashboard view
   "cto.dashboard.hr_view", // HR dashboard view (credits & records summary)

@@ -86,6 +86,15 @@ const CtoApplicationAdminEditPage = lazy(() =>
   })),
 );
 
+const loadCtoCreditAdmin = () =>
+  import("./components/adminComponents/ctoCreditAdmin");
+const CtoCreditAdmin = lazy(loadCtoCreditAdmin);
+const CtoCreditAdminEditPage = lazy(() =>
+  loadCtoCreditAdmin().then((m) => ({
+    default: m.CtoCreditAdminEditPage,
+  })),
+);
+
 /* Leave Credit Components */
 import LeaveCreditHistory from "./components/leaveComponents/leaveCreditComponents/recentLeaveCreditHistory";
 import AddLeaveCreditForm from "./components/leaveComponents/leaveCreditComponents/forms/addLeaveCreditForm";
@@ -663,6 +672,15 @@ function App() {
               <Route
                 path="cto-applications/:applicationId"
                 element={<CtoApplicationAdminEditPage />}
+              />
+            </Route>
+            <Route
+              element={<SecretRoute permission="cto.credits_admin_view" />}
+            >
+              <Route path="cto-credits" element={<CtoCreditAdmin />} />
+              <Route
+                path="cto-credits/:creditId"
+                element={<CtoCreditAdminEditPage />}
               />
             </Route>
             <Route element={<SecretRoute permission="wellness.admin_view" />}>
