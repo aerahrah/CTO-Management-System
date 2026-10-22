@@ -95,6 +95,15 @@ const CtoCreditAdminEditPage = lazy(() =>
   })),
 );
 
+const loadWellnessApplicationAdmin = () =>
+  import("./components/adminComponents/wellnessApplicationAdmin");
+const WellnessApplicationAdmin = lazy(loadWellnessApplicationAdmin);
+const WellnessApplicationAdminEditPage = lazy(() =>
+  loadWellnessApplicationAdmin().then((m) => ({
+    default: m.WellnessApplicationAdminEditPage,
+  })),
+);
+
 /* Leave Credit Components */
 import LeaveCreditHistory from "./components/leaveComponents/leaveCreditComponents/recentLeaveCreditHistory";
 import AddLeaveCreditForm from "./components/leaveComponents/leaveCreditComponents/forms/addLeaveCreditForm";
@@ -681,6 +690,20 @@ function App() {
               <Route
                 path="cto-credits/:creditId"
                 element={<CtoCreditAdminEditPage />}
+              />
+            </Route>
+            <Route
+              element={
+                <SecretRoute permission="wellness.applications_admin_view" />
+              }
+            >
+              <Route
+                path="wellness-applications"
+                element={<WellnessApplicationAdmin />}
+              />
+              <Route
+                path="wellness-applications/:applicationId"
+                element={<WellnessApplicationAdminEditPage />}
               />
             </Route>
             <Route element={<SecretRoute permission="wellness.admin_view" />}>

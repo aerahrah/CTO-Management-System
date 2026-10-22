@@ -4,6 +4,8 @@
 // built like dashboardPage.jsx: sidebar + top bar + main area.
 //   /<ADMIN_CONSOLE_PATH>                      → main menu (AdminConsoleHome)
 //   /<ADMIN_CONSOLE_PATH>/cto-applications     → CTO application admin
+//   /<ADMIN_CONSOLE_PATH>/cto-credits          → CTO credit memo admin
+//   /<ADMIN_CONSOLE_PATH>/wellness-applications → Wellness application admin
 //   /<ADMIN_CONSOLE_PATH>/wellness-credits     → Wellness credit admin
 //
 // Before showing anything, the layout asks the server (GET /api/admin/console/access).
@@ -38,6 +40,10 @@ import {
   fetchCtoCreditAdminCredits,
   searchCtoCreditAdminEmployees,
 } from "../../api/adminCtoCredit";
+import {
+  fetchWellnessAdminApplications,
+  searchWellnessApplicationAdminEmployees,
+} from "../../api/adminWellnessApplication";
 
 import { useAuth } from "../../store/authStore";
 import { usePermissions } from "../../hooks/usePermissions";
@@ -48,6 +54,8 @@ import {
   ArrowLeft,
   Clock3,
   HeartPulse,
+  CalendarHeart,
+  Coins,
   Timer,
   Activity,
   Files,
@@ -92,6 +100,15 @@ const TOOLS = [
       "Correct any CTO credit memo: memo details and file, who got how many hours, rollbacks. Every change is checked against CSC limits.",
   },
   {
+    id: "wellnessApp",
+    to: "wellness-applications",
+    label: "Wellness Applications",
+    icon: CalendarHeart,
+    permission: "wellness.applications_admin_view",
+    description:
+      "Find any Wellness Leave application and correct its status, days, dates, approvers and more. Credit batches and balances follow automatically.",
+  },
+  {
     id: "wellness",
     to: "wellness-credits",
     label: "Wellness Credits",
@@ -112,6 +129,12 @@ const STAT_TILES = {
   ctoCredit: [
     { key: "CREDITED", label: "Credited", tone: "green" },
     { key: "ROLLEDBACK", label: "Rolled back", tone: "red" },
+    { key: "ALL", label: "All", tone: null },
+  ],
+  wellnessApp: [
+    { key: "PENDING", label: "Pending", tone: "amber" },
+    { key: "REVOCATION_REQUESTED", label: "Revocation", tone: "violet" },
+    { key: "APPROVED", label: "Approved", tone: "green" },
     { key: "ALL", label: "All", tone: null },
   ],
   wellness: [
@@ -248,6 +271,10 @@ const STATS_SOURCES = {
     key: "ctoCreditAdminCredits",
     fetch: () => fetchCtoCreditAdminCredits({ limit: 1 }),
   },
+  wellnessApp: {
+    key: "wellnessAdminApplications",
+    fetch: () => fetchWellnessAdminApplications({ limit: 1 }),
+  },
   wellness: {
     key: "wellnessAdminCredits",
     fetch: () => fetchWellnessAdminCredits({ limit: 1 }),
@@ -348,10 +375,15 @@ function ConsoleShell() {
     tools.some((t) => t.id === "cto"),
   );
   const pendingCto = ctoStats.data?.PENDING || 0;
+  const wellnessStats = useToolStats(
+    "wellnessApp",
+    tools.some((t) => t.id === "wellnessApp"),
+  );
+  const pendingWellness = wellnessStats.data?.PENDING || 0;
 
   const menu = useMemo(
-    () => buildMenu(base, tools, pendingCto),
-    [base, tools, pendingCto],
+    () => buildMenu(base, tools, pendingCto, pendingWellness),
+    [base, tools, pendingCto, pendingWellness],
   );
 
   return (
@@ -458,7 +490,7 @@ const normalizePath = (p) => (p || "").replace(/\/+$/, "") || "/";
 const subLink = (sub) => (sub.view ? `${sub.path}?view=${sub.view}` : sub.path);
 
 /** The console's menu, in the same shape as your main sidebar's menuItems. */
-function buildMenu(base, tools, pendingCto) {
+function buildMenu(base, tools, pendingCto, pendingWellness = 0) {
   const has = (id) => tools.some((t) => t.id === id);
   const items = [
     { name: "Main Menu", icon: LayoutGrid, path: base, exact: true },
@@ -492,24 +524,44 @@ function buildMenu(base, tools, pendingCto) {
   if (ctoSubItems.length) {
     items.push({ name: "CTO Admin", icon: Timer, subItems: ctoSubItems });
   }
+  const wellnessSubItems = [];
+  if (has("wellnessApp")) {
+    wellnessSubItems.push({
+      name: "Applications",
+      icon: Files,
+      path: `${base}/wellness-applications`,
+      view: "",
+      badge: pendingWellness > 0 ? pendingWellness : null,
+    });
+  }
   if (has("wellness")) {
+    wellnessSubItems.push(
+      has("wellnessApp")
+        ? // no `view`: stays highlighted on both of its tabs and on the edit page
+          {
+            name: "Credit Batches",
+            icon: Coins,
+            path: `${base}/wellness-credits`,
+          }
+        : {
+            name: "Credit Batches",
+            icon: Files,
+            path: `${base}/wellness-credits`,
+            view: "",
+          },
+    );
+  }
+  if (wellnessSubItems.length) {
+    wellnessSubItems.push({
+      name: "Employee Lookup",
+      icon: UserSearch,
+      path: `${base}/${has("wellnessApp") ? "wellness-applications" : "wellness-credits"}`,
+      view: "employees",
+    });
     items.push({
       name: "Wellness Admin",
       icon: Activity,
-      subItems: [
-        {
-          name: "Credit Batches",
-          icon: Files,
-          path: `${base}/wellness-credits`,
-          view: "",
-        },
-        {
-          name: "Employee Lookup",
-          icon: UserSearch,
-          path: `${base}/wellness-credits`,
-          view: "employees",
-        },
-      ],
+      subItems: wellnessSubItems,
     });
   }
   return items;
@@ -1126,7 +1178,9 @@ export function AdminConsoleHome() {
             }}
           >
             Your role doesn't have any admin tool permissions yet (
-            <b>cto.admin_view</b>, <b>wellness.admin_view</b>).
+            <b>cto.admin_view</b>, <b>cto.credits_admin_view</b>,{" "}
+            <b>wellness.applications_admin_view</b>, <b>wellness.admin_view</b>
+            ).
           </div>
         ) : (
           <div className="space-y-4 pb-4">
@@ -1252,10 +1306,17 @@ const EmployeeJump = ({ tools, borderColor }) => {
   const q = useDebounced(query.trim(), 300);
   const hasCto = tools.some((t) => t.id === "cto");
   const hasCtoCredit = tools.some((t) => t.id === "ctoCredit");
+  const hasWellnessApp = tools.some((t) => t.id === "wellnessApp");
   const hasWellness = tools.some((t) => t.id === "wellness");
   // any CTO tool → show CTO balances; otherwise wellness
-  const searchWith = hasCto ? "cto" : hasCtoCredit ? "ctoCredit" : "wellness";
-  const showsCto = searchWith !== "wellness";
+  const searchWith = hasCto
+    ? "cto"
+    : hasCtoCredit
+      ? "ctoCredit"
+      : hasWellnessApp
+        ? "wellnessApp"
+        : "wellness";
+  const showsCto = searchWith === "cto" || searchWith === "ctoCredit";
 
   const { data, isFetching, isError, error } = useQuery({
     queryKey: ["adminConsoleEmployeeJump", searchWith, q],
@@ -1264,7 +1325,9 @@ const EmployeeJump = ({ tools, borderColor }) => {
         ? searchCtoAdminEmployees({ q, limit: 8 })
         : searchWith === "ctoCredit"
           ? searchCtoCreditAdminEmployees({ q, limit: 8 })
-          : searchWellnessAdminEmployees({ q, limit: 8 }),
+          : searchWith === "wellnessApp"
+            ? searchWellnessApplicationAdminEmployees({ q, limit: 8 })
+            : searchWellnessAdminEmployees({ q, limit: 8 }),
     enabled: q.length > 0,
     staleTime: 30_000,
     placeholderData: (prev) => prev,
@@ -1412,6 +1475,19 @@ const EmployeeJump = ({ tools, borderColor }) => {
                       <FileClock size={13} /> Memos
                     </Link>
                   )}
+                  {hasWellnessApp && (
+                    <Link
+                      to={`wellness-applications?view=employees&employee=${id}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold"
+                      style={{
+                        backgroundColor: "var(--app-surface)",
+                        borderColor,
+                        color: "var(--app-text)",
+                      }}
+                    >
+                      <CalendarHeart size={13} /> Wellness
+                    </Link>
+                  )}
                   {hasWellness && (
                     <Link
                       to={`wellness-credits?view=employees&employee=${id}`}
@@ -1422,7 +1498,15 @@ const EmployeeJump = ({ tools, borderColor }) => {
                         color: "var(--app-text)",
                       }}
                     >
-                      <HeartPulse size={13} /> Wellness
+                      {hasWellnessApp ? (
+                        <>
+                          <Coins size={13} /> Batches
+                        </>
+                      ) : (
+                        <>
+                          <HeartPulse size={13} /> Wellness
+                        </>
+                      )}
                     </Link>
                   )}
                 </div>

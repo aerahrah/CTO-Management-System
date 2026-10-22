@@ -241,6 +241,23 @@ const wellnessApplicationSchema = new mongoose.Schema(
         processedAt: { type: Date },
       },
     ],
+
+    // =========================================
+    // ✅ NEW: ADMIN EDIT LOG (written by services/adminWellnessApplication.service.js)
+    // Hidden from normal queries so existing endpoints are unaffected.
+    // =========================================
+    adminEditHistory: {
+      type: [
+        {
+          editedBy: { type: mongoose.Schema.Types.ObjectId, ref: "Employee" },
+          editedAt: { type: Date, default: Date.now },
+          reason: { type: String, trim: true, maxlength: 500 },
+          changes: { type: mongoose.Schema.Types.Mixed },
+        },
+      ],
+      default: [],
+      select: false,
+    },
   },
   {
     timestamps: true,

@@ -62,6 +62,10 @@ const validPermissions = [
   "wellness.admin_view", // Search employees, list/open credit batches, check balances
   "wellness.admin_edit", // Edit any credit batch detail, recalculate employee balances
 
+  // Wellness Application Admin Tools (admin only)
+  "wellness.applications_admin_view", // Search employees, list/open any wellness application, check balances
+  "wellness.applications_admin_edit", // Edit any wellness application detail, recalculate employee wellness balances
+
   // -------------------------
   // WELLNESS LEAVES
   // -------------------------
