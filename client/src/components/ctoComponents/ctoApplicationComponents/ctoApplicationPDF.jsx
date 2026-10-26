@@ -122,7 +122,296 @@ function getFullApproverName(profile) {
 }
 
 /* =========================
-   Styles 
+   Text fitting
+   Keeps long free-text (purpose/reason, remarks) inside its box so the
+   one-page form never stretches or spills onto a second page.
+========================= */
+const PAGE_WIDTH = 595.28; // A4 in points
+const PAGE_PAD_X = 28;
+const LINE_HEIGHT = 1.25;
+const BOX_INNER_WIDTH = PAGE_WIDTH - PAGE_PAD_X * 2 - 2; // minus topBox borders
+const LEFT_COL_TEXT_WIDTH = BOX_INNER_WIDTH * 0.58 - 1 - 20; // minus divider + padding
+const RIGHT_COL_TEXT_WIDTH = BOX_INNER_WIDTH * 0.42 - 20; // minus padding
+const CHECKBOX_SPACE = 22 + 8; // checkbox width + its margin
+
+// Max height the Purpose/Reason text may take on the form (≈ 9 lines at 10pt).
+const REASON_MAX_HEIGHT = 115;
+// Max height for disapproval remarks when they don't fit on the inline line.
+const REMARKS_MAX_HEIGHT = 34;
+const FIT_SIZES = [10, 9, 8, 7];
+const CONTINUED_NOTE = " … (continued on attached page)";
+
+// Helvetica glyph widths (1/1000 em) for ASCII 32–126, from the standard AFM metrics.
+// prettier-ignore
+const HELVETICA_WIDTHS = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556,
+  278, 278, 584, 584, 584, 556, 1015,
+  667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833,
+  722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611,
+  278, 278, 278, 469, 556, 333,
+  556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833,
+  556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500,
+  334, 260, 334, 584,
+];
+
+function textWidth(str, fontSize, bold = false) {
+  let units = 0;
+  for (const ch of String(str)) {
+    const code = ch.charCodeAt(0);
+    units += code >= 32 && code <= 126 ? HELVETICA_WIDTHS[code - 32] : 556;
+  }
+  // Helvetica-Bold runs up to ~10% wider; over-estimating is the safe side.
+  return (units / 1000) * fontSize * (bold ? 1.1 : 1);
+}
+
+/**
+ * Splits a word wider than `maxWidth` (memo numbers, URLs) into pieces that
+ * fit, preferring to cut right after a separator such as "-", "/", "." or "_".
+ */
+function splitLongWord(word, fontSize, maxWidth) {
+  const pieces = [];
+  let rest = word;
+  while (rest.length > 1 && textWidth(rest, fontSize) > maxWidth) {
+    let n = 1;
+    while (
+      n < rest.length &&
+      textWidth(rest.slice(0, n + 1), fontSize) <= maxWidth
+    ) {
+      n += 1;
+    }
+    const sep = Math.max(
+      ...["-", "/", ".", "_", ",", ":"].map((c) => rest.lastIndexOf(c, n - 1)),
+    );
+    if (sep >= n / 2) n = sep + 1;
+    pieces.push(rest.slice(0, n));
+    rest = rest.slice(n);
+  }
+  pieces.push(rest);
+  return pieces;
+}
+
+// Simulates word-wrapping and returns how many lines `text` needs.
+function countLines(text, fontSize, maxWidth) {
+  const spaceW = textWidth(" ", fontSize);
+  let lines = 0;
+  for (const paragraph of String(text).split(/\r?\n/)) {
+    lines += 1;
+    let lineW = 0;
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const w = textWidth(word, fontSize);
+      if (lineW > 0 && lineW + spaceW + w <= maxWidth) {
+        lineW += spaceW + w;
+        continue;
+      }
+      if (lineW > 0) lines += 1;
+      // A word wider than the line is broken the same way breakLongWords() does it.
+      const pieces =
+        w > maxWidth ? splitLongWord(word, fontSize, maxWidth) : [word];
+      lines += pieces.length - 1;
+      lineW = textWidth(pieces[pieces.length - 1], fontSize);
+    }
+  }
+  return lines;
+}
+
+/**
+ * Picks the largest font size at which `text` fits in `width` × `maxHeight`.
+ * If it can't fit even at the smallest size, returns a shortened preview
+ * (cut on a word boundary) with `overflow: true` so the full text can be
+ * printed on an attachment page instead of breaking the layout.
+ */
+function fitText(
+  text,
+  { width, maxHeight, sizes = FIT_SIZES, note = CONTINUED_NOTE },
+) {
+  const value = String(text || "").trim();
+  const fits = (str, size) =>
+    countLines(str, size, width) * size * LINE_HEIGHT <= maxHeight;
+
+  for (const size of sizes) {
+    if (fits(value, size)) {
+      return { fontSize: size, text: value, overflow: false, maxHeight, note };
+    }
+  }
+
+  const size = sizes[sizes.length - 1];
+  const words = value.split(/\s+/);
+  let lo = 0;
+  let hi = words.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(words.slice(0, mid).join(" ") + note, size)) lo = mid;
+    else hi = mid - 1;
+  }
+  let preview = words.slice(0, lo).join(" ");
+
+  // Not even the first word fits (one huge unbroken string): trim it by characters.
+  if (lo === 0) {
+    const first = words[0] || "";
+    let n = first.length;
+    while (n > 0 && !fits(first.slice(0, n) + note, size)) n -= 1;
+    preview = first.slice(0, n);
+  }
+
+  return { fontSize: size, text: preview, overflow: true, maxHeight, note };
+}
+
+/**
+ * react-pdf can't always find a break point inside long unbroken strings
+ * (memo numbers, URLs), so they run into the next column. This inserts line
+ * breaks into any word wider than `maxWidth`.
+ */
+function breakLongWords(text, fontSize, maxWidth) {
+  return String(text)
+    .split(/(\s+)/)
+    .map((token) =>
+      /^\s*$/.test(token) || textWidth(token, fontSize) <= maxWidth
+        ? token
+        : splitLongWord(token, fontSize, maxWidth).join("\n"),
+    )
+    .join("");
+}
+
+// Height a fitText()/fitCell() result will take when rendered.
+function fitHeight(fit, width) {
+  const text = fit.text + (fit.overflow ? fit.note : "");
+  return countLines(text, fit.fontSize, width) * fit.fontSize * LINE_HEIGHT;
+}
+
+/* Page budget: positions in points from the top of the page, measured from
+   the rendered form with the styles below. If you change the logo, titles or
+   field spacing, re-measure these, or the certificate may spill onto page 2. */
+const LAYOUT = {
+  reasonRowTop: 298.5, // Purpose/Reason row when every field above it is one line
+  rightColumnBottom: 416, // top box bottom when the right column is the taller one
+  belowTopBox: 131, // top box → first certificate row (detach line, title, header, balance forwarded)
+  rowsBottomLimit: 665.5, // last certificate row must end here so Ending Balance + signature fit
+  safety: 3,
+};
+// Ending Balance row + signature footer, kept together with the last row.
+const KEEP_WITH_FOOTER = 155;
+const ROW_LINE = 10 * LINE_HEIGHT; // one 10pt line
+
+/**
+ * Lays out the certificate rows. Date and Particulars are always printed in
+ * full and wrap onto the next line when they reach the column's right edge.
+ *
+ * - If every row fits on page 1 at the normal 10pt size, nothing changes.
+ * - Otherwise long rows shrink (down to 7pt, with tighter padding if needed)
+ *   so the certificate and its signature stay on page 1. Each row starts at
+ *   its smallest size, and rows set below 9pt get room to grow back, one line
+ *   at a time, while space remains.
+ * - If even the smallest sizes can't fit on one page (lots of rows), rows stay
+ *   at 10pt and the table continues on the next page like a normal table.
+ */
+function fitLedgerRows(transactions, budget) {
+  const dateW = cellTextWidth(LEDGER_COLS.date);
+  const partW = cellTextWidth(LEDGER_COLS.particulars);
+  const rows = transactions.map((t) => ({
+    ...t,
+    // ✅ Prioritize the formatted displayDate from the backend,
+    // fallback to formatting the chronological date if missing.
+    dateToShow:
+      t.displayDate && t.displayDate !== "N/A"
+        ? t.displayDate
+        : fmtDateShort(t.date),
+  }));
+
+  const fitRow = (r, lines) => {
+    const dateFit = fitCell(r.dateToShow, dateW, lines);
+    const particularsFit = fitCell(r.description, partW, lines);
+    const height = Math.max(
+      ROW_LINE,
+      fitHeight(dateFit, dateW),
+      fitHeight(particularsFit, partW),
+    );
+    return { ...r, lines, dateFit, particularsFit, height };
+  };
+  const emptyRows = Math.max(0, 2 - rows.length); // the table always shows 2+ rows
+  const totalHeight = (fitted, padV) =>
+    fitted.reduce((sum, r) => sum + r.height, 0) +
+    emptyRows * ROW_LINE +
+    (fitted.length + emptyRows) * (padV * 2 + 1);
+
+  // 1. Normal size fits? Use it.
+  const natural = rows.map((r) => fitRow(r, Infinity));
+  if (totalHeight(natural, 5) <= budget) return { rows: natural, padV: 5 };
+
+  // 2. Smallest layout: each row on one line if possible, else full text at 7pt.
+  //    If that's still too tall, tighten the row padding before giving up.
+  const needsMore = (r) =>
+    r.dateFit.fontSize < 9 || r.particularsFit.fontSize < 9;
+  for (const padV of [5, 3, 2]) {
+    const fitted = rows.map((r) => fitRow(r, 1));
+    let spare = budget - totalHeight(fitted, padV);
+    if (spare < 0) continue;
+
+    // 3. Give rows set below 9pt more lines (a bigger font) while room remains.
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (let i = 0; i < fitted.length; i++) {
+        if (!needsMore(fitted[i])) continue;
+        const bigger = fitRow(rows[i], fitted[i].lines + 1);
+        const extra = bigger.height - fitted[i].height;
+        if (extra <= spare) {
+          fitted[i] = bigger;
+          spare -= extra;
+          grew = true;
+        }
+      }
+    }
+    return { rows: fitted, padV };
+  }
+
+  // 4. Can't fit on one page at any size: keep it readable and let the table
+  //    continue on the next page like a normal table.
+  return { rows: natural, padV: 5 };
+}
+
+/**
+ * Fits text into a table cell without ever cutting it: picks the largest font
+ * (10 → 7pt) at which it fits in `maxLines` lines of 10pt text. If it doesn't
+ * fit even at 7pt, the full text is still printed at 7pt and the row grows.
+ * Long unbroken strings (memo numbers) are wrapped at the column edge.
+ */
+function fitCell(text, width, maxLines) {
+  const value = String(text || "").trim();
+  const maxHeight = maxLines * ROW_LINE;
+  const fontSize =
+    FIT_SIZES.find(
+      (size) =>
+        countLines(value, size, width) * size * LINE_HEIGHT <= maxHeight,
+    ) ?? FIT_SIZES[FIT_SIZES.length - 1];
+  return {
+    fontSize,
+    text: breakLongWords(value, fontSize, width),
+    overflow: false,
+    note: "",
+  };
+}
+
+// Certificate column widths (must match colDate / colPart in the styles).
+const LEDGER_COLS = { date: 0.17, particulars: 0.27 };
+
+// Text width inside a certificate column (percent of the table, minus padding + border).
+function cellTextWidth(percent) {
+  return (PAGE_WIDTH - PAGE_PAD_X * 2 - 2) * percent - 10 - 1;
+}
+
+// Width left for the value after a bold 10pt label + its margin + text padding.
+function valueWidthAfterLabel(label, colWidth = LEFT_COL_TEXT_WIDTH) {
+  return colWidth - textWidth(label, 10, true) - 6 - 4;
+}
+
+// Nudges smaller text down so its first line sits on the same baseline as a 10pt label.
+function baselinePad(fontSize) {
+  return Math.max(0, (10 - fontSize) * 0.84);
+}
+
+/* =========================
+   Styles
 ========================= */
 const styles = StyleSheet.create({
   page: {
@@ -292,10 +581,11 @@ const styles = StyleSheet.create({
     padding: 5,
   },
 
-  colDate: { width: "20%" }, // Adjusted slightly for longer date strings
-  colPart: { width: "22%" },
+  // Keep these in sync with LEDGER_COLS (used to fit text inside the cells).
+  colDate: { width: "17%" },
+  colPart: { width: "27%" },
   colEarned: { width: "16%" },
-  colAvail: { width: "16%" },
+  colAvail: { width: "14%" },
   colBal: { width: "13%" },
   colRem: { width: "13%", borderRightWidth: 0 },
   colMerged: { width: "74%" },
@@ -320,6 +610,31 @@ const styles = StyleSheet.create({
   footerDateLabel: { textAlign: "center", fontSize: 9, marginTop: 2 },
   boldText: { fontWeight: "bold" },
   textCenter: { textAlign: "center" },
+
+  // Long text handling
+  clipBox: { overflow: "hidden" },
+  continuedNote: { fontFamily: "Helvetica-Oblique" },
+  remarksBlock: {
+    marginLeft: CHECKBOX_SPACE,
+    marginTop: -6,
+    marginBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#000",
+    paddingHorizontal: 2,
+    paddingBottom: 1,
+  },
+
+  // Attachment page
+  annexMeta: { marginBottom: 12 },
+  annexMetaRow: { flexDirection: "row", marginBottom: 3 },
+  annexMetaLabel: { fontFamily: "Helvetica-Bold", width: 90 },
+  annexHeading: { fontFamily: "Helvetica-Bold", marginBottom: 4 },
+  annexBox: {
+    borderWidth: 1,
+    borderColor: "#000",
+    padding: 10,
+    marginBottom: 14,
+  },
 });
 
 /* =========================
@@ -336,6 +651,7 @@ function UnderlineBox({
   boxStyle,
   signatureText,
   signatureUrl,
+  children,
 }) {
   return (
     <View
@@ -352,6 +668,7 @@ function UnderlineBox({
       ) : null}
       <Text style={[styles.underlineText, { textAlign: align }, textStyle]}>
         {String(value || "")}
+        {children}
       </Text>
     </View>
   );
@@ -364,17 +681,56 @@ function LabeledUnderlineRow({
   lineFlex = 1,
   labelStyle,
   align = "center",
+  fit, // optional result of fitText() for long, multi-line values
 }) {
+  if (!fit) {
+    return (
+      <View style={styles.fieldRow}>
+        <Text style={[styles.label, styles.fieldLabel, labelStyle]}>
+          {label}
+        </Text>
+        <UnderlineBox
+          value={value}
+          width={lineWidth}
+          flex={lineFlex}
+          align={align}
+        />
+      </View>
+    );
+  }
+
+  // Multi-line value: label sits at the top, text shrinks to fit, and the box is
+  // capped (and clipped as a last resort) so it can't push the rest of the form down.
   return (
-    <View style={styles.fieldRow}>
+    <View style={[styles.fieldRow, { alignItems: "flex-start" }]}>
       <Text style={[styles.label, styles.fieldLabel, labelStyle]}>{label}</Text>
       <UnderlineBox
-        value={value}
+        value={fit.text}
         width={lineWidth}
         flex={lineFlex}
         align={align}
-      />
+        textStyle={{
+          fontSize: fit.fontSize,
+          // Set explicitly: otherwise the page's 10pt line spacing is inherited.
+          lineHeight: LINE_HEIGHT,
+          paddingTop: baselinePad(fit.fontSize),
+        }}
+        boxStyle={[styles.clipBox, { maxHeight: fit.maxHeight + 6 }]}
+      >
+        {fit.overflow ? (
+          <Text style={styles.continuedNote}>{CONTINUED_NOTE}</Text>
+        ) : null}
+      </UnderlineBox>
     </View>
+  );
+}
+
+// Table-cell text sized by fitCell().
+function FittedCellText({ fit }) {
+  return (
+    <Text style={{ fontSize: fit.fontSize, lineHeight: LINE_HEIGHT }}>
+      {fit.text}
+    </Text>
   );
 }
 
@@ -563,10 +919,104 @@ export default function CtoApplicationPdf({
   const balanceForwarded = safeNumber(ledger.balanceForwarded);
   const endingBalance = safeNumber(ledger.endingBalance);
 
-  const paddedTransactions = [...transactions];
+  /* ---- Long text fitting ---- */
+  const reasonWidth = valueWidthAfterLabel("Purpose/Reason:");
+  const reasonFitRaw = fitText(reason, {
+    width: reasonWidth,
+    maxHeight: REASON_MAX_HEIGHT,
+  });
+  const reasonFit = {
+    ...reasonFitRaw,
+    text: breakLongWords(reasonFitRaw.text, reasonFitRaw.fontSize, reasonWidth),
+  };
+
+  const inclusiveDatesFit = fitText(inclusiveDates, {
+    width: valueWidthAfterLabel("Inclusive Date/s:"),
+    maxHeight: 3 * 10 * LINE_HEIGHT, // up to three 10pt lines' worth
+  });
+
+  const isRejected = app?.overallStatus === "REJECTED";
+  const remarks = isRejected ? String(app?.remarks || "").trim() : "";
+  const inlineRemarksWidth =
+    RIGHT_COL_TEXT_WIDTH -
+    CHECKBOX_SPACE -
+    textWidth("Disapproved due to ", 10) -
+    4;
+  // Short remarks stay on the original inline line; longer ones go on their own
+  // full-width line(s) under the checkbox row.
+  const remarksInline = textWidth(remarks, 10) <= inlineRemarksWidth;
+  const remarksWidth = RIGHT_COL_TEXT_WIDTH - CHECKBOX_SPACE - 4;
+  const remarksFitRaw = remarksInline
+    ? null
+    : fitText(remarks, {
+        width: remarksWidth,
+        maxHeight: REMARKS_MAX_HEIGHT,
+        sizes: [9, 8, 7],
+      });
+  const remarksFit = remarksFitRaw && {
+    ...remarksFitRaw,
+    text: breakLongWords(
+      remarksFitRaw.text,
+      remarksFitRaw.fontSize,
+      remarksWidth,
+    ),
+  };
+
+  /* ---- Certificate rows: share whatever room is left on page 1 ---- */
+  const extraFieldLines = [
+    ["Name:", employeeName],
+    ["Position:", position],
+    ["Office/Division:", officeDivision],
+  ].reduce(
+    (sum, [label, value]) =>
+      sum + countLines(value, 10, valueWidthAfterLabel(label)) - 1,
+    0,
+  );
+  const datesHeight =
+    baselinePad(inclusiveDatesFit.fontSize) +
+    fitHeight(inclusiveDatesFit, valueWidthAfterLabel("Inclusive Date/s:"));
+  const reasonHeight =
+    baselinePad(reasonFit.fontSize) + fitHeight(reasonFit, reasonWidth);
+  const leftColumnBottom =
+    LAYOUT.reasonRowTop +
+    extraFieldLines * ROW_LINE +
+    Math.max(0, datesHeight - ROW_LINE) +
+    Math.max(ROW_LINE, reasonHeight) +
+    2 + // underline padding + border
+    17; // row margin + column padding + box border
+  const rightColumnBottom =
+    LAYOUT.rightColumnBottom +
+    (remarksFit ? fitHeight(remarksFit, remarksWidth) + 6 : 0);
+  const topBoxBottom = Math.max(leftColumnBottom, rightColumnBottom);
+
+  const { rows: ledgerRows, padV: rowPadV } = fitLedgerRows(
+    transactions,
+    LAYOUT.rowsBottomLimit -
+      (topBoxBottom + LAYOUT.belowTopBox) -
+      LAYOUT.safety,
+  );
+  const rowCellPad = { paddingVertical: rowPadV };
+
+  const paddedTransactions = [...ledgerRows];
   while (paddedTransactions.length < 2) {
     paddedTransactions.push({ isEmpty: true });
   }
+
+  // Anything that still doesn't fit is printed in full on an attachment page.
+  const attachments = [
+    reasonFit.overflow && { title: "Purpose/Reason", text: reason },
+    inclusiveDatesFit.overflow && {
+      title: "Inclusive Date/s",
+      text: inclusiveDates,
+    },
+    remarksFit?.overflow && { title: "Disapproved due to", text: remarks },
+  ].filter(Boolean);
+
+  const watermark = isRevoked ? (
+    <View style={styles.watermarkContainer} fixed>
+      <Text style={styles.watermarkText}>REVOKED</Text>
+    </View>
+  ) : null;
 
   return (
     <Document title={`CTO Application - ${lastName || "Applicant"}`}>
@@ -624,15 +1074,15 @@ export default function CtoApplicationPdf({
             />
             <LabeledUnderlineRow
               label="Inclusive Date/s:"
-              value={inclusiveDates}
               lineFlex={1}
               align="center"
+              fit={inclusiveDatesFit}
             />
             <LabeledUnderlineRow
               label="Purpose/Reason:"
-              value={reason}
               lineFlex={1}
               align="left"
+              fit={reasonFit}
             />
           </View>
 
@@ -668,7 +1118,7 @@ export default function CtoApplicationPdf({
 
             <View style={styles.actionRow}>
               <View style={styles.checkbox}>
-                {app?.overallStatus === "REJECTED" ? (
+                {isRejected ? (
                   <Svg viewBox="0 0 24 24" width={14} height={14}>
                     <Path
                       d="M20 6L9 17l-5-5"
@@ -680,15 +1130,43 @@ export default function CtoApplicationPdf({
                 ) : null}
               </View>
               <View style={styles.actionText}>
-                <Text>Disapproved due to </Text>
-                <UnderlineBox
-                  value={app?.overallStatus === "REJECTED" ? app?.remarks : ""}
-                  flex={1}
-                  align="center"
-                  minHeight={10}
-                />
+                {remarksInline ? (
+                  <>
+                    <Text>Disapproved due to </Text>
+                    <UnderlineBox
+                      value={remarks}
+                      flex={1}
+                      align="center"
+                      minHeight={10}
+                    />
+                  </>
+                ) : (
+                  <Text>Disapproved due to:</Text>
+                )}
               </View>
             </View>
+
+            {remarksFit && (
+              <View
+                style={[
+                  styles.remarksBlock,
+                  styles.clipBox,
+                  { maxHeight: REMARKS_MAX_HEIGHT + 4 },
+                ]}
+              >
+                <Text
+                  style={{
+                    fontSize: remarksFit.fontSize,
+                    lineHeight: LINE_HEIGHT,
+                  }}
+                >
+                  {remarksFit.text}
+                  {remarksFit.overflow ? (
+                    <Text style={styles.continuedNote}>{CONTINUED_NOTE}</Text>
+                  ) : null}
+                </Text>
+              </View>
+            )}
 
             <Text style={[styles.approvalLabelLeft, { marginBottom: 25 }]}>
               Recommending Approval:
@@ -726,7 +1204,8 @@ export default function CtoApplicationPdf({
         </Text>
 
         <View style={styles.certBox}>
-          <View style={styles.gridRow} wrap={false}>
+          {/* `fixed`: the header repeats if the table ever continues onto another page */}
+          <View style={styles.gridRow} wrap={false} fixed>
             <View style={[styles.gridHeaderCell, styles.colDate]}>
               <Text>Date</Text>
             </View>
@@ -765,22 +1244,22 @@ export default function CtoApplicationPdf({
             if (t.isEmpty) {
               return (
                 <View style={styles.gridRow} key={`empty-${idx}`} wrap={false}>
-                  <View style={[styles.gridCell, styles.colDate]}>
+                  <View style={[styles.gridCell, styles.colDate, rowCellPad]}>
                     <Text> </Text>
                   </View>
-                  <View style={[styles.gridCell, styles.colPart]}>
+                  <View style={[styles.gridCell, styles.colPart, rowCellPad]}>
                     <Text> </Text>
                   </View>
-                  <View style={[styles.gridCell, styles.colEarned]}>
+                  <View style={[styles.gridCell, styles.colEarned, rowCellPad]}>
                     <Text> </Text>
                   </View>
-                  <View style={[styles.gridCell, styles.colAvail]}>
+                  <View style={[styles.gridCell, styles.colAvail, rowCellPad]}>
                     <Text> </Text>
                   </View>
-                  <View style={[styles.gridCell, styles.colBal]}>
+                  <View style={[styles.gridCell, styles.colBal, rowCellPad]}>
                     <Text> </Text>
                   </View>
-                  <View style={[styles.gridCell, styles.colRem]}>
+                  <View style={[styles.gridCell, styles.colRem, rowCellPad]}>
                     <Text> </Text>
                   </View>
                 </View>
@@ -788,38 +1267,69 @@ export default function CtoApplicationPdf({
             }
 
             const isAccrual = t.amount > 0;
-
-            // ✅ Prioritize the formatted displayDate from the backend,
-            // fallback to formatting the chronological date if missing.
-            const dateToShow =
-              t.displayDate && t.displayDate !== "N/A"
-                ? t.displayDate
-                : fmtDateShort(t.date);
+            // If the table must continue on the next page, take the last row
+            // along with Ending Balance and the signature instead of leaving
+            // the signature alone there.
+            const isLastRow = idx === paddedTransactions.length - 1;
 
             return (
-              <View style={styles.gridRow} key={idx} wrap={false}>
-                <View style={[styles.gridCell, styles.colDate]}>
-                  <Text>{dateToShow}</Text>
-                </View>
-                <View style={[styles.gridCell, styles.colPart]}>
-                  <Text>{t.description}</Text>
+              <View
+                style={styles.gridRow}
+                key={idx}
+                wrap={false}
+                minPresenceAhead={isLastRow ? KEEP_WITH_FOOTER : 0}
+              >
+                <View
+                  style={[
+                    styles.gridCell,
+                    styles.colDate,
+                    styles.clipBox,
+                    rowCellPad,
+                  ]}
+                >
+                  <FittedCellText fit={t.dateFit} />
                 </View>
                 <View
-                  style={[styles.gridCell, styles.colEarned, styles.textCenter]}
+                  style={[
+                    styles.gridCell,
+                    styles.colPart,
+                    styles.clipBox,
+                    rowCellPad,
+                  ]}
+                >
+                  <FittedCellText fit={t.particularsFit} />
+                </View>
+                <View
+                  style={[
+                    styles.gridCell,
+                    styles.colEarned,
+                    styles.textCenter,
+                    rowCellPad,
+                  ]}
                 >
                   <Text>{isAccrual ? `${t.amount} Hrs.` : ""}</Text>
                 </View>
                 <View
-                  style={[styles.gridCell, styles.colAvail, styles.textCenter]}
+                  style={[
+                    styles.gridCell,
+                    styles.colAvail,
+                    styles.textCenter,
+                    rowCellPad,
+                  ]}
                 >
                   <Text>{!isAccrual ? `${Math.abs(t.amount)} Hrs.` : ""}</Text>
                 </View>
                 <View
-                  style={[styles.gridCell, styles.colBal, styles.textCenter]}
+                  style={[
+                    styles.gridCell,
+                    styles.colBal,
+                    styles.textCenter,
+                    rowCellPad,
+                  ]}
                 >
                   <Text>{t.runningBalance} Hrs.</Text>
                 </View>
-                <View style={[styles.gridCell, styles.colRem]}>
+                <View style={[styles.gridCell, styles.colRem, rowCellPad]}>
                   <Text> </Text>
                 </View>
               </View>
@@ -858,12 +1368,44 @@ export default function CtoApplicationPdf({
           </View>
         </View>
 
-        {isRevoked && (
-          <View style={styles.watermarkContainer}>
-            <Text style={styles.watermarkText}>REVOKED</Text>
-          </View>
-        )}
+        {watermark}
       </Page>
+
+      {attachments.length > 0 && (
+        <Page size="A4" style={styles.page}>
+          <View style={styles.header}>
+            <Image src={logoSrc} style={styles.logo} />
+          </View>
+          <Text style={styles.formTitle}>
+            ATTACHMENT TO APPLICATION FOR AVAILMENT OF COMPENSATORY TIME-OFF
+            (CTO)
+          </Text>
+
+          <View style={styles.annexMeta}>
+            <View style={styles.annexMetaRow}>
+              <Text style={styles.annexMetaLabel}>Name:</Text>
+              <Text>{employeeName}</Text>
+            </View>
+            <View style={styles.annexMetaRow}>
+              <Text style={styles.annexMetaLabel}>Date of Filing:</Text>
+              <Text>{dateOfFiling}</Text>
+            </View>
+          </View>
+
+          {attachments.map((item, i) => (
+            <View key={i} wrap={false}>
+              <Text style={styles.annexHeading}>
+                {item.title} (continued from page 1)
+              </Text>
+              <View style={styles.annexBox}>
+                <Text>{item.text}</Text>
+              </View>
+            </View>
+          ))}
+
+          {watermark}
+        </Page>
+      )}
     </Document>
   );
 }
