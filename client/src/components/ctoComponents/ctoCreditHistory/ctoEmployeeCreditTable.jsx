@@ -21,7 +21,88 @@ import {
    CONSTANTS
 ========================= */
 const pageSizeOptions = [20, 50, 100];
+
+/* =========================
+   LAYOUT BY PANEL WIDTH
+   `size` comes from the parent panel's measured width ("sm" | "md" | "lg"),
+   so the table adapts when it only gets half the screen. Without it, fall
+   back to the viewport breakpoints so the table still works full-width.
+========================= */
+const layoutClassesFor = (size) => {
+  if (size === "lg")
+    return {
+      cards: "hidden",
+      table: "table",
+      toolbar: "flex-row items-center",
+      search: "w-60",
+    };
+  if (size === "md")
+    return {
+      cards: "grid grid-cols-2",
+      table: "hidden",
+      toolbar: "flex-row items-center",
+      search: "w-56",
+    };
+  if (size === "sm")
+    return {
+      cards: "grid grid-cols-1",
+      table: "hidden",
+      toolbar: "flex-col",
+      search: "w-full",
+    };
+  return {
+    cards: "lg:hidden grid grid-cols-1 md:grid-cols-2",
+    table: "hidden lg:table",
+    toolbar: "flex-col md:flex-row md:items-center",
+    search: "w-full md:w-60",
+  };
+};
 const BASE_URL = API_BASE_URL;
+
+/* =========================
+   INTERACTION TINTS
+========================= */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+// Outlined accent button (View Memo): pointer, darker on hover, darker still on press
+const BTN_SECONDARY = `inline-flex items-center justify-center gap-1.5 rounded-md border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--accent)] hover:bg-[color:var(--wl-hover)] hover:shadow-sm active:bg-[color:var(--wl-press)] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[color:var(--app-surface)] disabled:hover:shadow-none disabled:active:scale-100 ${FOCUS_RING}`;
+
+/* =========================
+   ROW / CARD CLICK HELPERS
+========================= */
+// A click on a control inside a row or card must not also trigger the row.
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a memo number) without opening the memo
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
 
 /* =========================
    HOURS HELPERS
@@ -220,19 +301,8 @@ const CompactPagination = ({
       onClick={onClick}
       disabled={isDisabled}
       aria-label={aria}
-      className="h-8 w-8 inline-flex items-center justify-center rounded-md border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor,
-        color: "var(--app-text)",
-      }}
-      onMouseEnter={(e) => {
-        if (e.currentTarget.disabled) return;
-        e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "var(--app-surface)";
-      }}
+      className={`h-8 w-8 inline-flex items-center justify-center rounded-md border cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`}
+      style={{ borderColor }}
     >
       {icon}
     </button>
@@ -253,12 +323,8 @@ const CompactPagination = ({
             value={limit}
             disabled={disabled}
             onChange={(e) => onLimitChange?.(Number(e.target.value))}
-            className="h-8 border text-xs rounded-md px-1.5 font-semibold outline-none cursor-pointer transition-colors duration-200 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface)",
-              borderColor,
-              color: "var(--app-text)",
-            }}
+            className={`h-8 border text-xs rounded-md px-1.5 font-semibold outline-none cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] disabled:cursor-not-allowed ${FOCUS_RING}`}
+            style={{ borderColor }}
           >
             {pageSizeOptions.map((opt) => (
               <option key={opt} value={opt}>
@@ -344,7 +410,21 @@ const CreditCard = ({
 
   return (
     <div
-      className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-colors duration-300 ease-out ${leftStripClassName}`}
+      // Tapping the card opens its memo (only when there is one)
+      tabIndex={hasMemo ? 0 : undefined}
+      title={hasMemo ? "View memo" : undefined}
+      onClick={(e) => {
+        if (hasMemo && shouldOpenFromClick(e)) onViewMemo();
+      }}
+      onKeyDown={(e) => {
+        if (!hasMemo || e.target !== e.currentTarget || !isActivationKey(e))
+          return;
+        e.preventDefault();
+        onViewMemo();
+      }}
+      className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-[box-shadow,background-color] duration-200 ease-out ${FOCUS_RING} ${
+        hasMemo ? "cursor-pointer hover:shadow-md" : ""
+      } ${leftStripClassName}`}
       style={{ backgroundColor: "var(--app-surface)", borderColor }}
     >
       <div className="p-3">
@@ -403,19 +483,8 @@ const CreditCard = ({
         <button
           onClick={onViewMemo}
           disabled={!hasMemo}
-          className="mt-2.5 w-full h-8 inline-flex items-center justify-center gap-2 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor,
-            color: "var(--accent)",
-          }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--accent-soft)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
-          }}
+          className={`${BTN_SECONDARY} mt-2.5 w-full h-8 rounded-lg`}
+          style={{ borderColor }}
           type="button"
         >
           <FileText className="w-3.5 h-3.5" />
@@ -444,15 +513,23 @@ const CreditCtoTable = ({
   onNextPage,
   onPrevPage,
   isLoading,
+  size,
 }) => {
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
+  const L = layoutClassesFor(size);
 
   const borderColor = useMemo(() => {
     return resolvedTheme === "dark"
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
+
+  // CSS vars for hover / pressed shades
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = useMemo(() => {
     const base =
@@ -536,6 +613,7 @@ const CreditCtoTable = ({
       <div
         className="w-full h-full flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden transition-colors duration-300 ease-out"
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-surface)",
           color: "var(--app-text)",
         }}
@@ -545,7 +623,7 @@ const CreditCtoTable = ({
           className="flex-none border-b px-1 py-2 space-y-2 transition-colors duration-300 ease-out"
           style={{ backgroundColor: "var(--app-surface)", borderColor }}
         >
-          <div className="flex flex-col md:flex-row md:items-center gap-2">
+          <div className={`flex ${L.toolbar} gap-2`}>
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
               {tabs.map((tab) => {
                 const isActive = status === tab.id;
@@ -554,24 +632,22 @@ const CreditCtoTable = ({
                   <button
                     key={tab.id || "all"}
                     onClick={() => onStatusChange?.(tab.id)}
-                    className="px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-1.5"
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors duration-150 ease-out whitespace-nowrap flex items-center gap-1.5 ${FOCUS_RING} ${
+                      isActive
+                        ? "cursor-default"
+                        : "cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--app-muted)] hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] active:bg-[color:var(--wl-press)]"
+                    }`}
                     type="button"
                     aria-pressed={isActive}
-                    style={{
-                      backgroundColor: isActive ? t.bg : "var(--app-surface)",
-                      color: isActive ? t.text : "var(--app-muted)",
-                      borderColor: isActive ? t.br : borderColor,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isActive) return;
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface-2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (isActive) return;
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface)";
-                    }}
+                    style={
+                      isActive
+                        ? {
+                            backgroundColor: t.bg,
+                            color: t.text,
+                            borderColor: t.br,
+                          }
+                        : { borderColor }
+                    }
                   >
                     {tab.label}
                     <span
@@ -592,7 +668,7 @@ const CreditCtoTable = ({
               })}
             </div>
 
-            <div className="relative w-full md:w-60 flex-none">
+            <div className={`relative ${L.search} flex-none`}>
               <Search
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
                 style={{ color: "var(--app-muted)" }}
@@ -613,7 +689,7 @@ const CreditCtoTable = ({
               {search && (
                 <button
                   onClick={() => onSearchChange?.("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md transition-colors duration-200 ease-out"
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md cursor-pointer transition-colors duration-150 ease-out hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] ${FOCUS_RING}`}
                   style={{ color: "var(--app-muted)" }}
                   aria-label="Clear search"
                   title="Clear"
@@ -639,7 +715,7 @@ const CreditCtoTable = ({
               </div>
               <button
                 onClick={handleResetFilters}
-                className="flex items-center gap-1 text-[10px] font-bold uppercase"
+                className={`flex items-center gap-1 text-[10px] font-bold uppercase rounded cursor-pointer hover:underline hover:brightness-90 ${FOCUS_RING}`}
                 style={{ color: "var(--accent)" }}
                 type="button"
               >
@@ -674,7 +750,7 @@ const CreditCtoTable = ({
               {isFiltered && (
                 <button
                   onClick={handleResetFilters}
-                  className="mt-3 text-sm font-bold underline"
+                  className={`mt-3 text-sm font-bold underline rounded cursor-pointer hover:brightness-90 ${FOCUS_RING}`}
                   style={{ color: "var(--accent)" }}
                   type="button"
                 >
@@ -685,7 +761,7 @@ const CreditCtoTable = ({
           ) : (
             <>
               {/* Mobile + Tablet: cards */}
-              <div className="lg:hidden p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              <div className={`${L.cards} p-3 gap-2.5`}>
                 {isLoading
                   ? [...Array(Math.min(limit, 6))].map((_, i) => (
                       <div
@@ -720,7 +796,7 @@ const CreditCtoTable = ({
               </div>
 
               {/* Desktop: table */}
-              <table className="hidden lg:table w-full text-left table-fixed">
+              <table className={`${L.table} w-full text-left table-fixed`}>
                 <colgroup>
                   <col style={{ width: "40%" }} />
                   <col style={{ width: "14%" }} />
@@ -766,6 +842,7 @@ const CreditCtoTable = ({
                             ? "var(--app-surface)"
                             : "var(--app-surface-2)";
 
+                        const hasMemo = Boolean(c.uploadedMemo);
                         const creditedHours = getCreditedHours(c);
                         const usedHours = getUsedHours(c);
                         const reservedHours = getReservedHours(c);
@@ -778,7 +855,26 @@ const CreditCtoTable = ({
                         return (
                           <tr
                             key={c._id || `${c.memoNo}-${i}`}
-                            className="transition-colors duration-200 ease-out"
+                            // Clicking the row opens its memo (only when there is one)
+                            tabIndex={hasMemo ? 0 : undefined}
+                            title={hasMemo ? "View memo" : undefined}
+                            onClick={(e) => {
+                              if (hasMemo && shouldOpenFromClick(e))
+                                openMemoModal(c);
+                            }}
+                            onKeyDown={(e) => {
+                              if (
+                                !hasMemo ||
+                                e.target !== e.currentTarget ||
+                                !isActivationKey(e)
+                              )
+                                return;
+                              e.preventDefault();
+                              openMemoModal(c);
+                            }}
+                            className={`transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)] ${
+                              hasMemo ? "cursor-pointer" : ""
+                            }`}
                             style={{
                               backgroundColor: bg,
                               boxShadow: `inset 0 -1px 0 ${borderColor}`,
@@ -859,23 +955,15 @@ const CreditCtoTable = ({
                               {fmtHours(remainingHours)}
                             </td>
 
-                            <td className="px-4 py-2.5 text-right">
-                              {c.uploadedMemo ? (
+                            {/* Clicks around the button shouldn't double-trigger */}
+                            <td
+                              data-no-row-click
+                              className="px-4 py-2.5 text-right cursor-default"
+                            >
+                              {hasMemo ? (
                                 <button
-                                  className="inline-flex items-center gap-1.5 h-8 rounded-md px-2.5 border text-xs font-bold transition-colors duration-200 ease-out whitespace-nowrap"
-                                  style={{
-                                    backgroundColor: "var(--app-surface)",
-                                    borderColor,
-                                    color: "var(--accent)",
-                                  }}
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.style.backgroundColor =
-                                      "var(--accent-soft)";
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.style.backgroundColor =
-                                      "var(--app-surface)";
-                                  }}
+                                  className={`${BTN_SECONDARY} h-8 px-2.5`}
+                                  style={{ borderColor }}
                                   onClick={() => openMemoModal(c)}
                                   type="button"
                                   title="View memo"

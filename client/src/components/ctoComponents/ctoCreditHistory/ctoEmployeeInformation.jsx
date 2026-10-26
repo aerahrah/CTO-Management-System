@@ -105,8 +105,7 @@ const EmployeeInfoSkeleton = ({ borderColor }) => (
       style={{ borderColor, backgroundColor: "var(--app-surface)" }}
     >
       <div className="flex flex-col xl:flex-row xl:items-center gap-3">
-        <div className="flex items-center gap-3 xl:w-[32%]">
-          <Skeleton circle width={44} height={44} />
+        <div className="flex items-center gap-3 xl:w-56 xl:flex-none">
           <div className="flex-1">
             <Skeleton height={18} width={"70%"} />
             <Skeleton height={12} width={"55%"} />
@@ -491,15 +490,6 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
   const fullName =
     `${employee.firstName || ""} ${employee.lastName || ""}`.trim();
 
-  const initials =
-    fullName
-      .split(" ")
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((p) => p[0])
-      .join("")
-      .toUpperCase() || "E";
-
   const subtitle = [employee.position, employee.department]
     .filter(Boolean)
     .join(" • ");
@@ -520,16 +510,7 @@ const CtoEmployeeInformation = ({ isEmployeeLoadingFromEmployeeList }) => {
         >
           <div className="flex flex-col xl:flex-row xl:items-center gap-3 min-w-0">
             {/* Identity */}
-            <div className="flex items-center gap-3 min-w-0 xl:w-[32%] xl:flex-none">
-              <div
-                className="h-11 w-11 rounded-full flex items-center justify-center text-sm font-bold flex-none"
-                style={{
-                  backgroundColor: "var(--accent-soft)",
-                  color: "var(--accent)",
-                }}
-              >
-                {initials}
-              </div>
+            <div className="flex items-center gap-3 min-w-0 xl:w-auto xl:max-w-[36%] xl:flex-none">
               <div className="min-w-0">
                 <h2
                   className="text-lg md:text-xl font-bold truncate leading-tight"

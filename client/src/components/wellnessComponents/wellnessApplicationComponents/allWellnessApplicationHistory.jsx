@@ -102,6 +102,50 @@ function useResolvedTheme(prefTheme) {
 }
 
 /* =========================
+   Interaction tints
+========================= */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+/* =========================
+   Row / card click helpers
+========================= */
+// A click on a control inside a row or card must not also open the details
+// modal. This includes the action menu: it is portaled to <body>, but React
+// still bubbles its events up to the row.
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [role='menu'], [role='menuitem'], [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a name or ID) without opening the modal
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
+
+/* =========================
    Data helpers
 ========================= */
 const DATE_FMT = new Intl.DateTimeFormat("en-US", {
@@ -248,8 +292,35 @@ const RequestorCell = ({ app, borderColor }) => {
   );
 };
 
-const DatesCell = ({ dates, maxVisible = 1 }) => {
+/* ---- Dates: weekday + date pills; "+N" expands the rest inline ---- */
+const WEEKDAY_FMT = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const SHOW_ALL_UP_TO = 2;
+
+const DatePill = ({ date, strong = false }) => (
+  <span
+    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums leading-5 ${
+      strong ? "text-[13px]" : "text-xs"
+    }`}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      borderColor: "var(--app-border, rgba(15,23,42,0.10))",
+      color: "var(--app-text)",
+    }}
+  >
+    <span
+      className="text-[10px] font-bold uppercase tracking-wider"
+      style={{ color: "var(--accent)" }}
+    >
+      {WEEKDAY_FMT.format(date)}
+    </span>
+    <span className="font-semibold">{DATE_FMT.format(date)}</span>
+  </span>
+);
+
+const DatesCell = ({ dates, maxVisible = 1, strong = false }) => {
+  const [expanded, setExpanded] = useState(false);
   const sorted = sortedDatesOf(dates);
+
   if (!sorted.length) {
     return (
       <span className="text-sm" style={{ color: "var(--app-muted)" }}>
@@ -258,31 +329,40 @@ const DatesCell = ({ dates, maxVisible = 1 }) => {
     );
   }
 
-  const visible = sorted.slice(0, maxVisible).map((d) => DATE_FMT.format(d));
-  const rest = sorted.length - visible.length;
-  const all = sorted.map((d) => DATE_FMT.format(d)).join(", ");
+  // Up to two dates are always shown in full; "+N" only appears for 3 or more
+  const visibleCount =
+    sorted.length <= SHOW_ALL_UP_TO ? sorted.length : maxVisible;
+  const hiddenCount = Math.max(sorted.length - visibleCount, 0);
+  const shown = expanded ? sorted : sorted.slice(0, visibleCount);
 
   return (
-    <div className="flex items-center gap-1.5 min-w-0" title={all}>
-      <Calendar
-        size={14}
-        className="flex-none"
-        style={{ color: "var(--app-muted)" }}
-      />
-      <span className="text-sm truncate" style={{ color: "var(--app-muted)" }}>
-        {visible.join(", ")}
-      </span>
-      {rest > 0 && (
-        <span
-          className="flex-none inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-bold"
+    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+      {shown.map((d, i) => (
+        <DatePill key={`${d.getTime()}-${i}`} date={d} strong={strong} />
+      ))}
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          title={
+            expanded
+              ? "Show fewer dates"
+              : `Show ${hiddenCount} more date${hiddenCount === 1 ? "" : "s"}`
+          }
+          onClick={(e) => {
+            e.stopPropagation(); // expand the dates, not open the row's details
+            setExpanded((v) => !v);
+          }}
+          className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold leading-5 whitespace-nowrap cursor-pointer select-none transition-all duration-150 ease-out hover:brightness-90 hover:shadow-sm active:scale-95 ${FOCUS_RING}`}
           style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor: "var(--app-border)",
-            color: "var(--app-muted)",
+            backgroundColor: "var(--accent-soft)",
+            borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+            color: "var(--accent)",
           }}
         >
-          +{rest}
-        </span>
+          {expanded ? "Show less" : `+${hiddenCount}`}
+        </button>
       )}
     </div>
   );
@@ -293,12 +373,35 @@ const DatesCell = ({ dates, maxVisible = 1 }) => {
 ========================= */
 const MENU_WIDTH = 200;
 
+// "Actions" trigger: solid accent like the File Leave / apply buttons so it's
+// easy to spot in every row; darker on hover, darker still while its menu is open.
+const ACTIONS_BTN =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--accent)] text-white border-[color:var(--accent)] " +
+  "transition-all duration-150 ease-out hover:shadow-md active:scale-95 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-surface)] " +
+  "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:shadow-sm";
+
+const ACTIONS_BTN_IDLE =
+  "hover:brightness-90 active:brightness-[0.82] disabled:hover:brightness-100";
+
+const ACTIONS_BTN_OPEN = "brightness-[0.85]";
+
+// Shared menu-item styles: pointer cursor, darker hover, darker still on press
+const MENU_ITEM_NEUTRAL =
+  "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left cursor-pointer " +
+  "transition-colors duration-150 ease-out focus-visible:outline-none " +
+  "text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--accent)] " +
+  "active:bg-[color:var(--wl-press)] focus-visible:bg-[color:var(--wl-hover)] " +
+  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-text)]";
+
 const ApplicationActionMenu = ({
   onViewDetails,
   onViewPdf,
   onViewCscForm6,
   isOrganic,
   borderColor,
+  interactionVars,
   isPdfLoading,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -308,6 +411,9 @@ const ApplicationActionMenu = ({
 
   useLayoutEffect(() => {
     if (!isOpen) return;
+    // Global theme CSS may put a `transition` on every element. Without this
+    // the menu visibly slides in from the top-left corner when top/left are set.
+    menuRef.current?.style.setProperty("transition", "none", "important");
     const btn = btnRef.current?.getBoundingClientRect();
     const menuH = menuRef.current?.offsetHeight || 130;
     if (!btn) return;
@@ -362,11 +468,6 @@ const ApplicationActionMenu = ({
     cb?.();
   };
 
-  const itemClass =
-    "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left transition-colors " +
-    "text-[color:var(--app-muted)] hover:bg-[color:var(--app-surface-2)] hover:text-[color:var(--accent)] " +
-    "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-muted)]";
-
   return (
     <>
       <button
@@ -375,18 +476,13 @@ const ApplicationActionMenu = ({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         onClick={(e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // don't open the row's details
           setPos((p) => ({ ...p, visible: false }));
           setIsOpen((o) => !o);
         }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm text-xs font-bold transition-all duration-200 ease-out active:scale-95"
-        style={{
-          backgroundColor: isOpen
-            ? "var(--app-surface-2)"
-            : "var(--app-surface)",
-          borderColor,
-          color: isOpen ? "var(--accent)" : "var(--app-text)",
-        }}
+        className={`${ACTIONS_BTN} ${
+          isOpen ? ACTIONS_BTN_OPEN : ACTIONS_BTN_IDLE
+        }`}
         title="Actions"
       >
         {isPdfLoading ? <Loader2 size={14} className="animate-spin" /> : null}
@@ -402,8 +498,12 @@ const ApplicationActionMenu = ({
           <div
             ref={menuRef}
             role="menu"
+            aria-label="Application actions"
+            // Portaled, but React still bubbles clicks to the row: stop them here
+            onClick={(e) => e.stopPropagation()}
             className="rounded-lg py-1 overflow-hidden"
             style={{
+              ...interactionVars,
               position: "fixed",
               top: pos.top,
               left: pos.left,
@@ -412,14 +512,14 @@ const ApplicationActionMenu = ({
               visibility: pos.visible ? "visible" : "hidden",
               backgroundColor: "var(--app-surface)",
               border: `1px solid ${borderColor}`,
-              boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
+              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             }}
           >
             <button
               type="button"
               role="menuitem"
               onClick={() => run(onViewDetails)}
-              className={itemClass}
+              className={MENU_ITEM_NEUTRAL}
             >
               <Eye size={14} /> View Details
             </button>
@@ -429,7 +529,7 @@ const ApplicationActionMenu = ({
               role="menuitem"
               disabled={isPdfLoading}
               onClick={() => run(onViewPdf)}
-              className={itemClass}
+              className={MENU_ITEM_NEUTRAL}
             >
               {isPdfLoading ? (
                 <Loader2 size={14} className="animate-spin" />
@@ -444,7 +544,7 @@ const ApplicationActionMenu = ({
                 type="button"
                 role="menuitem"
                 onClick={() => run(onViewCscForm6)}
-                className={itemClass}
+                className={MENU_ITEM_NEUTRAL}
               >
                 <FileBadge size={14} /> View CSC Form 6
               </button>
@@ -468,12 +568,22 @@ const ApplicationCard = ({
   borderColor,
   isPdfLoading,
 }) => {
-  const btn =
-    "flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out disabled:opacity-40 disabled:cursor-not-allowed";
+  const btn = `flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border cursor-pointer transition-colors duration-150 ease-out active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 ${FOCUS_RING}`;
+  const neutralBtn = `${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)] disabled:hover:bg-[color:var(--app-surface)]`;
 
   return (
     <div
-      className="rounded-xl shadow-sm overflow-hidden transition-colors duration-300 ease-out"
+      tabIndex={0}
+      // Tapping anywhere on the card (except its buttons) opens the details
+      onClick={(e) => {
+        if (shouldOpenFromClick(e)) onViewDetails();
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || !isActivationKey(e)) return;
+        e.preventDefault();
+        onViewDetails();
+      }}
+      className={`rounded-xl shadow-sm overflow-hidden cursor-pointer transition-[box-shadow,background-color] duration-200 ease-out hover:shadow-md ${FOCUS_RING}`}
       style={{
         backgroundColor: "var(--app-surface)",
         border: `1px solid ${borderColor}`,
@@ -552,12 +662,17 @@ const ApplicationCard = ({
         </div>
       </div>
 
-      <div className="border-t p-3" style={{ borderColor }}>
+      {/* Button bar: taps in the gaps between buttons don't open details */}
+      <div
+        data-no-row-click
+        className="border-t p-3 cursor-default"
+        style={{ borderColor }}
+      >
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onViewDetails}
-            className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--accent-soft)]`}
+            className={neutralBtn}
             style={{ borderColor, color: "var(--accent)" }}
           >
             <Eye className="w-4 h-4" />
@@ -568,7 +683,7 @@ const ApplicationCard = ({
             type="button"
             disabled={isPdfLoading}
             onClick={onViewPdf}
-            className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]`}
+            className={neutralBtn}
             style={{ borderColor, color: "var(--app-text)" }}
           >
             {isPdfLoading ? (
@@ -584,7 +699,7 @@ const ApplicationCard = ({
               type="button"
               onClick={onViewCscForm6}
               title="View CSC Form 6"
-              className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]`}
+              className={neutralBtn}
               style={{ borderColor, color: "var(--app-text)" }}
             >
               <FileBadge className="w-4 h-4" />
@@ -665,6 +780,11 @@ const CompactPagination = ({
   borderColor,
 }) => {
   const safeTotalPages = Math.max(totalPages || 1, 1);
+  const prevDisabled = page === 1 || total === 0;
+  const nextDisabled = page >= safeTotalPages || total === 0;
+
+  const mobileBtn = `inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
+  const iconBtn = `p-1.5 rounded-md cursor-pointer transition-colors duration-150 ease-out enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
 
   return (
     <div
@@ -675,13 +795,10 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onPrev}
-          disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor,
-            color: "var(--app-text)",
-          }}
+          disabled={prevDisabled}
+          className={mobileBtn}
+          style={{ borderColor, color: "var(--app-text)" }}
+          aria-label="Previous page"
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
@@ -705,13 +822,10 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onNext}
-          disabled={page >= safeTotalPages || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor,
-            color: "var(--app-text)",
-          }}
+          disabled={nextDisabled}
+          className={mobileBtn}
+          style={{ borderColor, color: "var(--app-text)" }}
+          aria-label="Next page"
         >
           Next
           <ChevronRight className="w-4 h-4" />
@@ -741,8 +855,8 @@ const CompactPagination = ({
           <button
             type="button"
             onClick={onPrev}
-            disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
+            disabled={prevDisabled}
+            className={iconBtn}
             style={{ color: "var(--app-muted)" }}
             aria-label="Previous page"
           >
@@ -757,8 +871,8 @@ const CompactPagination = ({
           <button
             type="button"
             onClick={onNext}
-            disabled={page >= safeTotalPages || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
+            disabled={nextDisabled}
+            className={iconBtn}
             style={{ color: "var(--app-muted)" }}
             aria-label="Next page"
           >
@@ -782,6 +896,12 @@ const AllWellnessApplicationsHistory = () => {
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
+
+  // CSS vars for hover / pressed shades (also passed to the portaled menu)
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = useMemo(() => {
     const base =
@@ -967,6 +1087,7 @@ const AllWellnessApplicationsHistory = () => {
       <div
         className="w-full h-full min-h-0 flex flex-col md:p-0 transition-colors duration-300 ease-out"
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
           color: "var(--app-text, #0f172a)",
         }}
@@ -1083,7 +1204,7 @@ const AllWellnessApplicationsHistory = () => {
                         <button
                           type="button"
                           onClick={() => setSearchInput("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full transition hover:bg-[color:var(--app-surface-2)]"
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full cursor-pointer transition hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] ${FOCUS_RING}`}
                           style={{ color: "var(--app-muted)" }}
                           aria-label="Clear search"
                           title="Clear"
@@ -1194,7 +1315,7 @@ const AllWellnessApplicationsHistory = () => {
                     <button
                       type="button"
                       onClick={handleResetFilters}
-                      className="flex-none flex items-center gap-1 text-[10px] font-bold uppercase"
+                      className={`flex-none flex items-center gap-1 text-[10px] font-bold uppercase rounded cursor-pointer hover:underline hover:brightness-90 ${FOCUS_RING}`}
                       style={{ color: "var(--accent)" }}
                     >
                       <RotateCcw size={10} /> Reset
@@ -1239,7 +1360,7 @@ const AllWellnessApplicationsHistory = () => {
                       <button
                         type="button"
                         onClick={handleResetFilters}
-                        className="mt-6 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]"
+                        className={`mt-6 inline-flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg cursor-pointer transition-colors duration-200 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)] ${FOCUS_RING}`}
                         style={{ borderColor, color: "var(--app-text)" }}
                       >
                         <RotateCcw size={12} /> Clear Filters
@@ -1320,11 +1441,27 @@ const AllWellnessApplicationsHistory = () => {
                                   i % 2 === 0
                                     ? "var(--app-surface)"
                                     : "var(--app-surface-2)";
+                                const handlers = rowHandlers(app);
 
                                 return (
                                   <tr
                                     key={app._id}
-                                    className="border-b transition-colors duration-200 ease-out"
+                                    tabIndex={0}
+                                    // Clicking anywhere on the row (except its buttons) opens the details
+                                    onClick={(e) => {
+                                      if (shouldOpenFromClick(e))
+                                        handlers.onViewDetails();
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (
+                                        e.target !== e.currentTarget ||
+                                        !isActivationKey(e)
+                                      )
+                                        return;
+                                      e.preventDefault();
+                                      handlers.onViewDetails();
+                                    }}
+                                    className="border-b cursor-pointer transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)]"
                                     style={{ backgroundColor: bg, borderColor }}
                                     onMouseEnter={(e) => {
                                       e.currentTarget.style.backgroundColor =
@@ -1383,12 +1520,17 @@ const AllWellnessApplicationsHistory = () => {
                                       />
                                     </td>
 
-                                    <td className="px-5 py-3.5 text-right align-middle whitespace-nowrap">
+                                    {/* Clicks around the Actions button shouldn't open details */}
+                                    <td
+                                      data-no-row-click
+                                      className="px-5 py-3.5 text-right align-middle whitespace-nowrap cursor-default"
+                                    >
                                       <ApplicationActionMenu
                                         borderColor={borderColor}
+                                        interactionVars={interactionVars}
                                         isOrganic={isOrganicApp(app)}
                                         isPdfLoading={pdfLoadingId === app._id}
-                                        {...rowHandlers(app)}
+                                        {...handlers}
                                       />
                                     </td>
                                   </tr>
@@ -1423,7 +1565,7 @@ const AllWellnessApplicationsHistory = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className="md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition flex items-center justify-center"
+              className={`md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg cursor-pointer hover:brightness-90 active:scale-95 transition flex items-center justify-center ${FOCUS_RING}`}
               style={{
                 backgroundColor: "var(--accent, #2563EB)",
                 color: "#fff",

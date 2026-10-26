@@ -40,6 +40,30 @@ function resolveTheme(prefTheme) {
 }
 
 /* =========================
+   Interaction tints
+========================= */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+// Secondary (outlined) button: pointer cursor, darker on hover, darker still on press
+const BTN_SECONDARY = `inline-flex items-center justify-center gap-2 rounded-xl text-sm font-medium border cursor-pointer transition-all duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] hover:shadow-sm active:bg-[color:var(--wl-press)] active:scale-[0.98] ${FOCUS_RING}`;
+
+// Primary (solid accent) button: darker on hover, like the other pages
+const BTN_PRIMARY = `inline-flex items-center justify-center gap-2 rounded-xl text-sm font-medium shadow-sm cursor-pointer transition-all duration-150 ease-out text-white bg-[color:var(--accent)] hover:brightness-90 hover:shadow-md active:brightness-[0.82] active:scale-[0.98] ${FOCUS_RING}`;
+
+/* =========================
    Utils
 ========================= */
 const formatDate = (dateString, opts = {}) => {
@@ -283,6 +307,12 @@ const EmployeeInformation = () => {
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
 
+  // CSS vars for hover / pressed shades
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
+
   const pageBg = useMemo(() => {
     return "var(--app-bg, rgba(245,245,245,0.80))";
   }, []);
@@ -359,6 +389,7 @@ const EmployeeInformation = () => {
     <div
       className="min-h-screen font-sans transition-colors duration-300 ease-out"
       style={{
+        ...interactionVars,
         backgroundColor: pageBg,
         color: "var(--app-text, #0f172a)",
       }}
@@ -452,20 +483,8 @@ const EmployeeInformation = () => {
                   <button
                     type="button"
                     onClick={() => setResetOpen(true)}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium border transition"
-                    style={{
-                      backgroundColor: "var(--app-surface)",
-                      borderColor,
-                      color: "var(--app-text)",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface-2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface)";
-                    }}
+                    className={`${BTN_SECONDARY} px-4 py-2.5`}
+                    style={{ borderColor }}
                   >
                     <KeyRound size={16} />
                     Reset Password
@@ -476,17 +495,7 @@ const EmployeeInformation = () => {
                   <button
                     type="button"
                     onClick={() => navigate(`/app/employees/${id}/update`)}
-                    className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium shadow-sm transition"
-                    style={{
-                      backgroundColor: "var(--accent)",
-                      color: "#fff",
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.filter = "brightness(0.95)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.filter = "none";
-                    }}
+                    className={`${BTN_PRIMARY} px-4 py-2.5`}
                   >
                     <ShieldCheck size={16} />
                     Update Profile
@@ -805,7 +814,12 @@ const TabButton = ({ active, onClick, label, icon, borderColor }) => (
   <button
     type="button"
     onClick={onClick}
-    className="shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm border transition"
+    aria-pressed={active}
+    className={`shrink-0 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm border transition-all duration-150 ease-out ${FOCUS_RING} ${
+      active
+        ? "cursor-default"
+        : "cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] hover:shadow-sm active:bg-[color:var(--wl-press)] active:scale-[0.98]"
+    }`}
     style={
       active
         ? {
@@ -814,11 +828,7 @@ const TabButton = ({ active, onClick, label, icon, borderColor }) => (
             borderColor: "var(--accent)",
             boxShadow: "0 1px 3px rgba(0,0,0,0.10)",
           }
-        : {
-            backgroundColor: "var(--app-surface)",
-            color: "var(--app-text)",
-            borderColor,
-          }
+        : { borderColor }
     }
   >
     <span
@@ -927,8 +937,7 @@ const ContactRow = ({
           {isLink && href ? (
             <a
               href={href}
-              className="block text-sm font-medium truncate transition-colors duration-200 ease-out"
-              style={{ color: "var(--app-text)" }}
+              className={`block text-sm font-medium truncate rounded cursor-pointer transition-colors duration-150 ease-out text-[color:var(--app-text)] hover:text-[color:var(--accent)] hover:underline underline-offset-2 ${FOCUS_RING}`}
             >
               {value || "-"}
             </a>
@@ -947,23 +956,13 @@ const ContactRow = ({
         <button
           type="button"
           onClick={handleCopy}
-          className="p-2 rounded-xl border transition opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
-          style={{
-            borderColor: "transparent",
-            color: "var(--app-muted)",
-            backgroundColor: "transparent",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = "var(--app-text)";
-            e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-            e.currentTarget.style.borderColor = borderColor;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = "var(--app-muted)";
-            e.currentTarget.style.backgroundColor = "transparent";
-            e.currentTarget.style.borderColor = "transparent";
-          }}
-          title="Copy"
+          // Faintly visible on desktop so it can be found, full strength on row hover
+          className={`p-2 rounded-xl border border-transparent cursor-pointer transition-all duration-150 ease-out opacity-100 md:opacity-50 md:group-hover:opacity-100 md:group-focus-within:opacity-100 hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] active:bg-[color:var(--wl-press)] active:scale-95 ${FOCUS_RING} ${
+            copied
+              ? "text-[color:var(--accent)]"
+              : "text-[color:var(--app-muted)]"
+          }`}
+          title={copied ? "Copied" : `Copy ${label}`}
           aria-label={`Copy ${label}`}
         >
           {copied ? <Check size={16} /> : <Copy size={16} />}
@@ -1060,7 +1059,11 @@ const EmptyState = ({ borderColor, resolvedTheme }) => (
 const ErrorState = ({ onRetry, borderColor, resolvedTheme }) => (
   <div
     className="min-h-screen p-6 flex items-center justify-center transition-colors duration-300 ease-out"
-    style={{ backgroundColor: "var(--app-bg)" }}
+    style={{
+      // Rendered outside the main page wrapper, so it needs its own hover tints
+      ...interactionVarsFor(resolvedTheme),
+      backgroundColor: "var(--app-bg)",
+    }}
   >
     <div
       className="w-full max-w-xl p-10 text-center rounded-2xl transition-all duration-300 ease-out"
@@ -1092,18 +1095,8 @@ const ErrorState = ({ onRetry, borderColor, resolvedTheme }) => (
       <button
         type="button"
         onClick={onRetry}
-        className="mt-6 px-4 py-2.5 rounded-xl text-sm font-medium transition"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          border: `1px solid ${borderColor}`,
-          color: "var(--app-text)",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--app-surface)";
-        }}
+        className={`${BTN_SECONDARY} mt-6 px-4 py-2.5`}
+        style={{ borderColor }}
       >
         Try Again
       </button>

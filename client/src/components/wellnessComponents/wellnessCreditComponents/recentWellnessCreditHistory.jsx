@@ -1,4 +1,12 @@
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
@@ -50,6 +58,46 @@ function resolveTheme(prefTheme) {
   return prefTheme === "dark" ? "dark" : "light";
 }
 
+/* ------------------ Interaction tints ------------------ */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+/* ------------------ Row / card click helpers ------------------ */
+// A click on a control inside a row or card must not also open the details
+// modal. This includes the action menu: it is portaled to <body>, but React
+// still bubbles its events up to the row.
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [role='menu'], [role='menuitem'], [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a memo number) without opening the modal
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
+
 const getStatusTabs = (counts = {}) => [
   {
     id: "",
@@ -86,7 +134,40 @@ const getStatusTabs = (counts = {}) => [
   },
 ];
 
-/* ------------------ Action menu ------------------ */
+/* ------------------ Action menu (portal, never clipped) ------------------ */
+const MENU_WIDTH = 192;
+
+// "Actions" trigger: solid accent like the File Leave / apply buttons so it's
+// easy to spot in every row; darker on hover, darker still while its menu is open.
+const ACTIONS_BTN =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--accent)] text-white border-[color:var(--accent)] " +
+  "transition-all duration-150 ease-out hover:shadow-md active:scale-95 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-surface)] " +
+  "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:shadow-sm";
+
+const ACTIONS_BTN_IDLE =
+  "hover:brightness-90 active:brightness-[0.82] disabled:hover:brightness-100";
+
+const ACTIONS_BTN_OPEN = "brightness-[0.85]";
+
+// Shared menu-item styles: pointer cursor, darker hover, darker still on press
+const MENU_ITEM_BASE =
+  "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left cursor-pointer " +
+  "transition-colors duration-150 ease-out focus-visible:outline-none " +
+  "disabled:opacity-40 disabled:cursor-not-allowed";
+
+const MENU_ITEM_NEUTRAL =
+  `${MENU_ITEM_BASE} text-[color:var(--app-text)] ` +
+  "hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--accent)] " +
+  "active:bg-[color:var(--wl-press)] focus-visible:bg-[color:var(--wl-hover)] " +
+  "disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-text)]";
+
+const MENU_ITEM_DANGER =
+  `${MENU_ITEM_BASE} text-[#ef4444] ` +
+  "hover:bg-[rgba(239,68,68,0.16)] active:bg-[rgba(239,68,68,0.24)] " +
+  "focus-visible:bg-[rgba(239,68,68,0.16)] disabled:hover:bg-transparent";
+
 const ActionMenu = ({
   credit,
   onViewDetails,
@@ -94,52 +175,97 @@ const ActionMenu = ({
   isRollbackPending,
   borderColor,
   canManageCredits,
+  interactionVars,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, visible: false });
+  const btnRef = useRef(null);
   const menuRef = useRef(null);
 
+  const canRollback = credit?.status === "CREDITED" && !isRollbackPending;
+
+  // Close the menu if a rollback starts while it is open
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target))
-        setIsOpen(false);
+    if (isRollbackPending) setIsOpen(false);
+  }, [isRollbackPending]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    // Global theme CSS may put a `transition` on every element. Without this
+    // the menu visibly slides in from the top-left corner when top/left are set.
+    menuRef.current?.style.setProperty("transition", "none", "important");
+    const btn = btnRef.current?.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight || 110;
+    if (!btn) return;
+
+    const gap = 6;
+    const spaceBelow = window.innerHeight - btn.bottom;
+    const openUp = spaceBelow < menuH + gap + 8 && btn.top > menuH + gap;
+
+    setPos({
+      top: openUp ? btn.top - menuH - gap : btn.bottom + gap,
+      left: Math.min(
+        Math.max(8, btn.right - MENU_WIDTH),
+        window.innerWidth - MENU_WIDTH - 8,
+      ),
+      visible: true,
+    });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const close = () => setIsOpen(false);
+    const onDown = (e) => {
+      if (
+        btnRef.current?.contains(e.target) ||
+        menuRef.current?.contains(e.target)
+      )
+        return;
+      close();
     };
-    const handleEsc = (e) => {
-      if (e.key === "Escape") setIsOpen(false);
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        close();
+        btnRef.current?.focus();
+      }
     };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEsc);
+
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEsc);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
     };
-  }, []);
+  }, [isOpen]);
 
   const handle = (cb) => {
-    cb?.();
     setIsOpen(false);
+    cb?.();
   };
 
   return (
-    <div className="relative inline-flex justify-end" ref={menuRef}>
+    <>
       <button
-        aria-haspopup="true"
+        ref={btnRef}
+        type="button"
+        aria-haspopup="menu"
         aria-expanded={isOpen}
         onClick={(e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // don't open the row's details
           if (isRollbackPending) return;
+          setPos((p) => ({ ...p, visible: false }));
           setIsOpen((o) => !o);
         }}
         disabled={isRollbackPending}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm text-xs cursor-pointer font-bold transition-all duration-200 ease-out active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-        style={{
-          backgroundColor: isOpen
-            ? "var(--app-surface-2)"
-            : "var(--app-surface)",
-          borderColor: borderColor,
-          color: isOpen ? "var(--accent)" : "var(--app-text)",
-        }}
+        className={`${ACTIONS_BTN} ${
+          isOpen ? ACTIONS_BTN_OPEN : ACTIONS_BTN_IDLE
+        }`}
         title="Actions"
-        type="button"
       >
         <span>Actions</span>
         <ChevronDown
@@ -148,63 +274,60 @@ const ActionMenu = ({
         />
       </button>
 
-      {isOpen && (
-        <div
-          className="absolute right-0 top-full mt-1 w-48 rounded-lg shadow-xl z-30 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            border: `1px solid ${borderColor}`,
-            boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
-          }}
-        >
-          <button
-            type="button"
-            disabled={isRollbackPending}
-            onClick={() => handle(onViewDetails)}
-            className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (isRollbackPending) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-              e.currentTarget.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--app-muted)";
+      {isOpen &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Credit actions"
+            // Portaled, but React still bubbles clicks to the row: stop them here
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-lg py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+            style={{
+              ...interactionVars,
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              zIndex: 1000,
+              visibility: pos.visible ? "visible" : "hidden",
+              backgroundColor: "var(--app-surface)",
+              border: `1px solid ${borderColor}`,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             }}
           >
-            <Info size={14} /> View Details
-          </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={isRollbackPending}
+              onClick={() => handle(onViewDetails)}
+              className={MENU_ITEM_NEUTRAL}
+            >
+              <Info size={14} /> View Details
+            </button>
 
-          {canManageCredits && (
-            <>
-              <div
-                className="my-1 h-px"
-                style={{ backgroundColor: borderColor }}
-              />
-              <button
-                type="button"
-                disabled={credit.status !== "CREDITED" || isRollbackPending}
-                onClick={() => handle(onRollback)}
-                className="w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 transition-colors text-left disabled:opacity-30 disabled:cursor-not-allowed"
-                style={{ color: "#ef4444" }}
-                onMouseEnter={(e) => {
-                  if (credit.status !== "CREDITED" || isRollbackPending) return;
-                  e.currentTarget.style.backgroundColor =
-                    "rgba(239,68,68,0.10)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                <RotateCcw size={14} />{" "}
-                {isRollbackPending ? "Rolling back..." : "Rollback"}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+            {canManageCredits && (
+              <>
+                <div
+                  className="my-1 h-px"
+                  style={{ backgroundColor: borderColor }}
+                />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canRollback}
+                  onClick={() => handle(onRollback)}
+                  className={MENU_ITEM_DANGER}
+                >
+                  <RotateCcw size={14} />{" "}
+                  {isRollbackPending ? "Rolling back..." : "Rollback"}
+                </button>
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 };
 
@@ -284,8 +407,9 @@ const EmployeesCell = ({ employees = [], borderColor }) => {
         {hiddenCount > 0 && (
           <button
             type="button"
+            aria-expanded={expanded}
             onClick={(e) => {
-              e.stopPropagation();
+              e.stopPropagation(); // expand the names, not open the row's details
               setExpanded((v) => !v);
             }}
             title={
@@ -293,7 +417,7 @@ const EmployeesCell = ({ employees = [], borderColor }) => {
                 ? "Show less"
                 : names.slice(MAX_VISIBLE_EMPLOYEES).join(", ")
             }
-            className="inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-bold transition-colors duration-200 ease-out"
+            className={`inline-flex items-center px-2.5 py-0.5 rounded-full border text-xs font-bold cursor-pointer select-none transition-all duration-150 ease-out hover:brightness-90 hover:shadow-sm active:scale-95 ${FOCUS_RING}`}
             style={{
               backgroundColor: "var(--accent-soft)",
               borderColor: "var(--accent-soft2)",
@@ -319,6 +443,7 @@ const CreditCard = ({
   leftStripClassName,
   borderColor,
   canManageCredits,
+  interactionVars,
 }) => {
   const employeesLabel = useMemo(() => {
     const names =
@@ -329,10 +454,23 @@ const CreditCard = ({
   }, [credit]);
 
   const shortId = credit?._id ? credit._id.slice(-6).toUpperCase() : "-";
+  const canRollback = credit.status === "CREDITED" && !isRollbackPending;
+
+  const btn = `w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border cursor-pointer transition-all duration-150 ease-out active:scale-[0.97] disabled:cursor-not-allowed disabled:active:scale-100 ${FOCUS_RING}`;
 
   return (
     <div
-      className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-colors duration-300 ease-out ${leftStripClassName}`}
+      tabIndex={0}
+      // Tapping anywhere on the card (except its buttons) opens the details
+      onClick={(e) => {
+        if (!isRollbackPending && shouldOpenFromClick(e)) onViewDetails();
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || !isActivationKey(e)) return;
+        e.preventDefault();
+        if (!isRollbackPending) onViewDetails();
+      }}
+      className={`rounded-xl shadow-sm overflow-hidden border-y border-r cursor-pointer transition-[box-shadow,background-color] duration-200 ease-out hover:shadow-md ${FOCUS_RING} ${leftStripClassName}`}
       style={{
         backgroundColor: "var(--app-surface)",
         borderColor: borderColor,
@@ -375,6 +513,7 @@ const CreditCard = ({
             <ActionMenu
               credit={credit}
               borderColor={borderColor}
+              interactionVars={interactionVars}
               isRollbackPending={isRollbackPending}
               onViewDetails={onViewDetails}
               onRollback={onRollback}
@@ -428,8 +567,10 @@ const CreditCard = ({
         </div>
       </div>
 
+      {/* Button bar: taps in the gaps between buttons don't open details */}
       <div
-        className="border-t p-3 transition-colors duration-300 ease-out"
+        data-no-row-click
+        className="border-t p-3 cursor-default transition-colors duration-300 ease-out"
         style={{
           borderColor: borderColor,
           backgroundColor: "var(--app-surface)",
@@ -440,7 +581,7 @@ const CreditCard = ({
             type="button"
             disabled={isRollbackPending}
             onClick={onViewDetails}
-            className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+            className={`${btn} hover:brightness-90 hover:shadow-sm disabled:opacity-40 disabled:hover:brightness-100`}
             style={{
               borderColor: "var(--accent-soft2)",
               backgroundColor: "var(--accent-soft)",
@@ -454,20 +595,12 @@ const CreditCard = ({
           {canManageCredits && (
             <button
               type="button"
-              disabled={credit.status !== "CREDITED" || isRollbackPending}
+              disabled={!canRollback}
               onClick={onRollback}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-bold border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+              className={`${btn} bg-[rgba(239,68,68,0.10)] hover:bg-[rgba(239,68,68,0.20)] active:bg-[rgba(239,68,68,0.28)] disabled:opacity-30 disabled:hover:bg-[rgba(239,68,68,0.10)]`}
               style={{
                 borderColor: "rgba(239,68,68,0.25)",
-                backgroundColor: "rgba(239,68,68,0.10)",
                 color: "#ef4444",
-              }}
-              onMouseEnter={(e) => {
-                if (credit.status !== "CREDITED" || isRollbackPending) return;
-                e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.16)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "rgba(239,68,68,0.10)";
               }}
             >
               <RotateCcw className="w-4 h-4" />
@@ -491,6 +624,13 @@ const CompactPagination = ({
   onNext,
   borderColor,
 }) => {
+  const prevDisabled = page === 1 || total === 0;
+  const nextDisabled = page >= totalPages || total === 0;
+
+  const mobileBtn = `inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
+
+  const iconBtn = `p-1.5 rounded-md cursor-pointer transition-colors duration-150 ease-out enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
+
   return (
     <div
       className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
@@ -503,13 +643,10 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onPrev}
-          disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-          style={{
-            borderColor: borderColor,
-            backgroundColor: "var(--app-surface)",
-            color: "var(--app-text)",
-          }}
+          disabled={prevDisabled}
+          className={mobileBtn}
+          style={{ borderColor: borderColor }}
+          aria-label="Previous page"
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
@@ -533,13 +670,10 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onNext}
-          disabled={page >= totalPages || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-          style={{
-            borderColor: borderColor,
-            backgroundColor: "var(--app-surface)",
-            color: "var(--app-text)",
-          }}
+          disabled={nextDisabled}
+          className={mobileBtn}
+          style={{ borderColor: borderColor }}
+          aria-label="Next page"
         >
           Next
           <ChevronRight className="w-4 h-4" />
@@ -572,16 +706,10 @@ const CompactPagination = ({
           <button
             type="button"
             onClick={onPrev}
-            disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            disabled={prevDisabled}
+            className={iconBtn}
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (page === 1 || total === 0) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -596,16 +724,10 @@ const CompactPagination = ({
           <button
             type="button"
             onClick={onNext}
-            disabled={page >= totalPages || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            disabled={nextDisabled}
+            className={iconBtn}
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (page >= totalPages || total === 0) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -630,6 +752,12 @@ const WellnessCreditHistory = () => {
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
+
+  // CSS vars for hover / pressed shades (also passed to the portaled menu)
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = useMemo(() => {
     if (resolvedTheme === "dark") {
@@ -843,11 +971,19 @@ const WellnessCreditHistory = () => {
     [rollbackMutation],
   );
 
+  const openDetails = (credit) => setDetailsModal({ isOpen: true, credit });
+  const askRollback = (credit) => {
+    if (isRollbackPending) return;
+    setSelectedCreditId(credit._id);
+    setIsConfirmRollback(true);
+  };
+
   return (
     <FullHeightCardContainer>
       <div
         className="w-full h-full min-h-0 flex flex-col md:p-0 transition-colors duration-300 ease-out"
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
           color: "var(--app-text, #0f172a)",
         }}
@@ -881,9 +1017,8 @@ const WellnessCreditHistory = () => {
                     <button
                       type="button"
                       onClick={() => setIsConfirmExpire(true)}
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-4 py-2.5 text-sm font-semibold border shadow-sm transition-all duration-200 ease-out hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
+                      className={`group relative inline-flex items-center gap-2 justify-center rounded-lg px-4 py-2.5 text-sm font-semibold border shadow-sm cursor-pointer transition-all duration-200 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:bg-[color:var(--wl-press)] w-full sm:w-auto ${FOCUS_RING}`}
                       style={{
-                        backgroundColor: "var(--app-surface)",
                         borderColor: "var(--accent)",
                         color: "var(--accent)",
                       }}
@@ -895,14 +1030,8 @@ const WellnessCreditHistory = () => {
                     <button
                       type="button"
                       onClick={() => navigate("/app/wellness-credit/add")}
-                      className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all duration-200 ease-out hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto"
+                      className={`group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md cursor-pointer transition-all duration-200 ease-out hover:brightness-90 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full sm:w-auto ${FOCUS_RING}`}
                       style={{ backgroundColor: "var(--accent, #2563EB)" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.filter = "brightness(0.95)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.filter = "none")
-                      }
                     >
                       <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
                       Credit Wellness
@@ -935,20 +1064,20 @@ const WellnessCreditHistory = () => {
                       return (
                         <button
                           type="button"
-                          key={tab.id}
+                          key={tab.id || "all"}
                           onClick={() => {
                             setStatusFilter(tab.id);
                             setPage(1);
                           }}
-                          className="px-4 py-1.5 text-xs font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2"
+                          className={`px-4 py-1.5 text-xs font-bold rounded-full border cursor-pointer transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2 ${FOCUS_RING} ${
+                            isActive
+                              ? ""
+                              : "bg-[color:var(--app-surface)] text-[color:var(--app-muted)] hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] active:bg-[color:var(--wl-press)]"
+                          }`}
                           style={
                             isActive
                               ? tab.activeStyle
-                              : {
-                                  backgroundColor: "var(--app-surface)",
-                                  color: "var(--app-muted)",
-                                  borderColor: borderColor,
-                                }
+                              : { borderColor: borderColor }
                           }
                           aria-pressed={isActive}
                         >
@@ -993,7 +1122,7 @@ const WellnessCreditHistory = () => {
                         <button
                           type="button"
                           onClick={() => setSearchInput("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full cursor-pointer transition-colors duration-200 ease-out hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] ${FOCUS_RING}`}
                           style={{ color: "var(--app-muted)" }}
                           aria-label="Clear search"
                           title="Clear"
@@ -1096,7 +1225,7 @@ const WellnessCreditHistory = () => {
                     <button
                       type="button"
                       onClick={handleResetFilters}
-                      className="flex items-center gap-1 text-[10px] font-bold uppercase"
+                      className={`flex items-center gap-1 text-[10px] font-bold uppercase rounded cursor-pointer hover:underline hover:brightness-90 ${FOCUS_RING}`}
                       style={{ color: "var(--accent)" }}
                     >
                       <RotateCcw size={10} /> Reset
@@ -1133,7 +1262,7 @@ const WellnessCreditHistory = () => {
                       <button
                         type="button"
                         onClick={handleResetFilters}
-                        className="mt-6 text-sm font-bold underline"
+                        className={`mt-6 text-sm font-bold underline rounded cursor-pointer hover:brightness-90 ${FOCUS_RING}`}
                         style={{ color: "var(--accent)" }}
                       >
                         Clear all filters
@@ -1185,15 +1314,10 @@ const WellnessCreditHistory = () => {
                                 credit.status,
                               )}
                               borderColor={borderColor}
+                              interactionVars={interactionVars}
                               canManageCredits={canManageCredits}
-                              onViewDetails={() =>
-                                setDetailsModal({ isOpen: true, credit })
-                              }
-                              onRollback={() => {
-                                if (isRollbackPending) return;
-                                setSelectedCreditId(credit._id);
-                                setIsConfirmRollback(true);
-                              }}
+                              onViewDetails={() => openDetails(credit)}
+                              onRollback={() => askRollback(credit)}
                             />
                           );
                         })}
@@ -1258,7 +1382,30 @@ const WellnessCreditHistory = () => {
                                 return (
                                   <tr
                                     key={credit._id}
-                                    className="transition-colors duration-200 ease-out border-b"
+                                    tabIndex={0}
+                                    // Clicking anywhere on the row (except its buttons) opens the details
+                                    onClick={(e) => {
+                                      if (
+                                        !isRollbackPending &&
+                                        shouldOpenFromClick(e)
+                                      )
+                                        openDetails(credit);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (
+                                        e.target !== e.currentTarget ||
+                                        !isActivationKey(e)
+                                      )
+                                        return;
+                                      e.preventDefault();
+                                      if (!isRollbackPending)
+                                        openDetails(credit);
+                                    }}
+                                    className={`border-b transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)] ${
+                                      isRollbackPending
+                                        ? "cursor-progress"
+                                        : "cursor-pointer"
+                                    }`}
                                     style={{
                                       backgroundColor: bg,
                                       borderColor: borderColor,
@@ -1328,23 +1475,21 @@ const WellnessCreditHistory = () => {
                                       <StatusBadge status={credit.status} />
                                     </td>
 
-                                    <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
+                                    {/* Clicks around the Actions button shouldn't open details */}
+                                    <td
+                                      data-no-row-click
+                                      className="px-6 py-4 text-right align-middle whitespace-nowrap cursor-default"
+                                    >
                                       <ActionMenu
                                         credit={credit}
                                         borderColor={borderColor}
+                                        interactionVars={interactionVars}
                                         isRollbackPending={isRollbackPending}
                                         canManageCredits={canManageCredits}
                                         onViewDetails={() =>
-                                          setDetailsModal({
-                                            isOpen: true,
-                                            credit,
-                                          })
+                                          openDetails(credit)
                                         }
-                                        onRollback={() => {
-                                          if (isRollbackPending) return;
-                                          setSelectedCreditId(credit._id);
-                                          setIsConfirmRollback(true);
-                                        }}
+                                        onRollback={() => askRollback(credit)}
                                       />
                                     </td>
                                   </tr>
@@ -1376,7 +1521,7 @@ const WellnessCreditHistory = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className="md:hidden fixed bottom-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition-colors duration-200 ease-out flex items-center justify-center"
+              className={`md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg cursor-pointer hover:brightness-90 active:scale-95 transition-colors duration-200 ease-out flex items-center justify-center ${FOCUS_RING}`}
               style={{
                 backgroundColor: "var(--accent, #2563EB)",
                 color: "#fff",

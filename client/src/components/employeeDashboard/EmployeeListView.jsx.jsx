@@ -1,5 +1,13 @@
 // src/components/employees/EmployeeDirectory.jsx
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from "react";
+import { createPortal } from "react-dom";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getEmployees } from "../../api/employee";
 import { fetchProjectOptions } from "../../api/project";
@@ -17,13 +25,13 @@ import FullHeightCardContainer from "../pageContainer";
 
 import {
   Search,
-  MoreVertical,
   User,
   Settings,
   Shield,
   Plus,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RotateCcw,
   FilterX,
   Mail,
@@ -50,6 +58,50 @@ function resolveTheme(prefTheme) {
   }
   return prefTheme === "dark" ? "dark" : "light";
 }
+
+/* =========================
+   INTERACTION TINTS
+========================= */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+/* =========================
+   ROW / CARD CLICK HELPERS
+========================= */
+// A click on a control inside a row or card must not also open the profile.
+// This includes the action menu: it is portaled to <body>, but React still
+// bubbles its events up to the row/card.
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [role='menu'], [role='menuitem'], [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a name or email) without navigating
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
 
 /* =========================
    HELPERS
@@ -236,146 +288,213 @@ function useDebounce(value, delay) {
 }
 
 /* =========================
-   ACTION MENU
+   ACTION MENU (portal, never clipped)
 ========================= */
+const MENU_WIDTH = 192;
+
+// "Actions" trigger: solid accent like the Add Employee button so it's easy to
+// spot in every row; darker on hover, darker still while its menu is open.
+const ACTIONS_BTN =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--accent)] text-white border-[color:var(--accent)] " +
+  "transition-all duration-150 ease-out hover:shadow-md active:scale-95 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-surface)] " +
+  "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:shadow-sm";
+
+const ACTIONS_BTN_IDLE =
+  "hover:brightness-90 active:brightness-[0.82] disabled:hover:brightness-100";
+
+const ACTIONS_BTN_OPEN = "brightness-[0.85]";
+
+// Shared menu-item styles: pointer cursor, darker hover, darker still on press
+const MENU_ITEM_BASE =
+  "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left cursor-pointer " +
+  "transition-colors duration-150 ease-out focus-visible:outline-none";
+
+const MENU_ITEM_NEUTRAL =
+  `${MENU_ITEM_BASE} text-[color:var(--app-text)] ` +
+  "hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--accent)] " +
+  "active:bg-[color:var(--wl-press)] focus-visible:bg-[color:var(--wl-hover)]";
+
+const MENU_ITEM_WARN = {
+  light:
+    `${MENU_ITEM_BASE} text-[#b45309] ` +
+    "hover:bg-[rgba(245,158,11,0.16)] active:bg-[rgba(245,158,11,0.26)] focus-visible:bg-[rgba(245,158,11,0.16)]",
+  dark:
+    `${MENU_ITEM_BASE} text-[#fcd34d] ` +
+    "hover:bg-[rgba(245,158,11,0.18)] active:bg-[rgba(245,158,11,0.28)] focus-visible:bg-[rgba(245,158,11,0.18)]",
+};
+
 const ActionMenu = ({
   onAction,
   disabled = false,
   borderColor,
   resolvedTheme,
+  interactionVars,
   canEditEmployee,
   canChangeRole,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0, visible: false });
+  const btnRef = useRef(null);
   const menuRef = useRef(null);
 
+  // Close the menu if it becomes disabled while open (e.g. role modal opens)
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setIsOpen(false);
+    if (disabled) setIsOpen(false);
+  }, [disabled]);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    // Global theme CSS may put a `transition` on every element. Without this
+    // the menu visibly slides in from the top-left corner when top/left are set.
+    menuRef.current?.style.setProperty("transition", "none", "important");
+    const btn = btnRef.current?.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight || 140;
+    if (!btn) return;
+
+    const gap = 6;
+    const spaceBelow = window.innerHeight - btn.bottom;
+    const openUp = spaceBelow < menuH + gap + 8 && btn.top > menuH + gap;
+
+    setPos({
+      top: openUp ? btn.top - menuH - gap : btn.bottom + gap,
+      left: Math.min(
+        Math.max(8, btn.right - MENU_WIDTH),
+        window.innerWidth - MENU_WIDTH - 8,
+      ),
+      visible: true,
+    });
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const close = () => setIsOpen(false);
+    const onDown = (e) => {
+      if (
+        btnRef.current?.contains(e.target) ||
+        menuRef.current?.contains(e.target)
+      )
+        return;
+      close();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        close();
+        btnRef.current?.focus();
       }
     };
-    const handleEsc = (e) => {
-      if (e.key === "Escape") setIsOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEsc);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEsc);
-    };
-  }, []);
 
-  const handle = (cb) => {
-    cb?.();
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [isOpen]);
+
+  const handle = (action) => {
     setIsOpen(false);
+    onAction?.(action);
   };
 
   return (
-    <div className="relative inline-flex justify-center" ref={menuRef}>
+    <>
       <button
+        ref={btnRef}
         type="button"
         disabled={disabled}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
         onClick={(e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // don't open the profile
           if (disabled) return;
+          setPos((p) => ({ ...p, visible: false }));
           setIsOpen((o) => !o);
         }}
-        className={`p-2 rounded-full transition-colors duration-200 ease-out ${
-          disabled ? "opacity-50 cursor-not-allowed" : ""
+        className={`${ACTIONS_BTN} ${
+          isOpen ? ACTIONS_BTN_OPEN : ACTIONS_BTN_IDLE
         }`}
-        style={{ color: "var(--app-muted)" }}
-        onMouseEnter={(e) => {
-          if (disabled) return;
-          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-          e.currentTarget.style.color = "var(--app-text)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = "transparent";
-          e.currentTarget.style.color = "var(--app-muted)";
-        }}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
         title="Actions"
       >
-        <MoreVertical size={18} />
+        <span>Actions</span>
+        <ChevronDown
+          size={14}
+          className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+        />
       </button>
 
-      {isOpen && !disabled && (
-        <div
-          className="absolute right-0 top-full mt-2 w-48 rounded-lg shadow-lg z-30 py-1 border transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => handle(() => onAction("view"))}
-            className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
-            style={{ color: "var(--app-text)" }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = "var(--accent-soft)";
-              e.currentTarget.style.color = "var(--accent)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-              e.currentTarget.style.color = "var(--app-text)";
+      {isOpen &&
+        !disabled &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Employee actions"
+            // Portaled, but React still bubbles clicks to the row: stop them here
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-lg py-1 overflow-hidden"
+            style={{
+              ...interactionVars,
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              zIndex: 1000,
+              visibility: pos.visible ? "visible" : "hidden",
+              backgroundColor: "var(--app-surface)",
+              border: `1px solid ${borderColor}`,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             }}
           >
-            <User size={14} /> View Profile
-          </button>
-
-          {canEditEmployee && (
             <button
               type="button"
-              onClick={() => handle(() => onAction("update"))}
-              className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
-              style={{ color: "var(--app-text)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = "var(--accent-soft)";
-                e.currentTarget.style.color = "var(--accent)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = "transparent";
-                e.currentTarget.style.color = "var(--app-text)";
-              }}
+              role="menuitem"
+              onClick={() => handle("view")}
+              className={MENU_ITEM_NEUTRAL}
             >
-              <Settings size={14} /> Update Profile
+              <User size={14} /> View Profile
             </button>
-          )}
 
-          {canChangeRole && (
-            <>
-              <div
-                className="h-px my-1"
-                style={{ backgroundColor: borderColor }}
-              />
-
+            {canEditEmployee && (
               <button
                 type="button"
-                onClick={() => handle(() => onAction("role"))}
-                className="w-full px-4 py-2 text-sm flex items-center gap-2 text-left transition-colors duration-200 ease-out"
-                style={{
-                  color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor =
-                    resolvedTheme === "dark"
-                      ? "rgba(245,158,11,0.14)"
-                      : "rgba(245,158,11,0.10)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = "transparent";
-                }}
+                role="menuitem"
+                onClick={() => handle("update")}
+                className={MENU_ITEM_NEUTRAL}
               >
-                <Shield size={14} /> Change Role
+                <Settings size={14} /> Update Profile
               </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+            )}
+
+            {canChangeRole && (
+              <>
+                <div
+                  className="h-px my-1"
+                  style={{ backgroundColor: borderColor }}
+                />
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => handle("role")}
+                  className={
+                    MENU_ITEM_WARN[resolvedTheme === "dark" ? "dark" : "light"]
+                  }
+                >
+                  <Shield size={14} /> Change Role
+                </button>
+              </>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 };
 
@@ -394,6 +513,12 @@ const CompactPagination = ({
   borderColor,
 }) => {
   const tp = Math.max(Number(totalPages) || 1, 1);
+  const prevDisabled = page === 1 || total === 0;
+  const nextDisabled = page >= tp || total === 0;
+
+  const mobileBtn = `inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
+
+  const iconBtn = `p-1.5 rounded-md cursor-pointer transition-colors duration-150 ease-out enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
 
   return (
     <div
@@ -407,13 +532,10 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onPrev}
-          disabled={page === 1 || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-          style={{
-            border: `1px solid ${borderColor}`,
-            backgroundColor: "var(--app-surface)",
-            color: "var(--app-text)",
-          }}
+          disabled={prevDisabled}
+          className={mobileBtn}
+          style={{ borderColor }}
+          aria-label="Previous page"
         >
           <ChevronLeft className="w-4 h-4" />
           Prev
@@ -437,13 +559,10 @@ const CompactPagination = ({
         <button
           type="button"
           onClick={onNext}
-          disabled={page >= tp || total === 0}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-          style={{
-            border: `1px solid ${borderColor}`,
-            backgroundColor: "var(--app-surface)",
-            color: "var(--app-text)",
-          }}
+          disabled={nextDisabled}
+          className={mobileBtn}
+          style={{ borderColor }}
+          aria-label="Next page"
         >
           Next
           <ChevronRight className="w-4 h-4" />
@@ -476,16 +595,10 @@ const CompactPagination = ({
           <button
             type="button"
             onClick={onPrev}
-            disabled={page === 1 || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            disabled={prevDisabled}
+            className={iconBtn}
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (page === 1 || total === 0) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Previous page"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -500,16 +613,10 @@ const CompactPagination = ({
           <button
             type="button"
             onClick={onNext}
-            disabled={page >= tp || total === 0}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            disabled={nextDisabled}
+            className={iconBtn}
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (page >= tp || total === 0) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            aria-label="Next page"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
@@ -594,10 +701,12 @@ const EmployeeCard = ({
   variant = "mobile",
   borderColor,
   resolvedTheme,
+  interactionVars,
   canEditEmployee,
   canChangeRole,
 }) => {
   const statusPill = getStatusPill(emp?.status, resolvedTheme);
+  const isDark = resolvedTheme === "dark";
 
   const projectLabel =
     typeof emp?.project === "string"
@@ -612,17 +721,26 @@ const EmployeeCard = ({
   const positionOrDesignation = emp?.position || designationLabel;
   const leftStrip = getLeftStripStyle(emp?.status);
 
-  const wrapClass =
-    variant === "tablet"
-      ? "rounded-xl shadow-sm border overflow-hidden transition-colors duration-300 ease-out"
-      : "rounded-xl border overflow-hidden transition-colors duration-300 ease-out";
+  // Shadows live in classes (not inline style) so the hover lift can apply
+  const wrapClass = `rounded-xl border overflow-hidden cursor-pointer transition-[box-shadow,background-color] duration-200 ease-out hover:shadow-md ${FOCUS_RING} ${
+    variant === "tablet" ? "shadow-sm" : "shadow-[0_2px_8px_rgba(0,0,0,0.04)]"
+  }`;
+
+  const footerBtn = `py-2.5 text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition-colors duration-150 ease-out ${FOCUS_RING}`;
 
   return (
     <div
       className={wrapClass}
-      onClick={() => onNavigate(emp)}
-      role="button"
       tabIndex={0}
+      // Tapping anywhere on the card (except its buttons) opens the profile
+      onClick={(e) => {
+        if (shouldOpenFromClick(e)) onNavigate(emp);
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || !isActivationKey(e)) return;
+        e.preventDefault();
+        onNavigate(emp);
+      }}
       style={{
         ...leftStrip,
         borderLeftWidth: "4px",
@@ -630,10 +748,6 @@ const EmployeeCard = ({
         borderRightColor: borderColor,
         borderBottomColor: borderColor,
         backgroundColor: "var(--app-surface)",
-        boxShadow:
-          variant === "tablet"
-            ? "0 1px 3px rgba(0,0,0,0.08)"
-            : "0 2px 8px rgba(0,0,0,0.04)",
       }}
     >
       <div
@@ -700,12 +814,13 @@ const EmployeeCard = ({
             </div>
           </div>
 
-          <div className="flex-none -mt-1">
+          <div className="flex-none">
             <ActionMenu
               disabled={isRoleModalOpen}
               onAction={(action) => onAction(action, emp)}
               borderColor={borderColor}
               resolvedTheme={resolvedTheme}
+              interactionVars={interactionVars}
               canEditEmployee={canEditEmployee}
               canChangeRole={canChangeRole}
             />
@@ -796,8 +911,10 @@ const EmployeeCard = ({
         </div>
       </div>
 
+      {/* Button bar: taps here never fall through to the card */}
       <div
-        className={`grid ${canChangeRole ? "grid-cols-2" : "grid-cols-1"} border-t transition-colors duration-300 ease-out`}
+        data-no-row-click
+        className={`grid ${canChangeRole ? "grid-cols-2" : "grid-cols-1"} border-t cursor-default transition-colors duration-300 ease-out`}
         style={{ borderColor }}
       >
         <button
@@ -806,16 +923,10 @@ const EmployeeCard = ({
             e.stopPropagation();
             onNavigate(emp);
           }}
-          className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
+          className={`${footerBtn} hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)]`}
           style={{
             color: "var(--accent)",
             borderRight: canChangeRole ? `1px solid ${borderColor}` : "none",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--accent-soft)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "transparent";
           }}
         >
           <User size={14} /> View
@@ -824,23 +935,17 @@ const EmployeeCard = ({
         {canChangeRole && (
           <button
             type="button"
+            disabled={isRoleModalOpen}
             onClick={(e) => {
               e.stopPropagation();
               onAction("role", emp);
             }}
-            className="py-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors duration-200 ease-out"
-            style={{
-              color: resolvedTheme === "dark" ? "#fcd34d" : "#b45309",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor =
-                resolvedTheme === "dark"
-                  ? "rgba(245,158,11,0.14)"
-                  : "rgba(245,158,11,0.10)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
+            className={`${footerBtn} disabled:opacity-40 disabled:cursor-not-allowed ${
+              isDark
+                ? "hover:bg-[rgba(245,158,11,0.18)] active:bg-[rgba(245,158,11,0.28)]"
+                : "hover:bg-[rgba(245,158,11,0.16)] active:bg-[rgba(245,158,11,0.26)]"
+            }`}
+            style={{ color: isDark ? "#fcd34d" : "#b45309" }}
           >
             <Shield size={14} /> Role
           </button>
@@ -870,6 +975,12 @@ const EmployeeDirectory = () => {
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
+
+  // CSS vars for hover / pressed shades (also passed to the portaled menu)
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = useMemo(() => {
     if (resolvedTheme === "dark") {
@@ -1116,6 +1227,13 @@ const EmployeeDirectory = () => {
     [navigate, openRoleModal],
   );
 
+  const openProfile = useCallback(
+    (employee) => {
+      if (employee?._id) navigate(`/app/employees/${employee._id}`);
+    },
+    [navigate],
+  );
+
   const clearFilters = useCallback(() => {
     setFilters({ division: "All", designation: "All", project: "All" });
     setSearchInput("");
@@ -1134,6 +1252,7 @@ const EmployeeDirectory = () => {
       <div
         className="w-full flex-1 flex h-full flex-col md:p-0 min-h-0 transition-colors duration-300 ease-out"
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
           color: "var(--app-text, #0f172a)",
         }}
@@ -1171,14 +1290,8 @@ const EmployeeDirectory = () => {
                   <button
                     type="button"
                     onClick={handleAddEmployee}
-                    className="group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto"
+                    className={`group relative inline-flex items-center gap-2 justify-center rounded-lg px-5 py-2.5 text-sm font-semibold text-white shadow-md cursor-pointer transition-all hover:brightness-90 hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 w-full md:w-auto ${FOCUS_RING}`}
                     style={{ backgroundColor: "var(--accent)" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.filter = "brightness(0.95)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.filter = "none";
-                    }}
                   >
                     <Plus className="w-4 h-4 transition-transform group-hover:rotate-90" />
                     Add Employee
@@ -1296,7 +1409,7 @@ const EmployeeDirectory = () => {
                         <button
                           type="button"
                           onClick={() => setSearchInput("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full cursor-pointer transition-colors duration-200 ease-out hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] ${FOCUS_RING}`}
                           style={{ color: "var(--app-muted)" }}
                           aria-label="Clear search"
                           title="Clear"
@@ -1410,7 +1523,7 @@ const EmployeeDirectory = () => {
                     <button
                       type="button"
                       onClick={clearFilters}
-                      className="flex items-center gap-1 text-[10px] font-bold uppercase transition-colors duration-200 ease-out"
+                      className={`flex items-center gap-1 text-[10px] font-bold uppercase rounded cursor-pointer transition-colors duration-200 ease-out hover:underline hover:brightness-90 ${FOCUS_RING}`}
                       style={{ color: "var(--accent)" }}
                     >
                       <FilterX size={10} /> Reset
@@ -1487,7 +1600,21 @@ const EmployeeDirectory = () => {
                         return (
                           <tr
                             key={emp._id}
-                            className="transition-colors duration-200 ease-out"
+                            tabIndex={0}
+                            // Clicking anywhere on the row (except its buttons) opens the profile
+                            onClick={(e) => {
+                              if (shouldOpenFromClick(e)) openProfile(emp);
+                            }}
+                            onKeyDown={(e) => {
+                              if (
+                                e.target !== e.currentTarget ||
+                                !isActivationKey(e)
+                              )
+                                return;
+                              e.preventDefault();
+                              openProfile(emp);
+                            }}
+                            className="cursor-pointer transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)]"
                             style={{ backgroundColor: bg }}
                             onMouseEnter={(e) => {
                               e.currentTarget.style.backgroundColor =
@@ -1591,7 +1718,11 @@ const EmployeeDirectory = () => {
                               </span>
                             </td>
 
-                            <td className="px-6 py-4 text-right">
+                            {/* Clicks around the Actions button shouldn't open the profile */}
+                            <td
+                              data-no-row-click
+                              className="px-6 py-4 text-right cursor-default"
+                            >
                               <div className="flex justify-end">
                                 <ActionMenu
                                   disabled={isRoleModalOpen}
@@ -1600,6 +1731,7 @@ const EmployeeDirectory = () => {
                                   }
                                   borderColor={borderColor}
                                   resolvedTheme={resolvedTheme}
+                                  interactionVars={interactionVars}
                                   canEditEmployee={canEditEmployee}
                                   canChangeRole={canChangeRole}
                                 />
@@ -1640,7 +1772,7 @@ const EmployeeDirectory = () => {
                               <button
                                 type="button"
                                 onClick={clearFilters}
-                                className="mt-6 text-sm font-bold underline transition-colors duration-200 ease-out"
+                                className={`mt-6 text-sm font-bold underline rounded cursor-pointer transition-colors duration-200 ease-out hover:brightness-90 ${FOCUS_RING}`}
                                 style={{ color: "var(--accent)" }}
                               >
                                 Clear all filters
@@ -1688,13 +1820,12 @@ const EmployeeDirectory = () => {
                           key={emp._id}
                           emp={emp}
                           isRoleModalOpen={isRoleModalOpen}
-                          onNavigate={() =>
-                            navigate(`/app/employees/${emp._id}`)
-                          }
+                          onNavigate={openProfile}
                           onAction={handleAction}
                           variant="mobile"
                           borderColor={borderColor}
                           resolvedTheme={resolvedTheme}
+                          interactionVars={interactionVars}
                           canEditEmployee={canEditEmployee}
                           canChangeRole={canChangeRole}
                         />
@@ -1735,7 +1866,7 @@ const EmployeeDirectory = () => {
                           <button
                             type="button"
                             onClick={clearFilters}
-                            className="mt-4 text-sm font-bold underline transition-colors duration-200 ease-out"
+                            className={`mt-4 text-sm font-bold underline rounded cursor-pointer transition-colors duration-200 ease-out hover:brightness-90 ${FOCUS_RING}`}
                             style={{ color: "var(--accent)" }}
                           >
                             Clear all filters
@@ -1784,13 +1915,12 @@ const EmployeeDirectory = () => {
                             key={emp._id}
                             emp={emp}
                             isRoleModalOpen={isRoleModalOpen}
-                            onNavigate={() =>
-                              navigate(`/app/employees/${emp._id}`)
-                            }
+                            onNavigate={openProfile}
                             onAction={handleAction}
                             variant="tablet"
                             borderColor={borderColor}
                             resolvedTheme={resolvedTheme}
+                            interactionVars={interactionVars}
                             canEditEmployee={canEditEmployee}
                             canChangeRole={canChangeRole}
                           />
@@ -1832,7 +1962,7 @@ const EmployeeDirectory = () => {
                           <button
                             type="button"
                             onClick={clearFilters}
-                            className="mt-6 text-sm font-bold underline transition-colors duration-200 ease-out"
+                            className={`mt-6 text-sm font-bold underline rounded cursor-pointer transition-colors duration-200 ease-out hover:brightness-90 ${FOCUS_RING}`}
                             style={{ color: "var(--accent)" }}
                           >
                             Clear all filters
@@ -1866,14 +1996,8 @@ const EmployeeDirectory = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className="fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full text-white shadow-lg active:scale-[0.98] transition-all w-11 h-11"
+              className={`fixed bottom-6 right-6 z-50 inline-flex items-center justify-center rounded-full text-white shadow-lg cursor-pointer hover:brightness-90 active:scale-[0.98] transition-all w-11 h-11 ${FOCUS_RING}`}
               style={{ backgroundColor: "var(--accent)" }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.filter = "brightness(0.95)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.filter = "none";
-              }}
               aria-label="Back to top"
               title="Back to top"
             >

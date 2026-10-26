@@ -1,11 +1,13 @@
 // ctoEmployeeApplicationTable.jsx
 import React, {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   useCallback,
 } from "react";
+import { createPortal } from "react-dom";
 import { StatusBadge } from "../../statusUtils";
 import Modal from "../../modal";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
@@ -17,21 +19,55 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   RotateCcw,
   FileText,
   Eye,
   Calendar,
   Filter,
-  MoreVertical,
 } from "lucide-react";
 
 /* =========================
    CONSTANTS
 ========================= */
 const pageSizeOptions = [20, 50, 100];
-const MAX_VISIBLE_DATES = 2;
+
+/* =========================
+   LAYOUT BY PANEL WIDTH
+   `size` comes from the parent panel's measured width ("sm" | "md" | "lg"),
+   so the table adapts when it only gets half the screen. Without it, fall
+   back to the viewport breakpoints so the table still works full-width.
+========================= */
+const layoutClassesFor = (size) => {
+  if (size === "lg")
+    return {
+      cards: "hidden",
+      table: "table",
+      toolbar: "flex-row items-center",
+      search: "w-60",
+    };
+  if (size === "md")
+    return {
+      cards: "grid grid-cols-2",
+      table: "hidden",
+      toolbar: "flex-row items-center",
+      search: "w-56",
+    };
+  if (size === "sm")
+    return {
+      cards: "grid grid-cols-1",
+      table: "hidden",
+      toolbar: "flex-col",
+      search: "w-full",
+    };
+  return {
+    cards: "lg:hidden grid grid-cols-1 md:grid-cols-2",
+    table: "hidden lg:table",
+    toolbar: "flex-col md:flex-row md:items-center",
+    search: "w-full md:w-60",
+  };
+};
 const MENU_WIDTH = 176; // w-44
-const MENU_HEIGHT = 96; // 2 items + padding
 
 /* ------------------ Resolve theme (no tailwind dark class dependency) ------------------ */
 function resolveTheme(prefTheme) {
@@ -76,6 +112,50 @@ function useResolvedTheme(prefTheme) {
 }
 
 /* =========================
+   INTERACTION TINTS
+========================= */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+/* =========================
+   ROW / CARD CLICK HELPERS
+========================= */
+// A click on a control inside a row or card must not also open the details
+// modal. This includes the action menu: it is portaled to <body>, but React
+// still bubbles its events up to the row.
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [role='menu'], [role='menuitem'], [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a memo number) without opening the modal
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
+
+/* =========================
    HELPERS
 ========================= */
 const Chip = ({ children }) => (
@@ -91,12 +171,13 @@ const Chip = ({ children }) => (
   </span>
 );
 
-const fmtDate = (d) =>
-  new Date(d).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+const fmtDate = (d) => DATE_FMT.format(new Date(d));
 
 const formatSubmitted = (iso) => (iso ? fmtDate(iso) : "-");
 
@@ -105,14 +186,19 @@ const sortedDates = (dates = []) =>
     .filter((d) => d && !isNaN(new Date(d).getTime()))
     .sort((a, b) => new Date(a) - new Date(b));
 
+const memoNumbersOf = (app) =>
+  Array.isArray(app?.memo)
+    ? app.memo.map((m) => m?.memoId?.memoNo).filter(Boolean)
+    : [];
+
 const memoLabelFromApp = (app) => {
-  if (!Array.isArray(app?.memo) || app.memo.length === 0)
-    return "No Memo Attached";
-  const labels = app.memo.map((m) => m?.memoId?.memoNo).filter(Boolean);
+  const labels = memoNumbersOf(app);
   return labels.length ? labels.join(", ") : "No Memo Attached";
 };
 
 const hasMemos = (app) => Array.isArray(app?.memo) && app.memo.length > 0;
+
+const shortIdOf = (app) => (app?._id ? app._id.slice(-6).toUpperCase() : "-");
 
 const getStatusColor = (status) => {
   switch (String(status || "").toUpperCase()) {
@@ -246,8 +332,122 @@ const MiniStat = ({ label, value, borderColor, first, color }) => (
   </div>
 );
 
-const DatesCell = ({ dates, borderColor }) => {
-  const list = sortedDates(dates);
+// Memo numbers as chips. When there are more than `maxVisible`, a
+// "View more" chip opens the Attached Memos modal directly.
+const MemoChips = ({
+  app,
+  borderColor,
+  onViewMemos,
+  maxVisible = 1,
+  showId = true,
+}) => {
+  const memos = memoNumbersOf(app);
+
+  if (memos.length === 0) {
+    return (
+      <div className="min-w-0">
+        <span className="text-sm" style={{ color: "var(--app-muted)" }}>
+          No memo attached
+        </span>
+        {showId && (
+          <span
+            className="block text-[10px] font-mono mt-0.5"
+            style={{ color: "var(--app-muted)" }}
+          >
+            ID: {shortIdOf(app)}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  const visible = memos.slice(0, maxVisible);
+  const hiddenMemos = memos.slice(maxVisible);
+
+  return (
+    <div className="flex flex-col gap-1 min-w-0">
+      <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+        {visible.map((memo, idx) => (
+          <span
+            key={`${memo}-${idx}`}
+            title={memo}
+            className="inline-flex items-center gap-1 max-w-full px-2 py-0.5 rounded-full border text-xs font-semibold"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor,
+              color: "var(--app-text)",
+            }}
+          >
+            <FileText
+              size={11}
+              className="flex-none"
+              style={{ color: "var(--accent)" }}
+            />
+            <span className="truncate">{memo}</span>
+          </span>
+        ))}
+
+        {hiddenMemos.length > 0 && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation(); // open the memos, not the row's details
+              onViewMemos?.();
+            }}
+            title={`Also attached: ${hiddenMemos.join(", ")}`}
+            aria-label={`View all ${memos.length} attached memos`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ease-out hover:brightness-90 hover:shadow-sm active:scale-95 ${FOCUS_RING}`}
+            style={{
+              backgroundColor: "var(--accent-soft)",
+              borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+              color: "var(--accent)",
+            }}
+          >
+            <Eye size={11} className="flex-none" />
+            View more
+          </button>
+        )}
+      </div>
+
+      {showId && (
+        <span
+          className="text-[10px] font-mono"
+          style={{ color: "var(--app-muted)" }}
+        >
+          ID: {shortIdOf(app)}
+        </span>
+      )}
+    </div>
+  );
+};
+
+/* ---- Dates: weekday + date pills; "+N" expands the rest inline ---- */
+const WEEKDAY_FMT = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const SHOW_ALL_UP_TO = 2;
+
+const DatePill = ({ date, borderColor }) => (
+  <span
+    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums leading-5 text-xs"
+    style={{
+      backgroundColor: "var(--app-surface)",
+      borderColor: borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+      color: "var(--app-text)",
+    }}
+  >
+    <span
+      className="text-[10px] font-bold uppercase tracking-wider"
+      style={{ color: "var(--accent)" }}
+    >
+      {WEEKDAY_FMT.format(date)}
+    </span>
+    <span className="font-semibold">{DATE_FMT.format(date)}</span>
+  </span>
+);
+
+const DatesCell = ({ dates, borderColor, maxVisible = 1 }) => {
+  const [expanded, setExpanded] = useState(false);
+  const list = sortedDates(dates).map((d) => new Date(d));
+
   if (list.length === 0) {
     return (
       <span className="text-xs" style={{ color: "var(--app-muted)" }}>
@@ -256,194 +456,214 @@ const DatesCell = ({ dates, borderColor }) => {
     );
   }
 
-  const visible = list.slice(0, MAX_VISIBLE_DATES);
-  const hidden = list.length - visible.length;
-  const fullLabel = list.map(fmtDate).join(", ");
+  // Up to two dates are always shown in full; "+N" only appears for 3 or more
+  const visibleCount = list.length <= SHOW_ALL_UP_TO ? list.length : maxVisible;
+  const hiddenCount = Math.max(list.length - visibleCount, 0);
+  const shown = expanded ? list : list.slice(0, visibleCount);
 
   return (
-    <div className="flex flex-wrap items-center gap-1" title={fullLabel}>
-      {visible.map((d, i) => (
-        <span
-          key={`${d}-${i}`}
-          className="px-1.5 py-0.5 rounded-md border text-[11px] font-medium whitespace-nowrap"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor,
-            color: "var(--app-text)",
-          }}
-        >
-          {fmtDate(d)}
-        </span>
+    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+      {shown.map((d, i) => (
+        <DatePill
+          key={`${d.getTime()}-${i}`}
+          date={d}
+          borderColor={borderColor}
+        />
       ))}
-      {hidden > 0 && (
-        <span
-          className="px-1.5 py-0.5 rounded-md text-[11px] font-bold"
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          title={
+            expanded
+              ? "Show fewer dates"
+              : `Show ${hiddenCount} more date${hiddenCount === 1 ? "" : "s"}`
+          }
+          onClick={(e) => {
+            e.stopPropagation(); // expand the dates, not open the row's details
+            setExpanded((v) => !v);
+          }}
+          className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold leading-5 whitespace-nowrap cursor-pointer select-none transition-all duration-150 ease-out hover:brightness-90 hover:shadow-sm active:scale-95 ${FOCUS_RING}`}
           style={{
             backgroundColor: "var(--accent-soft)",
+            borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
             color: "var(--accent)",
           }}
         >
-          +{hidden}
-        </span>
+          {expanded ? "Show less" : `+${hiddenCount}`}
+        </button>
       )}
     </div>
   );
 };
 
 /* =========================
-   ACTION MENU (theme-aware)
-   Uses fixed positioning so it never gets clipped by the
-   scrollable table container, and flips upward near the bottom.
+   ACTION MENU (portal, never clipped)
 ========================= */
+// "Actions" trigger: solid accent like the apply buttons so it's easy to spot
+// in every row; darker on hover, darker still while its menu is open.
+const ACTIONS_BTN =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--accent)] text-white border-[color:var(--accent)] " +
+  "transition-all duration-150 ease-out hover:shadow-md active:scale-95 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-surface)]";
+
+const ACTIONS_BTN_IDLE = "hover:brightness-90 active:brightness-[0.82]";
+
+const ACTIONS_BTN_OPEN = "brightness-[0.85]";
+
+// Shared menu-item styles: pointer cursor, darker hover, darker still on press
+const MENU_ITEM_NEUTRAL =
+  "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left cursor-pointer " +
+  "transition-colors duration-150 ease-out focus-visible:outline-none " +
+  "text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--accent)] " +
+  "active:bg-[color:var(--wl-press)] focus-visible:bg-[color:var(--wl-hover)] " +
+  "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-text)]";
+
 const ApplicationActionMenu = ({
   app,
   onViewDetails,
   onViewMemos,
   borderColor,
+  interactionVars,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const buttonRef = useRef(null);
+  const [pos, setPos] = useState({ top: 0, left: 0, visible: false });
+  const btnRef = useRef(null);
   const menuRef = useRef(null);
 
-  const close = useCallback(() => setIsOpen(false), []);
+  const memosAvailable = hasMemos(app);
 
-  const openMenu = () => {
-    const rect = buttonRef.current?.getBoundingClientRect();
-    if (!rect) return;
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    // Global theme CSS may put a `transition` on every element. Without this
+    // the menu visibly slides in from the top-left corner when top/left are set.
+    menuRef.current?.style.setProperty("transition", "none", "important");
+    const btn = btnRef.current?.getBoundingClientRect();
+    const menuH = menuRef.current?.offsetHeight || 96;
+    if (!btn) return;
 
-    const spaceBelow = window.innerHeight - rect.bottom;
-    const top =
-      spaceBelow < MENU_HEIGHT + 8
-        ? rect.top - MENU_HEIGHT - 4 // open upward
-        : rect.bottom + 4; // open downward
-    const left = Math.max(8, rect.right - MENU_WIDTH);
+    const gap = 6;
+    const spaceBelow = window.innerHeight - btn.bottom;
+    const openUp = spaceBelow < menuH + gap + 8 && btn.top > menuH + gap;
 
-    setPos({ top, left });
-    setIsOpen(true);
-  };
+    setPos({
+      top: openUp ? btn.top - menuH - gap : btn.bottom + gap,
+      left: Math.min(
+        Math.max(8, btn.right - MENU_WIDTH),
+        window.innerWidth - MENU_WIDTH - 8,
+      ),
+      visible: true,
+    });
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleClickOutside = (e) => {
+    const close = () => setIsOpen(false);
+    const onDown = (e) => {
       if (
-        menuRef.current?.contains(e.target) ||
-        buttonRef.current?.contains(e.target)
+        btnRef.current?.contains(e.target) ||
+        menuRef.current?.contains(e.target)
       )
         return;
       close();
     };
-    const handleEsc = (e) => {
-      if (e.key === "Escape") close();
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        close();
+        btnRef.current?.focus();
+      }
     };
 
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleEsc);
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
     // Close on any scroll (capture catches the table's own scroll container)
     window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
-
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEsc);
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("resize", close);
     };
-  }, [isOpen, close]);
+  }, [isOpen]);
 
-  const handle = (cb) => {
+  const run = (cb) => {
+    setIsOpen(false);
     cb?.();
-    close();
-  };
-
-  const memosAvailable = hasMemos(app);
-
-  const itemClass =
-    "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed transition-colors text-left";
-
-  const itemHoverIn = (e) => {
-    if (e.currentTarget.disabled) return;
-    e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-    e.currentTarget.style.color = "var(--accent)";
-  };
-  const itemHoverOut = (e) => {
-    e.currentTarget.style.backgroundColor = "transparent";
-    e.currentTarget.style.color = "var(--app-muted)";
   };
 
   return (
-    <div className="relative inline-flex justify-end">
+    <>
       <button
-        ref={buttonRef}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (isOpen) close();
-          else openMenu();
-        }}
-        className="p-1.5 rounded-md transition-colors duration-200 ease-out"
-        style={{
-          color: isOpen ? "var(--accent)" : "var(--app-muted)",
-          backgroundColor: isOpen ? "var(--app-surface-2)" : "transparent",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-          e.currentTarget.style.color = "var(--app-text)";
-        }}
-        onMouseLeave={(e) => {
-          if (isOpen) return;
-          e.currentTarget.style.backgroundColor = "transparent";
-          e.currentTarget.style.color = "var(--app-muted)";
-        }}
-        aria-haspopup="true"
-        aria-expanded={isOpen}
-        title="Actions"
+        ref={btnRef}
         type="button"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        onClick={(e) => {
+          e.stopPropagation(); // don't open the row's details
+          setPos((p) => ({ ...p, visible: false }));
+          setIsOpen((o) => !o);
+        }}
+        className={`${ACTIONS_BTN} ${
+          isOpen ? ACTIONS_BTN_OPEN : ACTIONS_BTN_IDLE
+        }`}
+        title="Actions"
       >
-        <MoreVertical size={16} />
+        <span>Actions</span>
+        <ChevronDown
+          size={14}
+          className={`transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+        />
       </button>
 
-      {isOpen && (
-        <div
-          ref={menuRef}
-          role="menu"
-          className="fixed w-44 rounded-lg z-50 py-1 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-          style={{
-            top: pos.top,
-            left: pos.left,
-            backgroundColor: "var(--app-surface)",
-            border: `1px solid ${borderColor}`,
-            boxShadow: "0 12px 32px rgba(0,0,0,0.14)",
-          }}
-        >
-          <button
-            role="menuitem"
-            onClick={() => handle(onViewDetails)}
-            className={itemClass}
-            style={{ color: "var(--app-muted)" }}
-            onMouseEnter={itemHoverIn}
-            onMouseLeave={itemHoverOut}
-            type="button"
+      {isOpen &&
+        createPortal(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Application actions"
+            // Portaled, but React still bubbles clicks to the row: stop them here
+            onClick={(e) => e.stopPropagation()}
+            className="rounded-lg py-1 overflow-hidden"
+            style={{
+              ...interactionVars,
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              zIndex: 1000,
+              visibility: pos.visible ? "visible" : "hidden",
+              backgroundColor: "var(--app-surface)",
+              border: `1px solid ${borderColor}`,
+              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
+            }}
           >
-            <Eye size={14} /> View Details
-          </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => run(onViewDetails)}
+              className={MENU_ITEM_NEUTRAL}
+            >
+              <Eye size={14} /> View Details
+            </button>
 
-          <button
-            role="menuitem"
-            disabled={!memosAvailable}
-            onClick={() => handle(onViewMemos)}
-            className={itemClass}
-            style={{ color: "var(--app-muted)" }}
-            onMouseEnter={itemHoverIn}
-            onMouseLeave={itemHoverOut}
-            type="button"
-            title={memosAvailable ? "View memos" : "No memos attached"}
-          >
-            <FileText size={14} /> View Memos
-          </button>
-        </div>
-      )}
-    </div>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={!memosAvailable}
+              onClick={() => run(onViewMemos)}
+              className={MENU_ITEM_NEUTRAL}
+              title={memosAvailable ? "View memos" : "No memos attached"}
+            >
+              <FileText size={14} /> View Memos
+            </button>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 };
 
@@ -457,7 +677,6 @@ const ApplicationCard = ({
   onViewMemos,
   borderColor,
 }) => {
-  const memoLabel = memoLabelFromApp(app);
   const dates = sortedDates(app?.inclusiveDates);
   const coveredLabel = dates.length
     ? dates.length === 1
@@ -465,23 +684,34 @@ const ApplicationCard = ({
       : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length - 1])}`
     : "-";
 
+  const btn = `h-8 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-all duration-150 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] hover:shadow-sm active:bg-[color:var(--wl-press)] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[color:var(--app-surface)] disabled:hover:shadow-none disabled:active:scale-100 ${FOCUS_RING}`;
+
   return (
     <div
-      className={`rounded-xl shadow-sm overflow-hidden border-y border-r transition-colors duration-300 ease-out ${leftStripClassName}`}
+      tabIndex={0}
+      // Tapping anywhere on the card (except its buttons) opens the details
+      onClick={(e) => {
+        if (shouldOpenFromClick(e)) onViewDetails();
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || !isActivationKey(e)) return;
+        e.preventDefault();
+        onViewDetails();
+      }}
+      className={`rounded-xl shadow-sm overflow-hidden border-y border-r cursor-pointer transition-[box-shadow,background-color] duration-200 ease-out hover:shadow-md ${FOCUS_RING} ${leftStripClassName}`}
       style={{ backgroundColor: "var(--app-surface)", borderColor }}
     >
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
+            <MemoChips
+              app={app}
+              borderColor={borderColor}
+              onViewMemos={onViewMemos}
+              showId={false}
+            />
             <div
-              className="text-sm font-bold truncate"
-              style={{ color: "var(--app-text)" }}
-              title={memoLabel}
-            >
-              {memoLabel}
-            </div>
-            <div
-              className="mt-0.5 flex items-center gap-1.5 text-[11px] min-w-0"
+              className="mt-1 flex items-center gap-1.5 text-[11px] min-w-0"
               style={{ color: "var(--app-muted)" }}
             >
               <Calendar className="w-3.5 h-3.5 flex-none" />
@@ -518,36 +748,26 @@ const ApplicationCard = ({
           />
         </div>
 
-        <div className="mt-2.5 grid grid-cols-2 gap-2">
+        {/* Button bar: taps in the gap between buttons don't open details */}
+        <div
+          data-no-row-click
+          className="mt-2.5 grid grid-cols-2 gap-2 cursor-default"
+        >
           <button
             onClick={onViewMemos}
             disabled={!hasMemos(app)}
-            className="h-8 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold border disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
+            className={btn}
             type="button"
-            style={{
-              backgroundColor: "var(--app-surface)",
-              borderColor,
-              color: "var(--app-text)",
-            }}
+            style={{ borderColor, color: "var(--app-text)" }}
           >
             <FileText className="w-3.5 h-3.5" />
             Memos
           </button>
           <button
             onClick={onViewDetails}
-            className="h-8 inline-flex items-center justify-center gap-1.5 rounded-lg text-xs font-bold border transition-colors duration-200 ease-out"
+            className={btn}
             type="button"
-            style={{
-              backgroundColor: "var(--app-surface)",
-              borderColor,
-              color: "var(--accent)",
-            }}
-            onMouseEnter={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--accent-soft)")
-            }
-            onMouseLeave={(e) =>
-              (e.currentTarget.style.backgroundColor = "var(--app-surface)")
-            }
+            style={{ borderColor, color: "var(--accent)" }}
           >
             <Eye className="w-3.5 h-3.5" />
             Details
@@ -581,19 +801,8 @@ const CompactPagination = ({
       onClick={onClick}
       disabled={isDisabled}
       aria-label={aria}
-      className="h-8 w-8 inline-flex items-center justify-center rounded-md border disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200 ease-out"
-      style={{
-        backgroundColor: "var(--app-surface)",
-        borderColor,
-        color: "var(--app-text)",
-      }}
-      onMouseEnter={(e) => {
-        if (e.currentTarget.disabled) return;
-        e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "var(--app-surface)";
-      }}
+      className={`h-8 w-8 inline-flex items-center justify-center rounded-md border cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`}
+      style={{ borderColor }}
     >
       {icon}
     </button>
@@ -614,12 +823,8 @@ const CompactPagination = ({
             value={limit}
             disabled={disabled}
             onChange={(e) => onLimitChange?.(Number(e.target.value))}
-            className="h-8 border text-xs rounded-md px-1.5 font-semibold outline-none cursor-pointer transition-colors duration-200 ease-out"
-            style={{
-              backgroundColor: "var(--app-surface)",
-              borderColor,
-              color: "var(--app-text)",
-            }}
+            className={`h-8 border text-xs rounded-md px-1.5 font-semibold outline-none cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] disabled:cursor-not-allowed ${FOCUS_RING}`}
+            style={{ borderColor }}
           >
             {pageSizeOptions.map((opt) => (
               <option key={opt} value={opt}>
@@ -692,15 +897,23 @@ const ApplicationCtoTable = ({
   total,
   statusCounts,
   isLoading,
+  size,
 }) => {
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
+  const L = layoutClassesFor(size);
 
   const borderColor = useMemo(() => {
     return resolvedTheme === "dark"
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
+
+  // CSS vars for hover / pressed shades (also passed to the portaled menu)
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = useMemo(() => {
     const base =
@@ -787,6 +1000,7 @@ const ApplicationCtoTable = ({
       <div
         className="w-full h-full flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden transition-colors duration-300 ease-out"
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-surface)",
           color: "var(--app-text)",
         }}
@@ -796,7 +1010,7 @@ const ApplicationCtoTable = ({
           className="flex-none border-b px-1 py-2 space-y-2 transition-colors duration-300 ease-out"
           style={{ backgroundColor: "var(--app-surface)", borderColor }}
         >
-          <div className="flex flex-col md:flex-row md:items-center gap-2">
+          <div className={`flex ${L.toolbar} gap-2`}>
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar flex-1 min-w-0">
               {tabs.map((tab) => {
                 const isActive = status === tab.id;
@@ -805,24 +1019,22 @@ const ApplicationCtoTable = ({
                   <button
                     key={tab.id || "all"}
                     onClick={() => onStatusChange?.(tab.id)}
-                    className="px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-1.5"
+                    className={`px-2.5 py-1 text-[11px] font-bold rounded-full border transition-colors duration-150 ease-out whitespace-nowrap flex items-center gap-1.5 ${FOCUS_RING} ${
+                      isActive
+                        ? "cursor-default"
+                        : "cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--app-muted)] hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] active:bg-[color:var(--wl-press)]"
+                    }`}
                     aria-pressed={isActive}
                     type="button"
-                    style={{
-                      backgroundColor: isActive ? t.bg : "var(--app-surface)",
-                      color: isActive ? t.text : "var(--app-muted)",
-                      borderColor: isActive ? t.br : borderColor,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isActive) return;
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface-2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (isActive) return;
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface)";
-                    }}
+                    style={
+                      isActive
+                        ? {
+                            backgroundColor: t.bg,
+                            color: t.text,
+                            borderColor: t.br,
+                          }
+                        : { borderColor }
+                    }
                   >
                     {tab.label}
                     <span
@@ -843,7 +1055,7 @@ const ApplicationCtoTable = ({
               })}
             </div>
 
-            <div className="relative w-full md:w-60 flex-none">
+            <div className={`relative ${L.search} flex-none`}>
               <Search
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4"
                 style={{ color: "var(--app-muted)" }}
@@ -864,7 +1076,7 @@ const ApplicationCtoTable = ({
               {search && (
                 <button
                   onClick={() => onSearchChange?.("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 transition-colors duration-200 ease-out"
+                  className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md cursor-pointer transition-colors duration-150 ease-out hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] ${FOCUS_RING}`}
                   style={{ color: "var(--app-muted)" }}
                   aria-label="Clear search"
                   title="Clear"
@@ -890,7 +1102,7 @@ const ApplicationCtoTable = ({
               </div>
               <button
                 onClick={handleResetFilters}
-                className="flex items-center gap-1 text-[10px] font-bold uppercase"
+                className={`flex items-center gap-1 text-[10px] font-bold uppercase rounded cursor-pointer hover:underline hover:brightness-90 ${FOCUS_RING}`}
                 style={{ color: "var(--accent)" }}
                 type="button"
               >
@@ -933,13 +1145,9 @@ const ApplicationCtoTable = ({
               {isFiltered && (
                 <button
                   onClick={handleResetFilters}
-                  className="mt-4 flex items-center gap-2 px-3 h-8 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out"
+                  className={`mt-4 flex items-center gap-2 px-3 h-8 text-xs font-bold border rounded-lg cursor-pointer transition-colors duration-150 ease-out bg-[color:var(--app-surface)] text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)] ${FOCUS_RING}`}
                   type="button"
-                  style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor,
-                    color: "var(--app-text)",
-                  }}
+                  style={{ borderColor }}
                 >
                   <RotateCcw size={12} /> Clear Filters
                 </button>
@@ -948,7 +1156,7 @@ const ApplicationCtoTable = ({
           ) : (
             <>
               {/* Mobile + Tablet: cards */}
-              <div className="lg:hidden p-3 grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              <div className={`${L.cards} p-3 gap-2.5`}>
                 {isLoading
                   ? [...Array(Math.min(limit, 6))].map((_, i) => (
                       <div
@@ -982,14 +1190,14 @@ const ApplicationCtoTable = ({
               </div>
 
               {/* Desktop: table */}
-              <table className="hidden lg:table w-full text-left table-fixed">
+              <table className={`${L.table} w-full text-left table-fixed`}>
                 <colgroup>
-                  <col style={{ width: "31%" }} />
-                  <col style={{ width: "28%" }} />
-                  <col style={{ width: "9%" }} />
+                  <col style={{ width: "26%" }} />
+                  <col style={{ width: "26%" }} />
+                  <col style={{ width: "8%" }} />
                   <col style={{ width: "14%" }} />
                   <col style={{ width: "12%" }} />
-                  <col style={{ width: "6%" }} />
+                  <col style={{ width: "14%" }} />
                 </colgroup>
                 <thead
                   className="sticky top-0 z-10"
@@ -1007,9 +1215,7 @@ const ApplicationCtoTable = ({
                     <th className="px-4 py-2.5 text-center">Hours</th>
                     <th className="px-4 py-2.5 text-center">Status</th>
                     <th className="px-4 py-2.5 text-center">Submitted</th>
-                    <th className="px-4 py-2.5 text-right">
-                      <span className="sr-only">Actions</span>
-                    </th>
+                    <th className="px-4 py-2.5 text-right">Actions</th>
                   </tr>
                 </thead>
 
@@ -1025,16 +1231,31 @@ const ApplicationCtoTable = ({
                         </tr>
                       ))
                     : filteredApps.map((app, i) => {
-                        const memoLabel = memoLabelFromApp(app);
                         const bg =
                           i % 2 === 0
                             ? "var(--app-surface)"
                             : "var(--app-surface-2)";
+                        const openDetails = () => setSelectedApp(app);
+                        const openMemos = () => openMemoModal(app?.memo || []);
 
                         return (
                           <tr
                             key={app._id || i}
-                            className="transition-colors duration-200 ease-out"
+                            tabIndex={0}
+                            // Clicking anywhere on the row (except its buttons) opens the details
+                            onClick={(e) => {
+                              if (shouldOpenFromClick(e)) openDetails();
+                            }}
+                            onKeyDown={(e) => {
+                              if (
+                                e.target !== e.currentTarget ||
+                                !isActivationKey(e)
+                              )
+                                return;
+                              e.preventDefault();
+                              openDetails();
+                            }}
+                            className="cursor-pointer transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)]"
                             style={{
                               backgroundColor: bg,
                               boxShadow: `inset 0 -1px 0 ${borderColor}`,
@@ -1048,28 +1269,18 @@ const ApplicationCtoTable = ({
                             }}
                           >
                             <td className="px-4 py-2.5">
-                              <div
-                                className="text-sm font-semibold truncate"
-                                style={{ color: "var(--app-text)" }}
-                                title={memoLabel}
-                              >
-                                {memoLabel}
-                              </div>
-                              <div
-                                className="text-[10px] font-mono mt-0.5"
-                                style={{ color: "var(--app-muted)" }}
-                              >
-                                ID:{" "}
-                                {app?._id
-                                  ? app._id.slice(-6).toUpperCase()
-                                  : "-"}
-                              </div>
+                              <MemoChips
+                                app={app}
+                                borderColor={borderColor}
+                                onViewMemos={openMemos}
+                              />
                             </td>
 
                             <td className="px-4 py-2.5">
                               <DatesCell
                                 dates={app?.inclusiveDates}
                                 borderColor={borderColor}
+                                maxVisible={1}
                               />
                             </td>
 
@@ -1097,14 +1308,17 @@ const ApplicationCtoTable = ({
                               {formatSubmitted(app?.createdAt)}
                             </td>
 
-                            <td className="px-4 py-2.5 text-right">
+                            {/* Clicks around the Actions button shouldn't open details */}
+                            <td
+                              data-no-row-click
+                              className="px-4 py-2.5 text-right whitespace-nowrap cursor-default"
+                            >
                               <ApplicationActionMenu
                                 app={app}
                                 borderColor={borderColor}
-                                onViewDetails={() => setSelectedApp(app)}
-                                onViewMemos={() =>
-                                  openMemoModal(app?.memo || [])
-                                }
+                                interactionVars={interactionVars}
+                                onViewDetails={openDetails}
+                                onViewMemos={openMemos}
                               />
                             </td>
                           </tr>

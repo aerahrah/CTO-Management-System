@@ -1,12 +1,5 @@
 // myCtoApplications.jsx
-import {
-  useState,
-  useRef,
-  useMemo,
-  useEffect,
-  useCallback,
-  useLayoutEffect,
-} from "react";
+import { useState, useRef, useMemo, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
@@ -202,6 +195,47 @@ const stripColorOf = (status) =>
   STRIP_COLORS[String(status || "").toUpperCase()] || "#cbd5e1";
 
 /* =========================
+   Row / card click helpers
+========================= */
+// A click on a control inside a row or card must not also open the details
+// modal. This includes the action menu: it is portaled to <body>, but React
+// still bubbles its events up to the row.
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [role='menu'], [role='menuitem'], [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a memo number) without opening the modal
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
+
+/* =========================
+   Interaction tints
+========================= */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
+/* =========================
    Balance card
 ========================= */
 const BalanceHoursCard = ({ hours, loading, borderColor }) => {
@@ -247,9 +281,15 @@ const BalanceHoursCard = ({ hours, loading, borderColor }) => {
 /* =========================
    Cells (shared by table + cards)
 ========================= */
-// Memo numbers as chips; "+N more" expands the rest (like the credit history names)
-const MemoChips = ({ app, borderColor, maxVisible = 1, showId = true }) => {
-  const [expanded, setExpanded] = useState(false);
+// Memo numbers as chips. When there are more than `maxVisible`, a
+// "View more" chip opens the Attached Memos modal directly.
+const MemoChips = ({
+  app,
+  borderColor,
+  onViewMemos,
+  maxVisible = 1,
+  showId = true,
+}) => {
   const memos = memoNumbersOf(app);
 
   if (memos.length === 0) {
@@ -270,8 +310,8 @@ const MemoChips = ({ app, borderColor, maxVisible = 1, showId = true }) => {
     );
   }
 
-  const hiddenCount = memos.length - maxVisible;
-  const visible = expanded ? memos : memos.slice(0, maxVisible);
+  const visible = memos.slice(0, maxVisible);
+  const hiddenMemos = memos.slice(maxVisible);
 
   return (
     <div className="flex flex-col gap-1 min-w-0">
@@ -296,22 +336,24 @@ const MemoChips = ({ app, borderColor, maxVisible = 1, showId = true }) => {
           </span>
         ))}
 
-        {hiddenCount > 0 && (
+        {hiddenMemos.length > 0 && (
           <button
             type="button"
             onClick={(e) => {
-              e.stopPropagation();
-              setExpanded((v) => !v);
+              e.stopPropagation(); // open the memos, not the row's details
+              onViewMemos?.();
             }}
-            title={expanded ? "Show less" : memos.slice(maxVisible).join(", ")}
-            className="inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-bold whitespace-nowrap transition hover:brightness-95"
+            title={`Also attached: ${hiddenMemos.join(", ")}`}
+            aria-label={`View all ${memos.length} attached memos`}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-xs font-bold whitespace-nowrap cursor-pointer transition-all duration-150 ease-out hover:brightness-90 hover:shadow-sm active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
             style={{
               backgroundColor: "var(--accent-soft)",
               borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
               color: "var(--accent)",
             }}
           >
-            {expanded ? "Show less" : `+${hiddenCount} more`}
+            <Eye size={11} className="flex-none" />
+            View more
           </button>
         )}
       </div>
@@ -328,8 +370,35 @@ const MemoChips = ({ app, borderColor, maxVisible = 1, showId = true }) => {
   );
 };
 
-const DatesCell = ({ dates, maxVisible = 1 }) => {
+/* ---- Dates: weekday + date pills; "+N" expands the rest inline ---- */
+const WEEKDAY_FMT = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+const SHOW_ALL_UP_TO = 2;
+
+const DatePill = ({ date, strong = false }) => (
+  <span
+    className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums leading-5 ${
+      strong ? "text-[13px]" : "text-xs"
+    }`}
+    style={{
+      backgroundColor: "var(--app-surface)",
+      borderColor: "var(--app-border, rgba(15,23,42,0.10))",
+      color: "var(--app-text)",
+    }}
+  >
+    <span
+      className="text-[10px] font-bold uppercase tracking-wider"
+      style={{ color: "var(--accent)" }}
+    >
+      {WEEKDAY_FMT.format(date)}
+    </span>
+    <span className="font-semibold">{DATE_FMT.format(date)}</span>
+  </span>
+);
+
+const DatesCell = ({ dates, maxVisible = 1, strong = false }) => {
+  const [expanded, setExpanded] = useState(false);
   const sorted = sortedDatesOf(dates);
+
   if (!sorted.length) {
     return (
       <span className="text-sm" style={{ color: "var(--app-muted)" }}>
@@ -338,31 +407,40 @@ const DatesCell = ({ dates, maxVisible = 1 }) => {
     );
   }
 
-  const visible = sorted.slice(0, maxVisible).map((d) => DATE_FMT.format(d));
-  const rest = sorted.length - visible.length;
-  const all = sorted.map((d) => DATE_FMT.format(d)).join(", ");
+  // Up to two dates are always shown in full; "+N" only appears for 3 or more
+  const visibleCount =
+    sorted.length <= SHOW_ALL_UP_TO ? sorted.length : maxVisible;
+  const hiddenCount = Math.max(sorted.length - visibleCount, 0);
+  const shown = expanded ? sorted : sorted.slice(0, visibleCount);
 
   return (
-    <div className="flex items-center gap-1.5 min-w-0" title={all}>
-      <Calendar
-        size={14}
-        className="flex-none"
-        style={{ color: "var(--app-muted)" }}
-      />
-      <span className="text-sm truncate" style={{ color: "var(--app-muted)" }}>
-        {visible.join(", ")}
-      </span>
-      {rest > 0 && (
-        <span
-          className="flex-none inline-flex items-center px-1.5 py-0.5 rounded-full border text-[10px] font-bold"
+    <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+      {shown.map((d, i) => (
+        <DatePill key={`${d.getTime()}-${i}`} date={d} strong={strong} />
+      ))}
+
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          title={
+            expanded
+              ? "Show fewer dates"
+              : `Show ${hiddenCount} more date${hiddenCount === 1 ? "" : "s"}`
+          }
+          onClick={(e) => {
+            e.stopPropagation(); // expand the dates, not open the row's details
+            setExpanded((v) => !v);
+          }}
+          className="inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold leading-5 whitespace-nowrap cursor-pointer select-none transition-all duration-150 ease-out hover:brightness-90 hover:shadow-sm active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
           style={{
-            backgroundColor: "var(--app-surface-2)",
-            borderColor: "var(--app-border)",
-            color: "var(--app-muted)",
+            backgroundColor: "var(--accent-soft)",
+            borderColor: "var(--accent-soft2, rgba(37,99,235,0.18))",
+            color: "var(--accent)",
           }}
         >
-          +{rest}
-        </span>
+          {expanded ? "Show less" : `+${hiddenCount}`}
+        </button>
       )}
     </div>
   );
@@ -372,6 +450,37 @@ const DatesCell = ({ dates, maxVisible = 1 }) => {
    Per-row action menu (portal, so the table can't clip it)
 ========================= */
 const MENU_WIDTH = 210;
+
+// "Actions" trigger: solid accent like the File Leave / apply buttons so it's
+// easy to spot in every row; darker on hover, darker still while its menu is open.
+const ACTIONS_BTN =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--accent)] text-white border-[color:var(--accent)] " +
+  "transition-all duration-150 ease-out hover:shadow-md active:scale-95 " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--app-surface)] " +
+  "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 disabled:hover:shadow-sm";
+
+const ACTIONS_BTN_IDLE =
+  "hover:brightness-90 active:brightness-[0.82] disabled:hover:brightness-100";
+
+const ACTIONS_BTN_OPEN = "brightness-[0.85]";
+
+// Shared menu-item styles: pointer cursor, darker hover, darker still on press
+const MENU_ITEM_BASE =
+  "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left cursor-pointer " +
+  "transition-colors duration-150 ease-out focus-visible:outline-none " +
+  "disabled:opacity-40 disabled:cursor-not-allowed";
+
+const MENU_ITEM_NEUTRAL =
+  `${MENU_ITEM_BASE} text-[color:var(--app-text)] ` +
+  "hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--accent)] " +
+  "active:bg-[color:var(--wl-press)] focus-visible:bg-[color:var(--wl-hover)] " +
+  "disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-text)]";
+
+const MENU_ITEM_DANGER =
+  `${MENU_ITEM_BASE} text-[#ef4444] ` +
+  "hover:bg-[rgba(239,68,68,0.16)] active:bg-[rgba(239,68,68,0.24)] " +
+  "focus-visible:bg-[rgba(239,68,68,0.16)] disabled:hover:bg-transparent";
 
 const ApplicationActionMenu = ({
   app,
@@ -389,6 +498,7 @@ const ApplicationActionMenu = ({
   isOrganicApp,
   canRequestRevocation,
   borderColor,
+  interactionVars,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0, visible: false });
@@ -403,6 +513,9 @@ const ApplicationActionMenu = ({
 
   useLayoutEffect(() => {
     if (!isOpen) return;
+    // Global theme CSS may put a `transition` on every element. Without this
+    // the menu visibly slides in from the top-left corner when top/left are set.
+    menuRef.current?.style.setProperty("transition", "none", "important");
     const btn = btnRef.current?.getBoundingClientRect();
     const menuH = menuRef.current?.offsetHeight || 200;
     if (!btn) return;
@@ -457,16 +570,6 @@ const ApplicationActionMenu = ({
     cb?.();
   };
 
-  const itemClass =
-    "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left transition-colors " +
-    "text-[color:var(--app-muted)] hover:bg-[color:var(--app-surface-2)] hover:text-[color:var(--accent)] " +
-    "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-[color:var(--app-muted)]";
-
-  const dangerClass =
-    "w-full px-4 py-2.5 text-xs font-bold flex items-center gap-2 text-left transition-colors " +
-    "text-[#ef4444] hover:bg-[rgba(239,68,68,0.12)] " +
-    "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
-
   return (
     <>
       <button
@@ -475,18 +578,13 @@ const ApplicationActionMenu = ({
         aria-haspopup="menu"
         aria-expanded={isOpen}
         onClick={(e) => {
-          e.stopPropagation();
+          e.stopPropagation(); // don't open the row's details
           setPos((p) => ({ ...p, visible: false }));
           setIsOpen((o) => !o);
         }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shadow-sm text-xs font-bold transition-all duration-200 ease-out active:scale-95"
-        style={{
-          backgroundColor: isOpen
-            ? "var(--app-surface-2)"
-            : "var(--app-surface)",
-          borderColor,
-          color: isOpen ? "var(--accent)" : "var(--app-text)",
-        }}
+        className={`${ACTIONS_BTN} ${
+          isOpen ? ACTIONS_BTN_OPEN : ACTIONS_BTN_IDLE
+        }`}
         title="Actions"
       >
         <span>Actions</span>
@@ -501,8 +599,12 @@ const ApplicationActionMenu = ({
           <div
             ref={menuRef}
             role="menu"
+            aria-label="Application actions"
+            // Portaled, but React still bubbles clicks to the row: stop them here
+            onClick={(e) => e.stopPropagation()}
             className="rounded-lg py-1 overflow-hidden"
             style={{
+              ...interactionVars,
               position: "fixed",
               top: pos.top,
               left: pos.left,
@@ -511,14 +613,14 @@ const ApplicationActionMenu = ({
               visibility: pos.visible ? "visible" : "hidden",
               backgroundColor: "var(--app-surface)",
               border: `1px solid ${borderColor}`,
-              boxShadow: "0 12px 32px rgba(0,0,0,0.14)",
+              boxShadow: "0 12px 32px rgba(0,0,0,0.18)",
             }}
           >
             <button
               type="button"
               role="menuitem"
               onClick={() => run(onViewDetails)}
-              className={itemClass}
+              className={MENU_ITEM_NEUTRAL}
             >
               <Eye size={14} /> View Details
             </button>
@@ -527,7 +629,7 @@ const ApplicationActionMenu = ({
               type="button"
               role="menuitem"
               onClick={() => run(onViewPdf)}
-              className={itemClass}
+              className={MENU_ITEM_NEUTRAL}
             >
               <FileDown size={14} /> View General PDF
             </button>
@@ -537,7 +639,7 @@ const ApplicationActionMenu = ({
                 type="button"
                 role="menuitem"
                 onClick={() => run(onViewCscForm6)}
-                className={itemClass}
+                className={MENU_ITEM_NEUTRAL}
               >
                 <FileBadge size={14} /> View CSC Form 6
               </button>
@@ -548,7 +650,7 @@ const ApplicationActionMenu = ({
               role="menuitem"
               disabled={!hasMemos}
               onClick={() => run(onViewMemos)}
-              className={itemClass}
+              className={MENU_ITEM_NEUTRAL}
             >
               <FileText size={14} /> View Memos
             </button>
@@ -559,7 +661,7 @@ const ApplicationActionMenu = ({
                 role="menuitem"
                 disabled={followingUp}
                 onClick={() => run(onFollowUp)}
-                className={itemClass}
+                className={MENU_ITEM_NEUTRAL}
               >
                 <Bell size={14} />{" "}
                 {followingUp ? "Sending..." : "Send Follow-up"}
@@ -571,7 +673,7 @@ const ApplicationActionMenu = ({
                 type="button"
                 role="menuitem"
                 onClick={() => run(onRequestRevoke)}
-                className={itemClass}
+                className={MENU_ITEM_NEUTRAL}
               >
                 <Undo size={14} /> Request Revocation
               </button>
@@ -590,7 +692,7 @@ const ApplicationActionMenu = ({
                 role="menuitem"
                 disabled={cancellingRevoke}
                 onClick={() => run(onCancelRevoke)}
-                className={dangerClass}
+                className={MENU_ITEM_DANGER}
               >
                 <Ban size={14} />
                 {cancellingRevoke ? "Cancelling..." : "Cancel Revocation"}
@@ -603,7 +705,7 @@ const ApplicationActionMenu = ({
                 role="menuitem"
                 disabled={cancelling}
                 onClick={() => run(onCancel)}
-                className={dangerClass}
+                className={MENU_ITEM_DANGER}
               >
                 <Ban size={14} />
                 {cancelling ? "Cancelling..." : "Cancel Request"}
@@ -621,7 +723,10 @@ const ApplicationActionMenu = ({
 ========================= */
 const ApplicationCard = ({
   app,
+  onOpen,
+  onOpenKeyDown,
   onViewDetails,
+  onViewMemos,
   onViewPdf,
   onViewCscForm6,
   onCancel,
@@ -645,17 +750,22 @@ const ApplicationCard = ({
     : 0;
 
   const btn =
-    "flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border transition-colors duration-200 ease-out disabled:opacity-40 disabled:cursor-not-allowed";
-  const neutralBtn = `${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]`;
+    "flex-1 min-w-[80px] inline-flex items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs font-bold border cursor-pointer " +
+    "transition-colors duration-150 ease-out active:scale-[0.97] " +
+    "disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100";
+  const neutralBtn = `${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)]`;
+  const dangerBtn = `${btn} bg-[rgba(239,68,68,0.12)] hover:bg-[rgba(239,68,68,0.22)] active:bg-[rgba(239,68,68,0.28)]`;
   const dangerStyle = {
-    backgroundColor: "rgba(239,68,68,0.12)",
     borderColor: "rgba(239,68,68,0.20)",
     color: "#ef4444",
   };
 
   return (
     <div
-      className="rounded-xl shadow-sm overflow-hidden transition-colors duration-300 ease-out"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={onOpenKeyDown}
+      className="rounded-xl shadow-sm overflow-hidden cursor-pointer transition-[box-shadow,background-color] duration-200 ease-out hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
       style={{
         backgroundColor: "var(--app-surface)",
         border: `1px solid ${borderColor}`,
@@ -665,7 +775,12 @@ const ApplicationCard = ({
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <MemoChips app={app} borderColor={borderColor} showId={false} />
+            <MemoChips
+              app={app}
+              borderColor={borderColor}
+              onViewMemos={onViewMemos}
+              showId={false}
+            />
             <div
               className="mt-2 flex items-center gap-2 text-xs"
               style={{ color: "var(--app-muted)" }}
@@ -726,13 +841,18 @@ const ApplicationCard = ({
         </div>
       </div>
 
-      <div className="border-t p-3" style={{ borderColor }}>
+      {/* Button bar: taps in the gaps between buttons don't open details */}
+      <div
+        data-no-row-click
+        className="border-t p-3 cursor-default"
+        style={{ borderColor }}
+      >
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={onViewDetails}
             title="View Details"
-            className={`${btn} bg-[color:var(--app-surface)] hover:bg-[color:var(--accent-soft)]`}
+            className={neutralBtn}
             style={{ borderColor, color: "var(--accent)" }}
           >
             <Eye className="w-4 h-4" />
@@ -796,7 +916,7 @@ const ApplicationCard = ({
               onClick={onCancelRevoke}
               disabled={cancellingRevoke}
               title="Cancel Revocation"
-              className={btn}
+              className={dangerBtn}
               style={dangerStyle}
             >
               <Ban className="w-4 h-4" />
@@ -810,7 +930,7 @@ const ApplicationCard = ({
               onClick={onCancel}
               disabled={cancelling}
               title="Cancel"
-              className={btn}
+              className={dangerBtn}
               style={dangerStyle}
             >
               <Ban className="w-4 h-4" />
@@ -836,110 +956,113 @@ const CompactPagination = ({
   onNext,
   label = "items",
   borderColor,
-}) => (
-  <div
-    className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
-    style={{ backgroundColor: "var(--app-surface)", borderColor }}
-  >
-    <div className="flex md:hidden items-center justify-between gap-3">
-      <button
-        type="button"
-        onClick={onPrev}
-        disabled={page === 1 || total === 0}
-        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          borderColor,
-          color: "var(--app-text)",
-        }}
-      >
-        <ChevronLeft className="w-4 h-4" />
-        Prev
-      </button>
+}) => {
+  const mobileBtn =
+    "inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold cursor-pointer transition-colors duration-150 ease-out " +
+    "bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)] " +
+    "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-[color:var(--app-surface)]";
+  const desktopBtn =
+    "p-1.5 rounded-md cursor-pointer transition-colors duration-150 ease-out " +
+    "hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)] " +
+    "disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent";
 
-      <div className="text-center min-w-0">
-        <div
-          className="text-xs font-mono font-semibold"
-          style={{ color: "var(--app-text)" }}
-        >
-          {page} / {totalPages}
-        </div>
-        <div
-          className="text-[11px] truncate"
-          style={{ color: "var(--app-muted)" }}
-        >
-          {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
-        </div>
-      </div>
-
-      <button
-        type="button"
-        onClick={onNext}
-        disabled={page >= totalPages || total === 0}
-        className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
-        style={{
-          backgroundColor: "var(--app-surface)",
-          borderColor,
-          color: "var(--app-text)",
-        }}
-      >
-        Next
-        <ChevronRight className="w-4 h-4" />
-      </button>
-    </div>
-
-    <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
-      <div
-        className="text-xs font-medium"
-        style={{ color: "var(--app-muted)" }}
-      >
-        Showing{" "}
-        <span className="font-bold" style={{ color: "var(--app-text)" }}>
-          {total === 0 ? 0 : `${startItem}-${endItem}`}
-        </span>{" "}
-        of{" "}
-        <span className="font-bold" style={{ color: "var(--app-text)" }}>
-          {total}
-        </span>{" "}
-        {label}
-      </div>
-
-      <div
-        className="flex items-center gap-1 p-1 rounded-lg border"
-        style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
-      >
+  return (
+    <div
+      className="px-4 md:px-6 py-3 border-t transition-colors duration-300 ease-out"
+      style={{ backgroundColor: "var(--app-surface)", borderColor }}
+    >
+      <div className="flex md:hidden items-center justify-between gap-3">
         <button
           type="button"
           onClick={onPrev}
           disabled={page === 1 || total === 0}
-          className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
-          style={{ color: "var(--app-muted)" }}
-          aria-label="Previous page"
+          className={mobileBtn}
+          style={{ borderColor, color: "var(--app-text)" }}
         >
           <ChevronLeft className="w-4 h-4" />
+          Prev
         </button>
 
-        <span
-          className="text-xs font-mono font-medium px-3"
-          style={{ color: "var(--app-muted)" }}
-        >
-          {page} / {totalPages}
-        </span>
+        <div className="text-center min-w-0">
+          <div
+            className="text-xs font-mono font-semibold"
+            style={{ color: "var(--app-text)" }}
+          >
+            {page} / {totalPages}
+          </div>
+          <div
+            className="text-[11px] truncate"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {total === 0 ? `0 ${label}` : `${startItem}-${endItem} of ${total}`}
+          </div>
+        </div>
 
         <button
           type="button"
           onClick={onNext}
           disabled={page >= totalPages || total === 0}
-          className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out hover:bg-[color:var(--app-surface)]"
-          style={{ color: "var(--app-muted)" }}
-          aria-label="Next page"
+          className={mobileBtn}
+          style={{ borderColor, color: "var(--app-text)" }}
         >
+          Next
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
+
+      <div className="hidden md:flex flex-col md:flex-row items-center justify-between gap-4">
+        <div
+          className="text-xs font-medium"
+          style={{ color: "var(--app-muted)" }}
+        >
+          Showing{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total === 0 ? 0 : `${startItem}-${endItem}`}
+          </span>{" "}
+          of{" "}
+          <span className="font-bold" style={{ color: "var(--app-text)" }}>
+            {total}
+          </span>{" "}
+          {label}
+        </div>
+
+        <div
+          className="flex items-center gap-1 p-1 rounded-lg border"
+          style={{ backgroundColor: "var(--app-surface-2)", borderColor }}
+        >
+          <button
+            type="button"
+            onClick={onPrev}
+            disabled={page === 1 || total === 0}
+            className={desktopBtn}
+            style={{ color: "var(--app-muted)" }}
+            aria-label="Previous page"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <span
+            className="text-xs font-mono font-medium px-3"
+            style={{ color: "var(--app-muted)" }}
+          >
+            {page} / {totalPages}
+          </span>
+
+          <button
+            type="button"
+            onClick={onNext}
+            disabled={page >= totalPages || total === 0}
+            className={desktopBtn}
+            style={{ color: "var(--app-muted)" }}
+            aria-label="Next page"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 const tabTone = {
   accent: {
@@ -1075,6 +1198,12 @@ const MyCtoApplications = () => {
       ? "rgba(255,255,255,0.07)"
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
+
+  // CSS vars for hover / pressed shades (also passed to the portaled menu)
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = useMemo(() => {
     const base =
@@ -1370,6 +1499,7 @@ const MyCtoApplications = () => {
   const rowProps = (app) => ({
     app,
     borderColor,
+    interactionVars,
     cancelling: isCancelLoading && cancelMutation.variables === app._id,
     followingUp: isFollowUpLoading && followUpMutation.variables === app._id,
     cancellingRevoke:
@@ -1379,6 +1509,15 @@ const MyCtoApplications = () => {
       app?.category === "Organic" ||
       isUserOrganic,
     canRequestRevocation,
+    // Clicking anywhere on the row/card (except its buttons) opens details
+    onOpen: (e) => {
+      if (shouldOpenFromClick(e)) setSelectedApp(app);
+    },
+    onOpenKeyDown: (e) => {
+      if (e.target !== e.currentTarget || !isActivationKey(e)) return;
+      e.preventDefault();
+      setSelectedApp(app);
+    },
     onViewDetails: () => setSelectedApp(app),
     onViewPdf: () => setPdfApp({ ...app, ledger: data?.ledger }),
     onViewCscForm6: () => setOrganicPdfApp({ ...app, ledger: data?.ledger }),
@@ -1420,6 +1559,7 @@ const MyCtoApplications = () => {
       <div
         className="w-full h-full min-h-0 flex flex-col md:p-0 transition-colors duration-300 ease-out"
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
           color: "var(--app-text, #0f172a)",
         }}
@@ -1470,7 +1610,7 @@ const MyCtoApplications = () => {
                               : "/app/cto-apply/add?late=true",
                           )
                         }
-                        className="inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1 bg-[rgba(245,158,11,0.12)] hover:bg-[rgba(245,158,11,0.20)]"
+                        className="inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm cursor-pointer transition-all w-full flex-1 bg-[rgba(245,158,11,0.12)] hover:bg-[rgba(245,158,11,0.24)] active:scale-[0.98]"
                         style={{
                           color: "#d97706",
                           border: "1px solid rgba(245,158,11,0.25)",
@@ -1489,7 +1629,7 @@ const MyCtoApplications = () => {
                               : "/app/cto-apply/add",
                           )
                         }
-                        className="group inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm transition-all w-full flex-1 hover:brightness-95"
+                        className="group inline-flex items-center gap-2 justify-center rounded-lg px-3 py-2.5 text-[11px] sm:text-xs font-semibold shadow-sm cursor-pointer transition-all w-full flex-1 hover:brightness-90 active:scale-[0.98]"
                         style={{
                           backgroundColor: "var(--accent)",
                           color: "#fff",
@@ -1533,10 +1673,10 @@ const MyCtoApplications = () => {
                             setStatusFilter(tab.id);
                             setPage(1);
                           }}
-                          className={`px-4 py-1.5 text-xs font-bold rounded-full border transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2 ${
+                          className={`px-4 py-1.5 text-xs font-bold rounded-full border cursor-pointer transition-colors duration-200 ease-out whitespace-nowrap flex items-center gap-2 ${
                             isActive
                               ? ""
-                              : "hover:bg-[color:var(--app-surface-2)]"
+                              : "hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)]"
                           }`}
                           aria-pressed={isActive}
                           style={{
@@ -1588,7 +1728,7 @@ const MyCtoApplications = () => {
                         <button
                           type="button"
                           onClick={() => setSearchInput("")}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full transition hover:bg-[color:var(--app-surface-2)]"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-full cursor-pointer transition hover:bg-[color:var(--wl-hover)]"
                           style={{ color: "var(--app-muted)" }}
                           aria-label="Clear search"
                           title="Clear"
@@ -1683,7 +1823,7 @@ const MyCtoApplications = () => {
                     <button
                       type="button"
                       onClick={handleResetFilters}
-                      className="flex-none flex items-center gap-1 text-[10px] font-bold uppercase"
+                      className="flex-none flex items-center gap-1 text-[10px] font-bold uppercase cursor-pointer hover:underline hover:brightness-90"
                       style={{ color: "var(--accent)" }}
                     >
                       <RotateCcw size={10} /> Reset
@@ -1728,7 +1868,7 @@ const MyCtoApplications = () => {
                       <button
                         type="button"
                         onClick={handleResetFilters}
-                        className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg transition-colors duration-200 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]"
+                        className="mt-6 flex items-center gap-2 px-4 py-2 text-xs font-bold border rounded-lg cursor-pointer transition-colors duration-200 ease-out bg-[color:var(--app-surface)] hover:bg-[color:var(--wl-hover)] active:bg-[color:var(--wl-press)]"
                         style={{ borderColor, color: "var(--app-text)" }}
                       >
                         <RotateCcw size={12} /> Clear Filters
@@ -1806,7 +1946,10 @@ const MyCtoApplications = () => {
                                 return (
                                   <tr
                                     key={app._id}
-                                    className="border-b transition-colors duration-200 ease-out"
+                                    tabIndex={0}
+                                    onClick={props.onOpen}
+                                    onKeyDown={props.onOpenKeyDown}
+                                    className="border-b cursor-pointer transition-colors duration-200 ease-out focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)]"
                                     style={{ backgroundColor: bg, borderColor }}
                                     onMouseEnter={(e) => {
                                       e.currentTarget.style.backgroundColor =
@@ -1821,6 +1964,7 @@ const MyCtoApplications = () => {
                                       <MemoChips
                                         app={app}
                                         borderColor={borderColor}
+                                        onViewMemos={props.onViewMemos}
                                       />
                                     </td>
 
@@ -1855,7 +1999,11 @@ const MyCtoApplications = () => {
                                       />
                                     </td>
 
-                                    <td className="px-6 py-3.5 text-right align-middle whitespace-nowrap">
+                                    {/* Clicks around the Actions button shouldn't open details */}
+                                    <td
+                                      data-no-row-click
+                                      className="px-6 py-3.5 text-right align-middle whitespace-nowrap cursor-default"
+                                    >
                                       <ApplicationActionMenu {...props} />
                                     </td>
                                   </tr>
@@ -1890,7 +2038,7 @@ const MyCtoApplications = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className="md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg active:scale-95 transition flex items-center justify-center"
+              className="md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg cursor-pointer hover:brightness-90 active:scale-95 transition flex items-center justify-center"
               style={{
                 backgroundColor: "var(--accent, #2563EB)",
                 color: "#fff",

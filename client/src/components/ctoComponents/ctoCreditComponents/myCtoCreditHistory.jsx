@@ -24,7 +24,6 @@ import {
   RotateCcw,
   Inbox,
   FileText,
-  Calendar,
   CheckCircle2,
   Archive,
   Layers,
@@ -117,6 +116,19 @@ const EMPTY_TOTALS = {
   totalCreditedHours: 0,
 };
 
+/* ------------------ Interaction tints ------------------ */
+// Solid hover / pressed shades derived from the surface color. They darken in
+// light mode and lighten in dark mode (darkening an already-dark surface is
+// almost invisible), so the "this is clickable" cue shows in both themes.
+const interactionVarsFor = (theme) => {
+  const isDark = theme === "dark";
+  const ink = isDark ? "#ffffff" : "#0f172a";
+  return {
+    "--wl-hover": `color-mix(in srgb, var(--app-surface) ${isDark ? 88 : 91}%, ${ink})`,
+    "--wl-press": `color-mix(in srgb, var(--app-surface) ${isDark ? 80 : 84}%, ${ink})`,
+  };
+};
+
 /* ------------------ Shared class tokens ------------------ */
 // Kills every transition/animation on this page, including ones coming from
 // global CSS or child components (FilterSelect, StatusBadge, Breadcrumbs, etc.)
@@ -126,19 +138,34 @@ const NO_MOTION =
 const FOCUS_RING =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
 
-const BTN_SECONDARY = `inline-flex items-center justify-center gap-2 rounded-lg border font-bold bg-[color:var(--app-surface)] text-[color:var(--accent)] hover:bg-[color:var(--accent-soft)] disabled:opacity-40 disabled:cursor-not-allowed ${FOCUS_RING}`;
+// Pointer cursor, darker on hover, darker still on press
+const BTN_SECONDARY = `inline-flex items-center justify-center gap-2 rounded-lg border font-bold cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--accent)] hover:bg-[color:var(--wl-hover)] hover:shadow active:bg-[color:var(--wl-press)] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100 ${FOCUS_RING}`;
+
+/* ------------------ Row / card click helpers ------------------ */
+// A click on a control inside a row or card must not also open the memo twice
+// (or open it when the person meant to press something else).
+const INTERACTIVE_SELECTOR =
+  "button, a, input, select, textarea, label, [data-no-row-click]";
+
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  const target = e.target;
+  if (target instanceof Element && target.closest(INTERACTIVE_SELECTOR)) {
+    return false;
+  }
+  // Let people highlight/copy text (e.g. a memo number) without opening the modal
+  const selection =
+    typeof window !== "undefined" ? window.getSelection?.() : null;
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
+
+const isActivationKey = (e) => e.key === "Enter" || e.key === " ";
 
 /* ------------------ Formatters ------------------ */
 const formatDuration = (d) => (d ? `${d.hours || 0}h ${d.minutes || 0}m` : "-");
-
-const formatDate = (iso) =>
-  iso
-    ? new Date(iso).toLocaleDateString("en-PH", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      })
-    : "-";
 
 const fmtHours = (h) => {
   const n = Number(h || 0);
@@ -146,6 +173,51 @@ const fmtHours = (h) => {
 };
 
 const shortId = (id) => (id ? String(id).slice(-6).toUpperCase() : "-");
+
+const DATE_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+const WEEKDAY_FMT = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+
+const toDate = (v) => {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/* ------------------ Date pill: weekday + date ------------------ */
+const DatePill = ({ value, borderColor }) => {
+  const date = toDate(value);
+  if (!date) {
+    return (
+      <span className="text-sm" style={{ color: "var(--app-muted)" }}>
+        -
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border whitespace-nowrap tabular-nums leading-5 text-xs"
+      style={{
+        backgroundColor: "var(--app-surface)",
+        borderColor: borderColor || "var(--app-border, rgba(15,23,42,0.10))",
+        color: "var(--app-text)",
+      }}
+    >
+      <span
+        className="text-[10px] font-bold uppercase tracking-wider"
+        style={{ color: "var(--accent)" }}
+      >
+        {WEEKDAY_FMT.format(date)}
+      </span>
+      <span className="font-semibold">{DATE_FMT.format(date)}</span>
+    </span>
+  );
+};
 
 /* ------------------ Theme (reacts to OS changes in "system" mode) ------------------ */
 const getSystemDark = () =>
@@ -307,7 +379,18 @@ const CreditCard = ({ credit, onViewMemo, borderColor }) => {
 
   return (
     <div
-      className={`rounded-xl shadow-sm overflow-hidden border-y border-r border-l-4 ${
+      tabIndex={0}
+      title="View memo"
+      // Tapping anywhere on the card (except its button) opens the memo
+      onClick={(e) => {
+        if (shouldOpenFromClick(e)) onViewMemo();
+      }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || !isActivationKey(e)) return;
+        e.preventDefault();
+        onViewMemo();
+      }}
+      className={`rounded-xl shadow-sm overflow-hidden border-y border-r border-l-4 cursor-pointer hover:shadow-md ${FOCUS_RING} ${
         meta?.strip || "border-l-slate-300"
       }`}
       style={{
@@ -336,14 +419,11 @@ const CreditCard = ({ credit, onViewMemo, borderColor }) => {
               </span>
             </div>
 
-            <div
-              className="mt-2 flex items-center gap-2 text-xs"
-              style={{ color: "var(--app-muted)" }}
-            >
-              <Calendar className="w-4 h-4 flex-none" />
-              <span className="truncate">
-                {formatDate(credit?.dateApproved)}
-              </span>
+            <div className="mt-2">
+              <DatePill
+                value={credit?.dateApproved}
+                borderColor={borderColor}
+              />
             </div>
           </div>
 
@@ -368,8 +448,10 @@ const CreditCard = ({ credit, onViewMemo, borderColor }) => {
         </div>
       </div>
 
+      {/* Button bar: taps around the button don't trigger the card */}
       <div
-        className="border-t p-3"
+        data-no-row-click
+        className="border-t p-3 cursor-default"
         style={{ borderColor, backgroundColor: "var(--app-surface)" }}
       >
         <button
@@ -419,9 +501,9 @@ const CompactPagination = ({
   const prevDisabled = page <= 1 || total === 0;
   const nextDisabled = page >= totalPages || total === 0;
 
-  const mobileBtn = `inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--app-surface-2)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
+  const mobileBtn = `inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--app-text)] enabled:hover:bg-[color:var(--wl-hover)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
 
-  const iconBtn = `p-1.5 rounded-md text-[color:var(--app-muted)] enabled:hover:bg-[color:var(--app-surface)] enabled:hover:text-[color:var(--app-text)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
+  const iconBtn = `p-1.5 rounded-md cursor-pointer text-[color:var(--app-muted)] enabled:hover:bg-[color:var(--wl-hover)] enabled:hover:text-[color:var(--app-text)] enabled:active:bg-[color:var(--wl-press)] disabled:opacity-30 disabled:cursor-not-allowed ${FOCUS_RING}`;
 
   return (
     <div
@@ -530,6 +612,12 @@ const MyCtoCreditHistory = () => {
   const isDark = resolvedTheme === "dark";
 
   const borderColor = isDark ? "rgba(255,255,255,0.07)" : "rgba(15,23,42,0.10)";
+
+  // CSS vars for hover / pressed shades
+  const interactionVars = useMemo(
+    () => interactionVarsFor(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const skeletonColors = isDark
     ? {
@@ -681,6 +769,7 @@ const MyCtoCreditHistory = () => {
       <div
         className={`w-full h-full min-h-0 flex flex-col md:p-0 ${NO_MOTION}`}
         style={{
+          ...interactionVars,
           backgroundColor: "var(--app-bg, rgba(245,245,245,0.80))",
           color: "var(--app-text, #0f172a)",
         }}
@@ -780,10 +869,10 @@ const MyCtoCreditHistory = () => {
                           key={tab.id || "all"}
                           onClick={() => selectStatus(tab.id)}
                           aria-pressed={isActive}
-                          className={`px-4 py-1.5 text-xs font-bold rounded-full border whitespace-nowrap flex items-center gap-2 ${FOCUS_RING} ${
+                          className={`px-4 py-1.5 text-xs font-bold rounded-full border whitespace-nowrap flex items-center gap-2 cursor-pointer ${FOCUS_RING} ${
                             isActive
                               ? ""
-                              : "bg-[color:var(--app-surface)] text-[color:var(--app-muted)] hover:bg-[color:var(--app-surface-2)] hover:text-[color:var(--app-text)]"
+                              : "bg-[color:var(--app-surface)] text-[color:var(--app-muted)] hover:bg-[color:var(--wl-hover)] hover:text-[color:var(--app-text)] active:bg-[color:var(--wl-press)]"
                           }`}
                           style={
                             isActive
@@ -841,7 +930,7 @@ const MyCtoCreditHistory = () => {
                           onClick={clearSearch}
                           aria-label="Clear search"
                           title="Clear"
-                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-[color:var(--app-muted)] hover:text-[color:var(--app-text)] hover:bg-[color:var(--app-surface-2)] ${FOCUS_RING}`}
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md cursor-pointer text-[color:var(--app-muted)] hover:text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] ${FOCUS_RING}`}
                         >
                           <X size={14} />
                         </button>
@@ -862,7 +951,7 @@ const MyCtoCreditHistory = () => {
                         value={limit}
                         onChange={(e) => changeLimit(e.target.value)}
                         aria-label="Rows per page"
-                        className={`border text-xs rounded-lg block p-1.5 font-medium cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--app-text)] ${FOCUS_RING}`}
+                        className={`border text-xs rounded-lg block p-1.5 font-medium cursor-pointer bg-[color:var(--app-surface)] text-[color:var(--app-text)] hover:bg-[color:var(--wl-hover)] ${FOCUS_RING}`}
                         style={{ borderColor }}
                       >
                         {pageSizeOptions.map((opt) => (
@@ -917,7 +1006,7 @@ const MyCtoCreditHistory = () => {
                     <button
                       type="button"
                       onClick={handleResetFilters}
-                      className={`flex items-center gap-1 text-[10px] font-bold uppercase rounded text-[color:var(--accent)] hover:underline ${FOCUS_RING}`}
+                      className={`flex items-center gap-1 text-[10px] font-bold uppercase rounded cursor-pointer text-[color:var(--accent)] hover:underline hover:brightness-90 ${FOCUS_RING}`}
                     >
                       <RotateCcw size={10} /> Reset
                     </button>
@@ -969,7 +1058,7 @@ const MyCtoCreditHistory = () => {
                         <button
                           type="button"
                           onClick={handleResetFilters}
-                          className={`mt-6 text-sm font-bold underline rounded text-[color:var(--accent)] ${FOCUS_RING}`}
+                          className={`mt-6 text-sm font-bold underline rounded cursor-pointer text-[color:var(--accent)] hover:brightness-90 ${FOCUS_RING}`}
                         >
                           Clear all filters
                         </button>
@@ -1057,7 +1146,23 @@ const MyCtoCreditHistory = () => {
                             : credits.map((credit, i) => (
                                 <tr
                                   key={credit._id || `${credit.memoNo}-${i}`}
-                                  className="border-b bg-[color:var(--app-surface)] even:bg-[color:var(--app-surface-2)] hover:bg-[color:var(--accent-soft)]"
+                                  tabIndex={0}
+                                  title="View memo"
+                                  // Clicking anywhere on the row (except its button) opens the memo
+                                  onClick={(e) => {
+                                    if (shouldOpenFromClick(e))
+                                      openMemo(credit);
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (
+                                      e.target !== e.currentTarget ||
+                                      !isActivationKey(e)
+                                    )
+                                      return;
+                                    e.preventDefault();
+                                    openMemo(credit);
+                                  }}
+                                  className="border-b cursor-pointer bg-[color:var(--app-surface)] even:bg-[color:var(--app-surface-2)] hover:bg-[color:var(--accent-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--accent)]"
                                   style={{ borderColor }}
                                 >
                                   <td className="px-6 py-4 align-middle">
@@ -1078,11 +1183,11 @@ const MyCtoCreditHistory = () => {
                                     </div>
                                   </td>
 
-                                  <td
-                                    className="px-4 py-4 align-middle whitespace-nowrap text-sm"
-                                    style={{ color: "var(--app-muted)" }}
-                                  >
-                                    {formatDate(credit.dateApproved)}
+                                  <td className="px-4 py-4 align-middle whitespace-nowrap">
+                                    <DatePill
+                                      value={credit.dateApproved}
+                                      borderColor={borderColor}
+                                    />
                                   </td>
 
                                   <td className="px-4 py-4 text-center align-middle whitespace-nowrap">
@@ -1109,7 +1214,11 @@ const MyCtoCreditHistory = () => {
                                     />
                                   </td>
 
-                                  <td className="px-6 py-4 text-right align-middle whitespace-nowrap">
+                                  {/* Clicks around the button shouldn't double-trigger */}
+                                  <td
+                                    data-no-row-click
+                                    className="px-6 py-4 text-right align-middle whitespace-nowrap cursor-default"
+                                  >
                                     <button
                                       type="button"
                                       onClick={() => openMemo(credit)}
@@ -1147,7 +1256,7 @@ const MyCtoCreditHistory = () => {
             <button
               type="button"
               onClick={scrollToTop}
-              className={`md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg flex items-center justify-center ${FOCUS_RING}`}
+              className={`md:hidden fixed bottom-5 right-5 z-[1] h-10 w-10 rounded-full shadow-lg flex items-center justify-center cursor-pointer hover:brightness-90 active:scale-95 ${FOCUS_RING}`}
               style={{
                 backgroundColor: "var(--accent, #2563EB)",
                 color: "#fff",
