@@ -1,5 +1,7 @@
 // services/generalSettings.service.js
-const GeneralSetting = require("../models/generalSettingsModel"); // Assuming you renamed the file
+const GeneralSetting = require("../models/generalSettingsModel");
+
+const MAX_BACKDATE_DAYS = 30; // keep in sync with the model's `max`
 
 function toInt(v, fallback = NaN) {
   const n = Number(v);
@@ -41,6 +43,19 @@ function setUpdatedBy(doc, userId) {
   } catch (_) {
     // ignore
   }
+}
+
+function pickWorkingDaysSettings(settings) {
+  return {
+    workingDaysEnable: settings.workingDaysEnable,
+    workingDaysValue: settings.workingDaysValue,
+    hoursPerDay: settings.hoursPerDay,
+    activeWorkingDays: settings.activeWorkingDays,
+    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
+    lateFilingBackdateEnabled: settings.lateFilingBackdateEnabled,
+    lateFilingBackdateDays: settings.lateFilingBackdateDays,
+    computationMode: settings.computationMode,
+  };
 }
 
 /* =========================
@@ -114,30 +129,16 @@ async function getWorkingDaysSettings() {
   if (!settings) {
     settings = await GeneralSetting.create({});
   }
-  return {
-    workingDaysEnable: settings.workingDaysEnable,
-    workingDaysValue: settings.workingDaysValue,
-    hoursPerDay: settings.hoursPerDay,
-    activeWorkingDays: settings.activeWorkingDays,
-    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
-    computationMode: settings.computationMode, // ✅ Added
-  };
+  return pickWorkingDaysSettings(settings);
 }
 
-async function updateWorkingDaysSettings(payload, userId) {
+async function updateWorkingDaysSettings(payload = {}, userId = null) {
   let settings = await GeneralSetting.findOne();
   if (!settings) {
     settings = new GeneralSetting();
   }
 
-  const before = {
-    workingDaysEnable: settings.workingDaysEnable,
-    workingDaysValue: settings.workingDaysValue,
-    hoursPerDay: settings.hoursPerDay,
-    activeWorkingDays: settings.activeWorkingDays,
-    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
-    computationMode: settings.computationMode, // ✅ Added
-  };
+  const before = pickWorkingDaysSettings(settings);
 
   // Update fields if they exist in the payload
   if (typeof payload.workingDaysEnable === "boolean") {
@@ -153,7 +154,7 @@ async function updateWorkingDaysSettings(payload, userId) {
     settings.activeWorkingDays = payload.activeWorkingDays;
   }
 
-  // LATE FILING ATTACHMENT UPDATE LOGIC
+  // LATE FILING ATTACHMENT
   if (payload.lateFilingAttachmentRequired !== undefined) {
     const isRequired = toBool(payload.lateFilingAttachmentRequired);
     if (isRequired !== undefined) {
@@ -161,7 +162,30 @@ async function updateWorkingDaysSettings(payload, userId) {
     }
   }
 
-  // ✅ ADDED COMPUTATION MODE UPDATE LOGIC
+  // LATE FILING BACKDATE (on/off)
+  if (payload.lateFilingBackdateEnabled !== undefined) {
+    const enabled = toBool(payload.lateFilingBackdateEnabled);
+    if (enabled === undefined) {
+      throw new Error("lateFilingBackdateEnabled must be a boolean");
+    }
+    settings.lateFilingBackdateEnabled = enabled;
+  }
+
+  // LATE FILING BACKDATE (how many days back)
+  if (payload.lateFilingBackdateDays !== undefined) {
+    const days = toInt(payload.lateFilingBackdateDays, NaN);
+    if (!Number.isFinite(days)) {
+      throw new Error("lateFilingBackdateDays must be a number");
+    }
+    if (days < 0 || days > MAX_BACKDATE_DAYS) {
+      throw new Error(
+        "lateFilingBackdateDays must be between 0 and " + MAX_BACKDATE_DAYS,
+      );
+    }
+    settings.lateFilingBackdateDays = days;
+  }
+
+  // COMPUTATION MODE
   if (payload.computationMode !== undefined) {
     if (!["Working Days", "Calendar Days"].includes(payload.computationMode)) {
       throw new Error(
@@ -174,14 +198,7 @@ async function updateWorkingDaysSettings(payload, userId) {
   setUpdatedBy(settings, userId);
   await settings.save();
 
-  const after = {
-    workingDaysEnable: settings.workingDaysEnable,
-    workingDaysValue: settings.workingDaysValue,
-    hoursPerDay: settings.hoursPerDay,
-    activeWorkingDays: settings.activeWorkingDays,
-    lateFilingAttachmentRequired: settings.lateFilingAttachmentRequired,
-    computationMode: settings.computationMode, // ✅ Added
-  };
+  const after = pickWorkingDaysSettings(settings);
 
   return { before, after };
 }

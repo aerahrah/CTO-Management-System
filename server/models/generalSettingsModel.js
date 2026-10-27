@@ -1,4 +1,4 @@
-// models/GeneralSetting.js
+// models/generalSettingsModel.js
 const mongoose = require("mongoose");
 
 const generalSettingSchema = new mongoose.Schema(
@@ -34,6 +34,28 @@ const generalSettingSchema = new mongoose.Schema(
       type: Boolean,
       required: true,
       default: false, // Default is false (optional)
+    },
+
+    // --- LATE FILING BACKDATE SETTINGS ---
+    // When enabled, employees may file for dates up to `lateFilingBackdateDays`
+    // before today. Days are counted using `computationMode`
+    // (working days or calendar days). Backdated filings always need a
+    // late filing justification.
+    lateFilingBackdateEnabled: {
+      type: Boolean,
+      required: true,
+      default: false, // Off = today and future dates only (current behaviour)
+    },
+    lateFilingBackdateDays: {
+      type: Number,
+      required: true,
+      default: 7,
+      min: 0,
+      max: 30,
+      validate: {
+        validator: Number.isInteger,
+        message: "lateFilingBackdateDays must be a whole number.",
+      },
     },
 
     // --- WORK SCHEDULE SETTINGS ---

@@ -7,6 +7,10 @@ import {
   fetchMyCtoApplications,
 } from "../../../../api/cto";
 import { fetchPublicWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
+import {
+  getEarliestFilingDate,
+  toLocalISODate,
+} from "../../../../utils/lateFilingWindow";
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
 import { getMyProfile } from "../../../../api/employee";
 import { useAuth } from "../../../../store/authStore";
@@ -79,7 +83,7 @@ const getMinSelectableDateISO = (
 
   if (!Number.isFinite(lead) || lead <= 0) {
     date.setDate(date.getDate() + 1);
-    return date.toISOString().split("T")[0];
+    return toLocalISODate(date);
   }
 
   let count = 0;
@@ -96,7 +100,7 @@ const getMinSelectableDateISO = (
     date.setDate(date.getDate() + 1);
   }
 
-  return date.toISOString().split("T")[0];
+  return toLocalISODate(date);
 };
 
 function resolveTheme(prefTheme) {
@@ -323,8 +327,33 @@ const AddCtoApplicationForm = () => {
     [leadTimeDays, activeWorkingDays],
   );
 
-  const todayISO = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const pickerMinDate = isLateMode ? todayISO : minDate;
+  // ✅ LATE FILING BACKDATE WINDOW (HR setting in Work Schedule Settings)
+  // In late mode the earliest selectable date moves back by the configured
+  // number of working/calendar days. When backdating is off it stays at today.
+  const backdateEnabled = Boolean(workingDoc?.lateFilingBackdateEnabled);
+  const backdateDays = clampInt(workingDoc?.lateFilingBackdateDays, 0, 30, 0);
+  const backdateActive = backdateEnabled && backdateDays > 0;
+  const dayUnitLabel =
+    computationMode === "Calendar Days" ? "calendar day(s)" : "working day(s)";
+
+  const lateMinDate = useMemo(
+    () =>
+      toLocalISODate(
+        getEarliestFilingDate({
+          lateFilingBackdateEnabled: backdateEnabled,
+          lateFilingBackdateDays: backdateDays,
+          computationMode,
+          activeWorkingDays,
+        }),
+      ),
+    [backdateEnabled, backdateDays, computationMode, activeWorkingDays],
+  );
+
+  const lateWindowMsg = backdateActive
+    ? `Late filing can only go back ${backdateDays} ${dayUnitLabel} (earliest: ${lateMinDate}).`
+    : "Cannot select past dates.";
+
+  const pickerMinDate = isLateMode ? lateMinDate : minDate;
 
   useEffect(() => {
     if (workingDaysIsError) {
@@ -438,17 +467,19 @@ const AddCtoApplicationForm = () => {
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
 
-    if (!isLateMode) {
-      const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
-      if (filtered.length !== formData.inclusiveDates.length) {
-        setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
-        showBanner(
-          "info",
-          "Some selected dates were removed (lead-time rule). Use 'Late Filing' to bypass.",
-        );
-      }
+    // Keep selected dates inside the allowed window when settings change
+    const floor = isLateMode ? lateMinDate : minDate;
+    const filtered = formData.inclusiveDates.filter((d) => d >= floor);
+    if (filtered.length !== formData.inclusiveDates.length) {
+      setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
+      showBanner(
+        "info",
+        isLateMode
+          ? "Some selected dates were removed (outside the late filing window)."
+          : "Some selected dates were removed (lead-time rule). Use 'Late Filing' to bypass.",
+      );
     }
-  }, [minDate, isLateMode]);
+  }, [minDate, lateMinDate, isLateMode]);
 
   useEffect(() => {
     if (!requiredDays) return;
@@ -471,7 +502,7 @@ const AddCtoApplicationForm = () => {
       const rh = Number(formData.requestedHours || 0);
       if (!rh || rh <= 0) return "Please enter requested hours first.";
 
-      if (isLateMode && value < todayISO) return "Cannot select past dates.";
+      if (isLateMode && value < lateMinDate) return lateWindowMsg;
       if (!isLateMode && value < minDate) return leadTimeMsg;
 
       if (isNonWorkingDay(value, activeWorkingDays))
@@ -493,7 +524,8 @@ const AddCtoApplicationForm = () => {
       formData.inclusiveDates,
       minDate,
       isLateMode,
-      todayISO,
+      lateMinDate,
+      lateWindowMsg,
       leadTimeMsg,
       requiredDays,
       activeWorkingDays,
@@ -695,6 +727,10 @@ const AddCtoApplicationForm = () => {
           if (isLateMode) return true; // Bypass lead-time validation in explicit late mode
           return !dates.some((d) => d < minDate);
         })
+        .test("late-window", lateWindowMsg, (dates) => {
+          if (!dates || !isLateMode) return true;
+          return !dates.some((d) => d < lateMinDate);
+        })
         .test(
           "no-weekends",
           computationMode === "Calendar Days"
@@ -733,6 +769,8 @@ const AddCtoApplicationForm = () => {
     absoluteMaxAllowed,
     minDate,
     isLateMode,
+    lateMinDate,
+    lateWindowMsg,
     leadTimeMsg,
     hasValidApprovalRoute,
     memoLoading,
@@ -1133,7 +1171,9 @@ const AddCtoApplicationForm = () => {
                       <h3 className="text-xs font-bold uppercase mb-2 flex justify-between items-center">
                         <span>Inclusive Dates</span>
                         <span className="text-[10px] normal-case font-normal italic text-gray-500">
-                          {isLateMode ? "Late Mode Active" : `Min: ${minDate}`}
+                          {isLateMode
+                            ? `Late Mode · Min: ${lateMinDate}`
+                            : `Min: ${minDate}`}
                         </span>
                       </h3>
 
@@ -1271,7 +1311,11 @@ const AddCtoApplicationForm = () => {
                   >
                     <Banner
                       tone="amber"
-                      message="You have opted to file this request late. A justification is required to proceed."
+                      message={
+                        backdateActive
+                          ? `You have opted to file this request late. You can select dates from ${lateMinDate} onward (up to ${backdateDays} ${dayUnitLabel} back). A justification is required to proceed.`
+                          : "You have opted to file this request late. A justification is required to proceed."
+                      }
                     />
                     <div className="space-y-4 mt-4">
                       <div>
@@ -1295,7 +1339,7 @@ const AddCtoApplicationForm = () => {
                               : "var(--app-surface)",
                           }}
                           rows="3"
-                          placeholder="Explain why this request is being filed on short notice..."
+                          placeholder="Explain why this request is being filed late or on short notice..."
                         />
                       </div>
                       <div>

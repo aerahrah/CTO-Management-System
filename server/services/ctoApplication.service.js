@@ -142,6 +142,39 @@ function getWorkingDaysLeadTime(startDate, endDate, activeWorkingDays) {
   return workingDaysCount;
 }
 
+/**
+ * Earliest date (00:00 server time) an application may start on.
+ * Counts `backdateDays` backwards from today, only counting days that are in
+ * `activeWorkingDays`. In "Calendar Days" mode that array is 0-6, so every
+ * day counts.
+ *
+ * Example (Working Days, Mon-Fri, 7 days, today = Tue Oct 27):
+ *   Mon 26, Fri 23, Thu 22, Wed 21, Tue 20, Mon 19, Fri 16  -> Oct 16
+ */
+function getBackdateLimit(today, backdateDays, activeWorkingDays) {
+  const limit = new Date(today);
+  limit.setHours(0, 0, 0, 0);
+
+  const days = Math.max(0, Math.trunc(strictNumber(backdateDays)));
+  if (
+    days === 0 ||
+    !Array.isArray(activeWorkingDays) ||
+    activeWorkingDays.length === 0
+  ) {
+    return limit;
+  }
+
+  let counted = 0;
+  let guard = 0; // safety net against a bad activeWorkingDays value
+  while (counted < days && guard < 366) {
+    limit.setDate(limit.getDate() - 1);
+    if (activeWorkingDays.includes(limit.getDay())) counted++;
+    guard++;
+  }
+
+  return limit;
+}
+
 async function safeSendEmail(to, subject, html) {
   try {
     await sendEmail(to, subject, html);
@@ -679,44 +712,80 @@ const addCtoApplicationService = async ({
   }
 
   // ==========================================
-  // LATE FILING & COMPUTATION MODE RULE
+  // DATE WINDOW, LATE FILING & COMPUTATION MODE RULES
   // ==========================================
   const settingsDoc = (await GeneralSetting.findOne()) || {};
   const workingDaysEnable = settingsDoc.workingDaysEnable ?? true;
   const workingDaysValue = settingsDoc.workingDaysValue ?? 5;
   const computationMode = settingsDoc.computationMode || "Working Days";
+  const backdateEnabled = settingsDoc.lateFilingBackdateEnabled ?? false;
+  const backdateDays = backdateEnabled
+    ? strictNumber(settingsDoc.lateFilingBackdateDays, 0)
+    : 0;
 
   const activeWorkingDays =
     computationMode === "Calendar Days"
       ? [0, 1, 2, 3, 4, 5, 6]
-      : settingsDoc.activeWorkingDays || [1, 2, 3, 4, 5];
+      : settingsDoc.activeWorkingDays?.length
+        ? settingsDoc.activeWorkingDays
+        : [1, 2, 3, 4, 5];
 
-  let validatedLateFiling = { isLateFiling: false };
+  const dayTypeLabel =
+    computationMode === "Calendar Days" ? "calendar day(s)" : "working day(s)";
 
-  if (workingDaysEnable) {
-    const earliestDate = new Date(
-      Math.min(...inclusiveDates.map((d) => new Date(d))),
+  const parsedDates = inclusiveDates.map((d) => new Date(d));
+  if (parsedDates.some((d) => isNaN(d.getTime()))) {
+    throw createServiceError("One or more inclusive dates are invalid.", 400);
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const earliestDate = new Date(
+    Math.min(...parsedDates.map((d) => d.getTime())),
+  );
+  earliestDate.setHours(0, 0, 0, 0);
+
+  // Rule A: how far back an application may go (HR setting)
+  const backdateLimit = getBackdateLimit(
+    today,
+    backdateDays,
+    activeWorkingDays,
+  );
+
+  if (earliestDate < backdateLimit) {
+    throw createServiceError(
+      backdateDays > 0
+        ? "Late filing can only cover dates up to " +
+            backdateDays +
+            " " +
+            dayTypeLabel +
+            " before today. The earliest date you can file for is " +
+            formatLedgerDates([backdateLimit]) +
+            "."
+        : "Inclusive dates cannot be earlier than today.",
+      400,
     );
-    const today = new Date();
+  }
 
-    const leadTime = getWorkingDaysLeadTime(
-      today,
-      earliestDate,
-      activeWorkingDays,
-    );
+  // Rule B: past dates, or too little lead time, need a late filing justification
+  const isBackdated = earliestDate < today;
+  let leadTime = null;
+  let requiresLateFiling = isBackdated;
 
-    if (leadTime < workingDaysValue) {
-      if (
-        !lateFiling ||
-        lateFiling.isLateFiling !== true ||
-        !lateFiling.justification?.trim()
-      ) {
-        const dayTypeLabel =
-          computationMode === "Calendar Days"
-            ? "calendar day(s)"
-            : "working day(s)";
-        throw createServiceError(
-          "Applications filed with less than " +
+  if (!isBackdated && workingDaysEnable) {
+    leadTime = getWorkingDaysLeadTime(today, earliestDate, activeWorkingDays);
+    requiresLateFiling = leadTime < workingDaysValue;
+  }
+
+  const hasJustification =
+    lateFiling?.isLateFiling === true && !!lateFiling.justification?.trim();
+
+  if (requiresLateFiling && !hasJustification) {
+    throw createServiceError(
+      isBackdated
+        ? "Applications for past dates require a late filing justification."
+        : "Applications filed with less than " +
             workingDaysValue +
             " " +
             dayTypeLabel +
@@ -725,29 +794,18 @@ const addCtoApplicationService = async ({
             " " +
             dayTypeLabel +
             ")",
-          400,
-        );
-      }
-
-      validatedLateFiling = {
-        isLateFiling: true,
-        justification: sanitizeText(lateFiling.justification, 1000),
-        attachment: lateFiling.attachment || null,
-      };
-    } else if (lateFiling && lateFiling.isLateFiling) {
-      validatedLateFiling = {
-        isLateFiling: true,
-        justification: sanitizeText(lateFiling.justification, 1000),
-        attachment: lateFiling.attachment || null,
-      };
-    }
-  } else if (lateFiling && lateFiling.isLateFiling) {
-    validatedLateFiling = {
-      isLateFiling: true,
-      justification: sanitizeText(lateFiling.justification, 1000),
-      attachment: lateFiling.attachment || null,
-    };
+      400,
+    );
   }
+
+  const validatedLateFiling =
+    lateFiling && lateFiling.isLateFiling
+      ? {
+          isLateFiling: true,
+          justification: sanitizeText(lateFiling.justification, 1000),
+          attachment: lateFiling.attachment || null,
+        }
+      : { isLateFiling: false };
 
   // ==========================================
   // EMPLOYEE & DUPLICATE CHECKS

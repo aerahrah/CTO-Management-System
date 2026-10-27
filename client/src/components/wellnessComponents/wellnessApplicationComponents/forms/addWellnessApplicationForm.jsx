@@ -6,6 +6,10 @@ import {
   fetchMyWellnessApplications,
 } from "../../../../api/wellnessApplication";
 import { fetchPublicWorkingDaysGeneralSettings } from "../../../../api/generalSettings";
+import {
+  getEarliestFilingDate,
+  toLocalISODate,
+} from "../../../../utils/lateFilingWindow";
 import { fetchAllApprovalRoutes } from "../../../../api/approvalRoute";
 import { getMyProfile, getMyWellnessBalance } from "../../../../api/employee";
 import { useAuth } from "../../../../store/authStore";
@@ -65,7 +69,7 @@ const getMinSelectableDateISO = (
 
   if (!Number.isFinite(lead) || lead <= 0) {
     date.setDate(date.getDate() + 1);
-    return date.toISOString().split("T")[0];
+    return toLocalISODate(date);
   }
 
   let count = 0;
@@ -82,7 +86,7 @@ const getMinSelectableDateISO = (
     date.setDate(date.getDate() + 1);
   }
 
-  return date.toISOString().split("T")[0];
+  return toLocalISODate(date);
 };
 
 const makeClientRequestId = () => {
@@ -139,7 +143,8 @@ const validateDate = ({
   blockedDates,
   minDate,
   isLateMode,
-  todayISO,
+  lateMinDate,
+  lateWindowMsg,
   leadTimeMsg,
   maxWellnessDays,
   activeWorkingDays,
@@ -148,7 +153,7 @@ const validateDate = ({
   if (!isFullISODate(value)) return "";
 
   // Late Filing rules vs Normal rules
-  if (isLateMode && value < todayISO) return "Cannot select past dates.";
+  if (isLateMode && value < lateMinDate) return lateWindowMsg;
   if (!isLateMode && value < minDate) return leadTimeMsg;
 
   if (isNonWorkingDay(value, activeWorkingDays))
@@ -360,8 +365,33 @@ const AddWellnessApplicationForm = () => {
     [leadTimeDays, activeWorkingDays],
   );
 
-  const todayISO = useMemo(() => new Date().toISOString().split("T")[0], []);
-  const pickerMinDate = isLateMode ? todayISO : minDate;
+  // ✅ LATE FILING BACKDATE WINDOW (HR setting in Work Schedule Settings)
+  // In late mode the earliest selectable date moves back by the configured
+  // number of working/calendar days. When backdating is off it stays at today.
+  const backdateEnabled = Boolean(workingDoc?.lateFilingBackdateEnabled);
+  const backdateDays = clampInt(workingDoc?.lateFilingBackdateDays, 0, 30, 0);
+  const backdateActive = backdateEnabled && backdateDays > 0;
+  const dayUnitLabel =
+    computationMode === "Calendar Days" ? "calendar day(s)" : "working day(s)";
+
+  const lateMinDate = useMemo(
+    () =>
+      toLocalISODate(
+        getEarliestFilingDate({
+          lateFilingBackdateEnabled: backdateEnabled,
+          lateFilingBackdateDays: backdateDays,
+          computationMode,
+          activeWorkingDays,
+        }),
+      ),
+    [backdateEnabled, backdateDays, computationMode, activeWorkingDays],
+  );
+
+  const lateWindowMsg = backdateActive
+    ? `Late filing can only go back ${backdateDays} ${dayUnitLabel} (earliest: ${lateMinDate}).`
+    : "Cannot select past dates.";
+
+  const pickerMinDate = isLateMode ? lateMinDate : minDate;
 
   const leadTimeMsg = useMemo(() => {
     if (leadTimeDays <= 0)
@@ -469,7 +499,8 @@ const AddWellnessApplicationForm = () => {
       blockedDates,
       minDate,
       isLateMode,
-      todayISO,
+      lateMinDate,
+      lateWindowMsg,
       leadTimeMsg,
       maxWellnessDays,
       activeWorkingDays,
@@ -481,7 +512,8 @@ const AddWellnessApplicationForm = () => {
     blockedDates,
     minDate,
     isLateMode,
-    todayISO,
+    lateMinDate,
+    lateWindowMsg,
     leadTimeMsg,
     maxWellnessDays,
     activeWorkingDays,
@@ -490,18 +522,20 @@ const AddWellnessApplicationForm = () => {
   // Strip invalid dates if lead time config shifts (only if NOT late mode)
   useEffect(() => {
     if (!formData.inclusiveDates?.length) return;
-    if (!isLateMode) {
-      const filtered = formData.inclusiveDates.filter((d) => d >= minDate);
-      if (filtered.length !== formData.inclusiveDates.length) {
-        setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
-        showBanner(
-          "info",
-          "Some selected dates were removed (lead-time rule). Use 'Late Filing' to bypass.",
-        );
-      }
+    // Keep selected dates inside the allowed window when settings change
+    const floor = isLateMode ? lateMinDate : minDate;
+    const filtered = formData.inclusiveDates.filter((d) => d >= floor);
+    if (filtered.length !== formData.inclusiveDates.length) {
+      setFormData((prev) => ({ ...prev, inclusiveDates: filtered }));
+      showBanner(
+        "info",
+        isLateMode
+          ? "Some selected dates were removed (outside the late filing window)."
+          : "Some selected dates were removed (lead-time rule). Use 'Late Filing' to bypass.",
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minDate, isLateMode]);
+  }, [minDate, lateMinDate, isLateMode]);
 
   const runDateValidation = (value) =>
     validateDate({
@@ -510,7 +544,8 @@ const AddWellnessApplicationForm = () => {
       blockedDates,
       minDate,
       isLateMode,
-      todayISO,
+      lateMinDate,
+      lateWindowMsg,
       leadTimeMsg,
       maxWellnessDays,
       activeWorkingDays,
@@ -596,6 +631,10 @@ const AddWellnessApplicationForm = () => {
 
     if (!isLateMode && formData.inclusiveDates.some((d) => d < minDate)) {
       return { ok: false, message: leadTimeMsg };
+    }
+
+    if (isLateMode && formData.inclusiveDates.some((d) => d < lateMinDate)) {
+      return { ok: false, message: lateWindowMsg };
     }
 
     if (
@@ -721,10 +760,10 @@ const AddWellnessApplicationForm = () => {
   };
 
   const leadTimeLabel = useMemo(() => {
-    if (isLateMode) return "Late Mode Active";
+    if (isLateMode) return `Late Mode · Min: ${lateMinDate}`;
     if (workingDaysLoading) return "Min: Loading…";
     return `Min: ${minDate}`;
-  }, [isLateMode, workingDaysLoading, minDate]);
+  }, [isLateMode, workingDaysLoading, minDate, lateMinDate]);
 
   // ✅ JO-ONLY ACCESS GUARD
   const currentEmployeeType =
@@ -1170,7 +1209,11 @@ const AddWellnessApplicationForm = () => {
                   >
                     <Banner
                       tone="amber"
-                      message="You have opted to file this request late. A justification is required to proceed."
+                      message={
+                        backdateActive
+                          ? `You have opted to file this request late. You can select dates from ${lateMinDate} onward (up to ${backdateDays} ${dayUnitLabel} back). A justification is required to proceed.`
+                          : "You have opted to file this request late. A justification is required to proceed."
+                      }
                     />
                     <div className="space-y-4 mt-4">
                       <div>
@@ -1194,7 +1237,7 @@ const AddWellnessApplicationForm = () => {
                               : "var(--app-surface)",
                           }}
                           rows="3"
-                          placeholder="Explain why this request is being filed on short notice..."
+                          placeholder="Explain why this request is being filed late or on short notice..."
                         />
                       </div>
                       <div>
