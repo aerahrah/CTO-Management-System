@@ -1,7 +1,11 @@
 import React, { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { fetchDashboard, fetchMyRemainingCtoHours } from "../../api/cto";
+import {
+  fetchDashboard,
+  fetchMyRemainingCtoHours,
+  fetchMyCtoApplications,
+} from "../../api/cto";
 import { useAuth } from "../../store/authStore";
 import Breadcrumbs from "../breadCrumbs";
 import ThemeSync from "../themeSync";
@@ -23,7 +27,36 @@ import {
   UserCheck,
   ShieldAlert,
   Info,
+  Eye,
 } from "lucide-react";
+
+/* ------------------ Recent requests ------------------ */
+const RECENT_LIMIT = 10;
+
+// My CTO Applications opens the details modal for ?app=<id>
+const MY_APPLICATIONS_PATH = "/app/cto-apply";
+const applicationLink = (id) =>
+  `${MY_APPLICATIONS_PATH}?app=${encodeURIComponent(id)}`;
+
+const VIEW_BTN =
+  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold border cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--app-surface)] border-[color:var(--app-border)] text-[color:var(--accent)] " +
+  "hover:bg-[color:var(--accent-soft)] hover:border-[color:var(--accent-soft2)] " +
+  "active:scale-95 transition-[background-color,border-color,transform] duration-150 ease-out " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+// Row clicks open the request, except on its link/buttons or while selecting text
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  if (e.target instanceof Element && e.target.closest("a, button")) {
+    return false;
+  }
+  const selection = window.getSelection?.();
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
 
 /* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
@@ -972,6 +1005,16 @@ const CtoDashboard = () => {
     queryFn: fetchMyRemainingCtoHours,
   });
 
+  // Latest submissions for "My recent requests". Uses the same endpoint (and
+  // query-key prefix) as My CTO Applications, so filing or cancelling there
+  // refreshes this card too. Falls back to the dashboard's own list on error.
+  const { data: recentData, isLoading: isRecentLoading } = useQuery({
+    queryKey: ["myCtoApplications", "dashboardRecent", RECENT_LIMIT],
+    queryFn: () => fetchMyCtoApplications({ page: 1, limit: RECENT_LIMIT }),
+    staleTime: 30_000,
+  });
+
+  const navigate = useNavigate();
   const { can } = usePermissions();
 
   const isApprover = can("cto.view_application");
@@ -985,7 +1028,7 @@ const CtoDashboard = () => {
       : "rgba(15,23,42,0.10)";
   }, [resolvedTheme]);
 
-  const isLoading = isDashLoading || isLimitLoading;
+  const isLoading = isDashLoading || isLimitLoading || isRecentLoading;
 
   if (isLoading)
     return (
@@ -1021,6 +1064,13 @@ const CtoDashboard = () => {
       cancelled: 0,
     },
   } = dashboardData;
+
+  const recentRequests = (
+    Array.isArray(recentData?.data)
+      ? recentData.data
+      : myCtoSummary?.recentRequests || []
+  ).slice(0, RECENT_LIMIT);
+  const recentCount = recentRequests.length;
 
   const totalCreditRaw = Number(myCtoSummary?.totalCredit || 0);
   const balance = Number(myCtoSummary?.balance || 0);
@@ -1344,18 +1394,12 @@ const CtoDashboard = () => {
                   <CardHeader
                     title="My recent requests"
                     icon={Calendar}
-                    subtitle={`Last ${myCtoSummary?.recentRequests?.length || 0} submissions`}
+                    subtitle={`Last ${recentCount} submission${recentCount === 1 ? "" : "s"}`}
                     borderColor={borderColor}
                     action={
                       <div className="flex items-center gap-2">
-                        <Pill
-                          tone={
-                            myCtoSummary?.recentRequests?.length
-                              ? "blue"
-                              : "neutral"
-                          }
-                        >
-                          {myCtoSummary?.recentRequests?.length || 0} recent
+                        <Pill tone={recentCount ? "blue" : "neutral"}>
+                          {recentCount} recent
                         </Pill>
                         <Link
                           to={`/app/cto-apply/`}
@@ -1379,8 +1423,7 @@ const CtoDashboard = () => {
                     }
                   />
                   <div className="p-4">
-                    {myCtoSummary?.recentRequests &&
-                    myCtoSummary.recentRequests.length > 0 ? (
+                    {recentCount > 0 ? (
                       <div
                         className="border rounded-xl overflow-y-auto max-h-[855px] cto-scrollbar transition-colors duration-300 ease-out"
                         style={{
@@ -1388,28 +1431,28 @@ const CtoDashboard = () => {
                           backgroundColor: "var(--app-surface)",
                         }}
                       >
-                        {myCtoSummary.recentRequests.map((request, idx) => {
-                          const isLast =
-                            idx === myCtoSummary.recentRequests.length - 1;
+                        {recentRequests.map((request, idx) => {
+                          const isLast = idx === recentCount - 1;
                           const st = getStatusStyle(request.overallStatus);
+                          const shortId = String(request._id || "")
+                            .slice(-6)
+                            .toUpperCase();
 
                           return (
                             <div
                               key={request._id}
-                              className="py-3 px-4 transition-colors duration-300 ease-out"
+                              // Whole row opens the request; the View link is
+                              // the keyboard / screen-reader target.
+                              onClick={(e) => {
+                                if (shouldOpenFromClick(e)) {
+                                  navigate(applicationLink(request._id));
+                                }
+                              }}
+                              className="py-3 px-4 cursor-pointer transition-colors duration-150 ease-out hover:bg-[color:var(--app-surface-2)] active:bg-[color:color-mix(in_srgb,var(--app-surface-2)_88%,var(--app-text))]"
                               style={{
                                 borderBottom: isLast
                                   ? "none"
                                   : `1px solid ${borderColor}`,
-                                backgroundColor: "transparent",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.backgroundColor =
-                                  "var(--app-surface-2)";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.backgroundColor =
-                                  "transparent";
                               }}
                             >
                               <div className="flex flex-row items-start justify-between gap-3">
@@ -1431,8 +1474,7 @@ const CtoDashboard = () => {
                                         className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
                                         style={{ color: "var(--app-text)" }}
                                       >
-                                        Request #
-                                        {request._id.slice(-6).toUpperCase()}
+                                        Request #{shortId}
                                       </div>
                                       <Pill tone="blue" className="normal-case">
                                         {request.requestedHours}h
@@ -1447,15 +1489,25 @@ const CtoDashboard = () => {
                                   </div>
                                 </div>
 
-                                <span
-                                  className={[
-                                    "inline-flex items-center rounded-full px-2.5 py-1 text-[10px]",
-                                    "font-bold uppercase tracking-wider border w-fit transition-colors duration-300 ease-out",
-                                  ].join(" ")}
-                                  style={st}
-                                >
-                                  {request.overallStatus}
-                                </span>
+                                <div className="flex flex-col items-end gap-1.5 shrink-0 sm:flex-row sm:items-center sm:gap-2">
+                                  <span
+                                    className={[
+                                      "inline-flex items-center rounded-full px-2.5 py-1 text-[10px]",
+                                      "font-bold uppercase tracking-wider border w-fit transition-colors duration-300 ease-out",
+                                    ].join(" ")}
+                                    style={st}
+                                  >
+                                    {request.overallStatus}
+                                  </span>
+                                  <Link
+                                    to={applicationLink(request._id)}
+                                    className={VIEW_BTN}
+                                    aria-label={`View request #${shortId}`}
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    View
+                                  </Link>
+                                </div>
                               </div>
                             </div>
                           );

@@ -49,6 +49,8 @@ import CtoApplicationPdfModal from "./ctoApplicationPDFModal";
 import OrganicApplicationPdfModal from "./organicApplicationPDFModal";
 
 import { useAuth } from "../../../store/authStore";
+import useUrlDetails from "../../../hooks/useUrlDetails";
+import { toast } from "react-toastify";
 import StatusTabs from "../../statusTabs";
 
 const pageSizeOptions = [20, 50, 100];
@@ -1025,6 +1027,18 @@ const CompactPagination = ({
   );
 };
 
+/* Shown in the details modal while a linked record is being loaded */
+const DetailsLoading = () => (
+  <div
+    role="status"
+    className="flex flex-col items-center justify-center gap-3 py-20 text-sm"
+    style={{ color: "var(--app-muted)" }}
+  >
+    <span className="h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin" />
+    Loading details…
+  </div>
+);
+
 /* =========================
    Page
 ========================= */
@@ -1060,7 +1074,6 @@ const AllCtoApplicationsHistory = () => {
   }, [resolvedTheme]);
 
   // Selected app / memos
-  const [selectedApp, setSelectedApp] = useState(null);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
 
   // PDF modals + loading
@@ -1120,6 +1133,20 @@ const AllCtoApplicationsHistory = () => {
   });
 
   const applications = useMemo(() => data?.data || [], [data]);
+
+  // Details modal state lives in the URL (?app=<id>): Back closes it, refresh
+  // keeps it, and the link can be shared with another admin.
+  const details = useUrlDetails({
+    param: "app",
+    items: applications,
+    ready: !isLoading,
+    queryKey: "ctoApplicationDetail",
+    fetchById: async (id) => {
+      const res = await fetchCtoApplicationById(id);
+      return res?.application || res?.data || res;
+    },
+    onMissing: () => toast.info("That application couldn't be found."),
+  });
 
   const pagination = useMemo(
     () => ({
@@ -1190,7 +1217,7 @@ const AllCtoApplicationsHistory = () => {
   const statRejected = statusCounts.REJECTED || 0;
 
   const rowHandlers = (app) => ({
-    onViewDetails: () => setSelectedApp(app),
+    onViewDetails: () => details.open(app),
     onViewPdf: () => handleViewPdf(app),
     onViewCscForm6: () => setOrganicPdfApp(app),
     onViewMemos: () => openMemoModal(app.memo),
@@ -1729,15 +1756,19 @@ const AllCtoApplicationsHistory = () => {
             onClose={() => setOrganicPdfApp(null)}
           />
 
-          {/* Details modal */}
-          {selectedApp && (
+          {/* Details modal (open state lives in the URL: ?app=<id>) */}
+          {details.isOpen && (
             <Modal
-              isOpen={!!selectedApp}
-              onClose={() => setSelectedApp(null)}
+              isOpen={details.isOpen}
+              onClose={details.close}
               maxWidth="max-w-5xl"
               title="CTO Application Details"
             >
-              <CtoApplicationDetails app={selectedApp} loading={!selectedApp} />
+              {details.selected ? (
+                <CtoApplicationDetails app={details.selected} />
+              ) : (
+                <DetailsLoading />
+              )}
             </Modal>
           )}
 

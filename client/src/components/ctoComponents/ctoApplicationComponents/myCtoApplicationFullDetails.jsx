@@ -1,10 +1,17 @@
 // ctoApplicationDetails.jsx (employee view)
-import React, { useState, useMemo, useEffect } from "react";
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useLayoutEffect,
+} from "react";
 import {
   CalendarDays,
   CheckCircle2,
   AlertCircle,
   ArrowRight,
+  ArrowLeft,
   XCircle,
   History,
   FileX,
@@ -21,7 +28,6 @@ import {
   BadgeCheck,
 } from "lucide-react";
 import { StatusBadge } from "../../statusUtils";
-import Modal from "../../modal";
 import MemoList from "../ctoMemoModal";
 import { useAuth } from "../../../store/authStore";
 import { buildApiUrl } from "../../../config/env";
@@ -66,6 +72,15 @@ function useResolvedTheme(prefTheme) {
 
   return theme;
 }
+
+/* Secondary button: darkens on hover in light mode, lightens in dark mode */
+const BACK_BTN =
+  "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--app-surface)] border-[color:var(--app-border)] text-[color:var(--app-text)] " +
+  "hover:bg-[color:color-mix(in_srgb,var(--app-surface)_90%,var(--app-text))] " +
+  "active:bg-[color:color-mix(in_srgb,var(--app-surface)_84%,var(--app-text))] active:scale-95 " +
+  "transition-[background-color,transform] duration-150 ease-out " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
 
 const upper = (v) => String(v || "").toUpperCase();
 
@@ -397,7 +412,14 @@ const TimelineStep = ({
    Main Component
 ========================= */
 const CtoApplicationDetails = ({ app }) => {
-  const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
+  // "details" | "memos": memos open in place of the details, not as a
+  // second modal stacked on top of this one.
+  const [view, setView] = useState("details");
+  const detailsScrollRef = useRef(null);
+  const savedScrollRef = useRef(0);
+  const memoBtnRef = useRef(null);
+  const backBtnRef = useRef(null);
+  const returnFocusRef = useRef(false);
 
   const prefTheme = useAuth((s) => s.preferences?.theme || "system");
   const resolvedTheme = useResolvedTheme(prefTheme);
@@ -414,9 +436,57 @@ const CtoApplicationDetails = ({ app }) => {
     return [...app.approvals].sort((a, b) => (a.level || 0) - (b.level || 0));
   }, [app?.approvals]);
 
+  // A different application always starts on its details, at the top
+  useEffect(() => {
+    setView("details");
+    savedScrollRef.current = 0;
+  }, [app?._id]);
+
+  const openMemos = () => {
+    savedScrollRef.current = detailsScrollRef.current?.scrollTop ?? 0;
+    setView("memos");
+  };
+
+  const closeMemos = () => {
+    returnFocusRef.current = true;
+    setView("details");
+  };
+
+  // Restore where the user was in the details, and move focus sensibly
+  useLayoutEffect(() => {
+    if (view === "memos") {
+      backBtnRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    if (detailsScrollRef.current) {
+      detailsScrollRef.current.scrollTop = savedScrollRef.current;
+    }
+    if (returnFocusRef.current) {
+      returnFocusRef.current = false;
+      memoBtnRef.current?.focus({ preventScroll: true });
+    }
+  }, [view]);
+
+  // Esc in the memo view goes back to the details instead of closing the
+  // whole modal (capture phase, so it runs before the modal's own handler).
+  useEffect(() => {
+    if (view !== "memos") return undefined;
+    const onKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      returnFocusRef.current = true;
+      setView("details");
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [view]);
+
   if (!app) return null;
 
   const hasDocuments = Array.isArray(app.memo) && app.memo.length > 0;
+  const memoCount = hasDocuments ? app.memo.length : 0;
+  const memoCountLabel = `${memoCount} document${memoCount === 1 ? "" : "s"}`;
 
   // Status check variables
   const status = upper(app?.overallStatus);
@@ -471,787 +541,834 @@ const CtoApplicationDetails = ({ app }) => {
         color: "var(--app-text, #0f172a)",
       }}
     >
-      <div className="max-h-[75vh] overflow-y-auto cto-scrollbar p-2 md:p-6">
-        {/* 1. Top Header: High-Level Stats */}
-        <div
-          className="rounded-xl p-5 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border transition-colors duration-300 ease-out"
-          style={{
-            backgroundColor: "var(--app-surface)",
-            borderColor: borderColor,
-          }}
-        >
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <p
-                className="text-xs font-bold uppercase tracking-wider"
+      {view === "memos" && hasDocuments ? (
+        <div className="max-h-[75vh] overflow-y-auto cto-scrollbar px-2 pb-2 md:px-6 md:pb-6">
+          {/* Where you are + the way back (stays visible while scrolling).
+              Negative margins let it cover the side padding so cards
+              scrolling underneath don't peek out at the edges. */}
+          <div
+            className="sticky top-0 z-10 -mx-2 px-2 md:-mx-6 md:px-6 mb-4 flex flex-wrap items-center gap-3 pt-2 pb-3 md:pt-6 border-b"
+            style={{
+              backgroundColor: "var(--app-bg, rgba(245,245,245,0.96))",
+              borderColor: "var(--app-border)",
+            }}
+          >
+            <button
+              ref={backBtnRef}
+              type="button"
+              onClick={closeMemos}
+              className={BACK_BTN}
+            >
+              <ArrowLeft size={14} />
+              Back to details
+            </button>
+            <div className="min-w-0">
+              <div
+                className="text-sm font-bold truncate"
+                style={{ color: "var(--app-text)" }}
+              >
+                {hasRevocationContext
+                  ? "Original Reference Documents"
+                  : "Attached Reference Documents"}
+              </div>
+              <div
+                className="text-[11px]"
                 style={{ color: "var(--app-muted)" }}
               >
-                Current Status
-              </p>
-              {isLateFiling && (
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1">
-                  <Clock4 size={10} /> Late Filed
-                </span>
-              )}
+                {memoCountLabel}
+              </div>
             </div>
-            <StatusBadge
-              status={app.overallStatus}
-              className="text-lg px-4 py-1.5"
-              showIcon
-            />
           </div>
 
-          <div className="flex gap-4 md:gap-6 flex-wrap">
-            <div
-              className="pr-4 md:px-4 text-left md:text-center"
-              style={{ borderRight: `1px solid ${borderColor}` }}
-            >
-              <p
-                className="text-[10px] font-bold uppercase"
-                style={{ color: "var(--app-muted)" }}
-              >
-                {isRevoked ? "Revoked Hours" : "Requested"}
-              </p>
-              <p
-                className="text-xl font-extrabold"
-                style={{ color: "var(--app-text)" }}
-              >
-                {app.requestedHours}{" "}
-                <span
-                  className="text-xs font-normal"
+          {/* One scroll area: let this view scroll instead of the list */}
+          <div className="[&>div]:max-h-none [&>div]:overflow-visible [&>div]:pr-0">
+            <MemoList
+              memos={app.memo}
+              description={
+                hasRevocationContext
+                  ? "Documents originally attached when the leave was filed."
+                  : "Documents attached by the applicant for reference."
+              }
+            />
+          </div>
+        </div>
+      ) : (
+        <div
+          ref={detailsScrollRef}
+          className="max-h-[75vh] overflow-y-auto cto-scrollbar p-2 md:p-6"
+        >
+          {/* 1. Top Header: High-Level Stats */}
+          <div
+            className="rounded-xl p-5 shadow-sm mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border transition-colors duration-300 ease-out"
+            style={{
+              backgroundColor: "var(--app-surface)",
+              borderColor: borderColor,
+            }}
+          >
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <p
+                  className="text-xs font-bold uppercase tracking-wider"
                   style={{ color: "var(--app-muted)" }}
                 >
-                  hrs
-                </span>
-              </p>
+                  Current Status
+                </p>
+                {isLateFiling && (
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-100 text-amber-700 border border-amber-200 flex items-center gap-1">
+                    <Clock4 size={10} /> Late Filed
+                  </span>
+                )}
+              </div>
+              <StatusBadge
+                status={app.overallStatus}
+                className="text-lg px-4 py-1.5"
+                showIcon
+              />
             </div>
 
-            <div
-              className="pr-4 md:px-4 text-left md:text-center"
-              style={{
-                borderRight: hasActiveRevocationReq
-                  ? `1px solid ${borderColor}`
-                  : "none",
-              }}
-            >
-              <p
-                className="text-[10px] font-bold uppercase"
-                style={{ color: "var(--app-muted)" }}
+            <div className="flex gap-4 md:gap-6 flex-wrap">
+              <div
+                className="pr-4 md:px-4 text-left md:text-center"
+                style={{ borderRight: `1px solid ${borderColor}` }}
               >
-                {hasRevocationContext ? "Original Date Filed" : "Date Filed"}
-              </p>
-              <p
-                className="text-sm font-bold mt-1"
-                style={{ color: "var(--app-text)" }}
-              >
-                {new Date(app.createdAt).toLocaleDateString()}
-              </p>
-            </div>
-
-            {hasActiveRevocationReq && (
-              <div className="text-left md:text-center">
                 <p
                   className="text-[10px] font-bold uppercase"
-                  style={{ color: "var(--accent)" }}
+                  style={{ color: "var(--app-muted)" }}
                 >
-                  Revocation Requested
+                  {isRevoked ? "Revoked Hours" : "Requested"}
+                </p>
+                <p
+                  className="text-xl font-extrabold"
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {app.requestedHours}{" "}
+                  <span
+                    className="text-xs font-normal"
+                    style={{ color: "var(--app-muted)" }}
+                  >
+                    hrs
+                  </span>
+                </p>
+              </div>
+
+              <div
+                className="pr-4 md:px-4 text-left md:text-center"
+                style={{
+                  borderRight: hasActiveRevocationReq
+                    ? `1px solid ${borderColor}`
+                    : "none",
+                }}
+              >
+                <p
+                  className="text-[10px] font-bold uppercase"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  {hasRevocationContext ? "Original Date Filed" : "Date Filed"}
                 </p>
                 <p
                   className="text-sm font-bold mt-1"
                   style={{ color: "var(--app-text)" }}
                 >
-                  {revocationReq.requestedAt
-                    ? new Date(revocationReq.requestedAt).toLocaleDateString()
-                    : "-"}
+                  {new Date(app.createdAt).toLocaleDateString()}
                 </p>
               </div>
-            )}
+
+              {hasActiveRevocationReq && (
+                <div className="text-left md:text-center">
+                  <p
+                    className="text-[10px] font-bold uppercase"
+                    style={{ color: "var(--accent)" }}
+                  >
+                    Revocation Requested
+                  </p>
+                  <p
+                    className="text-sm font-bold mt-1"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {revocationReq.requestedAt
+                      ? new Date(revocationReq.requestedAt).toLocaleDateString()
+                      : "-"}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* LEFT COLUMN */}
-          <div className="lg:col-span-1 space-y-4">
-            {/* Revocation Reason Card (Highlighted) */}
-            {hasActiveRevocationReq && (
-              <div
-                className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "rgba(147, 51, 234, 0.04)",
-                  borderColor: "rgba(147, 51, 234, 0.2)",
-                }}
-              >
-                <h4
-                  className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
-                  style={{ color: "#9333ea" }}
-                >
-                  <Undo size={14} /> Revocation Reason
-                </h4>
-                <p
-                  className="text-sm leading-relaxed font-semibold break-words"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {revocationReq.reason || (
-                    <span className="italic opacity-70">
-                      No specific reason provided.
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* Late Filing Justification Card */}
-            {isLateFiling && (
-              <div
-                className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
-                style={{
-                  backgroundColor: "rgba(245,158,11,0.05)",
-                  borderColor: "rgba(245,158,11,0.30)",
-                }}
-              >
-                <h4
-                  className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
-                  style={{ color: "#d97706" }}
-                >
-                  <Clock4 size={14} /> Late Filing Justification
-                </h4>
-                <p
-                  className="text-sm leading-relaxed font-medium break-words"
-                  style={{ color: "var(--app-text)" }}
-                >
-                  {lateJustification || (
-                    <span className="italic opacity-70">
-                      No justification provided.
-                    </span>
-                  )}
-                </p>
-              </div>
-            )}
-
-            {/* Original Reason Card */}
-            <div
-              className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
-              style={{
-                backgroundColor: "var(--app-surface)",
-                borderColor: borderColor,
-              }}
-            >
-              <h4
-                className={`font-bold uppercase tracking-widest mb-3 flex items-center gap-2 ${
-                  hasRevocationContext || isLateFiling
-                    ? "text-[10px]"
-                    : "text-xs"
-                }`}
-                style={{ color: "var(--app-muted)" }}
-              >
-                <FileText
-                  size={hasRevocationContext || isLateFiling ? 12 : 14}
-                  style={{ color: "var(--app-muted)" }}
-                />{" "}
-                {hasRevocationContext || isLateFiling
-                  ? "General Purpose"
-                  : "Purpose"}
-              </h4>
-
-              <p
-                className={`text-sm leading-relaxed break-words ${
-                  hasRevocationContext || isLateFiling
-                    ? "font-medium opacity-80"
-                    : "font-medium"
-                }`}
-                style={{ color: "var(--app-text)" }}
-              >
-                {app.reason || (
-                  <span
-                    className="italic"
-                    style={{ color: "var(--app-muted)" }}
-                  >
-                    No reason provided.
-                  </span>
-                )}
-              </p>
-            </div>
-
-            {/* Selected Dates */}
-            <div
-              className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
-              style={{
-                backgroundColor: "var(--app-surface)",
-                borderColor: borderColor,
-              }}
-            >
-              <h4
-                className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2"
-                style={{ color: "var(--app-muted)" }}
-              >
-                <CalendarDays size={14} style={{ color: "var(--app-muted)" }} />{" "}
-                {hasRevocationContext ? "Dates to Restore" : "Dates Included"}
-              </h4>
-
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 cto-scrollbar">
-                {app.inclusiveDates?.length > 0 ? (
-                  app.inclusiveDates.map((d, i) => (
-                    <DateLeaf
-                      key={i}
-                      dateString={d}
-                      borderColor={borderColor}
-                    />
-                  ))
-                ) : (
-                  <div
-                    className="text-center py-4 text-sm border border-dashed rounded-lg"
-                    style={{
-                      color: "var(--app-muted)",
-                      borderColor: borderColor,
-                      backgroundColor: "var(--app-surface-2)",
-                    }}
-                  >
-                    No dates selected
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Unified Documents Section */}
-            <div className="space-y-2">
-              <h4
-                className="text-[10px] font-bold uppercase tracking-widest px-1 flex items-center gap-2 mt-4"
-                style={{ color: "var(--app-muted)" }}
-              >
-                <Paperclip size={12} /> Attachments
-              </h4>
-
-              {/* 1. Revocation Attachment */}
-              {hasRevocationAttachment && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* LEFT COLUMN */}
+            <div className="lg:col-span-1 space-y-4">
+              {/* Revocation Reason Card (Highlighted) */}
+              {hasActiveRevocationReq && (
                 <div
-                  className="rounded-xl p-1 shadow-sm border transition-colors duration-300 ease-out"
+                  className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
                   style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
+                    backgroundColor: "rgba(147, 51, 234, 0.04)",
+                    borderColor: "rgba(147, 51, 234, 0.2)",
                   }}
                 >
-                  <button
-                    onClick={() =>
-                      handleDownloadAttachment(revocationReq.attachment)
-                    }
-                    className="w-full flex items-center justify-between p-3 rounded-lg transition-colors duration-200 ease-out"
-                    type="button"
-                    style={{ backgroundColor: "transparent" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface-2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
+                  <h4
+                    className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
+                    style={{ color: "#9333ea" }}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="p-2 rounded-lg border flex-none"
-                        style={{
-                          backgroundColor: "rgba(147, 51, 234, 0.1)",
-                          borderColor: "rgba(147, 51, 234, 0.2)",
-                          color: "#9333ea",
-                        }}
-                      >
-                        <FileText size={16} />
-                      </div>
-                      <div className="text-left min-w-0 pr-2">
-                        <span
-                          className="block text-xs font-bold truncate"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          {revocationReq.attachment.fileName}
-                        </span>
-                        <span
-                          className="text-[10px] truncate"
-                          style={{ color: "var(--app-muted)" }}
-                        >
-                          Revocation Support File
-                        </span>
-                      </div>
-                    </div>
-                    <Download size={14} style={{ color: "var(--app-muted)" }} />
-                  </button>
+                    <Undo size={14} /> Revocation Reason
+                  </h4>
+                  <p
+                    className="text-sm leading-relaxed font-semibold break-words"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {revocationReq.reason || (
+                      <span className="italic opacity-70">
+                        No specific reason provided.
+                      </span>
+                    )}
+                  </p>
                 </div>
               )}
 
-              {/* 2. Late Filing Attachment */}
-              {isLateFiling && lateAttachment?.fileUrl && (
+              {/* Late Filing Justification Card */}
+              {isLateFiling && (
                 <div
-                  className="rounded-xl p-1 shadow-sm border transition-colors duration-300 ease-out"
+                  className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
                   style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor: borderColor,
+                    backgroundColor: "rgba(245,158,11,0.05)",
+                    borderColor: "rgba(245,158,11,0.30)",
                   }}
                 >
-                  <button
-                    onClick={() => handleDownloadAttachment(lateAttachment)}
-                    className="w-full flex items-center justify-between p-3 rounded-lg transition-colors duration-200 ease-out"
-                    type="button"
-                    style={{ backgroundColor: "transparent" }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface-2)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = "transparent";
-                    }}
+                  <h4
+                    className="text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"
+                    style={{ color: "#d97706" }}
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="p-2 rounded-lg border flex-none"
-                        style={{
-                          backgroundColor: "rgba(245,158,11,0.1)",
-                          borderColor: "rgba(245,158,11,0.2)",
-                          color: "#d97706",
-                        }}
-                      >
-                        <Clock4 size={16} />
-                      </div>
-                      <div className="text-left min-w-0 pr-2">
-                        <span
-                          className="block text-xs font-bold truncate"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          {lateAttachment.fileName || "Late Filing Doc"}
-                        </span>
-                        <span
-                          className="text-[10px] truncate"
-                          style={{ color: "var(--app-muted)" }}
-                        >
-                          Late Filing Support File
-                        </span>
-                      </div>
-                    </div>
-                    <Download size={14} style={{ color: "var(--app-muted)" }} />
-                  </button>
+                    <Clock4 size={14} /> Late Filing Justification
+                  </h4>
+                  <p
+                    className="text-sm leading-relaxed font-medium break-words"
+                    style={{ color: "var(--app-text)" }}
+                  >
+                    {lateJustification || (
+                      <span className="italic opacity-70">
+                        No justification provided.
+                      </span>
+                    )}
+                  </p>
                 </div>
               )}
 
-              {/* 3. Original Memos */}
+              {/* Original Reason Card */}
               <div
-                className="rounded-xl p-1 shadow-sm border transition-colors duration-300 ease-out"
+                className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
                 style={{
                   backgroundColor: "var(--app-surface)",
                   borderColor: borderColor,
                 }}
               >
-                <button
-                  onClick={() =>
-                    hasDocuments &&
-                    setMemoModal({ isOpen: true, memos: app.memo })
-                  }
-                  disabled={!hasDocuments}
-                  className="w-full flex items-center justify-between p-3 rounded-lg transition-colors duration-200 ease-out"
-                  type="button"
-                  style={{
-                    backgroundColor: "transparent",
-                    opacity: hasDocuments ? 1 : 0.6,
-                    cursor: hasDocuments ? "pointer" : "not-allowed",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!hasDocuments) return;
-                    e.currentTarget.style.backgroundColor =
-                      "var(--app-surface-2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  }}
+                <h4
+                  className={`font-bold uppercase tracking-widest mb-3 flex items-center gap-2 ${
+                    hasRevocationContext || isLateFiling
+                      ? "text-[10px]"
+                      : "text-xs"
+                  }`}
+                  style={{ color: "var(--app-muted)" }}
                 >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="p-2 rounded-lg border transition-colors duration-300 ease-out"
-                      style={{
-                        backgroundColor: hasDocuments
-                          ? "var(--accent-soft)"
-                          : "var(--app-surface-2)",
-                        borderColor: hasDocuments
-                          ? "var(--accent-soft2, rgba(37,99,235,0.18))"
-                          : borderColor,
-                        color: hasDocuments
-                          ? "var(--accent)"
-                          : "var(--app-muted)",
-                      }}
-                    >
-                      {hasDocuments ? (
-                        <FileStack size={16} />
-                      ) : (
-                        <FileX size={16} />
-                      )}
-                    </div>
-                    <div className="text-left">
-                      <span
-                        className="block text-xs font-bold"
-                        style={{ color: "var(--app-text)" }}
-                      >
-                        Original Memos
-                      </span>
-                      <span
-                        className="text-[10px]"
-                        style={{ color: "var(--app-muted)" }}
-                      >
-                        {hasDocuments
-                          ? `${app.memo.length} documents attached`
-                          : "None attached"}
-                      </span>
-                    </div>
-                  </div>
-                  {hasDocuments && (
-                    <ArrowRight
-                      size={14}
+                  <FileText
+                    size={hasRevocationContext || isLateFiling ? 12 : 14}
+                    style={{ color: "var(--app-muted)" }}
+                  />{" "}
+                  {hasRevocationContext || isLateFiling
+                    ? "General Purpose"
+                    : "Purpose"}
+                </h4>
+
+                <p
+                  className={`text-sm leading-relaxed break-words ${
+                    hasRevocationContext || isLateFiling
+                      ? "font-medium opacity-80"
+                      : "font-medium"
+                  }`}
+                  style={{ color: "var(--app-text)" }}
+                >
+                  {app.reason || (
+                    <span
+                      className="italic"
                       style={{ color: "var(--app-muted)" }}
-                    />
+                    >
+                      No reason provided.
+                    </span>
                   )}
-                </button>
+                </p>
               </div>
-            </div>
-          </div>
 
-          {/* RIGHT COLUMN: Timeline */}
-          <div className="lg:col-span-2">
-            <div
-              className="rounded-xl p-4 sm:p-5 shadow-sm border transition-colors duration-300 ease-out"
-              style={{
-                backgroundColor: "var(--app-surface)",
-                borderColor: borderColor,
-              }}
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div
-                  className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border transition-colors duration-300 ease-out"
-                  style={{
-                    backgroundColor: hasRevocationContext
-                      ? "var(--app-surface-2)"
-                      : "rgba(34,197,94,0.14)",
-                    borderColor: hasRevocationContext
-                      ? borderColor
-                      : "rgba(34,197,94,0.22)",
-                    color: hasRevocationContext
-                      ? "var(--app-muted)"
-                      : "#16a34a",
-                  }}
+              {/* Selected Dates */}
+              <div
+                className="rounded-xl p-5 shadow-sm border transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor: borderColor,
+                }}
+              >
+                <h4
+                  className="text-xs font-bold uppercase tracking-widest mb-4 flex items-center gap-2"
+                  style={{ color: "var(--app-muted)" }}
                 >
-                  <History size={18} />
-                </div>
-
-                <div className="min-w-0">
-                  <h3
-                    className="text-xs font-bold uppercase tracking-widest"
+                  <CalendarDays
+                    size={14}
                     style={{ color: "var(--app-muted)" }}
-                  >
-                    Processing Timeline
-                  </h3>
-                  <p
-                    className="text-xs font-medium mt-0.5"
-                    style={{ color: "var(--app-muted)" }}
-                  >
-                    {hasRevocationContext
-                      ? "Original workflow & revocation history"
-                      : "Step-by-step approval progress"}
-                  </p>
-                </div>
-              </div>
+                  />{" "}
+                  {hasRevocationContext ? "Dates to Restore" : "Dates Included"}
+                </h4>
 
-              {sortedApprovals.length > 0 ? (
-                <ol className="flex flex-col gap-3">
-                  {/* 1. ORIGINAL APPROVALS */}
-                  {sortedApprovals.map((approval, idx) => {
-                    const stepStatus = upper(approval?.status);
-                    const isQueued =
-                      status === "PENDING" &&
-                      stepStatus === "PENDING" &&
-                      activeIndex >= 0 &&
-                      idx > activeIndex;
-
-                    return (
-                      <TimelineStep
-                        key={approval?._id || idx}
-                        approval={approval}
-                        index={idx}
-                        isLast={
-                          idx === sortedApprovals.length - 1 &&
-                          !hasNodesAfterApprovals
-                        }
-                        isActive={idx === activeIndex}
-                        isQueued={isQueued}
+                <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 cto-scrollbar">
+                  {app.inclusiveDates?.length > 0 ? (
+                    app.inclusiveDates.map((d, i) => (
+                      <DateLeaf
+                        key={i}
+                        dateString={d}
                         borderColor={borderColor}
                       />
-                    );
-                  })}
-
-                  {/* 2. FULLY APPROVED (reached full approval at least once) */}
-                  {isFullyApproved && (
-                    <TimelineNode
-                      isLast={!hasRevocationHistory && !hasActiveRevocationReq}
-                      dotBg="#10b981"
-                      icon={BadgeCheck}
-                      title="APPROVED"
-                      cardStyle={{
-                        backgroundColor: "rgba(34,197,94,0.12)",
-                        borderColor: "rgba(34,197,94,0.22)",
+                    ))
+                  ) : (
+                    <div
+                      className="text-center py-4 text-sm border border-dashed rounded-lg"
+                      style={{
+                        color: "var(--app-muted)",
+                        borderColor: borderColor,
+                        backgroundColor: "var(--app-surface-2)",
                       }}
                     >
-                      <p
-                        className="font-bold text-sm"
-                        style={{ color: "#16a34a" }}
-                      >
-                        Application Fully Approved
-                      </p>
-                      <p
-                        className="text-xs mt-0.5"
-                        style={{ color: "var(--app-muted)" }}
-                      >
-                        The original CTO request was finalized.
-                      </p>
-                    </TimelineNode>
+                      No dates selected
+                    </div>
                   )}
+                </div>
+              </div>
 
-                  {/* 3. PAST REVOCATION ATTEMPTS (rejected or withdrawn) */}
-                  {hasRevocationHistory &&
-                    revocationHistory.map((hist, hIdx) => {
-                      const isHistCancelled =
-                        upper(hist.status) === "CANCELLED";
-                      const isLastHistory =
-                        hIdx === revocationHistory.length - 1 &&
-                        !hasActiveRevocationReq;
+              {/* Unified Documents Section */}
+              <div className="space-y-2">
+                <h4
+                  className="text-[10px] font-bold uppercase tracking-widest px-1 flex items-center gap-2 mt-4"
+                  style={{ color: "var(--app-muted)" }}
+                >
+                  <Paperclip size={12} /> Attachments
+                </h4>
+
+                {/* 1. Revocation Attachment */}
+                {hasRevocationAttachment && (
+                  <div
+                    className="rounded-xl p-1 shadow-sm border transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "var(--app-surface)",
+                      borderColor: borderColor,
+                    }}
+                  >
+                    <button
+                      onClick={() =>
+                        handleDownloadAttachment(revocationReq.attachment)
+                      }
+                      className="w-full flex items-center justify-between p-3 rounded-lg transition-colors duration-200 ease-out"
+                      type="button"
+                      style={{ backgroundColor: "transparent" }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor =
+                          "var(--app-surface-2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      }}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="p-2 rounded-lg border flex-none"
+                          style={{
+                            backgroundColor: "rgba(147, 51, 234, 0.1)",
+                            borderColor: "rgba(147, 51, 234, 0.2)",
+                            color: "#9333ea",
+                          }}
+                        >
+                          <FileText size={16} />
+                        </div>
+                        <div className="text-left min-w-0 pr-2">
+                          <span
+                            className="block text-xs font-bold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {revocationReq.attachment.fileName}
+                          </span>
+                          <span
+                            className="text-[10px] truncate"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Revocation Support File
+                          </span>
+                        </div>
+                      </div>
+                      <Download
+                        size={14}
+                        style={{ color: "var(--app-muted)" }}
+                      />
+                    </button>
+                  </div>
+                )}
+
+                {/* 2. Late Filing Attachment */}
+                {isLateFiling && lateAttachment?.fileUrl && (
+                  <div
+                    className="rounded-xl p-1 shadow-sm border transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: "var(--app-surface)",
+                      borderColor: borderColor,
+                    }}
+                  >
+                    <button
+                      onClick={() => handleDownloadAttachment(lateAttachment)}
+                      className="w-full flex items-center justify-between p-3 rounded-lg transition-colors duration-200 ease-out"
+                      type="button"
+                      style={{ backgroundColor: "transparent" }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor =
+                          "var(--app-surface-2)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                      }}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className="p-2 rounded-lg border flex-none"
+                          style={{
+                            backgroundColor: "rgba(245,158,11,0.1)",
+                            borderColor: "rgba(245,158,11,0.2)",
+                            color: "#d97706",
+                          }}
+                        >
+                          <Clock4 size={16} />
+                        </div>
+                        <div className="text-left min-w-0 pr-2">
+                          <span
+                            className="block text-xs font-bold truncate"
+                            style={{ color: "var(--app-text)" }}
+                          >
+                            {lateAttachment.fileName || "Late Filing Doc"}
+                          </span>
+                          <span
+                            className="text-[10px] truncate"
+                            style={{ color: "var(--app-muted)" }}
+                          >
+                            Late Filing Support File
+                          </span>
+                        </div>
+                      </div>
+                      <Download
+                        size={14}
+                        style={{ color: "var(--app-muted)" }}
+                      />
+                    </button>
+                  </div>
+                )}
+
+                {/* 3. Original Memos */}
+                <div
+                  className="rounded-xl p-1 shadow-sm border transition-colors duration-300 ease-out"
+                  style={{
+                    backgroundColor: "var(--app-surface)",
+                    borderColor: borderColor,
+                  }}
+                >
+                  <button
+                    ref={memoBtnRef}
+                    onClick={() => hasDocuments && openMemos()}
+                    disabled={!hasDocuments}
+                    className="w-full flex items-center justify-between p-3 rounded-lg transition-colors duration-200 ease-out"
+                    type="button"
+                    style={{
+                      backgroundColor: "transparent",
+                      opacity: hasDocuments ? 1 : 0.6,
+                      cursor: hasDocuments ? "pointer" : "not-allowed",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!hasDocuments) return;
+                      e.currentTarget.style.backgroundColor =
+                        "var(--app-surface-2)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.backgroundColor = "transparent";
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="p-2 rounded-lg border transition-colors duration-300 ease-out"
+                        style={{
+                          backgroundColor: hasDocuments
+                            ? "var(--accent-soft)"
+                            : "var(--app-surface-2)",
+                          borderColor: hasDocuments
+                            ? "var(--accent-soft2, rgba(37,99,235,0.18))"
+                            : borderColor,
+                          color: hasDocuments
+                            ? "var(--accent)"
+                            : "var(--app-muted)",
+                        }}
+                      >
+                        {hasDocuments ? (
+                          <FileStack size={16} />
+                        ) : (
+                          <FileX size={16} />
+                        )}
+                      </div>
+                      <div className="text-left">
+                        <span
+                          className="block text-xs font-bold"
+                          style={{ color: "var(--app-text)" }}
+                        >
+                          Original Memos
+                        </span>
+                        <span
+                          className="text-[10px]"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          {hasDocuments
+                            ? `${memoCountLabel} attached`
+                            : "None attached"}
+                        </span>
+                      </div>
+                    </div>
+                    {hasDocuments && (
+                      <ArrowRight
+                        size={14}
+                        style={{ color: "var(--app-muted)" }}
+                      />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT COLUMN: Timeline */}
+            <div className="lg:col-span-2">
+              <div
+                className="rounded-xl p-4 sm:p-5 shadow-sm border transition-colors duration-300 ease-out"
+                style={{
+                  backgroundColor: "var(--app-surface)",
+                  borderColor: borderColor,
+                }}
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <div
+                    className="h-10 w-10 rounded-xl flex items-center justify-center flex-none border transition-colors duration-300 ease-out"
+                    style={{
+                      backgroundColor: hasRevocationContext
+                        ? "var(--app-surface-2)"
+                        : "rgba(34,197,94,0.14)",
+                      borderColor: hasRevocationContext
+                        ? borderColor
+                        : "rgba(34,197,94,0.22)",
+                      color: hasRevocationContext
+                        ? "var(--app-muted)"
+                        : "#16a34a",
+                    }}
+                  >
+                    <History size={18} />
+                  </div>
+
+                  <div className="min-w-0">
+                    <h3
+                      className="text-xs font-bold uppercase tracking-widest"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      Processing Timeline
+                    </h3>
+                    <p
+                      className="text-xs font-medium mt-0.5"
+                      style={{ color: "var(--app-muted)" }}
+                    >
+                      {hasRevocationContext
+                        ? "Original workflow & revocation history"
+                        : "Step-by-step approval progress"}
+                    </p>
+                  </div>
+                </div>
+
+                {sortedApprovals.length > 0 ? (
+                  <ol className="flex flex-col gap-3">
+                    {/* 1. ORIGINAL APPROVALS */}
+                    {sortedApprovals.map((approval, idx) => {
+                      const stepStatus = upper(approval?.status);
+                      const isQueued =
+                        status === "PENDING" &&
+                        stepStatus === "PENDING" &&
+                        activeIndex >= 0 &&
+                        idx > activeIndex;
 
                       return (
-                        <React.Fragment key={`hist-${hIdx}`}>
-                          {/* Past request */}
-                          <TimelineNode
-                            isLast={false}
-                            dotBg="#94a3b8"
-                            icon={Undo}
-                            title="PAST REVOCATION REQUEST"
-                            cardStyle={{
-                              backgroundColor: "var(--app-surface-2)",
-                              opacity: 0.85,
-                            }}
-                          >
-                            <StepHeader
-                              label={`Past Attempt #${hIdx + 1}`}
-                              title="Revocation Requested"
-                              subtitle={`Reason: ${hist.reason || "None provided."}`}
-                            />
-
-                            {hist.attachment?.fileUrl && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDownloadAttachment(hist.attachment)
-                                }
-                                className="mt-2 text-xs flex items-center gap-1 font-medium transition-colors hover:underline"
-                                style={{ color: "var(--accent)" }}
-                              >
-                                <Download size={12} /> View Attachment
-                              </button>
-                            )}
-
-                            {hist.requestedAt && (
-                              <Stamp>
-                                Requested on{" "}
-                                {new Date(hist.requestedAt).toLocaleString()}
-                              </Stamp>
-                            )}
-                          </TimelineNode>
-
-                          {/* Past outcome */}
-                          <TimelineNode
-                            isLast={isLastHistory}
-                            dotBg={isHistCancelled ? "#94a3b8" : "#ef4444"}
-                            icon={isHistCancelled ? Ban : XCircle}
-                            title={isHistCancelled ? "WITHDRAWN" : "REJECTED"}
-                            cardStyle={{
-                              backgroundColor: isHistCancelled
-                                ? "rgba(148,163,184,0.05)"
-                                : "rgba(239,68,68,0.05)",
-                              borderColor: isHistCancelled
-                                ? "rgba(148,163,184,0.2)"
-                                : "rgba(239,68,68,0.2)",
-                            }}
-                          >
-                            <StepHeader
-                              label={
-                                isHistCancelled
-                                  ? "Employee Action"
-                                  : "HR Final Step"
-                              }
-                              labelColor={
-                                isHistCancelled ? "#64748b" : "#ef4444"
-                              }
-                              title={
-                                isHistCancelled
-                                  ? "Withdrawn by Employee"
-                                  : "Rejected by HR"
-                              }
-                              right={
-                                <StatusBadge
-                                  status={hist.status || "REJECTED"}
-                                  size="sm"
-                                />
-                              }
-                            />
-
-                            {hist.remarks && (
-                              <Note
-                                label={
-                                  isHistCancelled ? "System Note:" : "HR Note:"
-                                }
-                                borderColor={borderColor}
-                              >
-                                {hist.remarks}
-                              </Note>
-                            )}
-
-                            {hist.processedAt && (
-                              <Stamp>
-                                Processed on{" "}
-                                {new Date(hist.processedAt).toLocaleString()}
-                              </Stamp>
-                            )}
-                          </TimelineNode>
-                        </React.Fragment>
+                        <TimelineStep
+                          key={approval?._id || idx}
+                          approval={approval}
+                          index={idx}
+                          isLast={
+                            idx === sortedApprovals.length - 1 &&
+                            !hasNodesAfterApprovals
+                          }
+                          isActive={idx === activeIndex}
+                          isQueued={isQueued}
+                          borderColor={borderColor}
+                        />
                       );
                     })}
 
-                  {/* 4. ACTIVE REVOCATION REQUEST */}
-                  {hasActiveRevocationReq && (
-                    <TimelineNode
-                      isLast={false}
-                      dotBg="#9333ea"
-                      icon={Undo}
-                      title="REVOCATION REQUESTED"
-                      cardStyle={{
-                        backgroundColor: "rgba(147,51,234,0.04)",
-                        borderColor: "rgba(147,51,234,0.2)",
-                      }}
-                    >
-                      <StepHeader
-                        label="Active Revocation Stage"
-                        labelColor="#9333ea"
-                        title="Revocation Requested"
-                        subtitle="Employee submitted a request to cancel this approved CTO."
-                        right={
-                          <StatusBadge
-                            status="REVOCATION_REQUESTED"
-                            size="sm"
-                          />
+                    {/* 2. FULLY APPROVED (reached full approval at least once) */}
+                    {isFullyApproved && (
+                      <TimelineNode
+                        isLast={
+                          !hasRevocationHistory && !hasActiveRevocationReq
                         }
-                      />
+                        dotBg="#10b981"
+                        icon={BadgeCheck}
+                        title="APPROVED"
+                        cardStyle={{
+                          backgroundColor: "rgba(34,197,94,0.12)",
+                          borderColor: "rgba(34,197,94,0.22)",
+                        }}
+                      >
+                        <p
+                          className="font-bold text-sm"
+                          style={{ color: "#16a34a" }}
+                        >
+                          Application Fully Approved
+                        </p>
+                        <p
+                          className="text-xs mt-0.5"
+                          style={{ color: "var(--app-muted)" }}
+                        >
+                          The original CTO request was finalized.
+                        </p>
+                      </TimelineNode>
+                    )}
 
-                      {revocationReq.requestedAt && (
-                        <Stamp>
-                          Requested on{" "}
-                          {new Date(revocationReq.requestedAt).toLocaleString()}
-                        </Stamp>
-                      )}
-                    </TimelineNode>
-                  )}
+                    {/* 3. PAST REVOCATION ATTEMPTS (rejected or withdrawn) */}
+                    {hasRevocationHistory &&
+                      revocationHistory.map((hist, hIdx) => {
+                        const isHistCancelled =
+                          upper(hist.status) === "CANCELLED";
+                        const isLastHistory =
+                          hIdx === revocationHistory.length - 1 &&
+                          !hasActiveRevocationReq;
 
-                  {/* 5. HR FINAL STEP */}
-                  {hasActiveRevocationReq && (
-                    <TimelineNode
-                      isLast
-                      dotBg={isRevoked ? "#64748b" : "#f59e0b"}
-                      icon={isRevoked ? RotateCcw : Hourglass}
-                      title={isRevoked ? "REVOKED" : "PENDING"}
-                      cardStyle={{
-                        backgroundColor: isRevoked
-                          ? "rgba(100,116,139,0.08)"
-                          : "var(--app-surface)",
-                        borderColor: isRevoked
-                          ? "rgba(100,116,139,0.2)"
-                          : "rgba(245,158,11,0.45)",
-                      }}
-                    >
-                      <StepHeader
-                        label="HR Final Step"
-                        tags={!isRevoked ? <AwaitingTag /> : null}
-                        title={
-                          isRevoked ? "Revoked by HR" : "Pending HR Approval"
-                        }
-                        subtitle={
-                          isRevoked
-                            ? "HR has processed this request and restored the balances."
-                            : "Awaiting Human Resources to review and restore the hours."
-                        }
-                        right={
-                          <StatusBadge
-                            status={isRevoked ? "REVOKED" : "PENDING"}
-                            size="sm"
-                          />
-                        }
-                      />
+                        return (
+                          <React.Fragment key={`hist-${hIdx}`}>
+                            {/* Past request */}
+                            <TimelineNode
+                              isLast={false}
+                              dotBg="#94a3b8"
+                              icon={Undo}
+                              title="PAST REVOCATION REQUEST"
+                              cardStyle={{
+                                backgroundColor: "var(--app-surface-2)",
+                                opacity: 0.85,
+                              }}
+                            >
+                              <StepHeader
+                                label={`Past Attempt #${hIdx + 1}`}
+                                title="Revocation Requested"
+                                subtitle={`Reason: ${hist.reason || "None provided."}`}
+                              />
 
-                      {isRevoked && app.revokeReason && (
-                        <Note label="HR Note:" borderColor={borderColor}>
-                          {app.revokeReason}
-                        </Note>
-                      )}
+                              {hist.attachment?.fileUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleDownloadAttachment(hist.attachment)
+                                  }
+                                  className="mt-2 text-xs flex items-center gap-1 font-medium transition-colors hover:underline"
+                                  style={{ color: "var(--accent)" }}
+                                >
+                                  <Download size={12} /> View Attachment
+                                </button>
+                              )}
 
-                      {app.revokedAt && (
-                        <Stamp>
-                          Processed on{" "}
-                          {new Date(app.revokedAt).toLocaleString()}
-                        </Stamp>
-                      )}
-                    </TimelineNode>
-                  )}
-                </ol>
-              ) : (
-                <div
-                  className="flex flex-col items-center justify-center p-10 border border-dashed rounded-xl text-center"
-                  style={{
-                    backgroundColor: "var(--app-surface)",
-                    borderColor: "var(--app-border)",
-                  }}
-                >
-                  <Users
-                    size={32}
-                    style={{ color: "var(--app-muted)", opacity: 0.6 }}
-                    className="mb-3"
-                  />
-                  <p
-                    style={{ color: "var(--app-text)" }}
-                    className="font-medium"
+                              {hist.requestedAt && (
+                                <Stamp>
+                                  Requested on{" "}
+                                  {new Date(hist.requestedAt).toLocaleString()}
+                                </Stamp>
+                              )}
+                            </TimelineNode>
+
+                            {/* Past outcome */}
+                            <TimelineNode
+                              isLast={isLastHistory}
+                              dotBg={isHistCancelled ? "#94a3b8" : "#ef4444"}
+                              icon={isHistCancelled ? Ban : XCircle}
+                              title={isHistCancelled ? "WITHDRAWN" : "REJECTED"}
+                              cardStyle={{
+                                backgroundColor: isHistCancelled
+                                  ? "rgba(148,163,184,0.05)"
+                                  : "rgba(239,68,68,0.05)",
+                                borderColor: isHistCancelled
+                                  ? "rgba(148,163,184,0.2)"
+                                  : "rgba(239,68,68,0.2)",
+                              }}
+                            >
+                              <StepHeader
+                                label={
+                                  isHistCancelled
+                                    ? "Employee Action"
+                                    : "HR Final Step"
+                                }
+                                labelColor={
+                                  isHistCancelled ? "#64748b" : "#ef4444"
+                                }
+                                title={
+                                  isHistCancelled
+                                    ? "Withdrawn by Employee"
+                                    : "Rejected by HR"
+                                }
+                                right={
+                                  <StatusBadge
+                                    status={hist.status || "REJECTED"}
+                                    size="sm"
+                                  />
+                                }
+                              />
+
+                              {hist.remarks && (
+                                <Note
+                                  label={
+                                    isHistCancelled
+                                      ? "System Note:"
+                                      : "HR Note:"
+                                  }
+                                  borderColor={borderColor}
+                                >
+                                  {hist.remarks}
+                                </Note>
+                              )}
+
+                              {hist.processedAt && (
+                                <Stamp>
+                                  Processed on{" "}
+                                  {new Date(hist.processedAt).toLocaleString()}
+                                </Stamp>
+                              )}
+                            </TimelineNode>
+                          </React.Fragment>
+                        );
+                      })}
+
+                    {/* 4. ACTIVE REVOCATION REQUEST */}
+                    {hasActiveRevocationReq && (
+                      <TimelineNode
+                        isLast={false}
+                        dotBg="#9333ea"
+                        icon={Undo}
+                        title="REVOCATION REQUESTED"
+                        cardStyle={{
+                          backgroundColor: "rgba(147,51,234,0.04)",
+                          borderColor: "rgba(147,51,234,0.2)",
+                        }}
+                      >
+                        <StepHeader
+                          label="Active Revocation Stage"
+                          labelColor="#9333ea"
+                          title="Revocation Requested"
+                          subtitle="Employee submitted a request to cancel this approved CTO."
+                          right={
+                            <StatusBadge
+                              status="REVOCATION_REQUESTED"
+                              size="sm"
+                            />
+                          }
+                        />
+
+                        {revocationReq.requestedAt && (
+                          <Stamp>
+                            Requested on{" "}
+                            {new Date(
+                              revocationReq.requestedAt,
+                            ).toLocaleString()}
+                          </Stamp>
+                        )}
+                      </TimelineNode>
+                    )}
+
+                    {/* 5. HR FINAL STEP */}
+                    {hasActiveRevocationReq && (
+                      <TimelineNode
+                        isLast
+                        dotBg={isRevoked ? "#64748b" : "#f59e0b"}
+                        icon={isRevoked ? RotateCcw : Hourglass}
+                        title={isRevoked ? "REVOKED" : "PENDING"}
+                        cardStyle={{
+                          backgroundColor: isRevoked
+                            ? "rgba(100,116,139,0.08)"
+                            : "var(--app-surface)",
+                          borderColor: isRevoked
+                            ? "rgba(100,116,139,0.2)"
+                            : "rgba(245,158,11,0.45)",
+                        }}
+                      >
+                        <StepHeader
+                          label="HR Final Step"
+                          tags={!isRevoked ? <AwaitingTag /> : null}
+                          title={
+                            isRevoked ? "Revoked by HR" : "Pending HR Approval"
+                          }
+                          subtitle={
+                            isRevoked
+                              ? "HR has processed this request and restored the balances."
+                              : "Awaiting Human Resources to review and restore the hours."
+                          }
+                          right={
+                            <StatusBadge
+                              status={isRevoked ? "REVOKED" : "PENDING"}
+                              size="sm"
+                            />
+                          }
+                        />
+
+                        {isRevoked && app.revokeReason && (
+                          <Note label="HR Note:" borderColor={borderColor}>
+                            {app.revokeReason}
+                          </Note>
+                        )}
+
+                        {app.revokedAt && (
+                          <Stamp>
+                            Processed on{" "}
+                            {new Date(app.revokedAt).toLocaleString()}
+                          </Stamp>
+                        )}
+                      </TimelineNode>
+                    )}
+                  </ol>
+                ) : (
+                  <div
+                    className="flex flex-col items-center justify-center p-10 border border-dashed rounded-xl text-center"
+                    style={{
+                      backgroundColor: "var(--app-surface)",
+                      borderColor: "var(--app-border)",
+                    }}
                   >
-                    Waiting for workflow initiation
-                  </p>
-                  <p
-                    style={{ color: "var(--app-muted)" }}
-                    className="text-sm mt-0.5"
-                  >
-                    No approvers have acted on this request yet.
-                  </p>
-                </div>
-              )}
+                    <Users
+                      size={32}
+                      style={{ color: "var(--app-muted)", opacity: 0.6 }}
+                      className="mb-3"
+                    />
+                    <p
+                      style={{ color: "var(--app-text)" }}
+                      className="font-medium"
+                    >
+                      Waiting for workflow initiation
+                    </p>
+                    <p
+                      style={{ color: "var(--app-muted)" }}
+                      className="text-sm mt-0.5"
+                    >
+                      No approvers have acted on this request yet.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Original Memos Modal */}
-      <Modal
-        isOpen={memoModal.isOpen}
-        onClose={() => setMemoModal({ isOpen: false, memos: [] })}
-        title={
-          hasRevocationContext
-            ? "Original Reference Documents"
-            : "Attached Reference Documents"
-        }
-        closeLabel="Close"
-        maxWidth="max-w-4xl"
-      >
-        <MemoList
-          memos={memoModal.memos}
-          description={
-            hasRevocationContext
-              ? "Documents originally attached when the leave was filed."
-              : "Documents attached by the applicant for reference."
-          }
-        />
-      </Modal>
+      )}
     </div>
   );
 };

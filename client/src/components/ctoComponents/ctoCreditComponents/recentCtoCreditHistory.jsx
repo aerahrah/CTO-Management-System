@@ -23,6 +23,7 @@ import CtoCreditDetails from "./ctoCreditFullDetails";
 import { buildApiUrl } from "../../../config/env";
 import { useAuth } from "../../../store/authStore";
 import { usePermissions } from "../../../hooks/usePermissions";
+import useUrlDetails from "../../../hooks/useUrlDetails";
 import FullHeightCardContainer from "../../pageContainer";
 import {
   Clipboard,
@@ -760,6 +761,18 @@ const CompactPagination = ({
   );
 };
 
+/* Shown in the details modal while a linked record is being loaded */
+const DetailsLoading = () => (
+  <div
+    role="status"
+    className="flex flex-col items-center justify-center gap-3 py-20 text-sm"
+    style={{ color: "var(--app-muted)" }}
+  >
+    <span className="h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin" />
+    Loading details…
+  </div>
+);
+
 const CtoCreditHistory = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -805,11 +818,6 @@ const CtoCreditHistory = () => {
 
   const [isConfirmRollback, setIsConfirmRollback] = useState(false);
   const [selectedCreditId, setSelectedCreditId] = useState(null);
-
-  const [detailsModal, setDetailsModal] = useState({
-    isOpen: false,
-    credit: null,
-  });
 
   const rollbackInFlightRef = useRef(false);
   const rollbackSuccessLatchRef = useRef(false);
@@ -867,6 +875,15 @@ const CtoCreditHistory = () => {
   });
 
   const credits = useMemo(() => data?.credits || [], [data]);
+
+  // Details modal state lives in the URL (?credit=<id>): Back closes it,
+  // refresh keeps it, and the link can be shared with another admin.
+  const details = useUrlDetails({
+    param: "credit",
+    items: credits,
+    ready: !isLoading,
+    onMissing: () => toast.info("That credit entry couldn't be found."),
+  });
 
   const pagination = useMemo(
     () => ({
@@ -982,7 +999,7 @@ const CtoCreditHistory = () => {
     [rollbackMutation],
   );
 
-  const openDetails = (credit) => setDetailsModal({ isOpen: true, credit });
+  const openDetails = (credit) => details.open(credit);
   const openMemo = (credit) => setMemoModal({ isOpen: true, memo: credit });
   const askRollback = (credit) => {
     if (isRollbackPending) return;
@@ -1664,12 +1681,16 @@ const CtoCreditHistory = () => {
           </Modal>
 
           <Modal
-            isOpen={detailsModal.isOpen}
-            onClose={() => setDetailsModal((p) => ({ ...p, isOpen: false }))}
+            isOpen={details.isOpen}
+            onClose={details.close}
             title="CTO Credit Details"
             maxWidth="max-w-4xl"
           >
-            <CtoCreditDetails credit={detailsModal.credit} />
+            {details.display ? (
+              <CtoCreditDetails credit={details.display} />
+            ) : details.isOpen ? (
+              <DetailsLoading />
+            ) : null}
           </Modal>
 
           <Modal

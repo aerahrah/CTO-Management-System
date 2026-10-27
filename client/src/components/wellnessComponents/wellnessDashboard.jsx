@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 // IMPORTANT: Update this import path to wherever your wellness API functions are located
-import { fetchWellnessDashboard } from "../../api/wellnessApplication";
+import {
+  fetchWellnessDashboard,
+  fetchMyWellnessApplications,
+} from "../../api/wellnessApplication";
 import { useAuth } from "../../store/authStore";
 import { usePermissions } from "../../hooks/usePermissions";
 import Breadcrumbs from "../breadCrumbs";
@@ -21,7 +24,36 @@ import {
   UserCheck,
   TrendingUp,
   XCircle,
+  Eye,
 } from "lucide-react";
+
+/* ------------------ Recent requests ------------------ */
+const RECENT_LIMIT = 10;
+
+// My Wellness Applications opens the details modal for ?app=<id>
+const MY_APPLICATIONS_PATH = "/app/wellness-apply";
+const applicationLink = (id) =>
+  `${MY_APPLICATIONS_PATH}?app=${encodeURIComponent(id)}`;
+
+const VIEW_BTN =
+  "inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold border cursor-pointer select-none shadow-sm " +
+  "bg-[color:var(--app-surface)] border-[color:var(--app-border)] text-[color:var(--accent)] " +
+  "hover:bg-[color:var(--accent-soft)] hover:border-[color:var(--accent-soft2)] " +
+  "active:scale-95 transition-[background-color,border-color,transform] duration-150 ease-out " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+
+// Row clicks open the request, except on its link/buttons or while selecting text
+const shouldOpenFromClick = (e) => {
+  if (e.defaultPrevented) return false;
+  if (e.target instanceof Element && e.target.closest("a, button")) {
+    return false;
+  }
+  const selection = window.getSelection?.();
+  if (selection && !selection.isCollapsed && selection.toString().trim()) {
+    return false;
+  }
+  return true;
+};
 
 /* ------------------ Resolve theme ------------------ */
 function resolveTheme(prefTheme) {
@@ -693,6 +725,29 @@ const WellnessDashboard = () => {
     queryFn: fetchWellnessDashboard,
   });
 
+  // Latest submissions for "My recent requests". Uses the same endpoint (and
+  // query-key prefix) as My Wellness Applications, so filing or cancelling
+  // there refreshes this card too. Falls back to the dashboard's own list.
+  const user = useAuth((s) => s.admin);
+  const userId = user?.employeeId || user?.id || user?._id;
+  const { data: recentData, isLoading: isRecentLoading } = useQuery({
+    queryKey: [
+      "myWellnessApplications",
+      "dashboardRecent",
+      RECENT_LIMIT,
+      userId,
+    ],
+    queryFn: () =>
+      fetchMyWellnessApplications({
+        employeeId: userId,
+        page: 1,
+        limit: RECENT_LIMIT,
+      }),
+    enabled: !!userId,
+    staleTime: 30_000,
+  });
+
+  const navigate = useNavigate();
   const { can } = usePermissions();
   const isApprover = can("wellness.view_application");
 
@@ -711,7 +766,7 @@ const WellnessDashboard = () => {
 
   useEffect(() => {}, []);
 
-  if (isLoading)
+  if (isLoading || isRecentLoading)
     return (
       <LoadingSkeleton
         resolvedTheme={resolvedTheme}
@@ -745,6 +800,14 @@ const WellnessDashboard = () => {
       cancelled: 0,
     },
   } = data;
+
+  const recentList = recentData?.applications || recentData?.data;
+  const recentRequests = (
+    Array.isArray(recentList)
+      ? recentList
+      : myWellnessSummary?.recentRequests || []
+  ).slice(0, RECENT_LIMIT);
+  const recentCount = recentRequests.length;
 
   const balance = Number(myWellnessSummary?.balance || 0);
   const used = Number(myWellnessSummary?.used || 0);
@@ -1070,19 +1133,12 @@ const WellnessDashboard = () => {
                   <CardHeader
                     title="My recent requests"
                     icon={Calendar}
-                    subtitle={`Last ${myWellnessSummary?.recentRequests?.length || 0} submissions`}
+                    subtitle={`Last ${recentCount} submission${recentCount === 1 ? "" : "s"}`}
                     borderColor={borderColor}
                     action={
                       <div className="flex items-center gap-2">
-                        <Pill
-                          tone={
-                            myWellnessSummary?.recentRequests?.length
-                              ? "blue"
-                              : "neutral"
-                          }
-                        >
-                          {myWellnessSummary?.recentRequests?.length || 0}{" "}
-                          recent
+                        <Pill tone={recentCount ? "blue" : "neutral"}>
+                          {recentCount} recent
                         </Pill>
                         <Link
                           to={`/app/wellness-apply/`}
@@ -1106,8 +1162,7 @@ const WellnessDashboard = () => {
                     }
                   />
                   <div className="p-4">
-                    {myWellnessSummary?.recentRequests &&
-                    myWellnessSummary.recentRequests.length > 0 ? (
+                    {recentCount > 0 ? (
                       <div
                         className="border rounded-xl overflow-y-auto max-h-72 cto-scrollbar transition-colors duration-300 ease-out"
                         style={{
@@ -1115,75 +1170,69 @@ const WellnessDashboard = () => {
                           backgroundColor: "var(--app-surface)",
                         }}
                       >
-                        {myWellnessSummary.recentRequests.map(
-                          (request, idx) => {
-                            const isLast =
-                              idx ===
-                              myWellnessSummary.recentRequests.length - 1;
-                            const st = getStatusStyle(request.overallStatus);
+                        {recentRequests.map((request, idx) => {
+                          const isLast = idx === recentCount - 1;
+                          const st = getStatusStyle(request.overallStatus);
+                          const shortId = String(request._id || "")
+                            .slice(-6)
+                            .toUpperCase();
 
-                            // Handle older requestedDays vs newer totalDays
-                            const requestDays =
-                              request.totalDays || request.requestedDays;
+                          // Handle older requestedDays vs newer totalDays
+                          const requestDays =
+                            request.totalDays || request.requestedDays;
 
-                            return (
-                              <div
-                                key={request._id}
-                                className="py-3 px-4 transition-colors duration-300 ease-out"
-                                style={{
-                                  borderBottom: isLast
-                                    ? "none"
-                                    : `1px solid ${borderColor}`,
-                                  backgroundColor: "transparent",
-                                }}
-                                onMouseEnter={(e) => {
-                                  e.currentTarget.style.backgroundColor =
-                                    "var(--app-surface-2)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.backgroundColor =
-                                    "transparent";
-                                }}
-                              >
-                                <div className="flex flex-row items-start justify-between gap-3">
-                                  <div className="flex items-start gap-3 min-w-0">
-                                    <div
-                                      className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 transition-colors duration-300 ease-out"
-                                      style={{
-                                        borderColor: borderColor,
-                                        backgroundColor: "var(--app-surface-2)",
-                                        color: "var(--app-muted)",
-                                      }}
-                                    >
-                                      <User className="w-4 h-4" />
-                                    </div>
-
-                                    <div className="min-w-0">
-                                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                                        <div
-                                          className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
-                                          style={{ color: "var(--app-text)" }}
-                                        >
-                                          Request #
-                                          {request._id.slice(-6).toUpperCase()}
-                                        </div>
-                                        <Pill
-                                          tone="blue"
-                                          className="normal-case"
-                                        >
-                                          {requestDays}d
-                                        </Pill>
-                                      </div>
-                                      <div
-                                        className="mt-1 text-xs transition-colors duration-300 ease-out"
-                                        style={{ color: "var(--app-muted)" }}
-                                      >
-                                        Submitted:{" "}
-                                        {formatDate(request.createdAt)}
-                                      </div>
-                                    </div>
+                          return (
+                            <div
+                              key={request._id}
+                              // Whole row opens the request; the View link is
+                              // the keyboard / screen-reader target.
+                              onClick={(e) => {
+                                if (shouldOpenFromClick(e)) {
+                                  navigate(applicationLink(request._id));
+                                }
+                              }}
+                              className="py-3 px-4 cursor-pointer transition-colors duration-150 ease-out hover:bg-[color:var(--app-surface-2)] active:bg-[color:color-mix(in_srgb,var(--app-surface-2)_88%,var(--app-text))]"
+                              style={{
+                                borderBottom: isLast
+                                  ? "none"
+                                  : `1px solid ${borderColor}`,
+                              }}
+                            >
+                              <div className="flex flex-row items-start justify-between gap-3">
+                                <div className="flex items-start gap-3 min-w-0">
+                                  <div
+                                    className="w-10 h-10 rounded-lg border flex items-center justify-center flex-shrink-0 transition-colors duration-300 ease-out"
+                                    style={{
+                                      borderColor: borderColor,
+                                      backgroundColor: "var(--app-surface-2)",
+                                      color: "var(--app-muted)",
+                                    }}
+                                  >
+                                    <User className="w-4 h-4" />
                                   </div>
 
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                      <div
+                                        className="text-sm font-semibold truncate transition-colors duration-300 ease-out"
+                                        style={{ color: "var(--app-text)" }}
+                                      >
+                                        Request #{shortId}
+                                      </div>
+                                      <Pill tone="blue" className="normal-case">
+                                        {requestDays}d
+                                      </Pill>
+                                    </div>
+                                    <div
+                                      className="mt-1 text-xs transition-colors duration-300 ease-out"
+                                      style={{ color: "var(--app-muted)" }}
+                                    >
+                                      Submitted: {formatDate(request.createdAt)}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex flex-col items-end gap-1.5 shrink-0 sm:flex-row sm:items-center sm:gap-2">
                                   <span
                                     className={[
                                       "inline-flex items-center rounded-full px-2.5 py-1 text-[10px]",
@@ -1193,11 +1242,19 @@ const WellnessDashboard = () => {
                                   >
                                     {request.overallStatus}
                                   </span>
+                                  <Link
+                                    to={applicationLink(request._id)}
+                                    className={VIEW_BTN}
+                                    aria-label={`View request #${shortId}`}
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    View
+                                  </Link>
                                 </div>
                               </div>
-                            );
-                          },
-                        )}
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <div

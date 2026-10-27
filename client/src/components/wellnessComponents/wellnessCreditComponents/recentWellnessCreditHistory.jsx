@@ -27,6 +27,7 @@ import FilterSelect from "../../filterSelect";
 import FullHeightCardContainer from "../../pageContainer";
 import { useAuth } from "../../../store/authStore";
 import { usePermissions } from "../../../hooks/usePermissions";
+import useUrlDetails from "../../../hooks/useUrlDetails";
 
 import {
   Clipboard,
@@ -737,6 +738,18 @@ const CompactPagination = ({
   );
 };
 
+/* Shown in the details modal while a linked record is being loaded */
+const DetailsLoading = () => (
+  <div
+    role="status"
+    className="flex flex-col items-center justify-center gap-3 py-20 text-sm"
+    style={{ color: "var(--app-muted)" }}
+  >
+    <span className="h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin" />
+    Loading details…
+  </div>
+);
+
 const WellnessCreditHistory = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -784,11 +797,6 @@ const WellnessCreditHistory = () => {
 
   // ✅ Expire Year-End Modal State
   const [isConfirmExpire, setIsConfirmExpire] = useState(false);
-
-  const [detailsModal, setDetailsModal] = useState({
-    isOpen: false,
-    credit: null,
-  });
 
   const rollbackInFlightRef = useRef(false);
   const rollbackSuccessLatchRef = useRef(false);
@@ -846,6 +854,15 @@ const WellnessCreditHistory = () => {
   });
 
   const credits = useMemo(() => data?.credits || [], [data]);
+
+  // Details modal state lives in the URL (?credit=<id>): Back closes it,
+  // refresh keeps it, and the link can be shared with another admin.
+  const details = useUrlDetails({
+    param: "credit",
+    items: credits,
+    ready: !isLoading,
+    onMissing: () => toast.info("That credit entry couldn't be found."),
+  });
 
   const pagination = useMemo(
     () => ({
@@ -971,7 +988,7 @@ const WellnessCreditHistory = () => {
     [rollbackMutation],
   );
 
-  const openDetails = (credit) => setDetailsModal({ isOpen: true, credit });
+  const openDetails = (credit) => details.open(credit);
   const askRollback = (credit) => {
     if (isRollbackPending) return;
     setSelectedCreditId(credit._id);
@@ -1732,12 +1749,16 @@ const WellnessCreditHistory = () => {
           </Modal>
 
           <Modal
-            isOpen={detailsModal.isOpen}
-            onClose={() => setDetailsModal((p) => ({ ...p, isOpen: false }))}
+            isOpen={details.isOpen}
+            onClose={details.close}
             title="Wellness Credit Details"
             maxWidth="max-w-4xl"
           >
-            <WellnessCreditDetails credit={detailsModal.credit} />
+            {details.display ? (
+              <WellnessCreditDetails credit={details.display} />
+            ) : details.isOpen ? (
+              <DetailsLoading />
+            ) : null}
           </Modal>
         </SkeletonTheme>
       </div>

@@ -42,6 +42,8 @@ import {
 import WellnessApplicationDetails from "./myWellnessApplicationFullDetails";
 import FullHeightCardContainer from "../../pageContainer";
 import { useAuth } from "../../../store/authStore";
+import useUrlDetails from "../../../hooks/useUrlDetails";
+import { toast } from "react-toastify";
 import StatusTabs from "../../statusTabs";
 
 // PDF Modals
@@ -884,6 +886,18 @@ const CompactPagination = ({
   );
 };
 
+/* Shown in the details modal while a linked record is being loaded */
+const DetailsLoading = () => (
+  <div
+    role="status"
+    className="flex flex-col items-center justify-center gap-3 py-20 text-sm"
+    style={{ color: "var(--app-muted)" }}
+  >
+    <span className="h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin" />
+    Loading details…
+  </div>
+);
+
 /* =========================
    Page
 ========================= */
@@ -919,7 +933,6 @@ const AllWellnessApplicationsHistory = () => {
   }, [resolvedTheme]);
 
   // Selected app
-  const [selectedApp, setSelectedApp] = useState(null);
 
   // PDF modals + loading
   const [pdfApp, setPdfApp] = useState(null);
@@ -981,6 +994,20 @@ const AllWellnessApplicationsHistory = () => {
     () => data?.applications || data?.data || [],
     [data],
   );
+
+  // Details modal state lives in the URL (?app=<id>): Back closes it, refresh
+  // keeps it, and the link can be shared with another admin.
+  const details = useUrlDetails({
+    param: "app",
+    items: applications,
+    ready: !isLoading,
+    queryKey: "wellnessApplicationDetail",
+    fetchById: async (id) => {
+      const res = await fetchWellnessApplicationById(id);
+      return res?.application || res?.data || res;
+    },
+    onMissing: () => toast.info("That application couldn't be found."),
+  });
 
   const pagination = useMemo(
     () => ({
@@ -1050,7 +1077,7 @@ const AllWellnessApplicationsHistory = () => {
   const statRejected = statusCounts.REJECTED || 0;
 
   const rowHandlers = (app) => ({
-    onViewDetails: () => setSelectedApp(app),
+    onViewDetails: () => details.open(app),
     onViewPdf: () => handleViewPdf(app),
     onViewCscForm6: () => setOrganicPdfApp(app),
   });
@@ -1591,15 +1618,19 @@ const AllWellnessApplicationsHistory = () => {
             onClose={() => setOrganicPdfApp(null)}
           />
 
-          {/* Details modal */}
-          {selectedApp && (
+          {/* Details modal (open state lives in the URL: ?app=<id>) */}
+          {details.isOpen && (
             <Modal
-              isOpen={!!selectedApp}
-              onClose={() => setSelectedApp(null)}
+              isOpen={details.isOpen}
+              onClose={details.close}
               maxWidth="max-w-5xl"
               title="Wellness Application Details"
             >
-              <WellnessApplicationDetails app={selectedApp} />
+              {details.selected ? (
+                <WellnessApplicationDetails app={details.selected} />
+              ) : (
+                <DetailsLoading />
+              )}
             </Modal>
           )}
         </SkeletonTheme>

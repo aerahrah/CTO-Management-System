@@ -13,6 +13,7 @@ import {
   followUpCtoApplicationRequest,
   requestRevocation,
   cancelRevocationCtoRequest,
+  fetchCtoApplicationById,
 } from "../../../api/cto";
 
 import { fetchRevocationSettings } from "../../../api/revocationApprover";
@@ -57,6 +58,7 @@ import OrganicApplicationPdfModal from "./organicApplicationPDFModal";
 
 import { useAuth } from "../../../store/authStore";
 import { usePermissions } from "../../../hooks/usePermissions";
+import useUrlDetails from "../../../hooks/useUrlDetails";
 
 import RevokeRequestModal from "../../revocationComponents/revokeRequestModal";
 
@@ -1168,6 +1170,18 @@ const ConfirmBody = ({ icon: Icon, tone, title, message }) => {
   );
 };
 
+/* Shown in the details modal while a linked application is being loaded */
+const DetailsLoading = () => (
+  <div
+    role="status"
+    className="flex flex-col items-center justify-center gap-3 py-20 text-sm"
+    style={{ color: "var(--app-muted)" }}
+  >
+    <span className="h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin" />
+    Loading details…
+  </div>
+);
+
 /* =========================
    Page
 ========================= */
@@ -1220,7 +1234,6 @@ const MyCtoApplications = () => {
     };
   }, [resolvedTheme]);
 
-  const [selectedApp, setSelectedApp] = useState(null);
   const [memoModal, setMemoModal] = useState({ isOpen: false, memos: [] });
   const [pdfApp, setPdfApp] = useState(null);
   const [organicPdfApp, setOrganicPdfApp] = useState(null);
@@ -1305,14 +1318,9 @@ const MyCtoApplications = () => {
 
   const cancelMutation = useMutation({
     mutationFn: (applicationId) => cancelCtoApplicationRequest(applicationId),
-    onSuccess: (payload) => {
+    onSuccess: () => {
       toast.success("Application cancelled.");
-
-      const updatedApp = payload?.application ?? payload?.data ?? payload;
-      if (updatedApp?._id && selectedApp?._id === updatedApp._id) {
-        setSelectedApp(updatedApp);
-      }
-
+      // An open details modal refreshes from the refetched list
       closeCancelModal();
       queryClient.invalidateQueries({ queryKey: [appQueryKey] });
       queryClient.invalidateQueries({ queryKey: [balanceQueryKey] });
@@ -1349,12 +1357,6 @@ const MyCtoApplications = () => {
       toast.success(
         payload?.message || "Revocation request submitted successfully.",
       );
-
-      const updatedApp = payload?.application ?? payload?.data ?? payload;
-      if (updatedApp?._id && selectedApp?._id === updatedApp._id) {
-        setSelectedApp(updatedApp);
-      }
-
       closeRevokeModal();
       queryClient.invalidateQueries({ queryKey: [appQueryKey] });
     },
@@ -1388,6 +1390,20 @@ const MyCtoApplications = () => {
   };
 
   const applications = useMemo(() => data?.data || [], [data]);
+
+  // Details modal state lives in the URL (?app=<id>): Back closes it, refresh
+  // keeps it, and links from notifications open it directly.
+  const details = useUrlDetails({
+    param: "app",
+    items: applications,
+    ready: !isLoading,
+    queryKey: "myCtoApplicationDetail",
+    fetchById: async (id) => {
+      const res = await fetchCtoApplicationById(id);
+      return res?.application || res?.data || res;
+    },
+    onMissing: () => toast.info("That application couldn't be found."),
+  });
 
   const pagination = useMemo(
     () => ({
@@ -1511,14 +1527,14 @@ const MyCtoApplications = () => {
     canRequestRevocation,
     // Clicking anywhere on the row/card (except its buttons) opens details
     onOpen: (e) => {
-      if (shouldOpenFromClick(e)) setSelectedApp(app);
+      if (shouldOpenFromClick(e)) details.open(app);
     },
     onOpenKeyDown: (e) => {
       if (e.target !== e.currentTarget || !isActivationKey(e)) return;
       e.preventDefault();
-      setSelectedApp(app);
+      details.open(app);
     },
-    onViewDetails: () => setSelectedApp(app),
+    onViewDetails: () => details.open(app),
     onViewPdf: () => setPdfApp({ ...app, ledger: data?.ledger }),
     onViewCscForm6: () => setOrganicPdfApp({ ...app, ledger: data?.ledger }),
     onViewMemos: () => openMemoModal(app.memo),
@@ -2068,15 +2084,19 @@ const MyCtoApplications = () => {
             />
           )}
 
-          {/* Details modal */}
-          {selectedApp && (
+          {/* Details modal (open state lives in the URL: ?app=<id>) */}
+          {details.isOpen && (
             <Modal
-              isOpen={!!selectedApp}
-              onClose={() => setSelectedApp(null)}
+              isOpen={details.isOpen}
+              onClose={details.close}
               title="Application Details"
               maxWidth="max-w-5xl"
             >
-              <CtoApplicationDetails app={selectedApp} loading={!selectedApp} />
+              {details.selected ? (
+                <CtoApplicationDetails app={details.selected} />
+              ) : (
+                <DetailsLoading />
+              )}
             </Modal>
           )}
 

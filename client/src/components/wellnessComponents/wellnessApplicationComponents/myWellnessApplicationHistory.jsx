@@ -51,6 +51,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../store/authStore";
 import { usePermissions } from "../../../hooks/usePermissions";
+import useUrlDetails from "../../../hooks/useUrlDetails";
 
 import WellnessLeavePdfModal from "./wellnessApplicationModal";
 import OrganicWellnessLeavePdfModal from "./organicWellnessApplicationPDFModal";
@@ -1039,6 +1040,18 @@ const ConfirmBody = ({ icon: Icon, tone, title, message }) => {
   );
 };
 
+/* Shown in the details modal while a linked record is being loaded */
+const DetailsLoading = () => (
+  <div
+    role="status"
+    className="flex flex-col items-center justify-center gap-3 py-20 text-sm"
+    style={{ color: "var(--app-muted)" }}
+  >
+    <span className="h-6 w-6 rounded-full border-2 border-current border-t-transparent animate-spin" />
+    Loading details…
+  </div>
+);
+
 /* =========================
    Main Component
 ========================= */
@@ -1092,7 +1105,6 @@ const MyWellnessApplications = () => {
     };
   }, [resolvedTheme]);
 
-  const [selectedApp, setSelectedApp] = useState(null);
   const [pdfApp, setPdfApp] = useState(null);
   const [organicPdfApp, setOrganicPdfApp] = useState(null);
   const [pdfLoadingId, setPdfLoadingId] = useState(null);
@@ -1238,12 +1250,7 @@ const MyWellnessApplications = () => {
       toast.success(
         payload?.message || "Revocation request submitted successfully.",
       );
-
-      const updatedApp = payload?.application ?? payload?.data ?? payload;
-      if (updatedApp?._id && selectedApp?._id === updatedApp._id) {
-        setSelectedApp(updatedApp);
-      }
-
+      // An open details modal refreshes from the refetched list
       closeRevokeModal();
       queryClient.invalidateQueries({ queryKey: ["myWellnessApplications"] });
       refetch();
@@ -1276,6 +1283,20 @@ const MyWellnessApplications = () => {
     () => data?.applications || data?.data || [],
     [data],
   );
+
+  // Details modal state lives in the URL (?app=<id>): Back closes it, refresh
+  // keeps it, and links from notifications open it directly.
+  const details = useUrlDetails({
+    param: "app",
+    items: applications,
+    ready: !isLoading,
+    queryKey: "myWellnessApplicationDetail",
+    fetchById: async (id) => {
+      const res = await fetchWellnessApplicationById(id);
+      return res?.application || res?.data || res;
+    },
+    onMissing: () => toast.info("That application couldn't be found."),
+  });
 
   const pagination = useMemo(
     () => ({
@@ -1402,14 +1423,14 @@ const MyWellnessApplications = () => {
     isPdfLoading: pdfLoadingId === app._id,
     // Clicking anywhere on the row/card (except its buttons) opens details
     onOpen: (e) => {
-      if (shouldOpenFromClick(e)) setSelectedApp(app);
+      if (shouldOpenFromClick(e)) details.open(app);
     },
     onOpenKeyDown: (e) => {
       if (e.target !== e.currentTarget || !isActivationKey(e)) return;
       e.preventDefault();
-      setSelectedApp(app);
+      details.open(app);
     },
-    onViewDetails: () => setSelectedApp(app),
+    onViewDetails: () => details.open(app),
     onViewPdf: () => openPdf(app, "general"),
     onViewOrganicForm: () => openPdf(app, "organic"),
     onCancel: () => openCancelModal(app),
@@ -1950,15 +1971,19 @@ const MyWellnessApplications = () => {
             </button>
           )}
 
-          {/* Details Modal */}
-          {selectedApp && (
+          {/* Details modal (open state lives in the URL: ?app=<id>) */}
+          {details.isOpen && (
             <Modal
-              isOpen={!!selectedApp}
-              onClose={() => setSelectedApp(null)}
+              isOpen={details.isOpen}
+              onClose={details.close}
               title="Wellness Leave Details"
               maxWidth="max-w-5xl"
             >
-              <WellnessApplicationDetails app={selectedApp} />
+              {details.selected ? (
+                <WellnessApplicationDetails app={details.selected} />
+              ) : (
+                <DetailsLoading />
+              )}
             </Modal>
           )}
 
