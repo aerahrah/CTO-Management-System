@@ -13,6 +13,11 @@ const {
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 
+// All hour values follow one standard: 4 decimal places (see utils/hours.js).
+const { roundHours, incHoursPipeline } = require("../utils/hours");
+
+const toObjectId = (id) => new mongoose.Types.ObjectId(String(id));
+
 // --- CONSTANTS & IMMUTABILITY ---
 const CTO_STATUS = Object.freeze({
   ACTIVE: "ACTIVE",
@@ -55,7 +60,8 @@ function toHours(duration = {}) {
   if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) {
     throw createServiceError("Invalid duration provided.", 400);
   }
-  return h + m / 60;
+  // e.g. 3h 52m -> 3.8667
+  return roundHours(h + m / 60);
 }
 
 async function safeSendEmail(to, subject, html) {
@@ -118,7 +124,7 @@ async function calculateEarnedCTOHoursForMonth(
     ? await CtoCredit.aggregate(pipeline, { session })
     : await CtoCredit.aggregate(pipeline);
 
-  return result.length > 0 ? result[0].totalEarned : 0;
+  return result.length > 0 ? roundHours(result[0].totalEarned) : 0;
 }
 
 // --- SERVICE METHODS ---
@@ -133,7 +139,7 @@ async function getRemainingCreditableHours(employeeId, targetDate) {
   const emp = await Employee.findById(employeeId).select("balances").lean();
   if (!emp) throw createServiceError("Employee not found.", 404);
 
-  const currentBalance = Number(emp.balances?.ctoHours || 0);
+  const currentBalance = roundHours(emp.balances?.ctoHours);
   const dateToCheck = targetDate || new Date();
 
   // Get how much they've already accrued in this target month
@@ -142,8 +148,14 @@ async function getRemainingCreditableHours(employeeId, targetDate) {
     dateToCheck,
   );
 
-  const roomUntil120 = Math.max(0, MAX_COC_BALANCE - currentBalance);
-  const roomUntil40 = Math.max(0, MAX_COC_PER_MONTH - earnedThisMonth);
+  const roomUntil120 = Math.max(
+    0,
+    roundHours(MAX_COC_BALANCE - currentBalance),
+  );
+  const roomUntil40 = Math.max(
+    0,
+    roundHours(MAX_COC_PER_MONTH - earnedThisMonth),
+  );
 
   // The actual amount HR can still safely grant them this month
   const absoluteCreditableNow = Math.min(roomUntil120, roomUntil40);
@@ -251,10 +263,13 @@ async function addCredit({
       // 2. Iterate through each employee and apply CSC Capping Rules individually
       for (const empId of employeeIds) {
         const emp = empMap.get(String(empId));
-        const currentBalance = Number(emp.balances?.ctoHours || 0);
+        const currentBalance = roundHours(emp.balances?.ctoHours);
 
         // Calculate Room in 120-hour max limit
-        const roomUntil120 = Math.max(0, MAX_COC_BALANCE - currentBalance);
+        const roomUntil120 = Math.max(
+          0,
+          roundHours(MAX_COC_BALANCE - currentBalance),
+        );
 
         // Calculate Room in 40-hour monthly limit
         const earnedThisMonth = await calculateEarnedCTOHoursForMonth(
@@ -262,17 +277,21 @@ async function addCredit({
           startDate,
           session,
         );
-        const roomUntil40 = Math.max(0, MAX_COC_PER_MONTH - earnedThisMonth);
+        const roomUntil40 = Math.max(
+          0,
+          roundHours(MAX_COC_PER_MONTH - earnedThisMonth),
+        );
 
         // Absolute maximum they can receive from this memo
         const maxAllowedToCredit = Math.min(roomUntil120, roomUntil40);
 
-        // Final creditable hours
-        const actualCreditedHours = Math.max(
-          0,
-          Math.min(totalHours, maxAllowedToCredit),
+        // Final creditable hours (4 decimal places)
+        const actualCreditedHours = roundHours(
+          Math.max(0, Math.min(totalHours, maxAllowedToCredit)),
         );
-        const forfeitedHours = Math.max(0, totalHours - actualCreditedHours);
+        const forfeitedHours = roundHours(
+          Math.max(0, totalHours - actualCreditedHours),
+        );
 
         finalEmployeeObjs.push({
           employee: empId,
@@ -285,12 +304,16 @@ async function addCredit({
           dateCredited: approvedDate,
         });
 
-        // Only update DB if they actually received > 0 hours
+        // Only update DB if they actually received > 0 hours.
+        // The new balance is rounded to 4 decimals inside MongoDB.
         if (actualCreditedHours > 0) {
           bulkEmployeeOps.push({
             updateOne: {
-              filter: { _id: empId },
-              update: { $inc: { "balances.ctoHours": actualCreditedHours } },
+              filter: { _id: toObjectId(empId) },
+              update: incHoursPipeline(
+                "balances.ctoHours",
+                actualCreditedHours,
+              ),
             },
           });
         }
@@ -320,8 +343,9 @@ async function addCredit({
       created = docs[0];
 
       // 4. Update the actual Employee Balances
+      //    (native collection: works with update pipelines on Mongoose 8 and 9)
       if (bulkEmployeeOps.length > 0) {
-        await Employee.bulkWrite(bulkEmployeeOps, { session });
+        await Employee.collection.bulkWrite(bulkEmployeeOps, { session });
       }
     });
   } finally {
@@ -405,8 +429,10 @@ async function rollbackCredit({ creditId, userId }) {
         );
       }
 
+      // Rounded first, so leftover float noise (e.g. 0.0000000000000002 h)
+      // doesn't wrongly block a rollback.
       const hasUsedOrReserved = credit.employees.some(
-        (e) => (e.usedHours || 0) > 0 || (e.reservedHours || 0) > 0,
+        (e) => roundHours(e.usedHours) > 0 || roundHours(e.reservedHours) > 0,
       );
 
       if (hasUsedOrReserved) {
@@ -417,15 +443,20 @@ async function rollbackCredit({ creditId, userId }) {
       }
 
       // Rollback only what they were specifically credited (respects previous caps)
-      const ops = credit.employees.map((e) => ({
-        updateOne: {
-          filter: { _id: e.employee },
-          update: { $inc: { "balances.ctoHours": -(e.creditedHours || 0) } },
-        },
-      }));
+      const ops = credit.employees
+        .filter((e) => roundHours(e.creditedHours) > 0)
+        .map((e) => ({
+          updateOne: {
+            filter: { _id: toObjectId(e.employee) },
+            update: incHoursPipeline(
+              "balances.ctoHours",
+              -roundHours(e.creditedHours),
+            ),
+          },
+        }));
 
       if (ops.length > 0) {
-        await Employee.bulkWrite(ops, { session });
+        await Employee.collection.bulkWrite(ops, { session });
       }
 
       credit.employees = credit.employees.map((e) => ({
@@ -619,11 +650,12 @@ async function getEmployeeCredits(
     },
   ]);
 
+  // Sums of 4-decimal values can pick up float noise, so round the totals.
   const totals = {
-    totalUsedHours: totalsAgg?.totalUsedHours ?? 0,
-    totalReservedHours: totalsAgg?.totalReservedHours ?? 0,
-    totalRemainingHours: totalsAgg?.totalRemainingHours ?? 0,
-    totalCreditedHours: totalsAgg?.totalCreditedHours ?? 0,
+    totalUsedHours: roundHours(totalsAgg?.totalUsedHours),
+    totalReservedHours: roundHours(totalsAgg?.totalReservedHours),
+    totalRemainingHours: roundHours(totalsAgg?.totalRemainingHours),
+    totalCreditedHours: roundHours(totalsAgg?.totalCreditedHours),
   };
 
   const safeSearch = sanitizeSearch(search, 100);
@@ -680,12 +712,12 @@ async function getEmployeeCredits(
       uploadedMemo: credit.uploadedMemo,
       inclusiveDates: credit.inclusiveDates,
       purpose: credit.purpose,
-      creditedHours: empData?.creditedHours ?? 0,
-      forfeitedHours: empData?.forfeitedHours ?? 0,
+      creditedHours: roundHours(empData?.creditedHours),
+      forfeitedHours: roundHours(empData?.forfeitedHours),
       duration: credit.duration,
-      usedHours: empData?.usedHours || 0,
-      reservedHours: isRolledBack ? 0 : empData?.reservedHours || 0,
-      remainingHours: isRolledBack ? 0 : (empData?.remainingHours ?? 0),
+      usedHours: roundHours(empData?.usedHours),
+      reservedHours: isRolledBack ? 0 : roundHours(empData?.reservedHours),
+      remainingHours: isRolledBack ? 0 : roundHours(empData?.remainingHours),
       status: credit.status,
       employeeStatus: empData?.status || CTO_STATUS.ACTIVE,
       creditedBy: credit.creditedBy,

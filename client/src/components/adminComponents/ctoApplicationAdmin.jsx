@@ -8,6 +8,8 @@
 //   • Edit  (/app/console/cto-applications/:applicationId)
 //       – status, hours, dates, reason, late filing, which memos the hours come from,
 //         approval steps, notified employees, applicant snapshot, CSC Form 6 details
+//       – signatures: the URL / file behind the applicant's and each approver's
+//         signature, how many records share that file, and editing the URL
 //       – review the effect on memo hours and the CTO balance, then save
 //
 // Uses adminCtoApplication.js. Admin edits send no emails or notifications.
@@ -89,6 +91,10 @@ import {
   RefreshCw,
   Scale,
   UserCog,
+  PenLine,
+  Copy,
+  ExternalLink,
+  ImageOff,
 } from "lucide-react";
 
 /* =====================================================================
@@ -96,6 +102,14 @@ import {
 ===================================================================== */
 
 const pageSizeOptions = [20, 50, 100];
+
+/**
+ * Where the backend serves uploaded files, for previewing signatures stored as
+ * a path such as "uploads/signatures/juan.png". Leave "" if those paths load
+ * from this site; otherwise set it to the file server, e.g. "http://localhost:5000".
+ * Full http(s) URLs (Cloudinary, S3 …) are used as they are.
+ */
+const FILE_BASE_URL = "";
 
 const APP_STATUSES = [
   "PENDING",
@@ -320,6 +334,103 @@ const getInitials = (name) =>
     .toUpperCase();
 const sameJson = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
+/* ------------------ Signatures ------------------ */
+
+/** Where a signature lives (same idea as the server's describeSignature). */
+function describeSignatureUrl(raw) {
+  const url = String(raw || "").trim();
+  if (!url) return null;
+  if (/^data:/i.test(url)) {
+    const base64 = url.slice(url.indexOf(",") + 1);
+    return {
+      kind: "embedded",
+      url,
+      mimeType: /^data:([^;,]+)/i.exec(url)?.[1] || "image",
+      sizeKb: Math.round(((base64.length * 3) / 4 / 1024) * 10) / 10,
+    };
+  }
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const u = new URL(url);
+      let path = u.pathname;
+      try {
+        path = decodeURIComponent(path);
+      } catch {
+        // keep the encoded path
+      }
+      return {
+        kind: "remote",
+        url,
+        host: u.host,
+        path,
+        fileName: path.split("/").pop() || null,
+      };
+    } catch {
+      return { kind: "remote", url, host: null, path: null, fileName: null };
+    }
+  }
+  const path = url.replace(/\\/g, "/").split(/[?#]/)[0];
+  return {
+    kind: "local",
+    url,
+    host: null,
+    path,
+    fileName: path.split("/").pop() || null,
+  };
+}
+
+/** A browser-loadable address for a stored signature. */
+function signatureSrc(raw) {
+  const d = describeSignatureUrl(raw);
+  if (!d) return null;
+  if (d.kind !== "local") return d.url;
+  return `${FILE_BASE_URL}/${d.path.replace(/^\/+/, "")}`;
+}
+
+const sameSignatureFile = (a, b) => {
+  const key = (v) =>
+    String(v || "")
+      .trim()
+      .replace(/\\/g, "/");
+  return !!key(a) && key(a) === key(b);
+};
+
+/** "3 CTO applications, 5 approval steps, Juan Cruz's profile" */
+function usedByText(usage) {
+  if (!usage) return null;
+  const plural = (n, word) => `${n} ${word}${n !== 1 ? "s" : ""}`;
+  const parts = [];
+  if (usage.applications)
+    parts.push(plural(usage.applications, "CTO application"));
+  if (usage.approvalSteps)
+    parts.push(plural(usage.approvalSteps, "approval step"));
+  if (usage.employeeProfiles) {
+    const names = (usage.employees || []).map(fullName);
+    if (usage.employeeProfiles === 1 && names[0])
+      parts.push(`${names[0]}'s profile`);
+    else
+      parts.push(
+        `${plural(usage.employeeProfiles, "employee profile")}${
+          names.length
+            ? ` (${names.join(", ")}${usage.employeeProfiles > names.length ? ", …" : ""})`
+            : ""
+        }`,
+      );
+  }
+  const total =
+    (usage.applications || 0) +
+    (usage.approvalSteps || 0) +
+    (usage.employeeProfiles || 0);
+  const text =
+    parts.length > 1
+      ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`
+      : parts[0];
+  return total ? { text, total } : null;
+}
+
+const storedUrlOf = (info, raw) =>
+  info?.stored?.url || (typeof raw === "string" ? raw.trim() : "");
+
 function useDebounced(value, delay = 300) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -425,7 +536,12 @@ function toForm(app) {
       status: s.status || "PENDING",
       remarks: s.remarks || "",
       reviewedAt: s.reviewedAt || null,
+      signature: storedUrlOf(s.signatureInfo, s.approverSignature),
     })),
+    applicantSignature: storedUrlOf(
+      app.applicantSignatureInfo,
+      app.applicantSignatureUrl,
+    ),
     notified: (app.notifiedInfo || []).map((p) => ({
       _id: String(p._id),
       fullName: fullName(p),
@@ -492,6 +608,9 @@ function buildPayload(form, initial, app, options, editReason) {
     }));
   }
 
+  if (form.applicantSignature !== initial.applicantSignature)
+    payload.applicantSignatureUrl = form.applicantSignature.trim() || null;
+
   const stepsOf = (f) =>
     f.approvals.map((s) => [
       s._id,
@@ -499,15 +618,26 @@ function buildPayload(form, initial, app, options, editReason) {
       s.role,
       s.status,
       s.remarks,
+      s.signature,
     ]);
   if (!sameJson(stepsOf(form), stepsOf(initial))) {
-    payload.approvals = form.approvals.map((s) => ({
-      ...(s._id ? { _id: s._id } : {}),
-      approver: String(s.approver._id),
-      role: s.role,
-      status: s.status,
-      remarks: s.remarks,
-    }));
+    const initialSignature = new Map(
+      initial.approvals.map((s) => [s._id, s.signature]),
+    );
+    payload.approvals = form.approvals.map((s) => {
+      const row = {
+        ...(s._id ? { _id: s._id } : {}),
+        approver: String(s.approver._id),
+        role: s.role,
+        status: s.status,
+        remarks: s.remarks,
+      };
+      // only an edited signature is sent; otherwise the server keeps it in
+      // step with the status / approver
+      if ((s.signature || "") !== (initialSignature.get(s._id) || ""))
+        row.approverSignature = (s.signature || "").trim() || null;
+      return row;
+    });
   }
 
   if (
@@ -2755,6 +2885,7 @@ const StepsEditor = ({
                 status: "PENDING",
                 remarks: "",
                 reviewedAt: null,
+                signature: "",
               },
             ])
           }
@@ -2832,6 +2963,326 @@ const NotifiedEditor = ({
     )}
   </div>
 );
+
+/* =====================================================================
+   EDITOR — signatures
+===================================================================== */
+
+const SignaturePreview = ({ src, borderColor }) => {
+  const [broken, setBroken] = useState(false);
+  return (
+    <div
+      className="h-16 w-full sm:w-44 flex-none rounded-lg border flex items-center justify-center overflow-hidden"
+      style={{ borderColor, backgroundColor: "#ffffff" }}
+    >
+      {src && !broken ? (
+        <img
+          src={src}
+          alt="Signature preview"
+          className="max-h-full max-w-full object-contain"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        <span
+          className="flex flex-col items-center gap-0.5 text-[10px] font-semibold"
+          style={{ color: "#94a3b8" }}
+        >
+          <ImageOff size={16} />
+          {src ? "Can't load preview" : "No signature"}
+        </span>
+      )}
+    </div>
+  );
+};
+
+const smallButtonClass =
+  "inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[11px] font-bold whitespace-nowrap disabled:opacity-40";
+
+/**
+ * One signature: preview, the stored URL (editable), where the file lives,
+ * and how many records share that file.
+ *   info — server signatureInfo { stored, profile, sameAsProfile } for the saved record
+ */
+const SignatureCard = ({
+  title,
+  subtitle,
+  value,
+  initialValue,
+  info,
+  autoNote,
+  onChange,
+  disabled,
+  borderColor,
+}) => {
+  const previewValue = useDebounced(value, 500);
+  const previewSrc = signatureSrc(previewValue);
+  const where = describeSignatureUrl(value);
+  const edited = value !== initialValue;
+  const usage = !edited ? usedByText(info?.stored?.usedBy) : null;
+  const profileUrl = info?.profile?.url || "";
+  const isProfile = sameSignatureFile(value, profileUrl);
+  const openHref =
+    where && where.kind !== "embedded" ? signatureSrc(value) : null;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Signature URL copied.");
+    } catch {
+      toast.error("Couldn't copy. Select the URL and copy it instead.");
+    }
+  };
+
+  const pill = !value ? (
+    <Pill tone="slate">None</Pill>
+  ) : edited ? (
+    <Pill tone="blue">Edited</Pill>
+  ) : isProfile ? (
+    <Pill tone="green">Profile signature</Pill>
+  ) : profileUrl ? (
+    <Pill tone="amber">Not the profile signature</Pill>
+  ) : null;
+
+  return (
+    <div
+      className="rounded-xl border p-3"
+      style={{
+        borderColor,
+        backgroundColor: "var(--app-surface)",
+        boxShadow: edited ? "inset 3px 0 0 var(--accent)" : undefined,
+      }}
+    >
+      <div className="flex flex-col sm:flex-row gap-3">
+        <SignaturePreview
+          key={previewSrc || "none"}
+          src={previewSrc}
+          borderColor={borderColor}
+        />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-sm font-semibold truncate"
+              style={{ color: "var(--app-text)" }}
+            >
+              {title}
+            </span>
+            {pill}
+          </div>
+          {subtitle && (
+            <div className="text-[11px]" style={{ color: "var(--app-muted)" }}>
+              {subtitle}
+            </div>
+          )}
+
+          <Field label="Signature URL / file path">
+            <input
+              type="text"
+              value={value}
+              disabled={disabled}
+              maxLength={where?.kind === "embedded" ? undefined : 2048}
+              spellCheck={false}
+              placeholder="https://… or uploads/signatures/…"
+              onChange={(e) => onChange(e.target.value)}
+              className={`${inputClass} font-mono text-xs`}
+              style={inputStyle(borderColor)}
+            />
+          </Field>
+
+          {where && (
+            <p
+              className="text-[11px] [overflow-wrap:anywhere]"
+              style={{ color: "var(--app-muted)" }}
+            >
+              {where.kind === "embedded" ? (
+                <>
+                  Saved inside this record ({where.mimeType}, {where.sizeKb}{" "}
+                  KB), so there is no separate file to replace. Paste a URL to
+                  use a file instead.
+                </>
+              ) : (
+                <>
+                  File{" "}
+                  <b style={{ color: "var(--app-text)" }}>
+                    {where.fileName || "?"}
+                  </b>
+                  {" · "}
+                  {where.kind === "remote"
+                    ? `on ${where.host || "an external host"}`
+                    : "on this app's server"}
+                  {where.path && where.path !== where.fileName && (
+                    <>
+                      {" · "}
+                      <span className="font-mono">{where.path}</span>
+                    </>
+                  )}
+                </>
+              )}
+            </p>
+          )}
+
+          {usage && (
+            <p
+              className="text-[11px]"
+              style={{
+                color: usage.total > 1 ? "#d97706" : "var(--app-muted)",
+              }}
+            >
+              This file is used by {usage.text}.
+              {usage.total > 1
+                ? " Replacing the file changes all of them."
+                : ""}
+            </p>
+          )}
+
+          {profileUrl && !isProfile && (
+            <p
+              className="text-[11px] [overflow-wrap:anywhere]"
+              style={{ color: "var(--app-muted)" }}
+            >
+              Profile signature:{" "}
+              <span className="font-mono">
+                {info.profile.fileName || profileUrl}
+              </span>
+            </p>
+          )}
+          {info && !profileUrl && (
+            <p className="text-[11px]" style={{ color: "var(--app-muted)" }}>
+              No profile signature on file.
+            </p>
+          )}
+          {autoNote && (
+            <p className="text-[11px]" style={{ color: "#2563eb" }}>
+              {autoNote}
+            </p>
+          )}
+
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {value && (
+              <button
+                type="button"
+                onClick={copy}
+                className={smallButtonClass}
+                style={{ borderColor, color: "var(--app-text)" }}
+              >
+                <Copy size={12} /> Copy URL
+              </button>
+            )}
+            {openHref && (
+              <a
+                href={openHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={smallButtonClass}
+                style={{ borderColor, color: "var(--app-text)" }}
+              >
+                <ExternalLink size={12} /> Open file
+              </a>
+            )}
+            {!disabled && profileUrl && !isProfile && (
+              <button
+                type="button"
+                onClick={() => onChange(profileUrl)}
+                className={smallButtonClass}
+                style={{ borderColor: "var(--accent)", color: "var(--accent)" }}
+              >
+                <PenLine size={12} /> Use profile signature
+              </button>
+            )}
+            {!disabled && value && (
+              <button
+                type="button"
+                onClick={() => onChange("")}
+                className={smallButtonClass}
+                style={{ borderColor, color: "#ef4444" }}
+              >
+                <X size={12} /> Remove
+              </button>
+            )}
+            {!disabled && edited && (
+              <button
+                type="button"
+                onClick={() => onChange(initialValue)}
+                className={smallButtonClass}
+                style={{ borderColor, color: "var(--app-muted)" }}
+              >
+                <RotateCcw size={12} /> Undo
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SignaturesEditor = ({
+  form,
+  initialForm,
+  app,
+  onApplicantChange,
+  onStepChange,
+  disabled,
+  borderColor,
+}) => {
+  const initialSteps = new Map(initialForm.approvals.map((s) => [s._id, s]));
+  const infoById = new Map(
+    (app.approvals || []).map((s) => [String(s._id), s.signatureInfo]),
+  );
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs" style={{ color: "var(--app-muted)" }}>
+        Each application and approval step keeps its own copy of the signature
+        URL. Editing a URL here changes only this application. Replacing the
+        file at that URL changes every record that uses it.
+      </p>
+      <SignatureCard
+        title={`Applicant · ${fullName(app.employeeInfo || app.applicantSnapshot)}`}
+        subtitle={
+          form.employeeType === "Organic"
+            ? "Required for Organic applications (CSC Form 6)"
+            : null
+        }
+        value={form.applicantSignature}
+        initialValue={initialForm.applicantSignature}
+        info={app.applicantSignatureInfo}
+        onChange={onApplicantChange}
+        disabled={disabled}
+        borderColor={borderColor}
+      />
+      {form.approvals.map((s, index) => {
+        const initialStep = s._id ? initialSteps.get(s._id) : null;
+        const initialValue = initialStep?.signature || "";
+        const sameApprover =
+          !!initialStep &&
+          String(initialStep.approver?._id) === String(s.approver?._id);
+        let autoNote = null;
+        if ((s.signature || "") === initialValue) {
+          if (!initialStep)
+            autoNote =
+              "New step: the approver's profile signature is attached when it is saved as Approved.";
+          else if (!sameApprover || initialStep.status !== s.status)
+            autoNote =
+              "Updated on save to match the step: the approver's profile signature when Approved, none otherwise. Review shows the result.";
+        }
+        return (
+          <SignatureCard
+            key={s.key}
+            title={`Level ${index + 1} · ${fullName(s.approver)}`}
+            subtitle={`${prettyRole(s.role) || "No role"} · ${STATUS_LABELS[s.status] || s.status}`}
+            value={s.signature || ""}
+            initialValue={initialValue}
+            info={sameApprover ? infoById.get(s._id) : null}
+            autoNote={autoNote}
+            onChange={(v) => onStepChange(s.key, v)}
+            disabled={disabled}
+            borderColor={borderColor}
+          />
+        );
+      })}
+    </div>
+  );
+};
 
 /* =====================================================================
    EDITOR — review of the server's plan
@@ -2915,7 +3366,10 @@ const PlanReview = ({ plan, borderColor }) => {
                 className="grid grid-cols-[150px_1fr] gap-2 text-xs"
               >
                 <span style={{ color: "var(--app-muted)" }}>{f.label}</span>
-                <span style={{ color: "var(--app-text)" }}>
+                <span
+                  className="min-w-0 [overflow-wrap:anywhere]"
+                  style={{ color: "var(--app-text)" }}
+                >
                   <span style={{ color: "var(--app-muted)" }}>
                     {formatAny(f.field, f.from)}
                   </span>
@@ -3042,9 +3496,16 @@ const PlanReview = ({ plan, borderColor }) => {
               {s.action === "updated" && (
                 <ul className="space-y-0.5 text-xs">
                   {s.changes.map((c) => (
-                    <li key={c.field} style={{ color: "var(--app-text)" }}>
+                    <li
+                      key={c.field}
+                      className="[overflow-wrap:anywhere]"
+                      style={{ color: "var(--app-text)" }}
+                    >
                       <span style={{ color: "var(--app-muted)" }}>
-                        {c.field}:{" "}
+                        {c.field === "approverSignature"
+                          ? "signature"
+                          : c.field}
+                        :{" "}
                       </span>
                       {formatAny(
                         c.field,
@@ -3541,6 +4002,25 @@ const ApplicationEditor = ({
         notified={form.notified}
         onChange={(notified) => setField("notified", notified)}
         excludeIds={[String(app.employee), ...approverIds]}
+        disabled={disabled}
+        borderColor={borderColor}
+      />
+
+      {/* Signatures */}
+      <SectionTitle icon={PenLine}>Signatures</SectionTitle>
+      <SignaturesEditor
+        form={form}
+        initialForm={initialForm}
+        app={app}
+        onApplicantChange={(v) => setField("applicantSignature", v)}
+        onStepChange={(key, v) =>
+          setField(
+            "approvals",
+            form.approvals.map((s) =>
+              s.key === key ? { ...s, signature: v } : s,
+            ),
+          )
+        }
         disabled={disabled}
         borderColor={borderColor}
       />

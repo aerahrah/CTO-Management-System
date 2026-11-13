@@ -2,7 +2,7 @@
 // Single place for all HRMS/CTO email templates (welcome + CTO workflow + CTO credit + Wellness + Leave Credits + Revocations)
 
 const BRAND = {
-  name: "DICT Wellness & CTO",
+  name: "DICT CTO & Wellness System",
   primary: "#2563eb", // Modern blue
   primaryHover: "#1d4ed8",
   bg: "#f1f5f9", // Softer slate background
@@ -48,6 +48,7 @@ function emailLayout({
   greeting,
   intro,
   detailsRowsHtml,
+  afterDetailsHtml = "", // optional extra section shown below the details box (already-escaped HTML)
   cta,
   outro,
   brandName = BRAND.name,
@@ -148,6 +149,8 @@ function emailLayout({
                     : ""
                 }
 
+                ${afterDetailsHtml}
+
                 ${ctaHtml}
 
                 ${
@@ -223,6 +226,71 @@ function formatHours(hours) {
   return String(Math.round(n * 100) / 100);
 }
 
+// "November 13, 2026, 10:02 AM" in Philippine time
+function formatDateTimeLikeHuman(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  if (Number.isNaN(dt.getTime())) return "";
+  const opts = { timeZone: "Asia/Manila" };
+  const date = dt.toLocaleDateString("en-PH", {
+    ...opts,
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const time = dt.toLocaleTimeString("en-PH", {
+    ...opts,
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  return `${date}, ${time}`;
+}
+
+// A quiet list of what already happened on an application, shown to the
+// approver whose turn it is. `actions` comes from getCtoPreviousActions()
+// in utils/ctoEmailHistory.js: [{ date, action, by, position, remarks }]
+function previousActionsSection(actions) {
+  const list = Array.isArray(actions) ? actions.filter(Boolean) : [];
+  if (list.length === 0) return "";
+
+  const rows = list
+    .map((a, i) => {
+      const isLast = i === list.length - 1;
+      const by = escapeHtml(a.by || "");
+      const position = a.position
+        ? `<span style="color:${BRAND.muted};">, ${escapeHtml(a.position)}</span>`
+        : "";
+      const when = formatDateTimeLikeHuman(a.date);
+      const remarks = a.remarks
+        ? `<div style="margin-top: 2px; font-size: 13px; color:${BRAND.muted}; line-height: 20px;">Remarks: ${escapeHtml(a.remarks)}</div>`
+        : "";
+
+      return `
+        <tr>
+          <td style="padding: 10px 0; ${isLast ? "" : `border-bottom: 1px solid ${BRAND.border};`} vertical-align: top;">
+            <div style="font-size: 14px; color:${BRAND.text}; line-height: 20px;">
+              ${escapeHtml(a.action || "")}${by ? ` by ${by}` : ""}${position}
+            </div>
+            ${remarks}
+            ${when ? `<div style="margin-top: 2px; font-size: 13px; color:${BRAND.muted}; line-height: 20px;">${escapeHtml(when)}</div>` : ""}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 8px;">
+      <tr>
+        <td style="padding: 0 0 4px; font-size: 14px; font-weight: 600; color:${BRAND.muted};">
+          Previous actions
+        </td>
+      </tr>
+      ${rows}
+    </table>
+  `;
+}
+
 // Accepts either a preformatted string ("Oct 5, 2026 to Oct 6, 2026")
 // or an array of dates and returns readable text.
 function formatDateRange(dates) {
@@ -240,6 +308,141 @@ function formatDateRange(dates) {
   const first = formatDateLikeHuman(valid[0]);
   const last = formatDateLikeHuman(valid[valid.length - 1]);
   return first === last ? first : `${first} to ${last}`;
+}
+
+// CTO "Dates Covered": lists the exact days, in Philippine time (so it matches
+// the email subject), grouping consecutive days:
+//   [Nov 20]                    → "November 20, 2026"
+//   [Nov 20, 21]                → "November 20 and 21, 2026"
+//   [Nov 20, 21, 24]            → "November 20, 21 and 24, 2026"
+//   [Nov 20, 21, 22, 23, 24]    → "November 20 to 24, 2026"
+//   [Dec 30, 31, Jan 2]         → "December 30 and 31, 2026; January 2, 2027"
+// Accepts an array of dates, { startDate, endDate }, or a preformatted string.
+// Returns "" when there is nothing to show.
+function formatInclusiveDates(dates) {
+  if (!dates) return "";
+  if (typeof dates === "string") return dates.trim();
+
+  let list = Array.isArray(dates) ? dates : [dates];
+
+  // { startDate, endDate } is a range: include every day in between
+  if (
+    !Array.isArray(dates) &&
+    typeof dates === "object" &&
+    !(dates instanceof Date)
+  ) {
+    const start = new Date(dates.startDate);
+    const end = new Date(dates.endDate || dates.startDate);
+    list = [];
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+      for (
+        let t = start.getTime(), n = 0;
+        t <= end.getTime() && n < 366;
+        t += 86400000, n++
+      ) {
+        list.push(new Date(t));
+      }
+    }
+  }
+
+  const MONTHS = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  });
+
+  // One entry per calendar day (Manila), oldest first
+  const byKey = new Map();
+  for (const d of list) {
+    if (!d) continue;
+    const dt = new Date(d);
+    if (Number.isNaN(dt.getTime())) continue;
+    const p = {};
+    fmt
+      .formatToParts(dt)
+      .forEach(({ type, value }) => (p[type] = Number(value)));
+    // Day count since 1970 for that Manila calendar day, to spot consecutive days
+    const dayNumber = Date.UTC(p.year, p.month - 1, p.day) / 86400000;
+    byKey.set(dayNumber, {
+      year: String(p.year),
+      month: MONTHS[p.month - 1],
+      day: p.day,
+      dayNumber,
+    });
+  }
+
+  const days = [...byKey.values()].sort((a, b) => a.dayNumber - b.dayNumber);
+  if (days.length === 0) return "";
+
+  // ["20", "21", "24"] → "20, 21 and 24"
+  const joinWords = (parts) =>
+    parts.length <= 1
+      ? parts.join("")
+      : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+
+  // Group by month+year, then compress runs of 3+ consecutive days ("20 to 24")
+  const groups = [];
+  for (const d of days) {
+    const g = groups[groups.length - 1];
+    if (g && g.month === d.month && g.year === d.year) g.days.push(d);
+    else groups.push({ month: d.month, year: d.year, days: [d] });
+  }
+
+  const pieces = [];
+  groups.forEach((g, gi) => {
+    const parts = [];
+    let run = [g.days[0]];
+    const flush = () => {
+      if (run.length >= 3)
+        parts.push(`${run[0].day} to ${run[run.length - 1].day}`);
+      else run.forEach((r) => parts.push(String(r.day)));
+    };
+    for (let i = 1; i < g.days.length; i++) {
+      const cur = g.days[i];
+      if (cur.dayNumber === run[run.length - 1].dayNumber + 1) run.push(cur);
+      else {
+        flush();
+        run = [cur];
+      }
+    }
+    flush();
+
+    const next = groups[gi + 1];
+    const showYear = !next || next.year !== g.year;
+    pieces.push(
+      `${g.month} ${joinWords(parts)}${showYear ? `, ${g.year}` : ""}`,
+    );
+  });
+
+  // Very scattered dates: show the span and the number of days instead
+  if (pieces.length > 4) {
+    const first = days[0];
+    const last = days[days.length - 1];
+    return `${first.month} ${first.day}, ${first.year} to ${last.month} ${last.day}, ${last.year} (${days.length} days)`;
+  }
+
+  return pieces.join("; ");
+}
+
+// A "Dates Covered" style row, only when dates were given
+function datesRow(label, inclusiveDates) {
+  const text = formatInclusiveDates(inclusiveDates);
+  return text ? detailRow(label, escapeHtml(text)) : "";
 }
 
 // ───────────────────────────────────────────────────────────────
@@ -348,9 +551,11 @@ function ctoApprovalEmail({
   approverName,
   employeeName,
   requestedHours,
+  inclusiveDates, // optional: shown as "Dates Covered"
   reason,
   level,
   link,
+  previousActions = [], // optional: what already happened (see previousActionsSection)
   brandName = BRAND.name,
 }) {
   const safeApprover = escapeHtml(approverName || "Approver");
@@ -362,6 +567,7 @@ function ctoApprovalEmail({
   const details = `
     ${detailRow("Employee", safeEmployee)}
     ${detailRow("Requested Hours", `${safeHours} hrs`)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Reason", safeReason)}
     ${detailRow("Approval Level", `Level ${safeLevel}`, true)}
   `;
@@ -375,6 +581,7 @@ function ctoApprovalEmail({
       intro:
         "A Compensatory Time-Off (CTO) application requires your review and approval. Please verify the details below.",
       detailsRowsHtml: details,
+      afterDetailsHtml: previousActionsSection(previousActions),
       cta: { label: "Review Application", url: link },
       outro:
         "Prompt action helps ensure smooth processing of employee leave records.",
@@ -387,8 +594,10 @@ function ctoFollowUpEmail({
   approverName,
   employeeName,
   requestedHours,
+  inclusiveDates, // optional: shown as "Dates Covered"
   level,
   link,
+  previousActions = [], // optional: what already happened (see previousActionsSection)
   brandName = BRAND.name,
 }) {
   const safeApprover = escapeHtml(approverName || "Approver");
@@ -399,6 +608,7 @@ function ctoFollowUpEmail({
   const details = `
     ${detailRow("Employee", safeEmployee)}
     ${detailRow("Requested Hours", `${safeHours} hrs`)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Approval Level", `Level ${safeLevel}`, true)}
   `;
 
@@ -410,6 +620,7 @@ function ctoFollowUpEmail({
       greeting: `Hi <strong>${safeApprover}</strong>,`,
       intro: `<strong>${safeEmployee}</strong> has requested a follow-up on their pending Compensatory Time-Off (CTO) application. Please review it at your earliest convenience.`,
       detailsRowsHtml: details,
+      afterDetailsHtml: previousActionsSection(previousActions),
       cta: { label: "Review Application", url: link },
       outro:
         "Prompt action helps ensure smooth processing of employee leave records.",
@@ -422,6 +633,7 @@ function ctoStepApprovalEmail({
   employeeName,
   approverName,
   level,
+  inclusiveDates, // optional: shown as "Dates Covered"
   brandName = BRAND.name,
 }) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
@@ -430,6 +642,7 @@ function ctoStepApprovalEmail({
 
   const details = `
     ${detailRow("Status", "Partially Approved", false, BRAND.primary)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Approved By", safeApprover)}
     ${detailRow("Approval Level", `Level ${safeLevel}`, true)}
   `;
@@ -452,6 +665,7 @@ function ctoStepApprovalEmail({
 function ctoFinalApprovalEmail({
   employeeName,
   requestedHours,
+  inclusiveDates, // optional: shown as "Dates Covered"
   brandName = BRAND.name,
 }) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
@@ -459,6 +673,7 @@ function ctoFinalApprovalEmail({
 
   const details = `
     ${detailRow("Status", "Approved", false, BRAND.success)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Approved Hours", `${safeHours} hrs`, true)}
   `;
 
@@ -479,12 +694,18 @@ function ctoFinalApprovalEmail({
   };
 }
 
-function ctoRejectionEmail({ employeeName, remarks, brandName = BRAND.name }) {
+function ctoRejectionEmail({
+  employeeName,
+  remarks,
+  inclusiveDates, // optional: shown as "Dates Covered"
+  brandName = BRAND.name,
+}) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeRemarks = escapeHtml(remarks || "No remarks provided.");
 
   const details = `
     ${detailRow("Status", "Rejected", false, BRAND.danger)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Remarks", safeRemarks, true)}
   `;
 
@@ -516,7 +737,7 @@ function ctoCancelledApproverEmail({
   const safeApprover = escapeHtml(approverName || "Approver");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeHours = escapeHtml(formatHours(requestedHours));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
 
   const details = `
     ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
@@ -557,7 +778,7 @@ function ctoNotifiedEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeHours = escapeHtml(formatHours(requestedHours));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeReason = escapeHtml(reason || "—");
 
   const details = `
@@ -596,7 +817,7 @@ function ctoNotifiedFinalApprovalEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeHours = escapeHtml(formatHours(requestedHours));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeApprovedBy = escapeHtml(approvedBy || "");
 
   const details = `
@@ -636,7 +857,7 @@ function ctoNotifiedRejectionEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeHours = escapeHtml(formatHours(requestedHours));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeRejectedBy = escapeHtml(rejectedBy || "an approver");
   const safeRemarks = escapeHtml(remarks || "No remarks provided.");
 
@@ -676,7 +897,7 @@ function ctoNotifiedCancelledEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeHours = escapeHtml(formatHours(requestedHours));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
 
   const details = `
     ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
@@ -712,12 +933,13 @@ function wellnessApprovalEmail({
   reason,
   level,
   link,
+  previousActions = [], // optional: what already happened (see previousActionsSection)
   brandName = BRAND.name,
 }) {
   const safeApprover = escapeHtml(approverName || "Approver");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(requestedDays ?? "0");
-  const safeDates = escapeHtml(inclusiveDates || "—");
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeReason = escapeHtml(reason || "—");
   const safeLevel = escapeHtml(level ?? "—");
 
@@ -738,6 +960,7 @@ function wellnessApprovalEmail({
       intro:
         "A Wellness Leave application requires your review. Please verify the schedule and details provided below.",
       detailsRowsHtml: details,
+      afterDetailsHtml: previousActionsSection(previousActions),
       cta: { label: "Review Application", url: link },
       outro:
         "Prompt action helps ensure smooth processing of employee leave records.",
@@ -750,8 +973,10 @@ function wellnessFollowUpEmail({
   approverName,
   employeeName,
   requestedDays,
+  inclusiveDates, // optional: shown as "Dates Covered"
   level,
   link,
+  previousActions = [], // optional: what already happened (see previousActionsSection)
   brandName = BRAND.name,
 }) {
   const safeApprover = escapeHtml(approverName || "Approver");
@@ -762,6 +987,7 @@ function wellnessFollowUpEmail({
   const details = `
     ${detailRow("Employee", safeEmployee)}
     ${detailRow("Requested Days", `${safeDays} day(s)`)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Approval Level", `Level ${safeLevel}`, true)}
   `;
 
@@ -773,6 +999,7 @@ function wellnessFollowUpEmail({
       greeting: `Hi <strong>${safeApprover}</strong>,`,
       intro: `<strong>${safeEmployee}</strong> has requested a follow-up on their pending Wellness Leave application. Please review it at your earliest convenience.`,
       detailsRowsHtml: details,
+      afterDetailsHtml: previousActionsSection(previousActions),
       cta: { label: "Review Application", url: link },
       outro:
         "Prompt action helps ensure smooth processing of employee leave records.",
@@ -785,6 +1012,7 @@ function wellnessStepApprovalEmail({
   employeeName,
   approverName,
   level,
+  inclusiveDates, // optional: shown as "Dates Covered"
   brandName = BRAND.name,
 }) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
@@ -793,6 +1021,7 @@ function wellnessStepApprovalEmail({
 
   const details = `
     ${detailRow("Status", "Partially Approved", false, BRAND.primary)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Approved By", safeApprover)}
     ${detailRow("Approval Level", `Level ${safeLevel}`, true)}
   `;
@@ -820,7 +1049,7 @@ function wellnessFinalApprovalEmail({
 }) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(requestedDays ?? "0");
-  const safeDates = escapeHtml(inclusiveDates || "—");
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
 
   const details = `
     ${detailRow("Status", "Approved", false, BRAND.success)}
@@ -848,6 +1077,7 @@ function wellnessFinalApprovalEmail({
 function wellnessRejectionEmail({
   employeeName,
   remarks,
+  inclusiveDates, // optional: shown as "Dates Covered"
   brandName = BRAND.name,
 }) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
@@ -855,6 +1085,7 @@ function wellnessRejectionEmail({
 
   const details = `
     ${detailRow("Status", "Rejected", false, BRAND.danger)}
+    ${datesRow("Dates Covered", inclusiveDates)}
     ${detailRow("Remarks", safeRemarks, true)}
   `;
 
@@ -887,7 +1118,7 @@ function wellnessCancelledApproverEmail({
   const safeApprover = escapeHtml(approverName || "Approver");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(String(requestedDays ?? 0));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
 
   const details = `
     ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
@@ -928,7 +1159,7 @@ function wellnessNotifiedEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(String(requestedDays ?? 0));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeReason = escapeHtml(reason || "—");
 
   const details = `
@@ -967,7 +1198,7 @@ function wellnessNotifiedFinalApprovalEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(String(requestedDays ?? 0));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeApprovedBy = escapeHtml(approvedBy || "");
 
   const details = `
@@ -1007,7 +1238,7 @@ function wellnessNotifiedRejectionEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(String(requestedDays ?? 0));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeRejectedBy = escapeHtml(rejectedBy || "an approver");
   const safeRemarks = escapeHtml(remarks || "No remarks provided.");
 
@@ -1047,7 +1278,7 @@ function wellnessNotifiedCancelledEmail({
   const safeRecipient = escapeHtml(recipientName || "there");
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(String(requestedDays ?? 0));
-  const safeDates = escapeHtml(formatDateRange(inclusiveDates));
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
 
   const details = `
     ${detailRow("Status", "Cancelled by Employee", false, BRAND.muted)}
@@ -1079,6 +1310,7 @@ function ctoRevocationRequestEmail({
   hrName = "HR Admin",
   employeeName,
   requestedHours,
+  inclusiveDates, // optional: shown as "Original Dates"
   reason,
   link,
   brandName = BRAND.name,
@@ -1091,6 +1323,7 @@ function ctoRevocationRequestEmail({
   const details = `
     ${detailRow("Employee", safeEmployee)}
     ${detailRow("Hours to Revoke", `${safeHours} hrs`)}
+    ${datesRow("Original Dates", inclusiveDates)}
     ${detailRow("Reason", safeReason, true)}
   `;
 
@@ -1112,6 +1345,7 @@ function ctoRevocationRequestEmail({
 function ctoRevocationApprovedEmail({
   employeeName,
   restoredHours,
+  inclusiveDates, // optional: shown as "Original Dates"
   remarks,
   brandName = BRAND.name,
 }) {
@@ -1122,6 +1356,7 @@ function ctoRevocationApprovedEmail({
   const details = `
     ${detailRow("Status", "Revocation Approved", false, BRAND.success)}
     ${detailRow("Restored Hours", `+${safeHours} hrs`)}
+    ${datesRow("Original Dates", inclusiveDates)}
     ${detailRow("Remarks", safeRemarks, true)}
   `;
 
@@ -1143,6 +1378,7 @@ function ctoRevocationApprovedEmail({
 
 function ctoRevocationRejectedEmail({
   employeeName,
+  inclusiveDates, // optional: shown as "Original Dates"
   remarks,
   brandName = BRAND.name,
 }) {
@@ -1151,6 +1387,7 @@ function ctoRevocationRejectedEmail({
 
   const details = `
     ${detailRow("Status", "Revocation Rejected", false, BRAND.danger)}
+    ${datesRow("Original Dates", inclusiveDates)}
     ${detailRow("Remarks", safeRemarks, true)}
   `;
 
@@ -1175,6 +1412,7 @@ function ctoRevocationCancelledEmail({
   hrName = "HR Admin",
   employeeName,
   requestedHours,
+  inclusiveDates, // optional: shown as "Original Dates"
   brandName = BRAND.name,
 }) {
   const safeHR = escapeHtml(hrName);
@@ -1184,6 +1422,7 @@ function ctoRevocationCancelledEmail({
   const details = `
     ${detailRow("Status", "Withdrawn by Employee", false, BRAND.muted)}
     ${detailRow("Employee", safeEmployee)}
+    ${datesRow("Original Dates", inclusiveDates)}
     ${detailRow("Hours Intended to Revoke", `${safeHours} hrs`, true)}
   `;
 
@@ -1218,7 +1457,7 @@ function wellnessRevocationRequestEmail({
   const safeHR = escapeHtml(hrName);
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(requestedDays ?? "0");
-  const safeDates = escapeHtml(inclusiveDates || "—");
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeReason = escapeHtml(reason || "—");
 
   const details = `
@@ -1252,7 +1491,7 @@ function wellnessRevocationApprovedEmail({
 }) {
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(restoredDays ?? "0");
-  const safeDates = escapeHtml(inclusiveDates || "—");
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
   const safeRemarks = escapeHtml(remarks || "—");
 
   const details = `
@@ -1281,6 +1520,7 @@ function wellnessRevocationApprovedEmail({
 
 function wellnessRevocationRejectedEmail({
   employeeName,
+  inclusiveDates, // optional: shown as "Original Dates"
   remarks,
   brandName = BRAND.name,
 }) {
@@ -1289,6 +1529,7 @@ function wellnessRevocationRejectedEmail({
 
   const details = `
     ${detailRow("Status", "Revocation Rejected", false, BRAND.danger)}
+    ${datesRow("Original Dates", inclusiveDates)}
     ${detailRow("Remarks", safeRemarks, true)}
   `;
 
@@ -1319,7 +1560,7 @@ function wellnessRevocationCancelledEmail({
   const safeHR = escapeHtml(hrName);
   const safeEmployee = escapeHtml(employeeName || "Employee");
   const safeDays = escapeHtml(requestedDays ?? "0");
-  const safeDates = escapeHtml(inclusiveDates || "—");
+  const safeDates = escapeHtml(formatInclusiveDates(inclusiveDates) || "—");
 
   const details = `
     ${detailRow("Status", "Withdrawn by Employee", false, BRAND.muted)}
@@ -1657,6 +1898,183 @@ function leaveCreditRolledBackEmail({
     }),
   };
 }
+
+// ───────────────────────────────────────────────────────────────
+// CTO — END-OF-DAY PENDING APPROVALS DIGEST
+// Sent once a day by cron/ctoPendingDigest.job.js to every approver who
+// has CTO applications waiting on their step. One card per application,
+// each with its own "Review Application" button.
+// ───────────────────────────────────────────────────────────────
+function truncateText(input, max = 160) {
+  const text = String(input ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > max ? text.slice(0, max - 1).trimEnd() + "…" : text;
+}
+
+function pendingWaitBadge(daysWaiting) {
+  const days = Math.max(Number(daysWaiting) || 0, 0);
+  const label =
+    days === 0
+      ? "New today"
+      : days === 1
+        ? "Waiting 1 day"
+        : `Waiting ${days} days`;
+  const overdue = days >= 3;
+  const color = overdue ? BRAND.warning : BRAND.muted;
+  const bg = overdue ? "#fef3c7" : "#f1f5f9";
+
+  return `<span style="display:inline-block; padding: 4px 10px; border-radius: 999px; background-color:${bg}; color:${color}; font-size: 12px; font-weight: 600; white-space: nowrap;">${escapeHtml(label)}</span>`;
+}
+
+function pendingInfoRow(label, valueHtml) {
+  return `
+    <tr>
+      <td style="padding: 3px 12px 3px 0; width: 120px; font-size: 13px; color:${BRAND.muted}; vertical-align: top; white-space: nowrap;">
+        ${escapeHtml(label)}
+      </td>
+      <td style="padding: 3px 0; font-size: 13px; color:${BRAND.text}; vertical-align: top; line-height: 20px;">
+        ${valueHtml}
+      </td>
+    </tr>
+  `;
+}
+
+function pendingApplicationCard(item, index, isLast) {
+  const borderBottom = isLast
+    ? ""
+    : `border-bottom: 1px solid ${BRAND.border};`;
+  const safeEmployee = escapeHtml(item.employeeName || "Employee");
+  const safePosition = escapeHtml(item.position || "");
+  const safeHours = escapeHtml(formatHours(item.requestedHours));
+  const dayCount = Number(item.dayCount) || 0;
+  const dates = formatDateRange(item.inclusiveDates);
+  const safeDates = escapeHtml(
+    dayCount > 1 ? `${dates} (${dayCount} days)` : dates,
+  );
+  const safeFiled = escapeHtml(
+    typeof item.filedAt === "string"
+      ? item.filedAt
+      : formatDateLikeHuman(item.filedAt),
+  );
+  const safeLevel = escapeHtml(item.level ?? "—");
+  const safeReason = escapeHtml(truncateText(item.reason));
+
+  return `
+    <tr>
+      <td colspan="2" style="padding: 20px 16px; ${borderBottom}">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr>
+            <td style="font-size: 15px; font-weight: 700; color:${BRAND.text}; vertical-align: top;">
+              ${index + 1}. ${safeEmployee}
+            </td>
+            <td align="right" style="vertical-align: top; padding-left: 8px;">
+              ${pendingWaitBadge(item.daysWaiting)}
+            </td>
+          </tr>
+          ${
+            safePosition
+              ? `<tr><td colspan="2" style="padding-top: 2px; font-size: 13px; color:${BRAND.muted};">${safePosition}</td></tr>`
+              : ""
+          }
+        </table>
+
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top: 12px;">
+          ${pendingInfoRow("Requested Hours", `${safeHours} hrs`)}
+          ${pendingInfoRow("Dates Covered", safeDates)}
+          ${pendingInfoRow("Date Filed", safeFiled || "—")}
+          ${pendingInfoRow("Your Level", `Level ${safeLevel}`)}
+          ${safeReason ? pendingInfoRow("Reason", safeReason) : ""}
+        </table>
+
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin-top: 16px;">
+          <tr>
+            <td>
+              <a href="${sanitizeUrl(item.link)}" target="_blank" rel="noreferrer"
+                style="
+                  display: inline-block;
+                  background-color: ${BRAND.primary};
+                  color: #ffffff;
+                  text-decoration: none;
+                  padding: 10px 20px;
+                  border-radius: 6px;
+                  font-weight: 600;
+                  font-size: 14px;
+                  text-align: center;
+                ">
+                Review Application
+              </a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  `;
+}
+
+function ctoPendingDigestEmail({
+  approverName,
+  items = [],
+  totalPending,
+  viewAllLink,
+  asOf,
+  maxItems = 50,
+  brandName = BRAND.name,
+}) {
+  const list = Array.isArray(items) ? items : [];
+  const total = Number.isFinite(Number(totalPending))
+    ? Number(totalPending)
+    : list.length;
+  const shown = list.slice(0, Math.max(Number(maxItems) || 50, 1));
+  const hidden = Math.max(total - shown.length, 0);
+  const plural = total === 1 ? "" : "s";
+
+  const safeApprover = escapeHtml(approverName || "Approver");
+  const safeAsOf = escapeHtml(asOf || formatDateLikeHuman(new Date()));
+
+  const cards = shown
+    .map((item, i) =>
+      pendingApplicationCard(item, i, i === shown.length - 1 && hidden === 0),
+    )
+    .join("");
+
+  const moreRow = hidden
+    ? `
+      <tr>
+        <td colspan="2" style="padding: 14px 16px; font-size: 13px; color:${BRAND.muted}; text-align: center;">
+          + ${hidden} more application${hidden === 1 ? "" : "s"} not shown. Open your approvals page to see all of them.
+        </td>
+      </tr>
+    `
+    : "";
+
+  const first = list[0]?.employeeName || "An employee";
+  const others = total - 1;
+  const preheader =
+    others > 0
+      ? `${first} and ${others} other${others === 1 ? "" : "s"} are waiting for your CTO approval.`
+      : `${first} is waiting for your CTO approval.`;
+
+  return {
+    subject: `Action Required: ${total} Pending CTO Application${plural} Awaiting Your Approval`,
+    html: emailLayout({
+      title: `${total} CTO application${plural} awaiting your action`,
+      preheader,
+      greeting: `Hi <strong>${safeApprover}</strong>,`,
+      intro: `As of <strong>${safeAsOf}</strong>, you have <strong>${total}</strong> Compensatory Time-Off (CTO) application${plural} waiting for your approval or rejection. Click <strong>Review Application</strong> on any of them to open it directly.`,
+      detailsRowsHtml: cards + moreRow,
+      cta: viewAllLink
+        ? { label: "View All Pending Approvals", url: viewAllLink }
+        : null,
+      outro:
+        "Applications are listed starting with the one that has waited the longest. Prompt action helps ensure smooth processing of employee leave records.",
+      brandName,
+      footerNote:
+        "You are receiving this end-of-day summary because CTO applications are waiting for your action. It is not sent on days when you have none.",
+    }),
+  };
+}
+
 module.exports = {
   employeeWelcomeEmail,
 
@@ -1670,6 +2088,7 @@ module.exports = {
   ctoFinalApprovalEmail,
   ctoRejectionEmail,
   ctoCancelledApproverEmail,
+  ctoPendingDigestEmail,
 
   // CTO — notified employees
   ctoNotifiedEmail,
@@ -1722,4 +2141,5 @@ module.exports = {
   escapeHtml,
   sanitizeUrl,
   formatDateLikeHuman,
+  formatInclusiveDates,
 };

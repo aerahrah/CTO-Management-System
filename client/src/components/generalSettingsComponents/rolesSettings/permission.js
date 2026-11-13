@@ -252,6 +252,11 @@ export const PERMISSION_GROUPS = [
         hint: "Configure system email notifications.",
       },
       {
+        id: "settings.scheduled_jobs",
+        label: "Scheduled Jobs",
+        hint: "Turn automatic jobs on or off, set when they run, and run them manually (e.g. the daily CTO pending approvals email to approvers).",
+      },
+      {
         id: "settings.cto_workflow",
         label: "My Approval Workflow",
         hint: "Set up their own CTO/Wellness approval workflow.",

@@ -1,4 +1,12 @@
 const mongoose = require("mongoose");
+const { hoursSetter } = require("../utils/hours");
+
+// Every hour field is stored at 4 decimal places (see utils/hours.js).
+const hoursField = (extra = {}) => ({
+  type: Number,
+  set: hoursSetter,
+  ...extra,
+});
 
 // 🔒 OPTIONAL: log of admin-console edits (adminCtoCredit.service.js).
 // Hidden from normal queries (select: false). The admin tools work without it;
@@ -65,12 +73,12 @@ const ctoCreditSchema = new mongoose.Schema(
           required: true,
         },
 
-        creditedHours: { type: Number, required: true },
+        creditedHours: hoursField({ required: true }),
 
-        usedHours: { type: Number, default: 0 }, // approved CTO
-        reservedHours: { type: Number, default: 0 }, // pending CTO
-        remainingHours: { type: Number, required: true }, // credited - used - reserved
-        forfeitedHours: { type: Number, default: 0 }, // Tracks excess hours lost due to CSC caps
+        usedHours: hoursField({ default: 0 }), // approved CTO
+        reservedHours: hoursField({ default: 0 }), // pending CTO
+        remainingHours: hoursField({ required: true }), // credited - used - reserved
+        forfeitedHours: hoursField({ default: 0 }), // Tracks excess hours lost due to CSC caps
 
         status: {
           type: String,

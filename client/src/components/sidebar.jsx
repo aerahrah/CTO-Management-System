@@ -41,6 +41,7 @@ import {
   BriefcaseMedical,
   Undo,
   Layers,
+  Clock,
 } from "lucide-react";
 
 /* =========================
@@ -387,6 +388,12 @@ const Sidebar = ({
             path: "/app/email-notification-settings",
             icon: <Mail size={14} />,
             requiredPermission: "settings.email",
+          },
+          {
+            name: "Scheduled Jobs",
+            path: "/app/scheduled-jobs",
+            icon: <Clock size={14} />,
+            requiredPermission: "settings.scheduled_jobs",
           },
           {
             name: "Salary Grades",

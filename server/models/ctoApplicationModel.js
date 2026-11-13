@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { hoursSetter } = require("../utils/hours");
 
 const CtoApplicationSchema = new mongoose.Schema(
   {
@@ -53,6 +54,7 @@ const CtoApplicationSchema = new mongoose.Schema(
     requestedHours: {
       type: Number,
       required: true,
+      set: hoursSetter,
       min: [1, "Requested hours must be at least 1"],
       max: [300, "Requested hours exceed maximum logical limit"],
     },
@@ -85,10 +87,17 @@ const CtoApplicationSchema = new mongoose.Schema(
           trim: true,
           maxlength: [500, "URL/Path is too long"],
         },
+        // Fractional on purpose: COC balances are fractional (e.g. 3.8566h),
+        // so a request can draw a small remainder like 0.1434h from a memo.
+        // Stored at 4 decimal places (see utils/hours.js).
         appliedHours: {
           type: Number,
           required: true,
-          min: [0.5, "Applied hours cannot be negative or zero"],
+          set: hoursSetter,
+          validate: {
+            validator: (v) => Number.isFinite(v) && v > 0,
+            message: "Applied hours cannot be negative or zero",
+          },
         },
       },
     ],

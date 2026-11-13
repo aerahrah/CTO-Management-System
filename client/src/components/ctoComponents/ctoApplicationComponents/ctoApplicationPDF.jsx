@@ -812,7 +812,7 @@ const SlotSignatures = ({
 ========================= */
 export default function CtoApplicationPdf({
   app,
-  logoSrc = "/public/logo_dict.png",
+  logoSrc = "/logo_dict.png",
   recommendingApproverLabel = "Chief, Technical Operations Division",
   approvedLabel = "Regional Director",
   adminFinanceLabel = "Chief, Admin. & Finance Div.",

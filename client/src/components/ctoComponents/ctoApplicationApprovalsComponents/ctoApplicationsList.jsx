@@ -1,6 +1,10 @@
 // ctoApplicationsList.jsx
 import React, { useEffect, useRef, useState, useMemo } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import {
+  useQuery,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   Search,
@@ -15,12 +19,22 @@ import {
   Ban,
   Clock4,
   CalendarDays,
+  FileText,
+  FileBadge,
+  Loader2,
 } from "lucide-react";
 import Skeleton, { SkeletonTheme } from "react-loading-skeleton";
 import "react-loading-skeleton/dist/skeleton.css";
-import { fetchMyCtoApplicationsApprovals } from "../../../api/cto";
+import { toast } from "react-toastify";
+import {
+  fetchMyCtoApplicationsApprovals,
+  getCtoApplicationById,
+} from "../../../api/cto";
 import { useAuth } from "../../../store/authStore";
 import { StatusBadge } from "../../statusUtils";
+
+import CtoApplicationPdfModal from "../ctoApplicationComponents/ctoApplicationPDFModal";
+import OrganicApplicationPdfModal from "../ctoApplicationComponents/organicApplicationPDFModal";
 
 /* ================================
    HOOK: DEBOUNCE
@@ -173,18 +187,11 @@ const CompactPagination = ({
         <button
           onClick={onPrev}
           disabled={page === 1 || safeTotalPages <= 1}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          className="lx-btn inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30"
           style={{
             backgroundColor: "var(--app-surface)",
             borderColor: borderColor,
             color: "var(--app-text)",
-          }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
           }}
           type="button"
         >
@@ -214,18 +221,11 @@ const CompactPagination = ({
         <button
           onClick={onNext}
           disabled={page >= safeTotalPages || safeTotalPages <= 1}
-          className="inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30 transition-colors duration-200 ease-out"
+          className="lx-btn inline-flex items-center gap-1 rounded-lg px-3 py-2 border text-sm font-bold disabled:opacity-30"
           style={{
             backgroundColor: "var(--app-surface)",
             borderColor: borderColor,
             color: "var(--app-text)",
-          }}
-          onMouseEnter={(e) => {
-            if (e.currentTarget.disabled) return;
-            e.currentTarget.style.backgroundColor = "var(--app-surface-2)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = "var(--app-surface)";
           }}
           type="button"
         >
@@ -276,15 +276,8 @@ const CompactPagination = ({
           <button
             onClick={onPrev}
             disabled={page === 1 || safeTotalPages <= 1}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            className="lx-btn p-1.5 rounded-md disabled:opacity-30"
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
             aria-label="Previous page"
             type="button"
           >
@@ -301,15 +294,8 @@ const CompactPagination = ({
           <button
             onClick={onNext}
             disabled={page >= safeTotalPages || safeTotalPages <= 1}
-            className="p-1.5 rounded-md disabled:opacity-30 transition-colors duration-200 ease-out"
+            className="lx-btn p-1.5 rounded-md disabled:opacity-30"
             style={{ color: "var(--app-muted)" }}
-            onMouseEnter={(e) => {
-              if (e.currentTarget.disabled) return;
-              e.currentTarget.style.backgroundColor = "var(--app-surface)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = "transparent";
-            }}
             aria-label="Next page"
             type="button"
           >
@@ -320,6 +306,50 @@ const CompactPagination = ({
     </div>
   );
 };
+
+/* ================================
+   Interaction styles (hover / press / focus / cursor)
+   Several elements set colors inline, so hover overrides use !important.
+   Variables have fallbacks in case an element renders outside the page root.
+================================ */
+const LX_STYLES = `
+/* Every button and request row: a slight darken on hover, a little more
+   while pressed. Inset shadow = works on any background, text unchanged. */
+.lx-btn, .lx-row { transition: box-shadow .15s ease; }
+.lx-btn:not(:disabled), .lx-row { cursor: pointer; }
+.lx-btn:disabled { cursor: not-allowed; }
+.lx-btn[aria-busy="true"] { cursor: progress; }
+.lx-btn:hover:not(:disabled), .lx-row:hover {
+  box-shadow: inset 0 0 0 999px var(--lx-darken, rgba(15,23,42,.06));
+}
+.lx-btn:active:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--lx-darken-press, rgba(15,23,42,.11));
+}
+/* Kept separate: if a browser lacks :has(), only this rule is skipped */
+.lx-row:active:not(:has(button:active)) {
+  box-shadow: inset 0 0 0 999px var(--lx-darken-press, rgba(15,23,42,.11));
+}
+.lx-btn:focus-visible, .lx-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Search box and page-size select */
+.lx-input { transition: border-color .15s ease, box-shadow .15s ease; }
+.lx-input:hover:not(:focus):not(:disabled) {
+  border-color: var(--lx-hover-border, rgba(148,163,184,.55)) !important;
+}
+.lx-input:focus {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--lx-ring, color-mix(in srgb, var(--accent) 35%, transparent));
+}
+.lx-select:not(:disabled) { cursor: pointer; }
+.lx-search:focus-within .lx-search-icon { color: var(--accent) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lx-btn, .lx-input, .lx-row { transition: none; }
+}
+`;
 
 const LIMIT_OPTIONS = [10, 20, 50];
 
@@ -401,6 +431,68 @@ function getDisplayStatus(app, adminId) {
   };
 }
 
+const isOrganicApplication = (app) =>
+  app?.employeeType === "Organic" || app?.category === "Organic";
+
+// Colors match the Documents buttons on the details page
+const PDF_BTN_TONES = {
+  general: {
+    bg: "rgba(239,68,68,0.10)",
+    br: "rgba(239,68,68,0.24)",
+    fg: "#ef4444",
+  },
+  cs6: {
+    bg: "rgba(59,130,246,0.10)",
+    br: "rgba(59,130,246,0.24)",
+    fg: "#3b82f6",
+  },
+};
+
+/* ================================
+   PDF button shown on each list row.
+   Stops the click/keypress from also opening the row.
+================================ */
+const PdfButton = ({
+  kind,
+  label,
+  title,
+  icon: Icon,
+  loading,
+  disabled,
+  onClick,
+}) => {
+  const tone = PDF_BTN_TONES[kind] || PDF_BTN_TONES.general;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onKeyDown={(e) => e.stopPropagation()}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      aria-busy={loading || undefined}
+      className={[
+        "lx-btn",
+        "inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider",
+        "px-2 py-1 rounded-md border focus:outline-none disabled:opacity-60",
+      ].join(" ")}
+      style={{
+        backgroundColor: tone.bg,
+        borderColor: tone.br,
+        color: tone.fg,
+      }}
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Icon className="h-3 w-3" />
+      )}
+      {label}
+    </button>
+  );
+};
+
 const CtoApplicationsList = () => {
   const { admin } = useAuth();
   const navigate = useNavigate();
@@ -436,6 +528,37 @@ const CtoApplicationsList = () => {
   const [statusFilter, setStatusFilter] = useState("PENDING"); // default: Pending
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
+
+  // PDF preview opened straight from the list
+  const queryClient = useQueryClient();
+  const currentUserId = admin?.id || admin?._id;
+  const [pdfView, setPdfView] = useState({ kind: null, app: null }); // kind: "general" | "cs6"
+  const [pdfLoadingKey, setPdfLoadingKey] = useState(null); // "<appId>:<kind>"
+
+  const openPdf = async (e, app, kind) => {
+    e.stopPropagation(); // don't also open the row
+    e.preventDefault();
+    if (pdfLoadingKey) return;
+
+    setPdfLoadingKey(`${app._id}:${kind}`);
+    try {
+      // The list rows are trimmed; the PDF needs the full record (signatures,
+      // memos, leave credits). Same query key as the details page, so it is
+      // shared with it and only fetched once.
+      const full = await queryClient.fetchQuery({
+        queryKey: ["ctoApplication", currentUserId, app._id],
+        queryFn: () => getCtoApplicationById(app._id),
+        staleTime: 1000 * 60,
+      });
+      setPdfView({ kind, app: full || app });
+    } catch (err) {
+      toast.error(err?.message || "Couldn't load the PDF. Please try again.");
+    } finally {
+      setPdfLoadingKey(null);
+    }
+  };
+
+  const closePdf = () => setPdfView({ kind: null, app: null });
 
   const debouncedSearch = useDebounce(searchTerm, 450);
 
@@ -542,8 +665,20 @@ const CtoApplicationsList = () => {
         backgroundColor: "var(--app-surface)",
         borderColor: borderColor,
         color: "var(--app-text)",
+        // Theme-aware colors used by LX_STYLES hover/focus rules
+        "--lx-hover-border":
+          resolvedTheme === "dark"
+            ? "rgba(255,255,255,0.20)"
+            : "rgba(15,23,42,0.22)",
+        "--lx-ring": "color-mix(in srgb, var(--accent) 35%, transparent)",
+        "--lx-darken":
+          resolvedTheme === "dark" ? "rgba(0,0,0,0.22)" : "rgba(15,23,42,0.06)",
+        "--lx-darken-press":
+          resolvedTheme === "dark" ? "rgba(0,0,0,0.32)" : "rgba(15,23,42,0.11)",
       }}
     >
+      <style>{LX_STYLES}</style>
+
       <SkeletonTheme
         baseColor={skeletonColors.baseColor}
         highlightColor={skeletonColors.highlightColor}
@@ -605,21 +740,16 @@ const CtoApplicationsList = () => {
                   key={tab.id || "ALL"}
                   type="button"
                   onClick={() => changeTab(tab.id)}
-                  className="flex items-center gap-1 p-1.5 rounded-lg border transition-colors duration-200 whitespace-nowrap"
+                  title={
+                    tab.id
+                      ? `Show ${tab.label.toLowerCase()} requests`
+                      : "Show all requests"
+                  }
+                  className="lx-btn flex items-center gap-1 p-1.5 rounded-lg border whitespace-nowrap"
                   style={{
                     backgroundColor: isActive ? t.bg : "var(--app-surface)",
                     borderColor: isActive ? t.br : borderColor,
                     color: isActive ? t.text : "var(--app-muted)",
-                  }}
-                  onMouseEnter={(e) => {
-                    if (isActive) return;
-                    e.currentTarget.style.backgroundColor =
-                      "var(--app-surface-2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    if (isActive) return;
-                    e.currentTarget.style.backgroundColor =
-                      "var(--app-surface)";
                   }}
                   aria-pressed={isActive}
                 >
@@ -653,9 +783,9 @@ const CtoApplicationsList = () => {
           }}
         >
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
-            <div className="relative flex-1 group min-w-0">
+            <div className="lx-search relative flex-1 group min-w-0">
               <Search
-                className="absolute left-3 top-2.5 h-4 w-4 transition-colors"
+                className="lx-search-icon absolute left-3 top-2.5 h-4 w-4 transition-colors"
                 style={{ color: "var(--app-muted)" }}
               />
               <input
@@ -664,7 +794,7 @@ const CtoApplicationsList = () => {
                 value={searchTerm}
                 maxLength={100}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-8 py-2 w-full rounded-lg text-sm outline-none border transition-colors duration-200 ease-out"
+                className="lx-input pl-9 pr-8 py-2 w-full rounded-lg text-sm outline-none border"
                 style={{
                   backgroundColor: "var(--app-surface)",
                   borderColor: borderColor,
@@ -674,15 +804,9 @@ const CtoApplicationsList = () => {
               {searchTerm && (
                 <button
                   onClick={() => setSearchTerm("")}
-                  className="absolute right-2.5 top-2.5 p-0.5 rounded-full transition-colors duration-200 ease-out"
+                  title="Clear search"
+                  className="lx-btn absolute right-2.5 top-2.5 p-0.5 rounded-full"
                   style={{ color: "var(--app-muted)" }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor =
-                      "var(--app-surface-2)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = "transparent";
-                  }}
                   aria-label="Clear search"
                   type="button"
                 >
@@ -707,7 +831,8 @@ const CtoApplicationsList = () => {
                   setLimit(Number(e.target.value));
                   setPage(1);
                 }}
-                className="border rounded-lg px-2 py-2 text-xs font-semibold outline-none cursor-pointer transition-colors duration-200 ease-out"
+                title="Requests per page"
+                className="lx-input lx-select border rounded-lg px-2 py-2 text-xs font-semibold outline-none"
                 style={{
                   backgroundColor: "var(--app-surface)",
                   borderColor: borderColor,
@@ -772,7 +897,7 @@ const CtoApplicationsList = () => {
                         open();
                       }
                     }}
-                    className="group flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    className="lx-row group flex items-start gap-3 p-3 rounded-xl border outline-none"
                     style={{
                       backgroundColor: isActive
                         ? "var(--accent-soft)"
@@ -780,18 +905,6 @@ const CtoApplicationsList = () => {
                       borderColor: isActive
                         ? "var(--accent-soft2, rgba(37,99,235,0.18))"
                         : "transparent",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (isActive) return;
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface-2)";
-                      e.currentTarget.style.borderColor = borderColor;
-                    }}
-                    onMouseLeave={(e) => {
-                      if (isActive) return;
-                      e.currentTarget.style.backgroundColor =
-                        "var(--app-surface)";
-                      e.currentTarget.style.borderColor = "transparent";
                     }}
                   >
                     <div
@@ -807,32 +920,12 @@ const CtoApplicationsList = () => {
                     </div>
 
                     <div className="flex flex-col flex-1 min-w-0">
-                      <div className="flex justify-between items-start gap-2">
-                        <span
-                          className="text-sm font-semibold truncate"
-                          style={{ color: "var(--app-text)" }}
-                        >
-                          {app.employee?.firstName} {app.employee?.lastName}
-                        </span>
-
-                        <div className="flex flex-col items-end gap-1">
-                          <div className="transform scale-[0.85] origin-top-right flex-none">
-                            <StatusBadge status={displayStatus} />
-                          </div>
-                          {showCancelledTag && (
-                            <span
-                              className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
-                              style={{
-                                backgroundColor: "var(--app-surface-2)",
-                                color: "var(--app-muted)",
-                                border: `1px solid ${borderColor}`,
-                              }}
-                            >
-                              (Cancelled)
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                      <span
+                        className="text-sm font-semibold truncate"
+                        style={{ color: "var(--app-text)" }}
+                      >
+                        {app.employee?.firstName} {app.employee?.lastName}
+                      </span>
 
                       <span
                         className="text-xs truncate"
@@ -902,6 +995,47 @@ const CtoApplicationsList = () => {
                         )}
                       </div>
                     </div>
+
+                    {/* Right column: status, then PDF shortcuts stacked under it.
+                        Sits beside the text lines, so the card doesn't get taller. */}
+                    <div className="flex flex-col items-end gap-1 flex-none">
+                      <div className="transform scale-[0.85] origin-top-right flex-none">
+                        <StatusBadge status={displayStatus} />
+                      </div>
+                      {showCancelledTag && (
+                        <span
+                          className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded"
+                          style={{
+                            backgroundColor: "var(--app-surface-2)",
+                            color: "var(--app-muted)",
+                            border: `1px solid ${borderColor}`,
+                          }}
+                        >
+                          (Cancelled)
+                        </span>
+                      )}
+
+                      <PdfButton
+                        kind="general"
+                        label="PDF"
+                        title="View PDF"
+                        icon={FileText}
+                        loading={pdfLoadingKey === `${app._id}:general`}
+                        disabled={Boolean(pdfLoadingKey)}
+                        onClick={(e) => openPdf(e, app, "general")}
+                      />
+                      {isOrganicApplication(app) && (
+                        <PdfButton
+                          kind="cs6"
+                          label="CS6"
+                          title="View CS6 PDF (CSC Form No. 6)"
+                          icon={FileBadge}
+                          loading={pdfLoadingKey === `${app._id}:cs6`}
+                          disabled={Boolean(pdfLoadingKey)}
+                          onClick={(e) => openPdf(e, app, "cs6")}
+                        />
+                      )}
+                    </div>
                   </li>
                 );
               })
@@ -945,6 +1079,22 @@ const CtoApplicationsList = () => {
           borderColor={borderColor}
         />
       </SkeletonTheme>
+
+      {/* PDF previews opened from a list row */}
+      {pdfView.app && (
+        <>
+          <CtoApplicationPdfModal
+            app={pdfView.app}
+            isOpen={pdfView.kind === "general"}
+            onClose={closePdf}
+          />
+          <OrganicApplicationPdfModal
+            app={pdfView.app}
+            isOpen={pdfView.kind === "cs6"}
+            onClose={closePdf}
+          />
+        </>
+      )}
     </div>
   );
 };

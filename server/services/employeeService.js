@@ -15,7 +15,11 @@ const sendEmail = require("../utils/sendEmail");
 const {
   employeeWelcomeEmail,
   passwordResetByAdminEmail,
+  BRAND,
 } = require("../utils/emailTemplates");
+
+// Same name as the emails ("DICT CTO & Wellness System"), set once in utils/emailTemplates.js
+const BRAND_NAME = BRAND?.name || "DICT CTO & Wellness System";
 const { sendNotificationSms } = require("./smsService"); // ✅ Imported SMS service
 
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
@@ -322,7 +326,7 @@ const createEmployeeService = async (employeeData = {}) => {
   // --- 2. SEND WELCOME SMS (NEW) ---
   if (employee.phone) {
     // Keep it brief to fit under the SMS 320 character limit
-    const smsMessage = `Welcome to DICT R2 HRMS, ${employee.firstName}! Your temp password is: ${tempPassword}. Login at ${frontendUrl}`;
+    const smsMessage = `Welcome to ${BRAND_NAME}, ${employee.firstName}! Your temp password is: ${tempPassword}. Login at ${frontendUrl}`;
 
     // Fire and forget - use employee ID to prevent accidental duplicate welcome texts
     sendNotificationSms(
@@ -893,7 +897,8 @@ const adminResetPasswordService = async ({ actorId, email, notify = true }) => {
     }
 
     if (target.phone) {
-      const smsMessage = `DICT R2 HRMS: Your password was reset by an administrator. Temp password: ${tempPassword}. Login at ${frontendUrl} and change it immediately.`;
+      // Kept under 160 characters so it is sent as a single SMS
+      const smsMessage = `${BRAND_NAME}: An admin reset your password. Temp password: ${tempPassword}. Log in at ${frontendUrl} and change it now.`;
       try {
         await sendNotificationSms(
           target.phone,

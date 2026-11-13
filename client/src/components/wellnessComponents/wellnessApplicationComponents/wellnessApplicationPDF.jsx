@@ -850,7 +850,7 @@ const SignatureBlock = ({ sig, marginTop }) => (
 export default function WellnessLeavePdf({
   app,
   isAfdDivision: isAfdProp, // ✅ Accept prop from the modal
-  logoSrc = "/public/logo_dict.png",
+  logoSrc = "/logo_dict.png",
   recommendingApproverLabel = "Chief/Division Head",
   approvedLabel = "Regional Director",
   adminFinanceLabel = "Chief, Admin. & Finance Div.",

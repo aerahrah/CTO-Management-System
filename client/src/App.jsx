@@ -142,6 +142,9 @@ import ViewRole from "./components/generalSettingsComponents/rolesSettings/viewR
 // Email Notification Settings
 import EmailNotificationSettings from "./components/generalSettingsComponents/emailNotificationSetting";
 
+// ✅ Scheduled Jobs (cron) Settings
+import ScheduledJobsSettings from "./components/generalSettingsComponents/scheduledJobsSettings";
+
 // Approval Routes (Separated into List and Form)
 import ApprovalRoutesList from "./components/generalSettingsComponents/approvalRoutes/approvalRoutesList";
 import ApprovalRouteStepForm from "./components/generalSettingsComponents/approvalRoutes/approvalRouteStepForm";
@@ -580,6 +583,15 @@ function App() {
               path="email-notification-settings"
               element={<EmailNotificationSettings />}
             />
+          </Route>
+
+          {/* ✅ Scheduled Jobs (cron) Settings */}
+          <Route
+            element={
+              <ProtectedRoute requiredPermission="settings.scheduled_jobs" />
+            }
+          >
+            <Route path="scheduled-jobs" element={<ScheduledJobsSettings />} />
           </Route>
 
           <Route

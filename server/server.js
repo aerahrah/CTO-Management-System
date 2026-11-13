@@ -29,6 +29,9 @@ const leaveRoutes = require("./routers/leaveRoute");
 // Email notification settings routes
 const emailNotificationSettingRoutes = require("./routers/emailNotificationSettingsRoutes");
 
+// ✅ NEW: Scheduled jobs (cron) settings routes
+const scheduledJobsRoutes = require("./routers/scheduledJobsRoutes");
+
 // Approval routes
 const approvalRouteRoutes = require("./routers/approvalRouteRoute");
 
@@ -58,6 +61,8 @@ const revocationSettingRoutes = require("./routers/revocationSettingRoute");
 
 const auditLogger = require("./middlewares/auditLogMiddleware");
 const initWellnessCron = require("./cron/wellnessCron");
+// ✅ NEW: End-of-day CTO pending approvals email (settings on the Scheduled Jobs page)
+const { startCtoPendingDigestJob } = require("./cron/ctoPendingDigest.job");
 
 dotenv.config();
 
@@ -321,6 +326,7 @@ app.use("/api/settings/general", generalSettingRoutes);
 app.use("/api/settings/preferences", userPreferenceRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/email-notification-settings", emailNotificationSettingRoutes);
+app.use("/api/scheduled-jobs", scheduledJobsRoutes); // ✅ NEW: Scheduled Jobs page
 app.use("/api/approval-routes", approvalRouteRoutes);
 app.use("/api/roles", roleRoutes);
 app.use("/api/all", dashboardRoutes);
@@ -383,6 +389,7 @@ async function start() {
   try {
     await connectDB();
     initWellnessCron();
+    startCtoPendingDigestJob(); // ✅ NEW: checks every minute; sends at the time set on Scheduled Jobs
 
     app.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT} (${NODE_ENV})`);

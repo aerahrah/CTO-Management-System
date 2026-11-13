@@ -683,9 +683,9 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
   const hasAnyDates = requestedKeys.size > 0;
 
   const navBtn =
-    "h-9 w-9 rounded-xl border flex items-center justify-center transition " +
-    "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] " +
-    "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+    "dx-btn h-9 w-9 rounded-xl border flex items-center justify-center " +
+    "bg-[color:var(--app-surface)] " +
+    "focus:outline-none";
 
   return (
     <div
@@ -879,9 +879,41 @@ const RequestedDatesCalendar = ({ dates = [] }) => {
    Document button style
 ========================= */
 const DOC_BTN =
-  "w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition " +
-  "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)] " +
-  "focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]";
+  "dx-btn w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold " +
+  "bg-[color:var(--app-surface)] " +
+  "focus:outline-none";
+
+/* =========================
+   Interaction styles (hover / press / focus / cursor)
+   Many elements set colors inline, so hover overrides use !important.
+   Theme colors come from CSS variables set on the page root.
+========================= */
+const DX_STYLES = `
+/* Every button: a slight darken on hover, a little more while pressed.
+   Done with an inset shadow so it works on any background (including
+   transparent) and never changes the text color. */
+.dx-btn { transition: box-shadow .15s ease; }
+.dx-btn:not(:disabled) { cursor: pointer; }
+.dx-btn:disabled { cursor: not-allowed; }
+.dx-btn[aria-busy="true"] { cursor: progress; }
+.dx-btn:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--dx-darken, rgba(15,23,42,.06));
+}
+.dx-btn:active:not(:disabled) {
+  box-shadow: inset 0 0 0 999px var(--dx-darken-press, rgba(15,23,42,.11));
+}
+.dx-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Text inputs */
+.dx-input { transition: border-color .15s ease, box-shadow .15s ease; }
+.dx-input:hover:not(:focus) { border-color: var(--dx-hover-border, rgba(148,163,184,.55)) !important; }
+.dx-input:focus { box-shadow: 0 0 0 3px var(--dx-ring, color-mix(in srgb, var(--accent) 35%, transparent)); }
+.dx-input:focus:not(:placeholder-shown) { border-color: var(--accent) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-btn, .dx-input { transition: none; }
+}
+`;
 
 /* =========================
    CTO APPLICATION DETAILS
@@ -937,21 +969,29 @@ const CtoApplicationDetails = () => {
     application?.employeeType === "Organic" ||
     application?.category === "Organic";
 
-  const requestedDatesLabel = useMemo(() => {
+  // Each requested date as its own item, e.g. { weekday: "Fri", date: "Nov 27, 2026" },
+  // so the dates can be shown as separate pills instead of one comma-joined line.
+  const requestedDates = useMemo(() => {
     const dates = application?.inclusiveDates || [];
-    if (!dates.length) return "No dates set";
     return [...dates]
       .map((d) => new Date(d))
       .filter((d) => !Number.isNaN(d.getTime()))
       .sort((a, b) => a - b)
-      .map((d) =>
-        d.toLocaleDateString("en-US", {
+      .map((d) => ({
+        key: d.toISOString(),
+        weekday: d.toLocaleDateString("en-US", { weekday: "short" }),
+        date: d.toLocaleDateString("en-US", {
           month: "short",
           day: "numeric",
           year: "numeric",
         }),
-      )
-      .join(", ");
+        full: d.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }),
+      }));
   }, [application?.inclusiveDates]);
 
   const sortedApprovals = useMemo(() => {
@@ -1104,8 +1144,20 @@ const CtoApplicationDetails = () => {
         backgroundColor: "var(--app-bg)",
         color: "var(--app-text)",
         borderColor: borderColor,
+        // Theme-aware colors used by DX_STYLES hover/focus rules
+        "--dx-darken":
+          resolvedTheme === "dark" ? "rgba(0,0,0,0.22)" : "rgba(15,23,42,0.06)",
+        "--dx-darken-press":
+          resolvedTheme === "dark" ? "rgba(0,0,0,0.32)" : "rgba(15,23,42,0.11)",
+        "--dx-hover-border":
+          resolvedTheme === "dark"
+            ? "rgba(255,255,255,0.20)"
+            : "rgba(15,23,42,0.22)",
+        "--dx-ring": "color-mix(in srgb, var(--accent) 35%, transparent)",
       }}
     >
+      <style>{DX_STYLES}</style>
+
       {/* HEADER */}
       <header
         className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b backdrop-blur px-3 py-3 z-10"
@@ -1193,7 +1245,8 @@ const CtoApplicationDetails = () => {
                     setIsModalOpen(true);
                   }}
                   disabled={isMutating}
-                  className="flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold transition hover:brightness-95 disabled:opacity-60"
+                  title="Reject this request"
+                  className="dx-btn flex-1 md:flex-none px-4 py-2 rounded-lg font-semibold disabled:opacity-60"
                   style={{
                     backgroundColor: "var(--app-surface-2)",
                     color: "var(--app-text)",
@@ -1210,7 +1263,9 @@ const CtoApplicationDetails = () => {
                     setIsModalOpen(true);
                   }}
                   disabled={isMutating}
-                  className="flex-1 md:flex-none rounded-lg px-4 py-2 transition shadow-sm font-medium flex items-center justify-center gap-2 hover:brightness-95 disabled:opacity-80"
+                  aria-busy={approveMutation.isPending || undefined}
+                  title="Approve this request"
+                  className="dx-btn flex-1 md:flex-none rounded-lg px-4 py-2 shadow-sm font-medium flex items-center justify-center gap-2 disabled:opacity-80"
                   style={{
                     backgroundColor: "var(--accent)",
                     border: "1px solid var(--accent)",
@@ -1286,7 +1341,8 @@ const CtoApplicationDetails = () => {
             <button
               type="button"
               onClick={() => navigate("/app/my-profile")}
-              className="flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-lg shadow transition-colors"
+              title="Go to your profile to upload a signature"
+              className="dx-btn flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 bg-orange-600 text-white text-xs font-bold rounded-lg shadow"
             >
               <PenTool size={14} /> Upload Signature
             </button>
@@ -1304,12 +1360,41 @@ const CtoApplicationDetails = () => {
           >
             <CalendarDays className="absolute right-[-20px] top-[-20px] h-40 w-40 text-white/10 rotate-12" />
             <div className="min-w-0 relative">
-              <p className="text-white/90 text-xs font-bold uppercase tracking-widest mb-1">
+              <p className="text-white/90 text-xs font-bold uppercase tracking-widest mb-2">
                 Requested Dates
+                {requestedDates.length > 0 && (
+                  <span className="text-white/70">
+                    {" "}
+                    · {plural(requestedDates.length, "day")}
+                  </span>
+                )}
               </p>
-              <h3 className="text-xl md:text-2xl font-bold break-words">
-                {requestedDatesLabel}
-              </h3>
+
+              {requestedDates.length > 0 ? (
+                // One pill per date so dates never run together
+                <ul className="flex flex-wrap gap-2">
+                  {requestedDates.map((d) => (
+                    <li
+                      key={d.key}
+                      title={d.full}
+                      className="inline-flex items-baseline gap-1.5 rounded-lg border px-2.5 py-1 whitespace-nowrap"
+                      style={{
+                        backgroundColor: "rgba(255,255,255,0.16)",
+                        borderColor: "rgba(255,255,255,0.28)",
+                      }}
+                    >
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-white/80">
+                        {d.weekday}
+                      </span>
+                      <span className="text-base md:text-lg font-bold leading-tight">
+                        {d.date}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <h3 className="text-xl md:text-2xl font-bold">No dates set</h3>
+              )}
             </div>
 
             <div className="flex items-center flex-none relative">
@@ -1578,7 +1663,7 @@ const CtoApplicationDetails = () => {
                   onClick={() => setIsPdfOpen(true)}
                   className={DOC_BTN}
                   style={{ borderColor, color: "var(--app-text)" }}
-                  title="View General PDF"
+                  title="View PDF"
                 >
                   <span className="inline-flex items-center gap-2.5 min-w-0">
                     <span
@@ -1591,7 +1676,7 @@ const CtoApplicationDetails = () => {
                     >
                       <FileText size={16} />
                     </span>
-                    <span className="truncate">General Form</span>
+                    <span className="truncate">View PDF</span>
                   </span>
                   <span
                     className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
@@ -1611,7 +1696,7 @@ const CtoApplicationDetails = () => {
                     onClick={() => setIsOrganicPdfOpen(true)}
                     className={DOC_BTN}
                     style={{ borderColor, color: "var(--app-text)" }}
-                    title="View CSC Form 6"
+                    title="View CS6 PDF"
                   >
                     <span className="inline-flex items-center gap-2.5 min-w-0">
                       <span
@@ -1624,7 +1709,7 @@ const CtoApplicationDetails = () => {
                       >
                         <FileBadge size={16} />
                       </span>
-                      <span className="truncate">CSC Form 6</span>
+                      <span className="truncate">View CS6 PDF</span>
                     </span>
                     <span
                       className="text-[9px] font-bold px-2 py-1 rounded-lg flex-none border"
@@ -1647,7 +1732,7 @@ const CtoApplicationDetails = () => {
                       )}
                       target="_blank"
                       rel="noreferrer"
-                      className="w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold transition hover:brightness-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)]"
+                      className="dx-btn w-full inline-flex items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-sm font-semibold focus:outline-none"
                       style={{
                         borderColor: "rgba(245,158,11,0.3)",
                         backgroundColor: "rgba(245,158,11,0.05)",
@@ -1709,7 +1794,7 @@ const CtoApplicationDetails = () => {
                       href={buildApiUrl(m.uploadedMemo)}
                       target="_blank"
                       rel="noreferrer"
-                      className="group flex items-center justify-between gap-3 rounded-xl px-3 py-2 hover:bg-[color:var(--app-surface-2)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] transition min-w-0"
+                      className="dx-btn group flex items-center justify-between gap-3 rounded-xl px-3 py-2 focus:outline-none min-w-0"
                       title={`Open Memo ${m.memoId?.memoNo}`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -1741,7 +1826,7 @@ const CtoApplicationDetails = () => {
 
                       <ExternalLink
                         size={14}
-                        className="transition flex-none"
+                        className="flex-none"
                         style={{ color: "var(--app-muted)" }}
                       />
                     </a>
@@ -1768,10 +1853,15 @@ const CtoApplicationDetails = () => {
                 type="button"
                 onClick={() => setMemoModal({ isOpen: true, memos: memos })}
                 disabled={memoCount === 0}
-                className={`mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-bold border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--accent)] ${
+                title={
+                  memoCount === 0
+                    ? "No memos attached to this request"
+                    : "View all attached memos"
+                }
+                className={`dx-btn mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-bold border focus:outline-none ${
                   memoCount === 0
                     ? "cursor-not-allowed opacity-60 bg-[color:var(--app-surface-2)]"
-                    : "bg-[color:var(--app-surface)] hover:bg-[color:var(--app-surface-2)]"
+                    : "bg-[color:var(--app-surface)]"
                 }`}
                 style={{
                   color:
@@ -1880,7 +1970,7 @@ const CtoApplicationDetails = () => {
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
                     placeholder="Please explain why this request is being declined (e.g., overlapping schedules, insufficient credits)..."
-                    className="w-full p-4 pb-8 border-2 rounded-2xl outline-none min-h-[140px] text-sm transition-all duration-300 ease-out"
+                    className="dx-input w-full p-4 pb-8 border-2 rounded-2xl outline-none min-h-[140px] text-sm"
                     style={{
                       backgroundColor: "var(--app-surface)",
                       color: "var(--app-text)",
