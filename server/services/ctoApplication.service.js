@@ -10,6 +10,8 @@ const GeneralSetting = require("../models/generalSettingsModel");
 
 const { resolveApproversFromRoute } = require("./approvalRoute.service");
 const sendEmail = require("../utils/sendEmail");
+const { ctoThread } = require("../utils/emailThread");
+const { getCtoPreviousActions } = require("../utils/ctoEmailHistory");
 const NotificationService = require("./notificationService");
 
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
@@ -28,6 +30,14 @@ const {
 const { APPROVAL_ROLE_VALUES } = require("../constants/approvalRoles");
 
 const { getRevocationApproverEmails } = require("../utils/getHrEmails");
+
+// All hour values follow one standard: 4 decimal places (see utils/hours.js).
+const {
+  roundHours,
+  sameHours,
+  adjustCreditHours,
+  incHoursPipeline,
+} = require("../utils/hours");
 
 /* =========================
    Helpers
@@ -175,9 +185,11 @@ function getBackdateLimit(today, backdateDays, activeWorkingDays) {
   return limit;
 }
 
-async function safeSendEmail(to, subject, html) {
+// thread: ctoThread(application) puts the email in that application's
+// thread in the recipient's inbox
+async function safeSendEmail(to, subject, html, thread = null) {
   try {
-    await sendEmail(to, subject, html);
+    await sendEmail(to, subject, html, { thread });
   } catch (e) {
     console.error("[EMAIL] failed but continuing:", {
       to,
@@ -263,23 +275,17 @@ const restoreMemoHours = async ({ employeeId, memoItems }) => {
   for (const m of memoItems) {
     if (!m?.memoId || !m?.appliedHours) continue;
 
-    const appliedHours = strictNumber(m.appliedHours);
+    const appliedHours = roundHours(m.appliedHours);
     if (appliedHours <= 0) continue;
 
-    await CtoCredit.updateOne(
-      {
-        _id: m.memoId,
-        employees: {
-          $elemMatch: { employee: employeeId },
-        },
+    await adjustCreditHours(CtoCredit, {
+      memoId: m.memoId,
+      employeeId,
+      deltas: {
+        reservedHours: -appliedHours,
+        remainingHours: appliedHours,
       },
-      {
-        $inc: {
-          "employees.$.reservedHours": -appliedHours,
-          "employees.$.remainingHours": appliedHours,
-        },
-      },
-    );
+    });
   }
 };
 
@@ -337,6 +343,8 @@ async function notifyApproversOfCancellation({
   }
 
   const employeeName = fullNameOf(employee);
+  // The "cancelled" email joins each person's thread for this application
+  const emailThread = ctoThread(application, employee);
 
   // 1. Notify approvers (In-App + SMS to all, Email to those who saw it)
   if (approverIds.length > 0) {
@@ -375,7 +383,7 @@ async function notifyApproversOfCancellation({
                 requestedHours: application.requestedHours,
                 inclusiveDates: application.inclusiveDates,
               });
-              return safeSendEmail(a.email, tpl.subject, tpl.html);
+              return safeSendEmail(a.email, tpl.subject, tpl.html, emailThread);
             }),
         );
       } catch (e) {
@@ -446,7 +454,12 @@ async function notifyApproversOfCancellation({
                 requestedHours: application.requestedHours,
                 inclusiveDates: application.inclusiveDates,
               });
-              return safeSendEmail(doc.email, tpl.subject, tpl.html);
+              return safeSendEmail(
+                doc.email,
+                tpl.subject,
+                tpl.html,
+                emailThread,
+              );
             }),
         );
       } catch (e) {
@@ -488,8 +501,9 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         app.memo.forEach((m) => {
           if (m.memoId) {
             const mId = String(m.memoId._id || m.memoId);
-            memoSystemUsage[mId] =
-              (memoSystemUsage[mId] || 0) + strictNumber(m.appliedHours);
+            memoSystemUsage[mId] = roundHours(
+              (memoSystemUsage[mId] || 0) + roundHours(m.appliedHours),
+            );
           }
         });
       }
@@ -501,16 +515,19 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
       (e) => String(e.employee) === String(employeeId),
     );
     if (empRec) {
-      const remaining = strictNumber(empRec.remainingHours);
-      const reserved = strictNumber(empRec.reservedHours);
-      const used = strictNumber(empRec.usedHours);
+      const remaining = roundHours(empRec.remainingHours);
+      const reserved = roundHours(empRec.reservedHours);
+      const used = roundHours(empRec.usedHours);
       const earned =
-        strictNumber(empRec.totalHours) || remaining + used + reserved;
+        roundHours(empRec.totalHours) ||
+        roundHours(remaining + used + reserved);
 
       const systemUsed = memoSystemUsage[String(credit._id)] || 0;
 
-      // Calculate how many hours were used prior to being tracked in this system
-      const priorUsage = Math.max(0, used + reserved - systemUsed);
+      // Calculate how many hours were used prior to being tracked in this system.
+      // Rounded so float noise (e.g. 2e-16) never shows up as a fake
+      // "Prior CTO Usage" row.
+      const priorUsage = Math.max(0, roundHours(used + reserved - systemUsed));
 
       // 2. If the credit is 100% exhausted from the old system and has no applications here, skip it
       if (
@@ -593,7 +610,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         displayDate: displayDate,
         type: "APPLICATION",
         description: descriptionBase + statusSuffix,
-        amount: -strictNumber(app.requestedHours),
+        amount: -roundHours(app.requestedHours),
         referenceId: app._id,
         sortPriority: 1,
       });
@@ -603,7 +620,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         displayDate: displayDate,
         type: "APPLICATION",
         description: descriptionBase,
-        amount: -strictNumber(app.requestedHours),
+        amount: -roundHours(app.requestedHours),
         referenceId: app._id,
         sortPriority: 1,
       });
@@ -618,7 +635,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
         displayDate: displayDate,
         type: "REVOCATION_RESTORED",
         description: descriptionBase + " - Revoked",
-        amount: strictNumber(app.requestedHours),
+        amount: roundHours(app.requestedHours),
         referenceId: app._id,
         sortPriority: 2,
       });
@@ -642,7 +659,7 @@ async function generateEmployeeLedger(employeeId, asOfDate = null) {
 
   let runningBalance = 0;
   const ledgerTransactions = transactions.map((t) => {
-    runningBalance += t.amount;
+    runningBalance = roundHours(runningBalance + t.amount);
     return {
       ...t,
       runningBalance,
@@ -677,7 +694,7 @@ const addCtoApplicationService = async ({
 }) => {
   assertObjectId(userId, "User ID");
 
-  const strictReqHours = strictNumber(requestedHours);
+  const strictReqHours = roundHours(requestedHours);
   const safeReason = sanitizeText(reason, 1000);
 
   if (strictReqHours <= 0 || !safeReason || !inclusiveDates?.length) {
@@ -954,12 +971,15 @@ const addCtoApplicationService = async ({
   }
 
   const sanitizedMemos = memos.map((m) => {
-    const hours = strictNumber(m.appliedHours);
+    const hours = roundHours(m.appliedHours);
     if (hours <= 0) {
-      throw createServiceError("Applied hours must be a positive number.", 400);
+      throw createServiceError(
+        "Applied hours for each memo must be greater than 0 (minimum 0.0001 h).",
+        400,
+      );
     }
     assertObjectId(m.memoId, "Memo ID");
-    return { ...m, appliedHours: hours };
+    return { memoId: m.memoId, appliedHours: hours };
   });
 
   const memoIds = sanitizedMemos.map((m) => m.memoId);
@@ -1012,7 +1032,7 @@ const addCtoApplicationService = async ({
           400,
         );
 
-      const availableHours = strictNumber(empCredit.remainingHours);
+      const availableHours = roundHours(empCredit.remainingHours);
 
       if (input.appliedHours <= 0 || input.appliedHours > availableHours) {
         throw createServiceError(
@@ -1024,30 +1044,20 @@ const addCtoApplicationService = async ({
         );
       }
 
-      const updateResult = await CtoCredit.updateOne(
-        {
-          _id: credit._id,
-          employees: {
-            $elemMatch: {
-              employee: employee._id,
-              remainingHours: {
-                $gte: input.appliedHours,
-              },
-            },
-          },
+      // Atomic: only reserves if the memo still has enough hours, and the
+      // new balances are rounded to 4 decimals inside MongoDB.
+      const reserved = await adjustCreditHours(CtoCredit, {
+        memoId: credit._id,
+        employeeId: employee._id,
+        deltas: {
+          reservedHours: input.appliedHours,
+          remainingHours: -input.appliedHours,
         },
-        {
-          $inc: {
-            "employees.$.reservedHours": input.appliedHours,
-            "employees.$.remainingHours": -input.appliedHours,
-          },
-          $set: {
-            "employees.$.status": empCredit.status || "ACTIVE",
-          },
-        },
-      );
+        guard: { field: "remainingHours", min: input.appliedHours },
+        set: { status: empCredit.status || "ACTIVE" },
+      });
 
-      if (updateResult.modifiedCount === 0) {
+      if (!reserved) {
         throw createServiceError(
           "Failed to reserve hours for memo " +
             credit.memoNo +
@@ -1067,10 +1077,10 @@ const addCtoApplicationService = async ({
         appliedHours: input.appliedHours,
       });
 
-      totalAppliedHours += input.appliedHours;
+      totalAppliedHours = roundHours(totalAppliedHours + input.appliedHours);
     }
 
-    if (totalAppliedHours !== strictReqHours) {
+    if (!sameHours(totalAppliedHours, strictReqHours)) {
       throw createServiceError(
         "Sum of applied hours (" +
           totalAppliedHours +
@@ -1225,20 +1235,14 @@ const addCtoApplicationService = async ({
 
     for (const action of rollbackActions) {
       try {
-        await CtoCredit.updateOne(
-          {
-            _id: action.memoId,
-            employees: {
-              $elemMatch: { employee: employee._id },
-            },
+        await adjustCreditHours(CtoCredit, {
+          memoId: action.memoId,
+          employeeId: employee._id,
+          deltas: {
+            reservedHours: -action.appliedHours,
+            remainingHours: action.appliedHours,
           },
-          {
-            $inc: {
-              "employees.$.reservedHours": -action.appliedHours,
-              "employees.$.remainingHours": action.appliedHours,
-            },
-          },
-        );
+        });
       } catch (rollbackErr) {
         console.error(
           "[ROLLBACK FAILED] Could not restore " +
@@ -1249,6 +1253,19 @@ const addCtoApplicationService = async ({
           rollbackErr.message,
         );
       }
+    }
+
+    // A schema validation failure is bad input, not a server crash:
+    // return it as a 400 with a readable message instead of a 500.
+    if (error?.name === "ValidationError" && error.errors) {
+      const details = Object.values(error.errors)
+        .map((e) => e?.message)
+        .filter(Boolean)
+        .join(" ");
+      throw createServiceError(
+        details || "The application has invalid data.",
+        400,
+      );
     }
 
     throw error;
@@ -1270,6 +1287,9 @@ const addCtoApplicationService = async ({
   }
 
   const justApproverIds = finalApprovers.map((a) => String(a.approver));
+
+  // Every email about this application to the same person shares one thread
+  const emailThread = ctoThread(newApplication, employee);
 
   // 1. Notify active approvers (In-App + SMS)
   try {
@@ -1345,7 +1365,12 @@ const addCtoApplicationService = async ({
                 inclusiveDates,
                 reason: safeReason,
               });
-              return safeSendEmail(doc.email, tpl.subject, tpl.html);
+              return safeSendEmail(
+                doc.email,
+                tpl.subject,
+                tpl.html,
+                emailThread,
+              );
             }),
           );
         }
@@ -1384,16 +1409,31 @@ const addCtoApplicationService = async ({
 
     if (approverUser?.email && enabled) {
       const frontendUrl = process.env.FRONTEND_URL || "";
+
+      // History so far: just the submission
+      const previousActions = await getCtoPreviousActions({
+        createdAt: newApplication.createdAt,
+        approvals: newApplication.approvals,
+        employee,
+      });
+
       const tpl = ctoApprovalEmail({
         approverName: fullNameOf(approverUser),
         employeeName: fullNameOf(employee),
         requestedHours: strictReqHours,
+        inclusiveDates: newApplication.inclusiveDates,
         reason: safeReason,
         level: 1,
         link: frontendUrl + "/app/cto-approvals/" + newApplication._id,
+        previousActions,
       });
 
-      await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+      await safeSendEmail(
+        approverUser.email,
+        tpl.subject,
+        tpl.html,
+        emailThread,
+      );
     } else if (!enabled) {
       console.warn(
         "[addCtoApplicationService] CTO_APPROVAL email is disabled in settings — email not sent.",
@@ -1472,7 +1512,7 @@ const followUpCtoApplicationService = async ({ userId, applicationId }) => {
   assertObjectId(applicationId, "Application ID");
 
   const app = await CtoApplication.findById(applicationId)
-    .populate("employee", "firstName lastName")
+    .populate("employee", "firstName lastName position")
     .populate({
       path: "approvals",
       populate: {
@@ -1526,11 +1566,19 @@ const followUpCtoApplicationService = async ({ userId, applicationId }) => {
       approverName: fullNameOf(approverUser),
       employeeName: fullNameOf(app.employee),
       requestedHours: app.requestedHours,
+      inclusiveDates: app.inclusiveDates,
       level: currentStep.level,
       link: frontendUrl + "/app/cto-approvals/" + app._id,
+      previousActions: await getCtoPreviousActions(app),
     });
 
-    await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+    // Lands in the same thread as this approver's "needs your approval" email
+    await safeSendEmail(
+      approverUser.email,
+      tpl.subject,
+      tpl.html,
+      ctoThread(app),
+    );
 
     try {
       await NotificationService.notifyApproverOnCtoFollowUp({
@@ -1659,12 +1707,15 @@ const requestRevocationCtoApplicationService = async ({
           hrName: "HR Team",
           employeeName: fullNameOf(employee),
           requestedHours: app.requestedHours,
+          inclusiveDates: app.inclusiveDates,
           reason: safeReason,
           link: frontendUrl + "/app/leave-revocations/" + app._id,
         });
 
+        // Each HR person gets their own thread for this application
+        const emailThread = ctoThread(app, employee);
         const emailPromises = hrEmails.map((hrEmail) =>
-          safeSendEmail(hrEmail, tpl.subject, tpl.html),
+          safeSendEmail(hrEmail, tpl.subject, tpl.html, emailThread),
         );
         await Promise.all(emailPromises);
       }
@@ -1768,10 +1819,13 @@ const cancelRevocationCtoRequestService = async ({ userId, applicationId }) => {
           hrName: "HR Team",
           employeeName: fullNameOf(employee),
           requestedHours: application.requestedHours,
+          inclusiveDates: application.inclusiveDates,
         });
 
+        // Same thread as the HR person's revocation request email
+        const emailThread = ctoThread(application, employee);
         const emailPromises = hrEmails.map((hrEmail) =>
-          safeSendEmail(hrEmail, tpl.subject, tpl.html),
+          safeSendEmail(hrEmail, tpl.subject, tpl.html, emailThread),
         );
         await Promise.all(emailPromises);
       }
@@ -1842,39 +1896,27 @@ const processRevocationRequestService = async ({
 
     if (safeAction === "APPROVE") {
       const employeeId = application.employee._id;
-      const requestedHours = strictNumber(application.requestedHours);
+      const requestedHours = roundHours(application.requestedHours);
 
       for (const memoItem of application.memo || []) {
         const memoId = memoItem.memoId?._id || memoItem.memoId;
-        const appliedHours = strictNumber(memoItem.appliedHours);
+        const appliedHours = roundHours(memoItem.appliedHours);
 
         if (!memoId || appliedHours <= 0) continue;
 
-        const creditResult = await CtoCredit.findOneAndUpdate(
-          {
-            _id: memoId,
-            employees: {
-              $elemMatch: {
-                employee: employeeId,
-                usedHours: {
-                  $gte: appliedHours,
-                },
-              },
-            },
+        const restored = await adjustCreditHours(CtoCredit, {
+          memoId,
+          employeeId,
+          deltas: {
+            usedHours: -appliedHours,
+            remainingHours: appliedHours,
           },
-          {
-            $inc: {
-              "employees.$.usedHours": -appliedHours,
-              "employees.$.remainingHours": appliedHours,
-            },
-            $set: {
-              "employees.$.status": "ACTIVE",
-            },
-          },
-          { session, new: true },
-        );
+          guard: { field: "usedHours", min: appliedHours },
+          set: { status: "ACTIVE" },
+          session,
+        });
 
-        if (!creditResult) {
+        if (!restored) {
           throw createServiceError(
             "Failed to restore credit hours for memo " +
               memoId +
@@ -1884,17 +1926,14 @@ const processRevocationRequestService = async ({
         }
       }
 
-      const updatedEmployee = await Employee.findOneAndUpdate(
-        { _id: employeeId },
-        {
-          $inc: {
-            "balances.ctoHours": requestedHours,
-          },
-        },
-        { session, new: true },
+      // New balance is rounded to 4 decimals inside MongoDB.
+      const balanceResult = await Employee.collection.updateOne(
+        { _id: new mongoose.Types.ObjectId(String(employeeId)) },
+        incHoursPipeline("balances.ctoHours", requestedHours),
+        { session },
       );
 
-      if (!updatedEmployee) {
+      if (balanceResult.matchedCount === 0) {
         throw createServiceError(
           "Employee record not found for balance restoration.",
           400,
@@ -1941,7 +1980,9 @@ const processRevocationRequestService = async ({
     const emp = application.employee;
     if (emp && emp.email) {
       const empName = fullNameOf(emp);
-      const requestedHours = strictNumber(application.requestedHours);
+      const requestedHours = roundHours(application.requestedHours);
+      // The result joins the applicant's thread for this application
+      const emailThread = ctoThread(application);
 
       if (safeAction === "APPROVE") {
         await NotificationService.notifyEmployeeOnCtoRevocationApproved({
@@ -1957,9 +1998,10 @@ const processRevocationRequestService = async ({
           const tpl = ctoRevocationApprovedEmail({
             employeeName: empName,
             restoredHours: requestedHours,
+            inclusiveDates: application.inclusiveDates,
             remarks: safeRemarks,
           });
-          await safeSendEmail(emp.email, tpl.subject, tpl.html);
+          await safeSendEmail(emp.email, tpl.subject, tpl.html, emailThread);
         }
       } else if (safeAction === "REJECT") {
         await NotificationService.notifyEmployeeOnCtoRevocationRejected({
@@ -1974,9 +2016,10 @@ const processRevocationRequestService = async ({
         if (emailEnabled) {
           const tpl = ctoRevocationRejectedEmail({
             employeeName: empName,
+            inclusiveDates: application.inclusiveDates,
             remarks: safeRemarks,
           });
-          await safeSendEmail(emp.email, tpl.subject, tpl.html);
+          await safeSendEmail(emp.email, tpl.subject, tpl.html, emailThread);
         }
       }
     }

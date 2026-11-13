@@ -7,6 +7,8 @@ const CtoCredit = require("../models/ctoCreditModel");
 const NotificationService = require("./notificationService");
 
 const sendEmail = require("../utils/sendEmail");
+const { ctoThread } = require("../utils/emailThread");
+const { getCtoPreviousActions } = require("../utils/ctoEmailHistory");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 const {
@@ -130,9 +132,11 @@ function formatLedgerDates(dates) {
   return fmt(start) + " to " + fmt(end);
 }
 
-async function safeSendEmail(to, subject, html) {
+// thread: ctoThread(application) puts the email in that application's
+// thread in the recipient's inbox
+async function safeSendEmail(to, subject, html, thread = null) {
   try {
-    await sendEmail(to, subject, html);
+    await sendEmail(to, subject, html, { thread });
   } catch (e) {
     console.error("[EMAIL] failed but continuing:", {
       to,
@@ -825,6 +829,8 @@ const approveCtoApplicationService = async ({
   });
 
   const applicantName = fullNameOf(application.employee);
+  // Every email about this application to the same person shares one thread
+  const emailThread = ctoThread(application);
 
   // 1. IN-APP NOTIFICATION TO APPLICANT (Triggers for every approval step)
   try {
@@ -871,15 +877,27 @@ const approveCtoApplicationService = async ({
         const enabled = await canSend(EMAIL_KEYS.CTO_APPROVAL);
         if (nextApprover?.email && enabled) {
           const frontendUrl = process.env.FRONTEND_URL || "";
+
+          // Only this approver is emailed, but the email lists what already
+          // happened (submitted, Level 1 approved by ..., etc.)
+          const previousActions = await getCtoPreviousActions(application);
+
           const tpl = ctoApprovalEmail({
             approverName: fullNameOf(nextApprover),
             employeeName: applicantName,
             requestedHours: application.requestedHours,
+            inclusiveDates: application.inclusiveDates,
             reason: application.reason,
             level: nextStep.level,
             link: frontendUrl + "/app/cto-approvals/" + application._id,
+            previousActions,
           });
-          await safeSendEmail(nextApprover.email, tpl.subject, tpl.html);
+          await safeSendEmail(
+            nextApprover.email,
+            tpl.subject,
+            tpl.html,
+            emailThread,
+          );
         }
       } catch (e) {
         console.error("Failed emailing next CTO approver:", e?.message);
@@ -894,8 +912,14 @@ const approveCtoApplicationService = async ({
           employeeName: application.employee.firstName,
           approverName: fullNameOf(approver),
           level: currentStep.level,
+          inclusiveDates: application.inclusiveDates,
         });
-        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+        await safeSendEmail(
+          application.employee.email,
+          tpl.subject,
+          tpl.html,
+          emailThread,
+        );
       }
     } catch (e) {
       console.error("Failed emailing applicant on CTO step:", e?.message);
@@ -912,8 +936,14 @@ const approveCtoApplicationService = async ({
         const tpl = ctoFinalApprovalEmail({
           employeeName: application.employee.firstName,
           requestedHours: application.requestedHours,
+          inclusiveDates: application.inclusiveDates,
         });
-        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+        await safeSendEmail(
+          application.employee.email,
+          tpl.subject,
+          tpl.html,
+          emailThread,
+        );
       }
     } catch (e) {
       console.error("Failed emailing applicant on CTO final:", e?.message);
@@ -960,7 +990,12 @@ const approveCtoApplicationService = async ({
                   inclusiveDates: application.inclusiveDates,
                   approvedBy: fullNameOf(approver),
                 });
-                return safeSendEmail(emp.email, tpl.subject, tpl.html);
+                return safeSendEmail(
+                  emp.email,
+                  tpl.subject,
+                  tpl.html,
+                  emailThread,
+                );
               }),
           );
         }
@@ -1157,6 +1192,8 @@ const rejectCtoApplicationService = async ({
   });
 
   const applicantName = fullNameOf(application.employee);
+  // Every email about this application to the same person shares one thread
+  const emailThread = ctoThread(application);
 
   // 1. IN-APP NOTIFICATION TO APPLICANT
   try {
@@ -1180,8 +1217,14 @@ const rejectCtoApplicationService = async ({
       const tpl = ctoRejectionEmail({
         employeeName: application.employee.firstName,
         remarks: safeRemarks,
+        inclusiveDates: application.inclusiveDates,
       });
-      await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+      await safeSendEmail(
+        application.employee.email,
+        tpl.subject,
+        tpl.html,
+        emailThread,
+      );
     }
   } catch (e) {
     console.error("Failed emailing applicant on CTO rejection:", e?.message);
@@ -1233,7 +1276,12 @@ const rejectCtoApplicationService = async ({
                 rejectedBy: fullNameOf(approver),
                 remarks: safeRemarks,
               });
-              return safeSendEmail(emp.email, tpl.subject, tpl.html);
+              return safeSendEmail(
+                emp.email,
+                tpl.subject,
+                tpl.html,
+                emailThread,
+              );
             }),
         );
       }

@@ -87,6 +87,7 @@ const validPermissions = [
   "settings.general", // Working days & core settings
   "settings.sessions", // Session timeouts
   "settings.email", // Email notification config
+  "settings.scheduled_jobs", // ✅ Scheduled jobs (cron): turn on/off, set run time, run now
   "settings.cto_workflow", // Set up own CTO/Wellness approval workflow
   "settings.cto_workflow_assign", // Create shared CTO/Wellness workflows & assign them to employees, designations, projects
   "settings.revocation_workflow",

@@ -87,7 +87,13 @@ function getTemplate(key, data) {
   }
 }
 
-async function sendNotifEmail(key, { to, ...data }, opts = {}) {
+/**
+ * @param key   one of emailNotificationKeys
+ * @param data  { to, thread?, ...templateData }
+ *              thread: ctoThread(app) / wellnessThread(app) from ./emailThread,
+ *              so the email joins that application's thread in the recipient's inbox
+ */
+async function sendNotifEmail(key, { to, thread, ...data }, opts = {}) {
   const enabled = await isEmailEnabled(key);
 
   if (!enabled && !opts.forceSend) {
@@ -96,7 +102,7 @@ async function sendNotifEmail(key, { to, ...data }, opts = {}) {
   }
 
   const tpl = getTemplate(key, data);
-  return sendEmail(to, tpl.subject, tpl.html);
+  return sendEmail(to, tpl.subject, tpl.html, { thread });
 }
 
 module.exports = sendNotifEmail;

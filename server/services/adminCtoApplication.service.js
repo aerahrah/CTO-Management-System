@@ -8,7 +8,10 @@
 //   • preview an edit (dry run: validation, hour moves, balance impact)
 //   • save an edit in one transaction — every field, dates, hours, memo allocation,
 //     overall status, approval steps (add / remove / reorder / change), notified
-//     employees and revocation details
+//     employees, revocation details and signature URLs (applicant + each approver)
+//   • show where every signature lives (URL / path / file name) and how many
+//     records point at the same file, so an admin can tell whether to replace
+//     the file itself or just point this one record at a different URL
 //   • compare an employee's stored CTO balance with their credits, and recalculate it
 //
 // Admin edits are silent corrections: no emails or in-app notifications are sent.
@@ -68,6 +71,10 @@ const DATE_BLOCKING_STATUSES = ["PENDING", "APPROVED", "REVOCATION_REQUESTED"];
 const CSC_BLOCK_HOURS = 4;
 const CSC_MAX_HOURS = 40;
 const MODEL_MAX_HOURS = 300;
+
+/** Limits for signature URLs typed in by an admin. */
+const SIGNATURE_MAX_URL_LENGTH = 2048;
+const SIGNATURE_MAX_EMBEDDED_LENGTH = 1_500_000; // data: image, about 1 MB
 
 const ROLLEDBACK = "ROLLEDBACK";
 
@@ -252,11 +259,42 @@ const FIELD_SPECS = [
 const hasPath = (model, path) =>
   model.schema.pathType(path) !== "adhocOrUndefined";
 const HAS_EDIT_HISTORY = hasPath(CtoApplication, "adminEditHistory");
+/**
+ * Where an approval step keeps its signature snapshot. ctoApproval.service
+ * copies the approver's profile signature URL into approverSnapshot.signatureUrl
+ * (and the time into approverSnapshot.signedAt) when they approve or reject.
+ * Older setups used approverSignature.
+ */
+const STEP_SIGNATURE_PATH = hasPath(
+  ApprovalStep,
+  "approverSnapshot.signatureUrl",
+)
+  ? "approverSnapshot.signatureUrl"
+  : hasPath(ApprovalStep, "approverSignature")
+    ? "approverSignature"
+    : null;
+const STEP_SIGNED_AT_PATH =
+  STEP_SIGNATURE_PATH === "approverSnapshot.signatureUrl" &&
+  hasPath(ApprovalStep, "approverSnapshot.signedAt")
+    ? "approverSnapshot.signedAt"
+    : null;
+/** Step statuses that carry a signature (approving and rejecting both sign). */
+const SIGNED_STEP_STATUSES = new Set(["APPROVED", "REJECTED"]);
 const STEP_HAS = {
-  signature: hasPath(ApprovalStep, "approverSignature"),
+  signature: Boolean(STEP_SIGNATURE_PATH),
   snapshot: hasPath(ApprovalStep, "approverSnapshot"),
   reviewedAt: hasPath(ApprovalStep, "reviewedAt"),
   ctoApplication: hasPath(ApprovalStep, "ctoApplication"),
+};
+const isStringPath = (model, path) =>
+  model.schema.path(path)?.instance === "String";
+/** Signature fields stored as plain strings (used to count who shares a file). */
+const SIGNATURE_STRING_PATHS = {
+  application: isStringPath(CtoApplication, "applicantSignatureUrl"),
+  step: STEP_SIGNATURE_PATH
+    ? isStringPath(ApprovalStep, STEP_SIGNATURE_PATH)
+    : false,
+  employee: isStringPath(Employee, "signature"),
 };
 
 /* =========================================================================
@@ -463,6 +501,257 @@ function expectedBalanceFromLedger(ledger) {
 }
 
 /* =========================================================================
+   SIGNATURES
+   A signature is stored as a URL or a file path (or, in some setups, an
+   embedded data: image). The application keeps its own copy in
+   applicantSignatureUrl (copied when the employee files) and each approval
+   step keeps one in STEP_SIGNATURE_PATH (copied when the approver approves or
+   rejects). These are snapshots of the URL, not of the image:
+     • editing the URL on a record changes only that record;
+     • replacing the FILE behind a URL changes every record that points at it
+       (getApplicationForEdit reports those counts as usedBy).
+========================================================================= */
+
+/** The URL / path of a stored signature: a string, or { url | secure_url | fileUrl | path }. */
+function signatureUrlOf(value) {
+  if (value === undefined || value === null) return "";
+  if (typeof value === "object") {
+    return String(
+      value.url ?? value.secure_url ?? value.fileUrl ?? value.path ?? "",
+    ).trim();
+  }
+  return String(value).trim();
+}
+
+function isEmbeddedSignature(url) {
+  return /^data:/i.test(url);
+}
+
+/** "Same file?" — "uploads\sig.png" and "uploads/sig.png" count as the same. */
+function sameSignatureFile(a, b) {
+  const key = (v) => {
+    const url = signatureUrlOf(v);
+    return isEmbeddedSignature(url) ? url : url.replace(/\\/g, "/");
+  };
+  const ka = key(a);
+  return Boolean(ka) && ka === key(b);
+}
+
+function safeDecode(text) {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Where a signature lives, so an admin can find the file:
+ *   kind "remote"   — an http(s) URL (host, path, file name)
+ *   kind "local"    — a path on this server, e.g. uploads/signatures/juan.png
+ *   kind "embedded" — an image saved inside the record itself (no separate file)
+ * `url` is exactly what is stored, so it can be copied into an edit as-is.
+ */
+function describeSignature(value) {
+  const url = signatureUrlOf(value);
+  if (!url) return null;
+  if (isEmbeddedSignature(url)) {
+    const base64 = url.slice(url.indexOf(",") + 1);
+    return {
+      kind: "embedded",
+      url,
+      host: null,
+      path: null,
+      fileName: null,
+      mimeType: /^data:([^;,]+)/i.exec(url)?.[1] || null,
+      sizeKb: Math.round(((base64.length * 3) / 4 / 1024) * 10) / 10,
+    };
+  }
+  if (/^https?:\/\//i.test(url)) {
+    let host = null;
+    let path = null;
+    try {
+      const parsed = new URL(url);
+      host = parsed.host;
+      path = safeDecode(parsed.pathname);
+    } catch {
+      // not parseable — the raw URL is still returned
+    }
+    return {
+      kind: "remote",
+      url,
+      host,
+      path,
+      fileName: path ? path.split("/").pop() || null : null,
+    };
+  }
+  const path = url.replace(/\\/g, "/").split(/[?#]/)[0];
+  return {
+    kind: "local",
+    url,
+    host: null,
+    path,
+    fileName: path.split("/").pop() || null,
+  };
+}
+
+/** Short form for the edit log: the URL, or a size note for embedded images. */
+function signatureForLog(value) {
+  const d = describeSignature(value);
+  if (!d) return null;
+  return d.kind === "embedded"
+    ? `[embedded ${d.mimeType || "image"}, ${d.sizeKb} KB]`
+    : d.url;
+}
+
+function isHttpUrl(text) {
+  try {
+    const u = new URL(text);
+    return (u.protocol === "http:" || u.protocol === "https:") && !!u.host;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Checks a signature URL typed by an admin. Returns the string to store,
+ * null to clear it, or undefined (with an error pushed) when it isn't allowed.
+ * Accepts an http(s) URL, a path on this server (no ".."), or a base64
+ * PNG / JPEG / WebP / GIF data: image.
+ */
+function normalizeSignatureInput(raw, label, errors) {
+  if (raw === null || raw === "") return null;
+  if (typeof raw !== "string") {
+    errors.push(`${label} must be a URL or a file path.`);
+    return undefined;
+  }
+  const value = raw.trim();
+  if (!value) return null;
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f]/.test(value)) {
+    errors.push(`${label} contains invalid characters.`);
+    return undefined;
+  }
+  if (isEmbeddedSignature(value)) {
+    if (value.length > SIGNATURE_MAX_EMBEDDED_LENGTH) {
+      errors.push(
+        `${label}: the embedded image is too large (about 1 MB max).`,
+      );
+      return undefined;
+    }
+    if (
+      !/^data:image\/(png|jpe?g|webp|gif);base64,[a-z0-9+/]+={0,2}$/i.test(
+        value,
+      )
+    ) {
+      errors.push(
+        `${label}: only base64 PNG, JPEG, WebP or GIF images can be embedded.`,
+      );
+      return undefined;
+    }
+    return value;
+  }
+  if (value.length > SIGNATURE_MAX_URL_LENGTH) {
+    errors.push(
+      `${label} is too long (max ${SIGNATURE_MAX_URL_LENGTH} characters).`,
+    );
+    return undefined;
+  }
+  if (/^https?:/i.test(value)) {
+    if (!isHttpUrl(value)) {
+      errors.push(`${label} is not a valid URL.`);
+      return undefined;
+    }
+    return value;
+  }
+  if (/^[a-z][a-z0-9+.-]*:/i.test(value) || /^[\\/]{2}/.test(value)) {
+    errors.push(
+      `${label} must be an http(s) URL or a file path on this server.`,
+    );
+    return undefined;
+  }
+  if (value.split(/[\\/]/).includes("..")) {
+    errors.push(`${label} must not contain "..".`);
+    return undefined;
+  }
+  return value;
+}
+
+function emptySignatureUsage() {
+  return {
+    applications: 0,
+    approvalSteps: 0,
+    employeeProfiles: 0,
+    employees: [],
+  };
+}
+
+/**
+ * How many records store each signature URL (exact match, the record being
+ * viewed included): CTO applications, approval steps and employee profiles,
+ * plus up to 5 of those employees. Embedded images are skipped — each record
+ * holds its own copy, so there is no shared file.
+ */
+async function countSignatureUsage(values) {
+  const urls = [
+    ...new Set(
+      values.map(signatureUrlOf).filter((u) => u && !isEmbeddedSignature(u)),
+    ),
+  ];
+  const usage = new Map(urls.map((u) => [u, emptySignatureUsage()]));
+  if (!urls.length) return usage;
+
+  const countBy = (Model, field) =>
+    Model.aggregate([
+      { $match: { [field]: { $in: urls } } },
+      { $group: { _id: `$${field}`, count: { $sum: 1 } } },
+    ]);
+  const [apps, steps, profiles] = await Promise.all([
+    SIGNATURE_STRING_PATHS.application
+      ? countBy(CtoApplication, "applicantSignatureUrl")
+      : [],
+    SIGNATURE_STRING_PATHS.step
+      ? countBy(ApprovalStep, STEP_SIGNATURE_PATH)
+      : [],
+    SIGNATURE_STRING_PATHS.employee
+      ? Employee.aggregate([
+          { $match: { signature: { $in: urls } } },
+          {
+            $group: {
+              _id: "$signature",
+              count: { $sum: 1 },
+              people: {
+                $push: {
+                  _id: "$_id",
+                  firstName: "$firstName",
+                  lastName: "$lastName",
+                },
+              },
+            },
+          },
+          { $project: { count: 1, people: { $slice: ["$people", 5] } } },
+        ])
+      : [],
+  ]);
+  apps.forEach((r) => {
+    if (usage.has(r._id)) usage.get(r._id).applications = r.count;
+  });
+  steps.forEach((r) => {
+    if (usage.has(r._id)) usage.get(r._id).approvalSteps = r.count;
+  });
+  profiles.forEach((r) => {
+    const u = usage.get(r._id);
+    if (!u) return;
+    u.employeeProfiles = r.count;
+    u.employees = (r.people || []).map((p) => ({
+      _id: p._id,
+      fullName: fullName(p),
+    }));
+  });
+  return usage;
+}
+
+/* =========================================================================
    EMPLOYEE SEARCH
 ========================================================================= */
 
@@ -614,6 +903,26 @@ function valuesEqual(type, a, b) {
   return norm(a) === norm(b);
 }
 
+/** The signature snapshot stored on an approval step (or null). */
+function stepSignatureOf(step) {
+  return (STEP_SIGNATURE_PATH && getPath(step, STEP_SIGNATURE_PATH)) || null;
+}
+
+/** { "a.b": 1 } → { a: { b: 1 } }, for creating documents from update-style data. */
+function expandDotted(flat) {
+  const out = {};
+  for (const [key, value] of Object.entries(flat)) {
+    const parts = key.split(".");
+    let node = out;
+    for (const part of parts.slice(0, -1)) {
+      if (!node[part] || typeof node[part] !== "object") node[part] = {};
+      node = node[part];
+    }
+    node[parts[parts.length - 1]] = value;
+  }
+  return out;
+}
+
 function snapshotFromPerson(person) {
   return {
     prefixTitle: person?.prefixTitle || "",
@@ -635,7 +944,11 @@ function snapshotFromPerson(person) {
  *   reason, employeeType, commutation, requestedHours, inclusiveDates: ["YYYY-MM-DD"],
  *   overallStatus, lateFiling{}, actionDetails{}, certificationOfLeaveCredits{}, applicantSnapshot{},
  *   notifiedEmployees: [id], memo: [{ memoId, appliedHours }],
- *   approvals: [{ _id?, approver, role, status, remarks, reviewedAt }]   (full ordered list),
+ *   applicantSignatureUrl: "https://…" | "uploads/…" | null (null / "" removes it),
+ *   approvals: [{ _id?, approver, role, status, remarks, reviewedAt, approverSignature? }]   (full ordered list),
+ *     A signature sent back unchanged counts as "not edited": an unedited step
+ *     signature still follows the status / approver (approving or rejecting
+ *     attaches the approver's profile signature; pending / cancelled removes it).
  *   revocation: { requestReason, revokeReason },
  *   options: { adjustCredits = true, adjustBalance = true, force = false }
  * ctx — { employee, creditsById, peopleById, overlaps } from loadEditContext()
@@ -803,6 +1116,37 @@ function buildEditPlan({
     }
   }
 
+  /* ---------- applicant signature ---------- */
+  // Whose profile signature a URL is, among the people loaded for this edit.
+  const signatureOwnerOf = (url) => {
+    for (const person of ctx.peopleById.values()) {
+      if (sameSignatureFile(person.signature, url)) return person;
+    }
+    return null;
+  };
+  const signatureBefore = signatureUrlOf(app.applicantSignatureUrl) || null;
+  let signatureAfter = signatureBefore;
+  let signatureEdited = false;
+  if (payload.applicantSignatureUrl !== undefined) {
+    const v = normalizeSignatureInput(
+      payload.applicantSignatureUrl,
+      "Applicant signature",
+      errors,
+    );
+    // sending back the loaded value is not an edit
+    if (v !== undefined && v !== signatureBefore) {
+      signatureAfter = v;
+      signatureEdited = true;
+      if (v && !sameSignatureFile(v, ctx.employee?.signature)) {
+        const owner = signatureOwnerOf(v);
+        if (owner)
+          warnings.push(
+            `The new applicant signature is ${fullName(owner)}'s profile signature, not the applicant's.`,
+          );
+      }
+    }
+  }
+
   /* ---------- Organic requirements ---------- */
   if (valueAfter("employeeType") === "Organic") {
     const missing = [];
@@ -814,9 +1158,14 @@ function buildEditPlan({
       errors.push(
         `Organic applications need the applicant's ${missing.join(" and ")}.`,
       );
-    if (!app.applicantSignatureUrl) {
-      if (ctx.employee?.signature) {
-        set.applicantSignatureUrl = ctx.employee.signature;
+    if (!signatureAfter) {
+      const onProfile = signatureUrlOf(ctx.employee?.signature);
+      if (signatureEdited) {
+        errors.push(
+          "Organic applications need the applicant's signature (CSC Form 6), so it can't be removed.",
+        );
+      } else if (onProfile) {
+        signatureAfter = onProfile;
         warnings.push(
           "The applicant's current signature will be attached (required for Organic / CSC Form 6).",
         );
@@ -826,6 +1175,16 @@ function buildEditPlan({
         );
       }
     }
+  }
+  if (signatureAfter !== signatureBefore) {
+    if (signatureAfter) set.applicantSignatureUrl = signatureAfter;
+    else unset.push("applicantSignatureUrl");
+    change(
+      "applicantSignatureUrl",
+      "Applicant signature",
+      signatureForLog(signatureBefore),
+      signatureForLog(signatureAfter),
+    );
   }
 
   /* ---------- memo allocation ---------- */
@@ -1080,7 +1439,8 @@ function buildEditPlan({
       status: s.status || "PENDING",
       remarks: s.remarks || "",
       reviewedAt: s.reviewedAt || null,
-      approverSignature: s.approverSignature || null,
+      approverSignature: stepSignatureOf(s),
+      signedAt: STEP_SIGNED_AT_PATH ? getPath(s, STEP_SIGNED_AT_PATH) : null,
     }))
     .sort((a, b) => a.level - b.level);
   const oldStepById = new Map(oldSteps.map((s) => [s._id, s]));
@@ -1170,27 +1530,86 @@ function buildEditPlan({
         reviewedAt = now;
       }
 
+      // An edited signature URL wins. An unedited one follows the status and
+      // approver as before. Sending back the loaded value is not an edit.
+      let signatureInput; // undefined = not edited
+      if (input.approverSignature !== undefined) {
+        if (!STEP_HAS.signature) {
+          if (input.approverSignature) {
+            errors.push(
+              `${label}: approval steps don't store a signature in this system.`,
+            );
+            return;
+          }
+        } else {
+          const v = normalizeSignatureInput(
+            input.approverSignature,
+            `${label} signature`,
+            errors,
+          );
+          if (v === undefined) return;
+          if (v !== (signatureUrlOf(old?.approverSignature) || null))
+            signatureInput = v;
+        }
+      }
+
       const level = index + 1;
       const approverChanged = Boolean(old) && old.approver !== approverId;
       const data = { level, approver: approverId, role, status, remarks };
       if (STEP_HAS.reviewedAt) data.reviewedAt = reviewedAt;
-      if (STEP_HAS.snapshot && (!old || approverChanged))
-        data.approverSnapshot = snapshotFromPerson(approver);
+      // Set the name fields one by one so the signature snapshot stored in
+      // the same object (approverSnapshot.signatureUrl / signedAt) is kept.
+      if (STEP_HAS.snapshot && (!old || approverChanged)) {
+        Object.entries(snapshotFromPerson(approver)).forEach(([k, v]) => {
+          data[`approverSnapshot.${k}`] = v;
+        });
+      }
+      let signature = old?.approverSignature || null;
       if (STEP_HAS.signature) {
-        if (status === "APPROVED") {
+        if (signatureInput !== undefined) {
+          signature = signatureInput;
+          if (!signatureInput && SIGNED_STEP_STATUSES.has(status))
+            warnings.push(
+              `${label}: the step is ${status} but will have no signature.`,
+            );
+          if (signatureInput && !SIGNED_STEP_STATUSES.has(status))
+            warnings.push(
+              `${label}: a signature is set on a ${status} step, so it may print as signed.`,
+            );
+          if (
+            signatureInput &&
+            !sameSignatureFile(signatureInput, approver.signature)
+          ) {
+            const owner = signatureOwnerOf(signatureInput);
+            if (owner)
+              warnings.push(
+                `${label}: this is ${fullName(owner)}'s profile signature, not ${fullName(approver)}'s.`,
+              );
+          }
+        } else if (SIGNED_STEP_STATUSES.has(status)) {
           const needsNewSignature = statusChanged || approverChanged;
-          data.approverSignature = needsNewSignature
-            ? approver.signature || null
+          signature = needsNewSignature
+            ? signatureUrlOf(approver.signature) || null
             : old.approverSignature;
-          if (needsNewSignature && !data.approverSignature) {
+          if (needsNewSignature && !signature) {
             warnings.push(
               `${label}: ${fullName(approver)} has no signature on file.`,
             );
           }
         } else {
-          data.approverSignature = statusChanged
+          signature = statusChanged ? null : old?.approverSignature || null;
+        }
+        data[STEP_SIGNATURE_PATH] = signature;
+        if (STEP_SIGNED_AT_PATH) {
+          const keepSignedAt =
+            old &&
+            !statusChanged &&
+            (old.approverSignature || null) === signature;
+          data[STEP_SIGNED_AT_PATH] = !signature
             ? null
-            : old?.approverSignature || null;
+            : keepSignedAt
+              ? old.signedAt
+              : reviewedAt || now;
         }
       }
 
@@ -1219,6 +1638,16 @@ function buildEditPlan({
             field: "reviewedAt",
             from: old.reviewedAt,
             to: reviewedAt,
+          });
+        }
+        if (
+          STEP_HAS.signature &&
+          (old.approverSignature || null) !== (signature || null)
+        ) {
+          changes.push({
+            field: "approverSignature",
+            from: signatureForLog(old.approverSignature),
+            to: signatureForLog(signature),
           });
         }
       }
@@ -1836,7 +2265,7 @@ async function getApplicationForEdit(applicationId) {
 
   const [people, credits, overlaps] = await Promise.all([
     Employee.find({ _id: { $in: peopleIds } })
-      .select(`${PERSON_FIELDS} balances.ctoHours`)
+      .select(`${PERSON_FIELDS} signature balances.ctoHours`)
       .lean(),
     CtoCredit.find({ _id: { $in: memoIds } })
       .select(
@@ -1859,6 +2288,26 @@ async function getApplicationForEdit(applicationId) {
   const creditsById = new Map(credits.map((c) => [String(c._id), c]));
   const mine = new Set(keys);
   const applicant = byId.get(applicantId);
+  const approverOf = (step) => byId.get(idOf(step.approver));
+
+  // Signatures: what this application / step stores, the person's current
+  // profile signature, and how many records point at the same file.
+  const signatureUsage = await countSignatureUsage([
+    app.applicantSignatureUrl,
+    applicant?.signature,
+    ...steps.flatMap((s) => [stepSignatureOf(s), approverOf(s)?.signature]),
+  ]);
+  const signatureView = (value) => {
+    const view = describeSignature(value);
+    if (view && view.kind !== "embedded")
+      view.usedBy = signatureUsage.get(view.url) || emptySignatureUsage();
+    return view;
+  };
+  const signatureInfo = (stored, profile) => ({
+    stored: signatureView(stored),
+    profile: signatureView(profile),
+    sameAsProfile: sameSignatureFile(stored, profile),
+  });
 
   return {
     ...app,
@@ -1869,6 +2318,10 @@ async function getApplicationForEdit(applicationId) {
           ctoBalance: round2(applicant.balances?.ctoHours || 0),
         }
       : null,
+    applicantSignatureInfo: signatureInfo(
+      app.applicantSignatureUrl,
+      applicant?.signature,
+    ),
     memo: (app.memo || []).map((m) => {
       const credit = creditsById.get(idOf(m.memoId));
       const row = credit ? creditRowOf(credit, applicantId) : null;
@@ -1889,11 +2342,20 @@ async function getApplicationForEdit(applicationId) {
           : null,
       };
     }),
-    approvals: steps.map((s) => ({
-      ...s,
-      approver: idOf(s.approver),
-      approverInfo: brief(byId.get(idOf(s.approver))) || null,
-    })),
+    approvals: steps.map((s) => {
+      const approver = approverOf(s);
+      return {
+        ...s,
+        approver: idOf(s.approver),
+        approverInfo: brief(approver) || null,
+        signatureInfo: {
+          ...signatureInfo(stepSignatureOf(s), approver?.signature),
+          signedAt: STEP_SIGNED_AT_PATH
+            ? getPath(s, STEP_SIGNED_AT_PATH)
+            : null,
+        },
+      };
+    }),
     notifiedEmployees: (app.notifiedEmployees || []).map(idOf),
     notifiedInfo: (app.notifiedEmployees || []).map(
       (id) =>
@@ -2100,7 +2562,7 @@ async function updateApplication(applicationId, payload = {}, userId) {
               ),
             );
             const doc = new ApprovalStep({
-              ...data,
+              ...expandDotted(data),
               ...(STEP_HAS.ctoApplication ? { ctoApplication: app._id } : {}),
             });
             toInsert.push(doc);
@@ -2290,6 +2752,9 @@ module.exports = {
   // exported for tests / reuse
   buildEditPlan,
   buildEmployeeSearchFilter,
+  describeSignature,
+  normalizeSignatureInput,
+  countSignatureUsage,
   dayKey,
   buildDay,
   APP_STATUS,

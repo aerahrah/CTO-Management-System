@@ -10,6 +10,8 @@ const auditLogService = require("./auditLog.service");
 
 // Email Dependencies
 const sendEmail = require("../utils/sendEmail");
+const { wellnessThread } = require("../utils/emailThread");
+const { getPreviousActions } = require("../utils/ctoEmailHistory");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 const {
@@ -17,6 +19,8 @@ const {
   wellnessFinalApprovalEmail,
   wellnessRejectionEmail,
   wellnessStepApprovalEmail,
+  wellnessNotifiedFinalApprovalEmail,
+  wellnessNotifiedRejectionEmail,
 } = require("../utils/emailTemplates");
 
 /* =========================
@@ -87,9 +91,11 @@ const clampPage = (v) => Math.max(parseInt(v, 10) || 1, 1);
 const clampLimit = (v) => Math.min(Math.max(parseInt(v, 10) || 10, 1), 100);
 
 // Email Helpers
-async function safeSendEmail(to, subject, html) {
+// thread: wellnessThread(application) puts the email in that application's
+// thread in the recipient's inbox
+async function safeSendEmail(to, subject, html, thread = null) {
   try {
-    await sendEmail(to, subject, html);
+    await sendEmail(to, subject, html, { thread });
   } catch (e) {
     console.error("[EMAIL] failed but continuing:", {
       to,
@@ -586,37 +592,49 @@ const approveWellnessApplicationService = async ({
     await session.commitTransaction();
     session.endSession();
 
-    const approverEmail = approver?.email || "unknown";
-    const auditBody = {
-      approverId,
-      applicationId,
-      level: currentStep.level,
-      approverName: approverEmail + " (id: " + approverId + ")",
-      approverEmail: approverEmail,
-      employeeName:
-        application.employee.email + " (id: " + application.employee._id + ")",
-    };
+    // The approval is saved. A failing audit log must not report an error
+    // to the approver (same as the CTO approval service).
+    try {
+      const approverEmail = approver?.email || "unknown";
+      const auditBody = {
+        approverId,
+        applicationId,
+        level: currentStep.level,
+        approverName: approverEmail + " (id: " + approverId + ")",
+        approverEmail: approverEmail,
+        employeeName:
+          application.employee.email +
+          " (id: " +
+          application.employee._id +
+          ")",
+      };
 
-    const auditDetails = buildAuditDetails({
-      endpoint: "Approve Wellness Application",
-      actor: auditBody.approverName,
-      targetUser: auditBody.employeeName,
-      body: auditBody,
-      params: { id: application._id },
-      before: { status: currentStep.status },
-    });
+      const auditDetails = buildAuditDetails({
+        endpoint: "Approve Wellness Application",
+        actor: auditBody.approverName,
+        targetUser: auditBody.employeeName,
+        body: auditBody,
+        params: { id: application._id },
+        before: { status: currentStep.status },
+      });
 
-    await auditLogService.createAuditLog({
-      userId: approverId,
-      email: auditBody.approverEmail,
-      method: "POST",
-      endpoint: "Approve Wellness Application",
-      url: "/wellness/applications/approver/" + application._id + "/approve",
-      statusCode: 200,
-      ip: getClientIp(req),
-      summary: auditDetails.summary,
-      timestamp: new Date(),
-    });
+      await auditLogService.createAuditLog({
+        userId: approverId,
+        email: auditBody.approverEmail,
+        method: "POST",
+        endpoint: "Approve Wellness Application",
+        url: "/wellness/applications/approver/" + application._id + "/approve",
+        statusCode: 200,
+        ip: getClientIp(req),
+        summary: auditDetails.summary,
+        timestamp: new Date(),
+      });
+    } catch (e) {
+      console.error(
+        "[AUDIT] Failed writing Approve Wellness Application log:",
+        e?.message,
+      );
+    }
 
     // 1. Notify Applicant (In-App + SMS)
     try {
@@ -634,9 +652,8 @@ const approveWellnessApplicationService = async ({
       );
     }
 
-    const formattedDates = (application.inclusiveDates || [])
-      .map((d) => new Date(d).toLocaleDateString())
-      .join(", ");
+    // Every email about this application to the same person shares one thread
+    const emailThread = wellnessThread(application);
 
     if (allApproved) {
       const finalEmailEnabled = await canSend(
@@ -649,12 +666,13 @@ const approveWellnessApplicationService = async ({
           const tpl = wellnessFinalApprovalEmail({
             employeeName: fullNameOf(application.employee),
             requestedDays: application.totalDays,
-            inclusiveDates: formattedDates,
+            inclusiveDates: application.inclusiveDates,
           });
           await safeSendEmail(
             application.employee.email,
             tpl.subject,
             tpl.html,
+            emailThread,
           );
         }
       } catch (err) {
@@ -713,12 +731,21 @@ const approveWellnessApplicationService = async ({
             const emailPromises = notifiedDocs
               .filter((emp) => emp?.email)
               .map((emp) => {
-                const tpl = wellnessFinalApprovalEmail({
+                // FYI template for tagged employees (the applicant's
+                // "Your Wellness Leave was approved" email was sent before)
+                const tpl = wellnessNotifiedFinalApprovalEmail({
+                  recipientName: fullNameOf(emp),
                   employeeName: applicantName,
                   requestedDays: application.totalDays,
-                  inclusiveDates: formattedDates,
+                  inclusiveDates: application.inclusiveDates,
+                  approvedBy: fullNameOf(approver),
                 });
-                return safeSendEmail(emp.email, tpl.subject, tpl.html);
+                return safeSendEmail(
+                  emp.email,
+                  tpl.subject,
+                  tpl.html,
+                  emailThread,
+                );
               });
             await Promise.all(emailPromises);
           }
@@ -761,16 +788,27 @@ const approveWellnessApplicationService = async ({
           const enabled = await canSend(EMAIL_KEYS.WELLNESS_APPROVAL);
           if (nextApproverUser?.email && enabled) {
             const frontendUrl = process.env.FRONTEND_URL || "";
+
+            // Only this approver is emailed, but the email lists what already
+            // happened (submitted, Level 1 approved by ..., etc.)
+            const previousActions = await getPreviousActions(application);
+
             const tpl = wellnessApprovalEmail({
               approverName: fullNameOf(nextApproverUser),
               employeeName: fullNameOf(application.employee),
               requestedDays: application.totalDays,
-              inclusiveDates: formattedDates,
+              inclusiveDates: application.inclusiveDates,
               reason: application.reason,
               level: nextStep.level,
               link: frontendUrl + "/app/wellness-approvals/" + application._id,
+              previousActions,
             });
-            await safeSendEmail(nextApproverUser.email, tpl.subject, tpl.html);
+            await safeSendEmail(
+              nextApproverUser.email,
+              tpl.subject,
+              tpl.html,
+              emailThread,
+            );
           }
         } catch (err) {
           console.error(
@@ -788,11 +826,13 @@ const approveWellnessApplicationService = async ({
               employeeName: application.employee.firstName,
               approverName: fullNameOf(approver),
               level: currentStep.level,
+              inclusiveDates: application.inclusiveDates,
             });
             await safeSendEmail(
               application.employee.email,
               tpl.subject,
               tpl.html,
+              emailThread,
             );
           }
         }
@@ -806,7 +846,9 @@ const approveWellnessApplicationService = async ({
 
     return getWellnessApplicationByIdService(applicationId);
   } catch (err) {
-    await session.abortTransaction();
+    // After commitTransaction() there is nothing left to undo; calling
+    // abortTransaction() then would throw and hide the real error.
+    if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
     throw err;
   }
@@ -939,37 +981,52 @@ const rejectWellnessApplicationService = async ({
     await session.commitTransaction();
     session.endSession();
 
-    const approverEmail = approver?.email || "unknown";
-    const auditBody = {
-      approverId,
-      applicationId,
-      level: currentStep.level,
-      approverName: approverEmail + " (id: " + approverId + ")",
-      approverEmail: approverEmail,
-      employeeName:
-        application.employee.email + " (id: " + application.employee._id + ")",
-    };
+    // The rejection is saved. A failing audit log must not report an error
+    // to the approver (same as the CTO approval service).
+    try {
+      const approverEmail = approver?.email || "unknown";
+      const auditBody = {
+        approverId,
+        applicationId,
+        level: currentStep.level,
+        approverName: approverEmail + " (id: " + approverId + ")",
+        approverEmail: approverEmail,
+        employeeName:
+          application.employee.email +
+          " (id: " +
+          application.employee._id +
+          ")",
+      };
 
-    const auditDetails = buildAuditDetails({
-      endpoint: "Reject Wellness Application",
-      actor: auditBody.approverName,
-      targetUser: auditBody.employeeName,
-      body: auditBody,
-      params: { id: application._id },
-      before: { status: currentStep.status },
-    });
+      const auditDetails = buildAuditDetails({
+        endpoint: "Reject Wellness Application",
+        actor: auditBody.approverName,
+        targetUser: auditBody.employeeName,
+        body: auditBody,
+        params: { id: application._id },
+        before: { status: currentStep.status },
+      });
 
-    await auditLogService.createAuditLog({
-      userId: approverId,
-      email: auditBody.approverEmail,
-      method: "POST",
-      endpoint: "Reject Wellness Application",
-      url: "/wellness/applications/approver/" + application._id + "/reject",
-      statusCode: 200,
-      ip: getClientIp(req),
-      summary: auditDetails.summary,
-      timestamp: new Date(),
-    });
+      await auditLogService.createAuditLog({
+        userId: approverId,
+        email: auditBody.approverEmail,
+        method: "POST",
+        endpoint: "Reject Wellness Application",
+        url: "/wellness/applications/approver/" + application._id + "/reject",
+        statusCode: 200,
+        ip: getClientIp(req),
+        summary: auditDetails.summary,
+        timestamp: new Date(),
+      });
+    } catch (e) {
+      console.error(
+        "[AUDIT] Failed writing Reject Wellness Application log:",
+        e?.message,
+      );
+    }
+
+    // Every email about this application to the same person shares one thread
+    const emailThread = wellnessThread(application);
 
     // 1. Notify Applicant (In-App + SMS)
     try {
@@ -994,8 +1051,14 @@ const rejectWellnessApplicationService = async ({
         const tpl = wellnessRejectionEmail({
           employeeName: fullNameOf(application.employee),
           remarks: safeRemarks,
+          inclusiveDates: application.inclusiveDates,
         });
-        await safeSendEmail(application.employee.email, tpl.subject, tpl.html);
+        await safeSendEmail(
+          application.employee.email,
+          tpl.subject,
+          tpl.html,
+          emailThread,
+        );
       }
     } catch (err) {
       console.error("Failed to send Wellness rejection email:", err?.message);
@@ -1049,11 +1112,22 @@ const rejectWellnessApplicationService = async ({
           const emailPromises = notifiedDocs
             .filter((emp) => emp?.email)
             .map((emp) => {
-              const tpl = wellnessRejectionEmail({
+              // FYI template for tagged employees (the applicant's
+              // "Your Wellness Leave was declined" email was sent before)
+              const tpl = wellnessNotifiedRejectionEmail({
+                recipientName: fullNameOf(emp),
                 employeeName: applicantName,
+                requestedDays: application.totalDays,
+                inclusiveDates: application.inclusiveDates,
+                rejectedBy: fullNameOf(approver),
                 remarks: safeRemarks,
               });
-              return safeSendEmail(emp.email, tpl.subject, tpl.html);
+              return safeSendEmail(
+                emp.email,
+                tpl.subject,
+                tpl.html,
+                emailThread,
+              );
             });
           await Promise.all(emailPromises);
         }
@@ -1067,7 +1141,9 @@ const rejectWellnessApplicationService = async ({
 
     return getWellnessApplicationByIdService(applicationId);
   } catch (err) {
-    await session.abortTransaction();
+    // After commitTransaction() there is nothing left to undo; calling
+    // abortTransaction() then would throw and hide the real error.
+    if (session.inTransaction()) await session.abortTransaction();
     session.endSession();
     throw err;
   }

@@ -1,6 +1,7 @@
 // utils/sendEmail.js
 const nodemailer = require("nodemailer");
 const { convert } = require("html-to-text");
+const { prepareThreadedEmail } = require("./emailThread");
 require("dotenv").config();
 
 const DEBUG_EMAIL =
@@ -215,13 +216,49 @@ function sendTestAlert() {
 }
 
 // ─── Send an email ──────────────────────────────────────────────────────────
-const sendEmail = async (to, subject, html) => {
+/**
+ * @param to       recipient(s)
+ * @param subject  template subject (replaced by the thread subject when threaded)
+ * @param html     body
+ * @param options  { thread }: pass ctoThread(app) / wellnessThread(app) from
+ *                 ./emailThread so every email about the same application to the
+ *                 same person lands in one inbox thread. Leave out for normal emails.
+ */
+const sendEmail = async (to, subject, html, options = {}) => {
   if (!to) throw new Error("sendEmail: 'to' is required");
   if (!subject) throw new Error("sendEmail: 'subject' is required");
   if (!html) throw new Error("sendEmail: 'html' is required");
 
+  // Work out thread headers. If the lookup fails, send as a normal email:
+  // a missed thread is better than a missed notification.
+  let threaded = null;
+  if (options.thread) {
+    try {
+      threaded = await prepareThreadedEmail({
+        to,
+        thread: options.thread,
+        subject,
+        fromAddress: EMAIL_USER,
+      });
+    } catch (err) {
+      console.error(
+        "[EMAIL] Thread lookup failed, sending without threading:",
+        { thread: options.thread?.key, message: err?.message },
+      );
+    }
+  }
+
+  const finalSubject = threaded ? threaded.subject : subject;
+
   // ✅ ALWAYS log so you can confirm it's being called from frontend
-  console.log("[EMAIL] sendEmail() called:", { to: maskList(to), subject });
+  console.log("[EMAIL] sendEmail() called:", {
+    to: maskList(to),
+    subject: finalSubject,
+    ...(threaded && {
+      thread: options.thread.key,
+      threadPosition: threaded.isReply ? "reply" : "first",
+    }),
+  });
 
   const htmlStr = String(html);
 
@@ -229,11 +266,13 @@ const sendEmail = async (to, subject, html) => {
     // Must be the same address you sign in with, or Gmail treats it as spoofing
     from: { name: EMAIL_FROM_NAME, address: EMAIL_USER },
     to,
-    subject,
+    subject: finalSubject,
     html: htmlStr,
     // A plain-text version alongside the HTML lowers spam scores
     text: convert(htmlStr, { wordwrap: 100 }),
     ...(EMAIL_REPLY_TO && { replyTo: EMAIL_REPLY_TO }),
+    // messageId / inReplyTo / references that tie this email to its thread
+    ...(threaded && threaded.fields),
   };
 
   try {
@@ -241,9 +280,10 @@ const sendEmail = async (to, subject, html) => {
       console.log("[EMAIL DEBUG] payload:", {
         from: `"${EMAIL_FROM_NAME}" <${EMAIL_USER}>`,
         to: maskList(to),
-        subject,
+        subject: finalSubject,
         html_len: message.html.length,
         text_len: message.text.length,
+        ...(threaded && threaded.fields),
       });
     }
 
@@ -265,6 +305,15 @@ const sendEmail = async (to, subject, html) => {
     if (rejected.length)
       console.log("❌ Rejected recipients:", maskList(rejected));
 
+    // Remember this Message-ID so the next email can reply to it
+    if (threaded) {
+      try {
+        await threaded.markSent();
+      } catch (e) {
+        console.error("[EMAIL] Could not save thread state:", e?.message);
+      }
+    }
+
     alertRecovered().catch(() => {});
     return info;
   } catch (err) {
@@ -277,8 +326,10 @@ const sendEmail = async (to, subject, html) => {
       hint: explainError(err),
     });
 
+    if (threaded) threaded.markFailed().catch(() => {});
+
     // Don't make the caller wait for the alert
-    alertFailure(err, `sending "${subject}"`).catch(() => {});
+    alertFailure(err, `sending "${finalSubject}"`).catch(() => {});
     throw err;
   }
 };

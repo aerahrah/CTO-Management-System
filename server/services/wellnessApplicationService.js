@@ -18,6 +18,8 @@ const {
 
 // Email Dependencies
 const sendEmail = require("../utils/sendEmail");
+const { wellnessThread } = require("../utils/emailThread");
+const { getPreviousActions } = require("../utils/ctoEmailHistory");
 const EMAIL_KEYS = require("../utils/emailNotificationKeys");
 const { isEmailEnabled } = require("../utils/emailNotificationSettings");
 const {
@@ -72,15 +74,6 @@ function sanitizeText(str, limit = 1000) {
     .slice(0, limit);
 }
 
-// Comma-separated date list used by the approver/HR templates
-function formatDatesList(dates) {
-  return (Array.isArray(dates) ? dates : [])
-    .map((d) => new Date(d))
-    .filter((d) => !isNaN(d.getTime()))
-    .map((d) => d.toLocaleDateString())
-    .join(", ");
-}
-
 // HELPER: Formats inclusive dates into a short readable string for the ledger
 function formatLedgerDates(dates) {
   if (!Array.isArray(dates) || dates.length === 0) return "";
@@ -127,9 +120,11 @@ function getWorkingDaysLeadTime(startDate, endDate, activeWorkingDays) {
   return workingDaysCount;
 }
 
-async function safeSendEmail(to, subject, html) {
+// thread: wellnessThread(application) puts the email in that application's
+// thread in the recipient's inbox
+async function safeSendEmail(to, subject, html, thread = null) {
   try {
-    await sendEmail(to, subject, html);
+    await sendEmail(to, subject, html, { thread });
   } catch (e) {
     console.error("[EMAIL] failed but continuing:", {
       to,
@@ -244,6 +239,8 @@ const notifyApproversOfCancellation = async ({
     EMAIL_KEYS.WELLNESS_CANCELLED || EMAIL_KEYS.WELLNESS_APPROVAL,
   );
   const employeeName = fullNameOf(employee);
+  // The "cancelled" email joins each person's thread for this application
+  const emailThread = wellnessThread(application, employee);
 
   // 1. Approvers
   if (approverIds.length > 0) {
@@ -278,7 +275,7 @@ const notifyApproversOfCancellation = async ({
                 requestedDays: application.totalDays,
                 inclusiveDates: application.inclusiveDates,
               });
-              return safeSendEmail(a.email, tpl.subject, tpl.html);
+              return safeSendEmail(a.email, tpl.subject, tpl.html, emailThread);
             }),
         );
       } catch (e) {
@@ -344,7 +341,12 @@ const notifyApproversOfCancellation = async ({
                 requestedDays: application.totalDays,
                 inclusiveDates: application.inclusiveDates,
               });
-              return safeSendEmail(doc.email, tpl.subject, tpl.html);
+              return safeSendEmail(
+                doc.email,
+                tpl.subject,
+                tpl.html,
+                emailThread,
+              );
             }),
         );
       } catch (e) {
@@ -882,8 +884,9 @@ const addWellnessApplicationService = async ({
   }
 
   const applicantName = fullNameOf(employee);
-  const formattedDates = formatDatesList(inclusiveDates);
   const frontendUrl = process.env.FRONTEND_URL || "";
+  // Every email about this application to the same person shares one thread
+  const emailThread = wellnessThread(newApplication, employee);
 
   const firstStep = approvalSteps.find((s) => s.level === 1);
   if (firstStep) {
@@ -907,17 +910,30 @@ const addWellnessApplicationService = async ({
       const approverUser = approverMap.get(String(firstStep.approver));
 
       if (approverUser?.email && emailEnabled) {
+        // History so far: just the submission
+        const previousActions = await getPreviousActions({
+          createdAt: newApplication.createdAt,
+          approvals: newApplication.approvals,
+          employee,
+        });
+
         const tpl = wellnessApprovalEmail({
           approverName: fullNameOf(approverUser),
           employeeName: applicantName,
           requestedDays: totalDays,
-          inclusiveDates: formattedDates,
+          inclusiveDates: newApplication.inclusiveDates,
           reason: finalReason,
           level: 1,
           link: frontendUrl + "/app/wellness-approvals/" + newApplication._id,
+          previousActions,
         });
 
-        await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+        await safeSendEmail(
+          approverUser.email,
+          tpl.subject,
+          tpl.html,
+          emailThread,
+        );
       }
     } catch (err) {
       console.error("Failed to send Wellness approval email:", err?.message);
@@ -987,7 +1003,12 @@ const addWellnessApplicationService = async ({
                 inclusiveDates,
                 reason: finalReason,
               });
-              return safeSendEmail(doc.email, tpl.subject, tpl.html);
+              return safeSendEmail(
+                doc.email,
+                tpl.subject,
+                tpl.html,
+                emailThread,
+              );
             }),
           );
         }
@@ -1015,7 +1036,7 @@ const followUpWellnessApplicationService = async ({
   }
 
   const app = await WellnessApplication.findById(applicationId)
-    .populate("employee", "firstName lastName")
+    .populate("employee", "firstName lastName position")
     .populate({
       path: "approvals",
       populate: {
@@ -1060,11 +1081,19 @@ const followUpWellnessApplicationService = async ({
       approverName: fullNameOf(approverUser),
       employeeName: fullNameOf(app.employee),
       requestedDays: app.totalDays,
+      inclusiveDates: app.inclusiveDates,
       level: currentStep.level,
       link: frontendUrl + "/app/wellness-approvals/" + app._id,
+      previousActions: await getPreviousActions(app),
     });
 
-    await safeSendEmail(approverUser.email, tpl.subject, tpl.html);
+    // Lands in the same thread as this approver's "needs your approval" email
+    await safeSendEmail(
+      approverUser.email,
+      tpl.subject,
+      tpl.html,
+      wellnessThread(app),
+    );
 
     try {
       await NotificationService.notifyApproverOnWellnessFollowUp({
@@ -1633,7 +1662,7 @@ const requestRevocationWellnessApplicationService = async ({
           hrName: "HR Team",
           employeeName: fullNameOf(employee),
           requestedDays: app.totalDays,
-          inclusiveDates: formatDatesList(app.inclusiveDates),
+          inclusiveDates: app.inclusiveDates,
           reason: safeReason,
           link:
             frontendUrl +
@@ -1642,9 +1671,11 @@ const requestRevocationWellnessApplicationService = async ({
             "?type=WELLNESS",
         });
 
+        // Each HR person gets their own thread for this application
+        const emailThread = wellnessThread(app, employee);
         await Promise.all(
           hrEmails.map((hrEmail) =>
-            safeSendEmail(hrEmail, tpl.subject, tpl.html),
+            safeSendEmail(hrEmail, tpl.subject, tpl.html, emailThread),
           ),
         );
       }
@@ -1781,6 +1812,8 @@ const processRevocationWellnessRequestService = async ({
     const emp = application.employee;
     if (emp && emp.email) {
       const empName = fullNameOf(emp);
+      // The result joins the applicant's thread for this application
+      const emailThread = wellnessThread(application);
 
       if (safeAction === "APPROVE") {
         await NotificationService.notifyEmployeeOnWellnessRevocationApproved({
@@ -1798,10 +1831,10 @@ const processRevocationWellnessRequestService = async ({
           const tpl = wellnessRevocationApprovedEmail({
             employeeName: empName,
             restoredDays: application.totalDays,
-            inclusiveDates: formatDatesList(application.inclusiveDates),
+            inclusiveDates: application.inclusiveDates,
             remarks: safeRemarks,
           });
-          await safeSendEmail(emp.email, tpl.subject, tpl.html);
+          await safeSendEmail(emp.email, tpl.subject, tpl.html, emailThread);
         }
       } else if (safeAction === "REJECT") {
         await NotificationService.notifyEmployeeOnWellnessRevocationRejected({
@@ -1818,9 +1851,10 @@ const processRevocationWellnessRequestService = async ({
         if (emailEnabled) {
           const tpl = wellnessRevocationRejectedEmail({
             employeeName: empName,
+            inclusiveDates: application.inclusiveDates,
             remarks: safeRemarks,
           });
-          await safeSendEmail(emp.email, tpl.subject, tpl.html);
+          await safeSendEmail(emp.email, tpl.subject, tpl.html, emailThread);
         }
       }
     }
@@ -2079,12 +2113,14 @@ const cancelRevocationWellnessRequestService = async ({
           hrName: "HR Team",
           employeeName: fullNameOf(employee),
           requestedDays: application.totalDays,
-          inclusiveDates: formatDatesList(application.inclusiveDates),
+          inclusiveDates: application.inclusiveDates,
         });
 
+        // Same thread as the HR person's revocation request email
+        const emailThread = wellnessThread(application, employee);
         await Promise.all(
           hrEmails.map((hrEmail) =>
-            safeSendEmail(hrEmail, tpl.subject, tpl.html),
+            safeSendEmail(hrEmail, tpl.subject, tpl.html, emailThread),
           ),
         );
       }
